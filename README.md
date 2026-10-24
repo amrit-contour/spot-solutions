@@ -41,6 +41,23 @@ Open the app, sign in, go to **Settings → Show QR code**, and scan it from Wha
 
 `pnpm --filter @spot/worker exec tsx scripts/eval-intent.ts gemma3:4b` runs the intent fixtures against your local model.
 
+## Run it 24/7 on an old laptop
+
+See **[docs/ubuntu-usb-server.md](docs/ubuntu-usb-server.md)**: install Ubuntu Server onto a pen drive, then run one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install.sh | sudo bash
+```
+
+Or use Docker: `docker compose -f deploy/docker-compose.yml up -d`.
+
+## Safety
+
+Nothing is sent from your WhatsApp unless you choose it:
+- Confirmations and regrets go out only when you press send.
+- Auto-acknowledge is **off by default**. When on, it replies only when Gemma quotes a real ask from the message (verified against the text) at 85%+ confidence, in a message under 10 minutes old, from a non-business account.
+- Chats from before you linked are never read.
+
 ## A note on WhatsApp
 
 This uses [whatsapp-web.js](https://wwebjs.dev), an unofficial WhatsApp Web client. It isn't affiliated with WhatsApp, and automated use can get a number restricted. Spot Solutions keeps volume human: every send is queued with a 3–8s gap and a typing indicator. Use it at your own risk.
