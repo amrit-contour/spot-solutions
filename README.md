@@ -21,6 +21,12 @@ The worker only makes outbound connections. No ports, no tunnel. The web app dro
 - **Request rules (from V1):** a weekly request window (e.g. Sat 3 PM–Mon 10 AM), skipping last week's performers, and host/ignore/ban lists. Rule-breakers land in a *Held* tab.
 - **Spot history:** every comic carries "last spot N days ago" and a cancellation count, and "mic didn't happen" stops a canned show from counting.
 - **Comic self-service:** "can't make it Monday", "am I up this week?" and "when was my last spot?" are understood and drafted as replies. A cancellation frees the slot once you send.
+- **New faces:** someone you haven't saved asks for a spot, and Gemma drafts "who are you?". Their answer (name, scene, years in comedy, travelling) fills in their profile.
+- **Spot offers:** offer an open slot to one comic. A "yes" books it and sends the confirmation, a "no" or silence (after a timeout) frees it, and you're told either way.
+- **Hosts poll:** send your hosts group a WhatsApp poll of the week's shows. Votes appear on each show as "Hosts free".
+- **Did the mic happen?** The morning after, the app (and optionally your "Message yourself" chat) asks you. "No" undoes the night in everyone's history.
+- **Venue & timing questions:** "where is the mic?" gets a drafted reply with every show's day, time, venue and map link.
+- **Curation weeks follow your shows:** the week rolls over the day after your last show, so a Thursday mic stays "this week" until it's done.
 - **Group sync:** after confirming, you review who gets added to and removed from the show group. Admins, regulars and protected members always stay. Or set a show to update its group automatically on the day and post the lineup there.
 
 ## Run it
@@ -54,11 +60,11 @@ curl -fsSL https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/depl
 
 Or use Docker: `docker compose -f deploy/docker-compose.yml up -d`.
 
-**On Windows**, open PowerShell as Administrator:
+**On Windows**, download `SpotSolutions-Windows.zip` from the [latest release](https://github.com/amrit-dash/spot-solutions/releases/latest), unzip it and double-click `Install Spot Solutions.cmd`. Or, from PowerShell as Administrator:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-irm https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install-windows.ps1 | iex
+irm https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/windows/install.ps1 | iex
 ```
 
 It installs Node, Git, Ollama and Gemma with winget, runs the worker as a startup task that restarts on crash, and keeps the laptop awake while plugged in.

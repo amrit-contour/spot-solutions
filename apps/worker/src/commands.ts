@@ -15,6 +15,8 @@ import {
   withHistory,
   type Command,
   type ComicAction,
+  type HostPoll,
+  type SpotOffer,
   type Comic,
   type GroupSyncPlan,
   type Lineup,
@@ -60,29 +62,19 @@ const handlers: Record<Command["type"], Handler> = {
 
   async send_confirmations(uid, { lineupId }) {
     const client = sessions.require(uid);
-    const { settings, shows, venues } = watchUser(uid);
+    const { settings, shows } = watchUser(uid);
     const lineupRef = col(uid, "lineups").doc(String(lineupId));
     const lineup = (await lineupRef.get()).data() as Lineup | undefined;
     if (!lineup) throw new Error("Lineup not found");
     const show = shows.find((s) => s.id === lineup.showId);
     if (!show) throw new Error("Show not found");
-    const venue = venues.find((v) => v.id === show.venueId);
     const comics = await loadComics(uid, lineup.slots.map((s) => s.comicId));
 
     const results: Record<string, string> = {};
     for (const slot of lineup.slots) {
       const comic = comics.get(slot.comicId);
       if (!comic) continue;
-      const body = renderTemplate(settings.confirm.template, {
-        name: comic.name.split(" ")[0],
-        show: show.name,
-        venue: venue?.name,
-        mapsLink: venue?.mapsLink,
-        day: DAY_NAMES[show.weekday],
-        date: formatDate(dateInWeek(lineup.weekOf, show.weekday)),
-        time: formatTime(show.startTime),
-        minutes: show.includeSlotTime ? (slot.minutes ?? show.defaultMinutes) : null,
-      });
+      const body = confirmBody(uid, show, comic, lineup.weekOf, slot.minutes);
       try {
         await sendQueued(client, comic.chatId ?? comic.id, body);
         results[comic.id] = "sent";
@@ -210,13 +202,75 @@ const handlers: Record<Command["type"], Handler> = {
     if (action.kind === "cancel_spot" && action.lineupId) await dropFromLineup(uid, client, action.comicId, action.lineupId);
     const comic = (await col(uid, "comics").doc(action.comicId).get()).data() as Comic | undefined;
     await sendQueued(client, comic?.chatId ?? action.comicId, String(body ?? action.draft));
+    // Their next message is read as the answer to the onboarding question.
+    if (action.kind === "onboard") await col(uid, "comics").doc(action.comicId).set({ onboarding: "asked" }, { merge: true });
     await ref.update({ status: "sent", sentAt: Date.now() });
+  },
+
+  /** Curator offers an open slot. A "yes" reply books it (see replies.ts). */
+  async send_offer(uid, { comicId, lineupId, body }) {
+    const client = sessions.require(uid);
+    const { settings, shows } = watchUser(uid);
+    const lineup = (await col(uid, "lineups").doc(String(lineupId)).get()).data() as Lineup | undefined;
+    if (!lineup) throw new Error("Lineup not found");
+    const show = shows.find((s) => s.id === lineup.showId);
+    if (!show) throw new Error("Show not found");
+    const comic = (await col(uid, "comics").doc(String(comicId)).get()).data() as Comic | undefined;
+    if (!comic) throw new Error("Comic not found");
+    // One live offer per comic: the newest replaces any older one.
+    const old = await col(uid, "offers").where("comicId", "==", comic.id).where("status", "==", "pending").get();
+    for (const d of old.docs) await d.ref.update({ status: "expired" });
+    await sendQueued(client, comic.chatId ?? comic.id, String(body));
+    const now = Date.now();
+    const offer: Omit<SpotOffer, "id"> = {
+      comicId: comic.id,
+      comicName: comic.name,
+      weekOf: lineup.weekOf,
+      showId: show.id,
+      lineupId: String(lineupId),
+      status: "pending",
+      sentAt: now,
+      expiresAt: now + settings.offers.expiryHours * 3600_000,
+      reply: null,
+    };
+    await col(uid, "offers").add(offer);
+  },
+
+  /** WhatsApp poll to the hosts group: which of this week's shows can you take? */
+  async send_host_poll(uid, { weekOf }) {
+    const client = sessions.require(uid);
+    const { settings, shows } = watchUser(uid);
+    const groupId = settings.hostPoll.groupId;
+    if (!groupId) throw new Error("Pick a hosts group in Settings first");
+    const week = String(weekOf);
+    const active = shows.filter((s) => s.active);
+    if (!active.length) throw new Error("No active shows");
+    const options = active.map((s) => ({ showId: s.id, name: `${DAY_NAMES[s.weekday].slice(0, 3)} ${formatDate(dateInWeek(week, s.weekday))} · ${s.name}`.slice(0, 100) }));
+    const poll = new WAWebJS.Poll(`Hosts: which shows can you take for the week of ${formatDate(week)}?`, options.map((o) => o.name), { allowMultipleAnswers: true, messageSecret: undefined });
+    const msg = await enqueueTask(client, () => client.sendMessage(groupId, poll));
+    const doc: HostPoll = { id: week, weekOf: week, groupId, messageId: msg.id._serialized, options, votes: {}, voterNames: {}, sentAt: Date.now() };
+    await col(uid, "polls").doc(week).set(doc);
   },
 
   async send_message(uid, { to, body }) {
     await sendQueued(sessions.require(uid), String(to), String(body));
   },
 };
+
+export function confirmBody(uid: string, show: Show, comic: Comic, week: string, minutes?: number | null) {
+  const { settings, venues } = watchUser(uid);
+  const venue = venues.find((v) => v.id === show.venueId);
+  return renderTemplate(settings.confirm.template, {
+    name: comic.name.split(" ")[0],
+    show: show.name,
+    venue: venue?.name,
+    mapsLink: venue?.mapsLink,
+    day: DAY_NAMES[show.weekday],
+    date: formatDate(dateInWeek(week, show.weekday)),
+    time: formatTime(show.startTime),
+    minutes: show.includeSlotTime ? (minutes ?? show.defaultMinutes) : null,
+  });
+}
 
 /** Every active show this week is either sent or cancelled. */
 async function weekIsFinal(uid: string, week: string, shows: Show[]) {
@@ -280,7 +334,7 @@ export async function runShowDaySync(uid: string, id: string) {
   console.log(`[show-day] ${uid} ${show.name}: +${plan.toAdd.length} −${plan.toRemove.length}`);
 }
 
-async function loadComics(uid: string, ids: string[]) {
+export async function loadComics(uid: string, ids: string[]) {
   const map = new Map<string, Comic>();
   if (!ids.length) return map;
   const refs = ids.map((id) => col(uid, "comics").doc(id));
@@ -301,7 +355,7 @@ async function normaliseParticipants(client: WAWebJS.Client, group: WAWebJS.Grou
   }));
 }
 
-async function lidMap(client: WAWebJS.Client, group: WAWebJS.GroupChat) {
+export async function lidMap(client: WAWebJS.Client, group: WAWebJS.GroupChat) {
   const lids = group.participants.filter((p) => p.id.server === "lid").map((p) => p.id._serialized);
   const map = new Map<string, string>(); // phone id -> lid
   if (lids.length) for (const r of await client.getContactLidAndPhone(lids)) if (r.lid && r.pn) map.set(r.pn, r.lid);

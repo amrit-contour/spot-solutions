@@ -13,6 +13,7 @@ import {
   lastSpot,
   localNow,
   renderTemplate,
+  rolloverDayFor,
   weekOf,
   type ComicAction,
   type Intent,
@@ -25,6 +26,7 @@ import { col, db } from "./firebase.ts";
 import { classify } from "./gemma.ts";
 import { watchUser } from "./userData.ts";
 import { sendQueued } from "./sendQueue.ts";
+import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
 
 const MAX_CONTEXT = 12;
 
@@ -92,7 +94,7 @@ export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.
 
 async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   const { settings, shows } = watchUser(uid);
-  const week = weekOf(new Date(), settings.timezone);
+  const week = weekOf(new Date(), settings.timezone, rolloverDayFor(shows));
   const reqRef = col(uid, "requests").doc(`${week}_${p.contact.id}`);
   const existing = (await reqRef.get()).data() as SpotRequest | undefined;
 
@@ -105,8 +107,11 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   // Read the new burst on its own first: "cancel my spot" from someone already booked shouldn't be
   // blended into their earlier spot request.
   const burst = p.messages.map((m) => m.body);
+  // Answers to things you started (a spot offer, the "who are you?" question) come first.
+  if (await handleOfferReply(uid, client, p.contact.id, burst)) return;
+  if (await handleOnboardingReply(uid, p.contact.id, burst)) return;
   const first = await classify(burst, activeShows, settings.model);
-  if (first.kind && ["cancel_spot", "status_query", "last_spot_query"].includes(first.kind)) {
+  if (first.kind && ["cancel_spot", "status_query", "last_spot_query", "show_info"].includes(first.kind)) {
     console.log(`[intake] ${p.contact.name}: ${first.kind} — ${first.note}`);
     if (settings.selfService.enabled) await draftAction(uid, client, p, first, week);
     return;
@@ -172,6 +177,34 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     !p.contact.isBusiness &&
     Date.now() - newest < AUTO_ACK_MAX_AGE_MS;
   if (okToAck) await acknowledge(uid, client, request);
+
+  // V1 new-contact flow: someone you haven't saved asks for a spot → draft "who are you?".
+  if (settings.onboarding.enabled && intent.isSpotRequest && !existing && p.contact.nameSource !== "contact" && !known?.onboarding && !p.contact.isBusiness) {
+    await draftOnboarding(uid, client, p, week);
+  }
+}
+
+async function draftOnboarding(uid: string, client: WAWebJS.Client, p: Pending, week: string) {
+  const { settings } = watchUser(uid);
+  const greet = p.contact.nameSource === "whatsapp" ? ` ${p.contact.name.split(" ")[0]}` : "";
+  const draft = `Hey${greet}! Don't think I have you saved yet 🙂 Could you tell me your full name, which comedy scene you're from, and how long you've been doing comedy? Also, are you travelling?`;
+  const ref = await col(uid, "actions").add({
+    kind: "onboard",
+    comicId: p.contact.id,
+    comicName: p.contact.name,
+    weekOf: week,
+    message: p.messages.map((m) => m.body).join("\n"),
+    draft,
+    lineupId: null,
+    status: "pending",
+    createdAt: Date.now(),
+  } satisfies Omit<ComicAction, "id">);
+  const fresh = Date.now() - Math.max(...p.messages.map((m) => m.at)) < AUTO_ACK_MAX_AGE_MS;
+  if (settings.selfService.autoSend && fresh) {
+    await sendQueued(client, p.contact.chatId, draft);
+    await ref.update({ status: "sent", sentAt: Date.now() });
+    await col(uid, "comics").doc(p.contact.id).set({ onboarding: "asked" }, { merge: true });
+  }
 }
 
 async function acknowledge(uid: string, client: WAWebJS.Client, r: SpotRequest) {
@@ -186,7 +219,7 @@ async function acknowledge(uid: string, client: WAWebJS.Client, r: SpotRequest) 
 
 /** Draft a reply for a booked comic's question or drop-out. Sent only when the curator approves (or opted into auto-send). */
 async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, intent: Intent, week: string) {
-  const { settings, shows } = watchUser(uid);
+  const { settings, shows, venues } = watchUser(uid);
   const comic = (await col(uid, "comics").doc(p.contact.id).get()).data() as Comic | undefined;
   const first = (comic?.name ?? p.contact.name).split(" ")[0];
   const lineups = (await col(uid, "lineups").where("weekOf", "==", week).get()).docs.map((d) => d.data() as Lineup);
@@ -199,6 +232,14 @@ async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, inte
     draft = mine ? `Okay ${first}, I've cancelled your spot for ${when}. See you next time! 🫡` : `Hey ${first}, you don't have a spot this week, so there's nothing to cancel.`;
   } else if (intent.kind === "status_query") {
     draft = mine?.status === "confirmed" ? `Yes! You're on ${when}.` : mine ? `You're pencilled in, but the lineup isn't final yet. I'll confirm soon.` : `You don't have a spot this week yet. I'll let you know once the lineup is out.`;
+  } else if (intent.kind === "show_info") {
+    const lines = shows
+      .filter((s) => s.active)
+      .map((s) => {
+        const v = venues.find((x) => x.id === s.venueId);
+        return `• ${s.name}: ${DAY_NAMES[s.weekday]}s at ${formatTime(s.startTime)}${v ? `, ${v.name}${v.area ? ` (${v.area})` : ""}` : ""}${v?.mapsLink ? `\n  ${v.mapsLink}` : ""}`;
+      });
+    draft = lines.length ? `Hey ${first}! Here's where and when:\n${lines.join("\n")}` : `Hey ${first}! I'll share the details soon.`;
   } else {
     const last = lastSpot(comic?.history, localNow(new Date(), settings.timezone).date);
     draft = last ? `Your last spot was ${last.showName} on ${formatDate(last.date)}.` : `I don't have a record of your last spot yet.`;

@@ -4,6 +4,7 @@ import { col } from "./firebase.ts";
 import { notice, runShowDaySync } from "./commands.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
+import { expireOffers, sendMicChecks } from "./replies.ts";
 
 const TICK_MS = 2 * 60_000;
 const running = new Set<string>();
@@ -34,6 +35,12 @@ async function tick(uid: string) {
 
 export function startScheduler(uids: () => Iterable<string>) {
   setInterval(() => {
-    for (const uid of uids()) if (sessions.get(uid)) void tick(uid).catch((e) => console.error("[scheduler]", e));
+    for (const uid of uids()) {
+      const client = sessions.get(uid);
+      if (!client) continue;
+      void tick(uid).catch((e) => console.error("[scheduler]", e));
+      void expireOffers(uid).catch((e) => console.error("[offers]", e));
+      void sendMicChecks(uid, client).catch((e) => console.error("[mic-check]", e));
+    }
   }, TICK_MS).unref();
 }

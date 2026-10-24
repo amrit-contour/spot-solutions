@@ -24,6 +24,46 @@ export interface Settings {
   debounceSeconds: number;
   rules: RuleSettings;
   selfService: { enabled: boolean; autoSend: boolean };
+  /** Ask comics you haven't saved who they are (V1 new-contact flow). */
+  onboarding: { enabled: boolean };
+  /** Morning after a show, ask whether it happened. */
+  micCheck: { enabled: boolean; time: string; whatsapp: boolean };
+  /** Group where hosts/POCs vote on which shows they can take. */
+  hostPoll: { groupId: string | null };
+  offers: { expiryHours: number };
+}
+
+export interface ComicProfile {
+  scene?: string | null;
+  years?: number | null;
+  travelling?: boolean | null;
+}
+
+/** A curator-initiated "want this spot?" message. */
+export interface SpotOffer {
+  id: string;
+  comicId: string;
+  comicName: string;
+  weekOf: string;
+  showId: string;
+  lineupId: string;
+  status: "pending" | "accepted" | "declined" | "expired" | "full";
+  sentAt: number;
+  expiresAt: number;
+  reply?: string | null;
+}
+
+/** Host availability poll for one week. */
+export interface HostPoll {
+  id: string; // weekOf
+  weekOf: string;
+  groupId: string;
+  messageId: string;
+  options: { name: string; showId: string }[];
+  /** comic id (or raw voter id if unknown) → show ids they can do */
+  votes: Record<string, string[]>;
+  voterNames: Record<string, string>;
+  sentAt: number;
 }
 
 export interface RuleSettings {
@@ -48,7 +88,7 @@ export interface SpotHistoryEntry {
 /** A comic asked something other than a spot: drafted reply waiting for the curator. */
 export interface ComicAction {
   id: string;
-  kind: "cancel_spot" | "status_query" | "last_spot_query";
+  kind: "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "onboard";
   comicId: string;
   comicName: string;
   weekOf: string;
@@ -107,9 +147,11 @@ export interface Comic {
   regularOf?: string[]; // show ids
   list?: ComicList | null;
   history?: SpotHistoryEntry[]; // newest first, capped
+  onboarding?: "asked" | "done" | null;
+  profile?: ComicProfile;
 }
 
-export type IntentKind = "spot_request" | "cancel_spot" | "status_query" | "last_spot_query" | "other";
+export type IntentKind = "spot_request" | "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "other";
 
 export interface Intent {
   kind?: IntentKind;
@@ -174,6 +216,9 @@ export interface Lineup {
   dropped?: { comicId: string; at: number }[];
   /** Date the show-day group update ran, so it happens once. */
   showDaySyncedOn?: string | null;
+  /** Answer to the morning-after check. */
+  outcome?: "happened" | "canned" | null;
+  micCheckSentOn?: string | null;
 }
 
 export interface GroupInfo {
@@ -190,6 +235,8 @@ export type CommandType =
   | "send_confirmations"
   | "send_rejections"
   | "send_action"
+  | "send_offer"
+  | "send_host_poll"
   | "plan_group_sync"
   | "sync_group"
   | "send_message";

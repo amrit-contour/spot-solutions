@@ -26,7 +26,7 @@ import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
 import { Avatar, Bubble, Button, Chip, Empty, IconButton, cx } from "../components/ui";
 import { ConnectCard } from "../components/ConnectCard";
-import { ActionInbox, Notices } from "../components/Inbox";
+import { ActionInbox, MicCheck, Notices } from "../components/Inbox";
 import { IconArrowDown, IconChatCheck, IconCheck, IconHistory, IconInbox, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
 type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
@@ -91,6 +91,7 @@ export function Requests() {
       </PageHeader>
 
       <div className="px-4 pb-10 sm:px-8">
+        <MicCheck />
         <Notices />
         {lane === "asked" && <ActionInbox />}
         {!linked && !requests.data.length ? (

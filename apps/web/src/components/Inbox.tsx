@@ -3,16 +3,20 @@ import { useState } from "react";
 import { orderBy, updateDoc, where } from "firebase/firestore";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import type { AppNotice, ComicAction } from "@spot/shared";
+import { formatDate, localNow, type AppNotice, type ComicAction, type Lineup } from "@spot/shared";
+import { markCanned } from "../lib/lineup";
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useCollection, userDoc } from "../lib/data";
 import { Avatar, Bubble, Button, IconButton, TextArea, cx } from "./ui";
+import { IconMic } from "./icons";
 import { IconChatCheck, IconClose, IconHistory, IconSkip, IconWarn } from "./icons";
 
 const KIND_LABEL: Record<ComicAction["kind"], string> = {
   cancel_spot: "Wants to cancel",
   status_query: "Asks if they're on",
   last_spot_query: "Asks about their last spot",
+  show_info: "Asks where / when the mic is",
+  onboard: "New face: not in your contacts",
 };
 
 export function Notices() {
@@ -116,3 +120,40 @@ function ActionCard({ a }: { a: ComicAction }) {
   );
 }
 
+
+/** Morning-after check for confirmed shows that are now in the past. */
+export function MicCheck() {
+  const { uid, shows, settings, comicsById } = useApp();
+  const confirmed = useCollection<Lineup>(uid, "lineups", [where("status", "==", "confirmed")]);
+  const today = localNow(new Date(), settings.timezone).date;
+  const due = confirmed.data.filter((l) => !l.outcome && l.date && l.date < today).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+  if (!settings.micCheck.enabled || !due.length) return null;
+  return (
+    <ul className="mb-4 flex flex-col gap-2">
+      {due.map((l) => {
+        const show = shows.find((s) => s.id === l.showId);
+        return (
+          <li key={l.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-secondary-container px-4 py-3 text-on-secondary-container">
+            <IconMic className="icon size-5 flex-none" />
+            <p className="min-w-40 flex-1 type-body-m">
+              Did <span className="type-title-s">{show?.name ?? "the show"}</span> on {formatDate(l.date)} happen?
+            </p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="text"
+                className="text-on-secondary-container"
+                onClick={() => show && void markCanned(uid, l, show, comicsById).then(() => updateDoc(userDoc(uid, "lineups", l.id), { outcome: "canned" }))}
+              >
+                No
+              </Button>
+              <Button size="sm" onClick={() => void updateDoc(userDoc(uid, "lineups", l.id), { outcome: "happened" })}>
+                Yes, it happened
+              </Button>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

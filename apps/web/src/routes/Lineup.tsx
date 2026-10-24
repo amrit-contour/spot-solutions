@@ -35,9 +35,12 @@ import {
   type Show,
   type Slot,
   type SpotRequest,
+  type HostPoll,
+  type SpotOffer,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { runCommand, useCollection } from "../lib/data";
+import { runCommand, useCollection, useDocument } from "../lib/data";
+import { OfferSheet } from "../components/OfferSheet";
 import { markCanned, markRequest, placeComic, repeatLastWeek, setLineupStatus, setSlots, unplaceComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
@@ -54,6 +57,8 @@ export function LineupBoard() {
   const { uid, week, shows, comicsById } = useApp();
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
+  const offers = useCollection<SpotOffer>(uid, "offers", [where("weekOf", "==", week)], week);
+  const poll = useDocument<HostPoll>(["users", uid, "polls", week]);
   const activeShows = useMemo(() => shows.filter((s) => s.active), [shows]);
   const lastWeek = shiftWeek(week, -1);
 
@@ -172,7 +177,12 @@ export function LineupBoard() {
       <PageHeader
         title="Lineup"
         subtitle={`${Object.entries(cols).filter(([k]) => k !== BENCH).reduce((n, [, v]) => n + v.length, 0)} placed across ${activeShows.length} show${activeShows.length > 1 ? "s" : ""}`}
-        actions={<WeekSwitcher />}
+        actions={
+          <>
+            <HostPollButton />
+            <WeekSwitcher />
+          </>
+        }
       />
       <RegretBanner count={regrets.length} openShows={openShows.length} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActiveId(null), setCols(remote))}>
@@ -224,7 +234,7 @@ export function LineupBoard() {
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} offers={offers.data} poll={poll.data} onAdd={(cid) => addTo(cid, show)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
@@ -300,7 +310,7 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
   );
 }
 
-function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, requestByComic, lastWeek }: { onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, lineup, comicsById, requestByComic, lastWeek }: { offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string) => Promise<void>; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
   const { uid, week, venues, settings } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
@@ -312,6 +322,9 @@ function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, req
   const past = localNow(new Date(), settings.timezone).date >= showDate;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const pendingOffers = offers.filter((o) => o.showId === show.id && o.status === "pending");
+  const hostsFree = Object.entries(poll?.votes ?? {}).filter(([, v]) => v.includes(show.id)).map(([k]) => ({ id: k.replace(/_/g, "."), name: poll?.voterNames[k] ?? k }));
   const fill = Math.min(1, ids.length / Math.max(1, show.slotCount));
   const minutesOf = new Map(lineup?.slots.map((s) => [s.comicId, s.minutes]));
 
@@ -344,6 +357,10 @@ function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, req
             <Chip tone="success" icon={IconCheck}>Sent</Chip>
             <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}>
               {(close) => (
+                <>
+                <MenuItem disabled={past || ids.length >= show.slotCount} hint={ids.length >= show.slotCount ? "full" : undefined} onClick={() => (close(), setOfferOpen(true))}>
+                  Offer a spot…
+                </MenuItem>
                 <MenuItem
                   disabled={!past}
                   hint={past ? undefined : "after the show"}
@@ -354,6 +371,7 @@ function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, req
                 >
                   Mic didn't happen
                 </MenuItem>
+                </>
               )}
             </Menu>
             </div>
@@ -367,6 +385,7 @@ function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, req
               {(close) => (
                 <>
                   <MenuItem onClick={() => (close(), void repeat())}>Repeat last week's lineup</MenuItem>
+                  <MenuItem disabled={ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>Offer a spot…</MenuItem>
                   <MenuItem onClick={() => (close(), void setLineupStatus(uid, week, show, "cancelled"))}>Mark mic cancelled</MenuItem>
                 </>
               )}
@@ -396,6 +415,19 @@ function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, req
         </ol>
       </SortableContext>
 
+      {pendingOffers.length > 0 && (
+        <p className="mt-2 px-1 type-body-s text-on-surface-variant">Offer out to {pendingOffers.map((o) => o.comicName.split(" ")[0]).join(", ")}, waiting for a reply</p>
+      )}
+      {hostsFree.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
+          <span className="type-label-m text-on-surface-variant">Hosts free:</span>
+          {hostsFree.map((h) => (
+            <Chip key={h.id} tone="tertiary" onClick={comicsById.has(h.id) && !confirmed && !cancelled ? () => void onAdd(h.id) : undefined}>
+              {h.name}
+            </Chip>
+          ))}
+        </div>
+      )}
       {lineup?.dropped?.length ? (
         <p className="mt-2 px-1 type-body-s text-error">Dropped out: {lineup.dropped.map((d) => comicsById.get(d.comicId)?.name ?? "comic").join(", ")}</p>
       ) : null}
@@ -432,6 +464,7 @@ function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, req
       </footer>
 
       <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
+      <OfferSheet open={offerOpen} onClose={() => setOfferOpen(false)} show={show} exclude={ids} />
       {lineup && <GroupSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} show={show} lineup={lineup} />}
     </Column>
   );
@@ -544,5 +577,33 @@ function RegretBanner({ count, openShows }: { count: number; openShows: number }
         </Button>
       )}
     </motion.div>
+  );
+}
+
+function HostPollButton() {
+  const { uid, week, settings } = useApp();
+  const poll = useDocument<HostPoll>(["users", uid, "polls", week]);
+  const [busy, setBusy] = useState(false);
+  if (!settings.hostPoll.groupId) return null;
+  const votes = Object.keys(poll.data?.votes ?? {}).length;
+  return (
+    <Button
+      variant="tonal"
+      icon={IconGroup}
+      loading={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await runCommand(uid, "send_host_poll", { weekOf: week }, 120_000);
+          toast.success("Poll sent to your hosts group");
+        } catch (e) {
+          toast.error((e as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {poll.data ? `Hosts poll · ${votes} voted` : "Ask hosts"}
+    </Button>
   );
 }

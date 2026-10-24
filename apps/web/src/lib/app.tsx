@@ -4,6 +4,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import {
   DEFAULT_SETTINGS,
+  rolloverDayFor,
   weekOf,
   type Comic,
   type SessionState,
@@ -87,11 +88,15 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       reject: { ...DEFAULT_SETTINGS.reject, ...s.reject },
       rules: { ...DEFAULT_SETTINGS.rules, ...s.rules, window: { ...DEFAULT_SETTINGS.rules.window, ...s.rules?.window } },
       selfService: { ...DEFAULT_SETTINGS.selfService, ...s.selfService },
+      onboarding: { ...DEFAULT_SETTINGS.onboarding, ...s.onboarding },
+      micCheck: { ...DEFAULT_SETTINGS.micCheck, ...s.micCheck },
+      hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...s.hostPoll },
+      offers: { ...DEFAULT_SETTINGS.offers, ...s.offers },
       model: { ...DEFAULT_SETTINGS.model, ...s.model },
     };
   }, [userDoc.data]);
 
-  const currentWeek = weekOf(new Date(now), settings.timezone);
+  const currentWeek = weekOf(new Date(now), settings.timezone, rolloverDayFor(shows.data));
   const [week, setWeek] = useState(currentWeek);
 
   const sortedShows = useMemo(

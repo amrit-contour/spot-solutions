@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { DAY_NAMES, type Intent, type IntentKind, type Settings, type Show, type Weekday } from "@spot/shared";
 
-const KINDS: IntentKind[] = ["spot_request", "cancel_spot", "status_query", "last_spot_query", "other"];
+const KINDS: IntentKind[] = ["spot_request", "cancel_spot", "status_query", "last_spot_query", "show_info", "other"];
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 90_000);
@@ -42,9 +42,11 @@ Comics who already have a spot may also write about it:
 - cancel_spot: they want to drop out ("can't make it monday", "cancel my spot", "something came up, have to back out").
 - status_query: they ask if/when they are on this week ("am I up this week?", "did I get a spot?").
 - last_spot_query: they ask when they last performed here.
+Anyone may ask about the mic itself:
+- show_info: where or when the mic happens, venue, timings, location ("where is the mic?", "what time does it start?").
 
 Think step by step:
-1. kind: one of spot_request, cancel_spot, status_query, last_spot_query, other.
+1. kind: one of spot_request, cancel_spot, status_query, last_spot_query, show_info, other.
 2. evidence: copy the exact words that show that kind (the ask, the cancellation, the question). For "other" use "".
 3. is_spot_request: true ONLY if kind is spot_request and evidence is non-empty. Mentioning a show, thanking, paying or praising is NOT asking.
 4. preferred_days: only days they literally name (mon, monday, tue, "kal" etc). If they name none, []. If they say any day works, list every show day.
@@ -155,4 +157,53 @@ export async function ollamaHealthy(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+const PROFILE_SCHEMA = {
+  type: "object",
+  properties: {
+    name: { type: "string" },
+    scene: { type: "string" },
+    years: { type: "number" },
+    travelling: { type: "boolean" },
+  },
+  required: ["name", "scene", "years", "travelling"],
+};
+
+/** Pull name / home scene / years doing comedy / travelling out of a reply to the onboarding question. */
+export async function extractProfile(messages: string[], model: Settings["model"]) {
+  const text = messages.map((m) => (m.length > 500 ? m.slice(0, 500) : m)).join("\n");
+  const prompt = `A stand-up comic replied to "What's your name, which comedy scene are you from, how long have you been doing comedy, and are you travelling?".
+Their reply:
+${text}
+
+Return ONLY JSON: {"name": "full name or empty", "scene": "city/scene or empty", "years": number of years doing comedy (months as a fraction, 0 if unknown), "travelling": true if visiting from another city}.
+Use only what they actually said. Never invent a name.`;
+  const run = async () => {
+    if (model.provider === "gemini" && gemini) {
+      const r = await gemini.models.generateContent({ model: GEMINI_MODEL, contents: prompt, config: { temperature: 0 } });
+      return r.text ?? "";
+    }
+    const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+      body: JSON.stringify({ model: model.name, stream: false, think: false, ...(noSchema.has(model.name) ? {} : { format: PROFILE_SCHEMA }), options: { temperature: 0 }, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (!res.ok) throw new Error(`ollama ${res.status}`);
+    return ((await res.json()) as { message: { content: string } }).message.content;
+  };
+  const out = (gate = gate.catch(() => undefined).then(run)) as Promise<string>;
+  const raw = await out;
+  const o = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as Record<string, unknown>;
+  const name = String(o.name ?? "").trim();
+  const scene = String(o.scene ?? "").trim();
+  const years = Number(o.years);
+  return {
+    // Only trust a name that actually appears in what they wrote.
+    name: name && norm(text).includes(norm(name).split(" ")[0]) ? name : null,
+    scene: scene || null,
+    years: Number.isFinite(years) && years > 0 ? Math.round(years * 10) / 10 : null,
+    travelling: typeof o.travelling === "boolean" ? o.travelling : null,
+  };
 }

@@ -12,13 +12,15 @@ service cloud.firestore {
       // Written only by the worker (Admin SDK bypasses rules).
       match /session/{doc} { allow read: if isOwner(uid); }
       match /groups/{doc}  { allow read: if isOwner(uid); }
+      match /offers/{doc}  { allow read: if isOwner(uid); }
+      match /polls/{doc}   { allow read: if isOwner(uid); }
 
       // Commands: curator can enqueue pending commands and read results, nothing else.
       match /commands/{id} {
         allow read: if isOwner(uid);
         allow create: if isOwner(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'plan_group_sync', 'sync_group', 'send_message'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'plan_group_sync', 'sync_group', 'send_message'];
       }
 
       match /{coll}/{id} {

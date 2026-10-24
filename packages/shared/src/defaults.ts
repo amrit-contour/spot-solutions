@@ -13,7 +13,24 @@ export const DEFAULT_SETTINGS: Settings = {
   // V1 defaults: requests open Saturday 3 PM, close Monday 10 AM.
   rules: { window: { enabled: false, startDay: 6, startTime: "15:00", endDay: 1, endTime: "10:00" }, skipLastWeek: false },
   selfService: { enabled: true, autoSend: false },
+  onboarding: { enabled: true },
+  micCheck: { enabled: true, time: "10:00", whatsapp: false },
+  hostPoll: { groupId: null },
+  offers: { expiryHours: 3 },
 };
+
+/** Loose yes/no for replies to offers and mic checks (English + common Hindi/Kannada). null = unclear. */
+export function parseYesNo(text: string): boolean | null {
+  const t = text.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  const yes = /^(y|ya|yes|yeah|yep|yup|sure|ok|okay|done|in|i m in|im in|haan|ha|han|haa|bilkul|hogaya|chalega|houdu|aithu|absolutely|definitely|count me in|book me)\b/;
+  const no = /^(n|no|nope|nah|nahi|nahin|na|can t|cant|cannot|not|pass|skip|illa|beda|sorry)\b/;
+  if (no.test(t)) return false;
+  if (yes.test(t)) return true;
+  if (/\b(can t make it|won t make it|not available|unavailable|didn t happen|did not happen|cancelled|canceled)\b/.test(t)) return false;
+  if (/\b(happened|went well|it was great|yes it did)\b/.test(t)) return true;
+  return null;
+}
 
 /** Confidence at/above which a message becomes a request (and gets acked). */
 export const INTENT_THRESHOLD = 0.6;

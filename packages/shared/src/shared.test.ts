@@ -116,3 +116,35 @@ describe("rules", () => {
     expect(lastSpot(h, "2026-10-24")?.date).toBe("2026-10-13");
   });
 });
+
+import { rolloverDayFor } from "./week.ts";
+describe("week rollover follows the shows", () => {
+  const tz = "Asia/Kolkata";
+  it("Mon/Tue mic rolls on Wednesday", () => {
+    expect(rolloverDayFor([{ weekday: 1 }, { weekday: 2 }])).toBe(3);
+  });
+  it("a Thursday show keeps this week current through Thursday", () => {
+    const r = rolloverDayFor([{ weekday: 1 }, { weekday: 4 }]); // Mon + Thu → Fri
+    expect(r).toBe(5);
+    expect(weekOf(new Date("2026-10-29T12:00:00+05:30"), tz, r)).toBe("2026-10-26"); // Thu
+    expect(weekOf(new Date("2026-10-30T12:00:00+05:30"), tz, r)).toBe("2026-11-02"); // Fri
+  });
+  it("Sunday shows mean plain calendar weeks", () => {
+    const r = rolloverDayFor([{ weekday: 3 }, { weekday: 0 }]);
+    expect(r).toBe(1);
+    expect(weekOf(new Date("2026-11-01T21:00:00+05:30"), tz, r)).toBe("2026-10-26"); // Sun night
+    expect(weekOf(new Date("2026-11-02T09:00:00+05:30"), tz, r)).toBe("2026-11-02"); // Mon
+  });
+  it("paused shows don't count", () => {
+    expect(rolloverDayFor([{ weekday: 1 }, { weekday: 6, active: false }])).toBe(2);
+  });
+});
+
+import { parseYesNo } from "./defaults.ts";
+describe("parseYesNo", () => {
+  it("reads common replies", () => {
+    for (const y of ["Yes!", "haan bhai", "sure, book me", "Ok 👍", "chalega"]) expect(parseYesNo(y)).toBe(true);
+    for (const n of ["no", "Nahi yaar", "can't make it sorry", "nope", "It didn't happen"]) expect(parseYesNo(n)).toBe(false);
+    for (const u of ["what time is it?", "", "hmm let me check"]) expect(parseYesNo(u)).toBe(null);
+  });
+});

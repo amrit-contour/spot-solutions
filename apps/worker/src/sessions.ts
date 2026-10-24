@@ -6,6 +6,7 @@ import WAWebJS from "whatsapp-web.js";
 import type { SessionState } from "@spot/shared";
 import { FieldValue, sessionRef, userRef } from "./firebase.ts";
 import { enqueue, markLive } from "./intake.ts";
+import { handleSelfReply, handleVote } from "./replies.ts";
 import { unwatchUser, watchUser } from "./userData.ts";
 
 const { Client, LocalAuth } = WAWebJS;
@@ -73,6 +74,13 @@ class SessionManager {
       await userRef(uid).set({ waEnabled: true, selfId: me?.wid?._serialized ?? null }, { merge: true });
       console.log(`[session] ${uid} ready as +${me?.wid?.user}`);
       markLive(uid); // backlog is ignored: only messages from now on are read
+    });
+    client.on("vote_update", (vote) => {
+      handleVote(uid, client, vote).catch((e) => console.error("[poll] vote failed", e));
+    });
+    // Your own messages: only used for mic-check answers in your "Message yourself" chat.
+    client.on("message_create", (msg) => {
+      if (msg.fromMe) handleSelfReply(uid, client, msg).catch((e) => console.error("[mic-check] reply failed", e));
     });
     client.on("message", (msg) => {
       enqueue(uid, client, msg).catch((e) => console.error("[intake] enqueue failed", e));

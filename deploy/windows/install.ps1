@@ -8,7 +8,7 @@
   Run in an elevated PowerShell (Run as administrator):
 
     Set-ExecutionPolicy -Scope Process Bypass -Force
-    irm https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install-windows.ps1 | iex
+    irm https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/windows/install.ps1 | iex
 
   Re-running is safe: it updates the code and restarts the task.
 #>
@@ -91,7 +91,7 @@ $Launcher = "C:\SpotSolutions\run-worker.ps1"
 if (-not (Get-Process ollama -ErrorAction SilentlyContinue)) { Start-Process ollama -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 }
 Set-Location '$AppDir\apps\worker'
 while (`$true) {
-  corepack pnpm start *>> '$DataDir\worker.log'
+  node '$AppDir\apps\worker\node_modules\tsx\dist\cli.mjs' --env-file-if-exists=.env src\index.ts *>> '$DataDir\worker.log'
   Start-Sleep 10
 }
 "@ | Set-Content -Encoding UTF8 $Launcher

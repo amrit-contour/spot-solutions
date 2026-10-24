@@ -180,6 +180,13 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
             </div>
           </Field>
         )}
+        {d.profile && (d.profile.scene || d.profile.years || d.profile.travelling) && (
+          <div className="flex flex-wrap gap-1.5">
+            {d.profile.scene && <Chip>{d.profile.scene} scene</Chip>}
+            {d.profile.years ? <Chip>{d.profile.years} yr{d.profile.years === 1 ? "" : "s"} in comedy</Chip> : null}
+            {d.profile.travelling && <Chip tone="tertiary">Travelling</Chip>}
+          </div>
+        )}
         {!isNew && (
           <div>
             <div className="mb-2 flex items-center justify-between type-label-l text-on-surface-variant">

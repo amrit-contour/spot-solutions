@@ -8,13 +8,15 @@ import {
   SAMPLE_VARS,
   TEMPLATE_VARIABLES,
   renderTemplate,
+  type GroupInfo,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
+import { useCollection } from "../lib/data";
 import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
 import { ConnectCard } from "../components/ConnectCard";
-import { Bubble, Button, Field, Segmented, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
-import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconPhone, IconShield } from "../components/icons";
+import { Bubble, Button, Field, Segmented, Select, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
+import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield } from "../components/icons";
 
 function Section({ title, icon: I, description, children, aside }: { title: string; icon: typeof IconChat; description?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
@@ -172,7 +174,16 @@ export function SettingsPage() {
             </div>
             <Switch checked={settings.selfService.autoSend} onChange={(v) => saveSettings({ selfService: { ...settings.selfService, autoSend: v } })} label="Send replies automatically" />
           </div>
+          <div className="mt-6 flex items-center gap-4">
+            <div className="flex-1">
+              <div className="type-title-s">Ask new faces who they are</div>
+              <div className="type-body-s text-on-surface-variant">When someone you haven't saved asks for a spot, draft “What's your name, which scene are you from, how long have you been doing comedy?”. Their answer fills in their profile.</div>
+            </div>
+            <Switch checked={settings.onboarding.enabled} onChange={(v) => saveSettings({ onboarding: { enabled: v } })} label="Ask new faces who they are" />
+          </div>
         </Section>
+
+        <AfterShowSection />
 
         <Section title="Model" icon={IconCpu} description="Which Gemma reads your DMs. Local is private and free; the Gemini API is a backup for when your laptop is slow or off.">
           <div className="flex flex-col gap-6">
@@ -282,6 +293,47 @@ function RulesSection() {
           <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Skip last week's comics" />
         </div>
         <p className="type-body-s text-on-surface-variant">Hosts, ignored and banned comics are set per person in Comics.</p>
+      </div>
+    </Section>
+  );
+}
+
+function AfterShowSection() {
+  const { uid, settings, saveSettings } = useApp();
+  const groups = useCollection<GroupInfo>(uid, "groups");
+  const m = settings.micCheck;
+  return (
+    <Section title="Around the show" icon={IconMic} description="Hosts' availability, last-minute spot offers, and checking the mic actually happened.">
+      <div className="flex flex-col gap-6">
+        <Field label="Hosts group" hint="“Ask hosts” on the Lineup page sends this group a poll of the week's shows. Votes show up on each show as “Hosts free”.">
+          <Select value={settings.hostPoll.groupId ?? ""} onChange={(v) => saveSettings({ hostPoll: { groupId: v || null } })} placeholder="None" options={groups.data.map((g) => ({ value: g.id, label: g.name }))} />
+        </Field>
+        <Field label="Spot offers expire after" hint="Offer a spot from a show's menu on the Lineup page. No reply in time and the offer lapses.">
+          <Stepper value={settings.offers.expiryHours} onChange={(v) => saveSettings({ offers: { expiryHours: v } })} min={1} max={48} suffix="h" />
+        </Field>
+        <div>
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <div className="type-title-s">Did the mic happen?</div>
+              <div className="type-body-s text-on-surface-variant">The morning after each show, Requests asks you. “No” stops it counting as anyone's spot.</div>
+            </div>
+            <Switch checked={m.enabled} onChange={(v) => saveSettings({ micCheck: { ...m, enabled: v } })} label="Mic check" />
+          </div>
+          {m.enabled && (
+            <div className="mt-4 grid gap-4 rounded-lg bg-surface-container p-4 sm:grid-cols-2">
+              <Field label="Ask from">
+                <TextInput type="time" value={m.time} onChange={(e) => saveSettings({ micCheck: { ...m, time: e.target.value } })} />
+              </Field>
+              <div className="flex items-center gap-3 sm:pt-6">
+                <div className="flex-1">
+                  <div className="type-title-s">Also ask on WhatsApp</div>
+                  <div className="type-body-s text-on-surface-variant">In your “Message yourself” chat. Reply yes or no there.</div>
+                </div>
+                <Switch checked={m.whatsapp} onChange={(v) => saveSettings({ micCheck: { ...m, whatsapp: v } })} label="Ask on WhatsApp" />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </Section>
   );

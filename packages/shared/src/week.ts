@@ -19,8 +19,9 @@ const iso = (dt: Date) => dt.toISOString().slice(0, 10);
 
 /**
  * The lineup week a moment belongs to, keyed by its Monday (YYYY-MM-DD).
- * Requests that land Tue night after the mic roll into next week, so curation
- * weeks run Wed → Tue. `rolloverDay` is the first day of a new curation week.
+ * A week stays "current" until its last show is over, then curation rolls to the next one.
+ * `rolloverDay` is the first day that belongs to next week's curation; Monday means plain
+ * calendar weeks (shows run until Sunday). Use `rolloverDayFor(shows)` to derive it.
  */
 export function weekOf(at: Date = new Date(), timeZone = "Asia/Kolkata", rolloverDay: Weekday = 3): string {
   const { y, m, d, wd } = zonedParts(at, timeZone);
@@ -29,10 +30,16 @@ export function weekOf(at: Date = new Date(), timeZone = "Asia/Kolkata", rollove
   const sinceMon = (wd + 6) % 7;
   const monday = new Date(local);
   monday.setUTCDate(local.getUTCDate() - sinceMon);
-  // From rolloverDay onwards (Wed..Sun) curation is for the *next* Monday.
   const rollIdx = (rolloverDay + 6) % 7;
-  if (sinceMon >= rollIdx) monday.setUTCDate(monday.getUTCDate() + 7);
+  if (rollIdx > 0 && sinceMon >= rollIdx) monday.setUTCDate(monday.getUTCDate() + 7);
   return iso(monday);
+}
+
+/** Day after the latest show in the (Mon→Sun) week. No shows: Wednesday, matching a Mon/Tue mic. */
+export function rolloverDayFor(shows: { weekday: Weekday; active?: boolean }[]): Weekday {
+  const days = shows.filter((s) => s.active !== false).map((s) => (s.weekday + 6) % 7);
+  if (!days.length) return 3;
+  return ((Math.max(...days) + 1) % 7 + 1) % 7 as Weekday;
 }
 
 export function shiftWeek(week: string, by: number): string {
