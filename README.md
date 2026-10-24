@@ -55,16 +55,16 @@ Open the app, sign in, go to **Settings → Show QR code**, and scan it from Wha
 See **[docs/ubuntu-usb-server.md](docs/ubuntu-usb-server.md)**: install Ubuntu Server onto a pen drive, then run one command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install.sh | sudo bash
+curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash
 ```
 
 Or use Docker: `docker compose -f deploy/docker-compose.yml up -d`.
 
-**On Windows**, download `SpotSolutions-Windows.zip` from the [latest release](https://github.com/amrit-dash/spot-solutions/releases/latest), unzip it and double-click `Install Spot Solutions.cmd`. Or, from PowerShell as Administrator:
+**On Windows**, download `SpotSolutions-Windows.zip` from the [spot-solutions.web.app/dl/SpotSolutions-Windows.zip](https://spot-solutions.web.app/dl/SpotSolutions-Windows.zip), unzip it and double-click `Install Spot Solutions.cmd`. Or, from PowerShell as Administrator:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-irm https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/windows/install.ps1 | iex
+irm https://spot-solutions.web.app/install.ps1 | iex
 ```
 
 It installs Node, Git, Ollama and Gemma with winget, runs the worker as a startup task that restarts on crash, and keeps the laptop awake while plugged in.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Spot Solutions server: one-shot install for Ubuntu 24.04+ / Debian / Kali (x86_64 or arm64).
 #
-#   curl -fsSL https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install.sh | sudo bash
+#   curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash
 #   # optional: | sudo ADMIN_EMAILS=you@gmail.com bash
 #
 # Installs Node 22, Chrome's libraries, Ollama + Gemma, then three systemd services:
@@ -11,7 +11,7 @@
 # Asks nothing: add keys from the console afterwards. Re-running updates and restarts.
 set -euo pipefail
 
-REPO="https://github.com/amrit-dash/spot-solutions.git"
+SRC_URL="${SPOT_SRC_URL:-https://spot-solutions.web.app/dl/spot-solutions.tar.gz}"
 APP_DIR="/opt/spot-solutions"
 DATA_DIR="/var/lib/spot-solutions"
 SVC_USER="spot"
@@ -30,7 +30,7 @@ step "System packages"
 apt-get update -y
 # Chrome itself comes from Puppeteer during `pnpm install` (Ubuntu's chromium is a snap, which
 # breaks under a service account). These are the libraries it needs.
-LIBS="ca-certificates curl git gnupg sudo fonts-noto-color-emoji libnss3 libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2"
+LIBS="ca-certificates curl tar gnupg sudo fonts-noto-color-emoji libnss3 libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2"
 # 24.04+ renamed some libraries with a t64 suffix; take whichever exists.
 for pair in "libatk1.0-0t64 libatk1.0-0" "libatk-bridge2.0-0t64 libatk-bridge2.0-0" "libcups2t64 libcups2" "libasound2t64 libasound2"; do
   set -- $pair
@@ -63,13 +63,9 @@ ok "Gemma ready"
 step "Service account and code"
 id -u "${SVC_USER}" >/dev/null 2>&1 || useradd --system --create-home --home-dir "${DATA_DIR}" --shell /usr/sbin/nologin "${SVC_USER}"
 usermod -aG systemd-journal "${SVC_USER}"   # lets the console show worker logs
-mkdir -p "${DATA_DIR}"
-if [[ -d "${APP_DIR}/.git" ]]; then
-  git config --global --add safe.directory "${APP_DIR}" || true
-  git -C "${APP_DIR}" pull --ff-only
-else
-  git clone --depth 1 "${REPO}" "${APP_DIR}"
-fi
+mkdir -p "${DATA_DIR}" "${APP_DIR}"
+# Code comes as a tarball (no git needed). .env and node_modules aren't in it, so updates keep them.
+curl -fsSL "${SRC_URL}" | tar -xz -C "${APP_DIR}"
 chown -R "${SVC_USER}:${SVC_USER}" "${APP_DIR}" "${DATA_DIR}"
 sudo -u "${SVC_USER}" -H bash -c "cd ${APP_DIR} && npx -y ${PNPM} install --frozen-lockfile --filter @spot/worker..."
 ok "Code at ${APP_DIR}"

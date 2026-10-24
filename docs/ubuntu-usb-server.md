@@ -61,7 +61,7 @@ Optional, but handy: install [Tailscale](https://tailscale.com/download/linux) (
 On the server (in its own terminal, or over SSH):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install.sh | sudo ADMIN_EMAILS=you@gmail.com bash
+curl -fsSL https://spot-solutions.web.app/install.sh | sudo ADMIN_EMAILS=you@gmail.com bash
 ```
 
 It asks nothing. It installs Node, Chrome's libraries, Ollama and Gemma (about a 3.3 GB download), and three services that start on boot and restart on crash:

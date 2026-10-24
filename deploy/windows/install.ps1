@@ -1,21 +1,21 @@
 <#
   Spot Solutions worker: native install for Windows 10/11.
 
-  Installs Node.js, Git and Ollama (via winget, with a direct-download fallback for Node),
+  Installs Node.js and Ollama (via winget, with a direct-download fallback for Node),
   pulls Gemma, clones the repo, and registers a Scheduled Task that starts the worker at boot
   (before anyone logs in) and restarts it if it crashes. Also stops the laptop sleeping on power.
 
   Easiest: double-click "Install Spot Solutions.cmd". Or, in PowerShell as Administrator:
 
     Set-ExecutionPolicy -Scope Process Bypass -Force
-    irm https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/windows/install.ps1 | iex
+    irm https://spot-solutions.web.app/install.ps1 | iex
 
   Re-running is safe: it updates the code and restarts the task.
 #>
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue" # Invoke-WebRequest is painfully slow with the progress bar
 
-$Repo      = "https://github.com/amrit-dash/spot-solutions.git"
+$SrcUrl    = if ($env:SPOT_SRC_URL) { $env:SPOT_SRC_URL } else { "https://spot-solutions.web.app/dl/spot-solutions.tar.gz" }
 $Root      = "C:\SpotSolutions"
 $AppDir    = "$Root\app"
 $DataDir   = "$Root\data"
@@ -49,7 +49,6 @@ function Winget-Install($id) {
 }
 
 $NodeCandidates   = @("$env:ProgramFiles\nodejs\node.exe", "${env:ProgramFiles(x86)}\nodejs\node.exe", "$env:LOCALAPPDATA\Programs\nodejs\node.exe")
-$GitCandidates    = @("$env:ProgramFiles\Git\cmd\git.exe", "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")
 $OllamaCandidates = @("$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe")
 
 Step "Node.js"
@@ -70,12 +69,6 @@ $env:Path = "$NodeDir;$env:Path"
 $nodeVersion = (& $Node -v)
 if ([int]($nodeVersion.TrimStart("v").Split(".")[0]) -lt 22) { throw "Node $nodeVersion is too old. Spot Solutions needs Node 22 or newer. Update it from https://nodejs.org and run this again." }
 Ok "Node $nodeVersion at $Node"
-
-Step "Git"
-$Git = Find-Exe "git" $GitCandidates
-if (-not $Git) { Winget-Install "Git.Git"; $Git = Find-Exe "git" $GitCandidates }
-if (-not $Git) { throw "Couldn't install Git. Install it from https://git-scm.com/download/win, then run this again." }
-Ok "Git at $Git"
 
 Step "Ollama + Gemma ($Model)"
 $Ollama = Find-Exe "ollama" $OllamaCandidates
@@ -99,8 +92,12 @@ if ($LASTEXITCODE -ne 0) { throw "Downloading $Model failed. Check the internet 
 Step "Spot Solutions code"
 [Environment]::SetEnvironmentVariable("PUPPETEER_CACHE_DIR", $ChromeDir, "Machine")
 $env:PUPPETEER_CACHE_DIR = $ChromeDir
-if (Test-Path "$AppDir\.git") { & $Git -C $AppDir pull --ff-only } else { & $Git clone --depth 1 $Repo $AppDir }
-if ($LASTEXITCODE -ne 0) { throw "Downloading the code failed." }
+# Code comes as a tarball (Windows 10+ ships tar.exe). .env and node_modules aren't in it, so updates keep them.
+New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
+$tgz = "$env:TEMP\spot-solutions.tar.gz"
+Invoke-WebRequest $SrcUrl -OutFile $tgz
+tar.exe -xzf $tgz -C $AppDir
+if ($LASTEXITCODE -ne 0) { throw "Unpacking the code failed." }
 Push-Location $AppDir
 # Run the exact pnpm the repo pins, through npx (no corepack needed).
 & "$NodeDir\npx.cmd" -y pnpm@9.15.4 install --frozen-lockfile --filter "@spot/worker..."

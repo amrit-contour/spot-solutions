@@ -20,6 +20,11 @@ const startedAt = Date.now();
 
 function version() {
   try {
+    return readFileSync(new URL("../../../VERSION", import.meta.url), "utf8").trim();
+  } catch {
+    /* not a tarball install */
+  }
+  try {
     return readFileSync(new URL("../../../.git/HEAD", import.meta.url), "utf8").trim().replace(/^ref: refs\/heads\//, "");
   } catch {
     return process.env.npm_package_version ?? "dev";
