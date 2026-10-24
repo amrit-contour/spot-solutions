@@ -303,3 +303,21 @@ export interface ServerCommand {
   error?: string | null;
   createdAt: number;
 }
+
+/** access/{uid}: who may use this Spot Solutions install. Created "pending" on first sign-in. */
+export interface AccessEntry {
+  uid: string;
+  email: string | null;
+  name: string | null;
+  photo?: string | null;
+  status: "pending" | "approved" | "removed";
+  requestedAt: number;
+  decidedAt?: number | null;
+  decidedBy?: string | null;
+}
+
+/** config/access: written by the worker from SPOT_ADMIN_EMAILS; maxCurators editable by admins. */
+export interface AccessConfig {
+  admins: string[];
+  maxCurators: number;
+}

@@ -2,7 +2,8 @@
 // commands the web app drops into Firestore. Only outbound connections — no ports.
 import "./logbuf.ts";
 import { col, db, sessionRef } from "./firebase.ts";
-import { runCommand } from "./commands.ts";
+import { notice, runCommand } from "./commands.ts";
+import { isAdminEmail, startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
 import { SERVER_ID, adminConfigured, watchServerCommands, writeServerStatus } from "./stats.ts";
@@ -48,22 +49,49 @@ async function main() {
   setInterval(() => void pushStatus().catch((e) => console.error("[stats]", e.message)), HEARTBEAT_MS).unref();
   setTimeout(() => void pushStatus().catch(() => undefined), 5_000);
 
-  // Every user doc gets a command listener; users who've linked WhatsApp get a live session.
+  // Only approved curators get a command listener; those who've linked WhatsApp also get a session.
+  const userDocs = new Map<string, FirebaseFirestore.DocumentData>();
+  let allowed = new Set<string>();
+  const reconcile = () => {
+    for (const uid of allowed) {
+      const data = userDocs.get(uid);
+      if (!data) continue;
+      watchCommands(uid);
+      if (data.waEnabled && !sessions.running(uid)) void sessions.start(uid);
+    }
+    for (const uid of [...commandListeners.keys()]) {
+      if (allowed.has(uid) && userDocs.has(uid)) continue;
+      console.log(`[access] ${users.get(uid)?.email ?? uid} no longer allowed, stopping`);
+      commandListeners.get(uid)?.();
+      commandListeners.delete(uid);
+      unwatchKeys(uid);
+      void sessions.stop(uid);
+      void sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined);
+    }
+  };
+
   db.collection("users").onSnapshot((q) => {
     for (const ch of q.docChanges()) {
       const uid = ch.doc.id;
       users.set(uid, { email: ch.doc.data().email ?? null, name: ch.doc.data().name ?? null });
-      if (ch.type === "removed") {
-        unwatchKeys(uid);
-        commandListeners.get(uid)?.();
-        commandListeners.delete(uid);
-        void sessions.stop(uid);
-        continue;
-      }
-      watchCommands(uid);
-      if (ch.doc.data().waEnabled && !sessions.running(uid)) void sessions.start(uid);
+      if (ch.type === "removed") userDocs.delete(uid);
+      else userDocs.set(uid, ch.doc.data());
     }
+    reconcile();
   });
+
+  await startAccess(
+    (next) => {
+      allowed = next;
+      reconcile();
+    },
+    (e) => {
+      console.log(`[access] ${e.email ?? e.uid} asked to join`);
+      for (const [uid, u] of users) {
+        if (isAdminEmail(u.email)) void notice(uid, "info", `${e.name ?? e.email ?? "Someone"} (${e.email ?? "no email"}) asked to use Spot Solutions. Approve them in Account → Server.`);
+      }
+    },
+  );
 
   startScheduler(() => commandListeners.keys());
   if (adminConfigured) watchServerCommands(() => shutdown());

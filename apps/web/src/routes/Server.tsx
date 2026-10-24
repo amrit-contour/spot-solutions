@@ -7,6 +7,8 @@ import { useApp } from "../lib/app";
 import { db } from "../lib/firebase";
 import { timeAgo, useNow } from "../lib/data";
 import { PageHeader } from "../components/Shell";
+import { Curators } from "../components/Curators";
+import { isAdmin, useAccessConfig } from "../lib/access";
 import { Avatar, Button, Card, Chip, Empty, cx } from "../components/ui";
 import { IconCheck, IconCpu, IconRefresh, IconServer, IconWarn } from "../components/icons";
 
@@ -202,10 +204,13 @@ function ServerCard({ s }: { s: ServerStatus }) {
 
 export function ServerPage() {
   const servers = useServers();
+  const { user } = useApp();
+  const admin = isAdmin(useAccessConfig(), user.email);
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" />
       <div className="flex flex-col gap-10 px-4 pb-12 sm:px-8">
+        {admin && <Curators />}
         {servers === null ? null : servers.length ? (
           servers.map((s) => <ServerCard key={s.id} s={s} />)
         ) : (

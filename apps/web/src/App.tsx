@@ -10,9 +10,12 @@ import { Comics } from "./routes/Comics";
 import { Shows } from "./routes/Shows";
 import { SettingsPage } from "./routes/Settings";
 import { ServerPage } from "./routes/Server";
+import { Waiting } from "./routes/Waiting";
+import { useAccess } from "./lib/access";
 
 export default function App() {
   const user = useAuthUser();
+  const access = useAccess(user);
   return (
     <>
       <Toaster
@@ -33,6 +36,12 @@ export default function App() {
         </div>
       ) : user === null ? (
         <SignIn />
+      ) : access === undefined ? (
+        <div className="grid min-h-dvh place-items-center text-primary">
+          <Spinner className="size-8" />
+        </div>
+      ) : access?.status !== "approved" ? (
+        <Waiting user={user} entry={access} />
       ) : (
         <AppProvider user={user}>
           <Shell>

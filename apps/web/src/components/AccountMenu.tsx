@@ -3,6 +3,7 @@ import { signOut } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../lib/app";
 import { useServers } from "../routes/Server";
+import { isAdmin, useAccessConfig } from "../lib/access";
 import { auth } from "../lib/firebase";
 import { savedMode, setMode, type ThemeMode } from "../lib/theme";
 import { Menu } from "./Menu";
@@ -16,6 +17,7 @@ export function AccountMenu() {
   const servers = useServers();
   const nav = useNavigate();
   const anyDown = servers?.some((s) => Date.now() - s.lastSeen > 90_000);
+  const admin = isAdmin(useAccessConfig(), user.email);
   return (
     <Menu
       align="right"
@@ -50,7 +52,7 @@ export function AccountMenu() {
               ]}
             />
           </div>
-          {servers && servers.length > 0 && (
+          {(admin || (servers && servers.length > 0)) && (
             <button
               role="menuitem"
               onClick={() => {
@@ -61,7 +63,7 @@ export function AccountMenu() {
             >
               <IconServer className="icon size-5 text-primary" />
               <span className="flex-1">Server</span>
-              <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : "bg-[#3fb950]")} />
+              {servers && servers.length > 0 && <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : "bg-[#3fb950]")} />}
             </button>
           )}
           <button

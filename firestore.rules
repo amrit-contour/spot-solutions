@@ -2,6 +2,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function email() { return request.auth.token.email != null ? request.auth.token.email.lower() : ""; }
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/config/access)
+        && email() in get(/databases/$(database)/documents/config/access).data.admins;
+    }
+    function isApproved(uid) {
+      return exists(/databases/$(database)/documents/access/$(uid))
+        && get(/databases/$(database)/documents/access/$(uid)).data.status == 'approved';
+    }
+
+    // Invite-only: everyone signs in, admins decide who gets a WhatsApp session.
+    match /config/access {
+      allow read: if request.auth != null;
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['maxCurators'])
+        && request.resource.data.maxCurators is int && request.resource.data.maxCurators >= 1 && request.resource.data.maxCurators <= 100;
+    }
+    match /access/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      // First sign-in: ask for access. Nobody can grant themselves anything.
+      allow create: if isOwner(uid) && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'name', 'photo', 'status', 'requestedAt']);
+      allow update: if isAdmin() && request.resource.data.status in ['approved', 'removed', 'pending']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'decidedBy']);
+    }
 
     // Worker machines' health. Visible to the admins that server lists in SPOT_ADMIN_EMAILS.
     function isServerAdmin(id) {
@@ -36,7 +60,7 @@ service cloud.firestore {
       // Commands: curator can enqueue pending commands and read results, nothing else.
       match /commands/{id} {
         allow read: if isOwner(uid);
-        allow create: if isOwner(uid)
+        allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
           && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message'];
       }
