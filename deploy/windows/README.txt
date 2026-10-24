@@ -5,7 +5,9 @@ Turns this laptop into the always-on Spot Solutions server: WhatsApp + local Gem
 
 BEFORE YOU START
   - Windows 10 or 11, 8 GB RAM recommended, plugged into power, on Wi-Fi/Ethernet.
-  - Have your Firebase service-account JSON on this laptop (e.g. in Downloads).
+  - Have your Firebase service-account key (.json) on this laptop, e.g. in Downloads.
+    Get it: console.firebase.google.com -> your project -> gear icon -> Project settings
+    -> Service accounts -> Generate new private key.
   - "App Installer" (winget) must be present. It is on most Windows 10/11 machines;
     if not, install it from the Microsoft Store.
 
@@ -13,7 +15,7 @@ INSTALL
   1. Unzip this folder anywhere.
   2. Double-click "Install Spot Solutions.cmd" and click Yes on the admin prompt.
   3. It installs Node.js, Git, Ollama and the Gemma model (about 3.5 GB download).
-  4. When asked, type your Firebase project ID and the full path to the JSON key.
+  4. A file picker opens: choose the .json key. (The project ID is read from it.)
   5. When it says Done, open https://spot-solutions.web.app on any computer
      -> Settings -> Show QR code, and scan it from WhatsApp on your phone.
 
