@@ -72,7 +72,9 @@ It asks nothing. It installs Node, Chrome's libraries, Ollama and Gemma (about a
 | `spot-worker` | WhatsApp + curation. Idle until a Firebase key is added. |
 | `spot-console` | Local web console on port **7420** |
 
-At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it from your phone or Mac on the same Wi-Fi.
+At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it from your phone or Mac on the same Wi-Fi. The console is served from the laptop itself, so it's only reachable on your home network, and you only need it once, for the key.
+
+> **Day to day you never need the same Wi-Fi.** The laptop and your phone each talk to Firebase over the internet, so the app works from mobile data or anywhere. Logs, restarts and health live in the app under **Account → Server**.
 
 ## 5. Finish setup in the console
 

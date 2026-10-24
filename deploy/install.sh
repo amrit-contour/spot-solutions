@@ -156,10 +156,11 @@ ok "Sleep disabled, lid close ignored (takes effect after reboot)"
 
 for _ in $(seq 1 10); do [[ -f "${DATA_DIR}/console-token" ]] && break; sleep 1; done
 step "Done"
-echo "Open the server console from any device on this network:"
+echo "One-time setup: open the server console from a phone or laptop on THIS Wi-Fi:"
 /usr/local/bin/spot-console-url | sed 's/^/  /'
 echo
 echo "1. Drop your Firebase service-account key into the console (starts the worker)."
 echo "2. Add your email under Admins to see this server in the app."
 echo "3. Link WhatsApp at https://spot-solutions.web.app → Settings."
+echo "After that, everything (including restarts and logs) is in the app → Account → Server, from anywhere."
 echo "Forgot the link later? sudo spot-console-url"

@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
+import { toast } from "sonner";
 import { motion } from "motion/react";
 import type { ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "../lib/firebase";
 import { timeAgo, useNow } from "../lib/data";
 import { PageHeader } from "../components/Shell";
-import { Avatar, Card, Chip, Empty, cx } from "../components/ui";
-import { IconCheck, IconCpu, IconServer, IconWarn } from "../components/icons";
+import { Avatar, Button, Card, Chip, Empty, cx } from "../components/ui";
+import { IconCheck, IconCpu, IconRefresh, IconServer, IconWarn } from "../components/icons";
 
 const ONLINE_MS = 90_000;
 
@@ -50,13 +51,46 @@ function Meter({ label, used, total, detail }: { label: string; used: number; to
   );
 }
 
-function Service({ name, up, detail }: { name: string; up: boolean; detail?: string }) {
+function Service({ name, up, detail, action }: { name: string; up: boolean; detail?: string; action?: React.ReactNode }) {
   return (
     <li className="flex items-center gap-3 px-4 py-3">
       <span className={cx("size-2.5 flex-none rounded-full", up ? "bg-[#3fb950]" : "bg-error")} />
-      <span className="flex-1 type-body-l">{name}</span>
-      <span className="type-body-s text-on-surface-variant">{detail ?? (up ? "Running" : "Down")}</span>
+      <div className="min-w-0 flex-1">
+        <div className="type-body-l">{name}</div>
+        <div className="truncate type-body-s text-on-surface-variant">{detail ?? (up ? "Running" : "Down")}</div>
+      </div>
+      {action}
     </li>
+  );
+}
+
+function RestartButton({ serverId, type, label, disabled }: { serverId: string; type: "restart_worker" | "restart_ollama"; label: string; disabled?: boolean }) {
+  const { user } = useApp();
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    if (type === "restart_worker" && !confirm("Restart the worker? WhatsApp reconnects by itself in about a minute.")) return;
+    setBusy(true);
+    try {
+      const ref = await addDoc(collection(db, "servers", serverId, "commands"), { type, status: "pending", by: user.email ?? user.uid, createdAt: Date.now() });
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(() => (unsub(), reject(new Error("The server didn't respond"))), 90_000);
+        const unsub = onSnapshot(ref, (d) => {
+          const st = d.data()?.status;
+          if (st === "done") (clearTimeout(t), unsub(), resolve());
+          if (st === "error") (clearTimeout(t), unsub(), reject(new Error(d.data()?.error ?? "Failed")));
+        });
+      });
+      toast.success(type === "restart_worker" ? "Worker restarting. It'll be back in a minute." : "Ollama restarted");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button size="sm" variant="tonal" icon={IconRefresh} loading={busy} disabled={disabled} onClick={go}>
+      {label}
+    </Button>
   );
 }
 
@@ -94,8 +128,8 @@ function ServerCard({ s }: { s: ServerStatus }) {
         <Card className="overflow-hidden">
           <h3 className="px-4 pt-4 pb-1 type-title-s">Services</h3>
           <ul className="divide-y divide-outline-variant/40">
-            <Service name="Spot Solutions worker" up={online} detail={online ? `Heartbeat ${timeAgo(s.lastSeen, now)}` : undefined} />
-            <Service name="Ollama" up={online && s.ollama.up} detail={s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"}${s.ollama.loaded.length ? ` · ${s.ollama.loaded.join(", ")} loaded` : ""}` : undefined} />
+            <Service name="Spot Solutions worker" up={online} detail={online ? `Heartbeat ${timeAgo(s.lastSeen, now)}` : undefined} action={<RestartButton serverId={s.id} type="restart_worker" label="Restart" disabled={!online} />} />
+            <Service name="Ollama" up={online && s.ollama.up} action={<RestartButton serverId={s.id} type="restart_ollama" label="Restart" disabled={!online} />} detail={s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"}${s.ollama.loaded.length ? ` · ${s.ollama.loaded.join(", ")} loaded` : ""}` : undefined} />
             <Service name="WhatsApp sessions" up={online && linked > 0} detail={`${linked} linked of ${s.sessions.length}`} />
             <Service name="Server Gemini key" up={s.geminiServerKey} detail={s.geminiServerKey ? "Set (used when a curator has none)" : "Not set (curators use their own)"} />
           </ul>
@@ -136,6 +170,18 @@ function ServerCard({ s }: { s: ServerStatus }) {
         </ul>
       </Card>
 
+      {s.logs && s.logs.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
+            <h3 className="type-title-s">Worker log</h3>
+            <span className="type-body-s text-on-surface-variant">updates every 30 s</span>
+          </div>
+          <pre className="max-h-80 overflow-auto bg-surface-container px-4 py-3 font-mono text-xs leading-5 whitespace-pre-wrap text-on-surface-variant" ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
+            {s.logs.join("\n")}
+          </pre>
+        </Card>
+      )}
+
       {s.ollama.models.length > 0 && (
         <Card className="p-4">
           <h3 className="mb-2 flex items-center gap-2 type-title-s">
@@ -164,7 +210,7 @@ export function ServerPage() {
           servers.map((s) => <ServerCard key={s.id} s={s} />)
         ) : (
           <Empty icon={IconServer} title="No server reporting to you">
-            Servers show up here when their install lists your email as an admin. On the server, open the local console (port 7420) and add your email under Admins.
+            Servers show up here when their install lists your email as an admin. Add it once in the server console (port 7420, on the server's own network); after that you can manage it from here, anywhere.
           </Empty>
         )}
       </div>

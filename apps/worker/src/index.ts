@@ -1,10 +1,11 @@
 // Spot Solutions worker: keeps every curator's WhatsApp session alive and executes
 // commands the web app drops into Firestore. Only outbound connections — no ports.
+import "./logbuf.ts";
 import { col, db, sessionRef } from "./firebase.ts";
 import { runCommand } from "./commands.ts";
 import { sessions } from "./sessions.ts";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
-import { SERVER_ID, adminConfigured, writeServerStatus } from "./stats.ts";
+import { SERVER_ID, adminConfigured, watchServerCommands, writeServerStatus } from "./stats.ts";
 import { startScheduler } from "./scheduler.ts";
 
 const commandListeners = new Map<string, () => void>();
@@ -65,6 +66,7 @@ async function main() {
   });
 
   startScheduler(() => commandListeners.keys());
+  if (adminConfigured) watchServerCommands(() => shutdown());
 
   const shutdown = async () => {
     console.log("[worker] shutting down");

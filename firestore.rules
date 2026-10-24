@@ -4,9 +4,19 @@ service cloud.firestore {
     function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
 
     // Worker machines' health. Visible to the admins that server lists in SPOT_ADMIN_EMAILS.
+    function isServerAdmin(id) {
+      return request.auth != null && request.auth.token.email != null
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/servers/$(id)).data.admins;
+    }
     match /servers/{id} {
       allow read: if request.auth != null && request.auth.token.email != null
         && request.auth.token.email.lower() in resource.data.admins;
+      match /commands/{cmd} {
+        allow read: if isServerAdmin(id);
+        allow create: if isServerAdmin(id)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.type in ['restart_worker', 'restart_ollama'];
+      }
     }
 
     match /users/{uid} {

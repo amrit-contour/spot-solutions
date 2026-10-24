@@ -292,4 +292,14 @@ export interface ServerStatus {
   sessions: { uid: string; email?: string | null; name?: string | null; status: string; phone?: string | null }[];
   counters: { messagesIn: number; classified: number; sent: number; errors: number };
   admins: string[]; // lower-case emails
+  logs?: string[]; // most recent last
+}
+
+/** servers/{id}/commands/{cmd}: admin actions from the app's Server page. */
+export interface ServerCommand {
+  type: "restart_worker" | "restart_ollama";
+  status: "pending" | "running" | "done" | "error";
+  by: string;
+  error?: string | null;
+  createdAt: number;
 }

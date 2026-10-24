@@ -6,6 +6,7 @@ import os from "node:os";
 import { promisify } from "node:util";
 import type { ServerStatus } from "@spot/shared";
 import { db } from "./firebase.ts";
+import { recentLogs } from "./logbuf.ts";
 
 const exec = promisify(execFile);
 
@@ -78,9 +79,48 @@ export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "se
     disk: await disk(),
     counters: { ...counters },
     admins: ADMINS,
+    logs: recentLogs.slice(-120),
     ...extra,
   };
   await db.collection("servers").doc(SERVER_ID).set(status);
 }
 
 export const adminConfigured = ADMINS.length > 0;
+
+/** Admin actions sent from the app. Runs only for this server. */
+export function watchServerCommands(onRestartWorker: () => Promise<void>) {
+  db.collection("servers")
+    .doc(SERVER_ID)
+    .collection("commands")
+    .where("status", "==", "pending")
+    .onSnapshot((q) => {
+      for (const ch of q.docChanges()) {
+        if (ch.type !== "added") continue;
+        const ref = ch.doc.ref;
+        const type = ch.doc.data().type as string;
+        void (async () => {
+          try {
+            await ref.update({ status: "running" });
+            console.log(`[server] ${type} requested by ${ch.doc.data().by}`);
+            if (type === "restart_ollama") {
+              await restartOllama();
+              await ref.update({ status: "done" });
+            } else if (type === "restart_worker") {
+              await ref.update({ status: "done" });
+              await onRestartWorker(); // systemd / the Windows launcher brings us back up
+            } else throw new Error(`Unknown ${type}`);
+          } catch (e) {
+            await ref.update({ status: "error", error: (e as Error).message }).catch(() => undefined);
+          }
+        })();
+      }
+    }, (e) => console.error("[server] command listener", e.message));
+}
+
+async function restartOllama() {
+  if (process.platform === "win32") {
+    await exec("powershell", ["-NoProfile", "-Command", "Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process ollama -ArgumentList serve -WindowStyle Hidden"]);
+  } else {
+    await exec("sudo", ["-n", "/usr/bin/systemctl", "restart", "ollama"], { timeout: 60_000 });
+  }
+}
