@@ -6,7 +6,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ack: { enabled: false, template: DEFAULT_ACK_TEMPLATE },
   confirm: { template: DEFAULT_CONFIRM_TEMPLATE },
   reject: { enabled: true, template: DEFAULT_REJECT_TEMPLATE },
-  model: { provider: "ollama", name: "gemma3:4b", fallback: true },
+  ai: { primary: { provider: "ollama", model: "gemma3:4b" }, fallback: null },
   ignoreGroups: true,
   timezone: "Asia/Kolkata",
   debounceSeconds: 45,
@@ -44,4 +44,14 @@ export const AUTO_ACK_MAX_AGE_MS = 10 * 60_000;
 /** Requests that should get a regret once the week's lineups are final. */
 export function pendingRejections<R extends { comicId: string; status: string; intent: { confidence: number }; hold?: string | null; holdOverridden?: boolean }>(requests: R[], placed: Set<string>): R[] {
   return requests.filter((r) => ["new", "acked"].includes(r.status) && r.intent.confidence >= INTENT_THRESHOLD && !placed.has(r.comicId) && (!r.hold || r.holdOverridden));
+}
+
+/** Settings docs written before `ai` existed carry the older `model` field. */
+export function aiFromLegacy(s: { ai?: Partial<import("./types.ts").AiSettings>; model?: { provider: "ollama" | "gemini"; name: string; fallback: boolean } } | undefined): import("./types.ts").AiSettings {
+  if (s?.ai?.primary) return { primary: s.ai.primary, fallback: s.ai.fallback ?? null };
+  if (s?.model) {
+    const primary = { provider: s.model.provider, model: s.model.provider === "gemini" ? "gemma-3-27b-it" : s.model.name };
+    return { primary, fallback: s.model.fallback && s.model.provider === "ollama" ? { provider: "gemini", model: "gemma-3-27b-it" } : null };
+  }
+  return DEFAULT_SETTINGS.ai;
 }

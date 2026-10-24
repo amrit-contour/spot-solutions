@@ -36,19 +36,20 @@ const kindCases: [string[], string][] = [
   [["thanks for the set yesterday!"], "other"],
 ];
 
-const model = { ...DEFAULT_SETTINGS.model, name: process.argv[2] ?? DEFAULT_SETTINGS.model.name, fallback: false };
+// usage: eval-intent.ts [model] [ollama|gemini]
+const model = { primary: { provider: (process.argv[3] ?? "ollama") as "ollama" | "gemini", model: process.argv[2] ?? "gemma3:4b" }, fallback: null };
 let ok = 0;
 for (const [msgs, want, days] of cases) {
   const t = Date.now();
-  const r = await classify(msgs, shows, model);
+  const r = await classify(null, msgs, shows, model);
   const pass = r.isSpotRequest === want && (!want || days.every((d) => r.preferredDays.includes(d as never)));
   ok += pass ? 1 : 0;
   console.log(`${pass ? "PASS" : "FAIL"} ${Date.now() - t}ms conf=${r.confidence} days=${r.preferredDays} | ${msgs.join(" / ")} | ${r.note}`);
 }
-console.log(`\n${ok}/${cases.length} correct with ${model.name}`);
+console.log(`\n${ok}/${cases.length} correct with ${model.primary.model}`);
 let kOk = 0;
 for (const [msgs, want] of kindCases) {
-  const r = await classify(msgs, shows, model);
+  const r = await classify(null, msgs, shows, model);
   kOk += r.kind === want ? 1 : 0;
   console.log(`${r.kind === want ? "PASS" : "FAIL"} kind=${r.kind} (want ${want}) | ${msgs.join(" / ")}`);
 }

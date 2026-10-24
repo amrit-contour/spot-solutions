@@ -3,7 +3,8 @@
 import { col, db, sessionRef } from "./firebase.ts";
 import { runCommand } from "./commands.ts";
 import { sessions } from "./sessions.ts";
-import { ollamaHealthy } from "./gemma.ts";
+import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
+import { SERVER_ID, adminConfigured, writeServerStatus } from "./stats.ts";
 import { startScheduler } from "./scheduler.ts";
 
 const commandListeners = new Map<string, () => void>();
@@ -22,17 +23,37 @@ function watchCommands(uid: string) {
       (err) => console.error(`[commands] ${uid} listener error`, err),
     );
   commandListeners.set(uid, unsub);
+  watchKeys(uid);
   void sessionRef(uid).get().then((s) => (s.exists ? beat(uid) : sessionRef(uid).set({ status: "idle", lastSeen: Date.now() })));
 }
 
 async function main() {
-  console.log(`[worker] starting · ollama ${(await ollamaHealthy()) ? "up" : "DOWN (Gemini fallback only)"}`);
+  const ol = await ollamaState();
+  console.log(`[worker] starting · server "${SERVER_ID}" · ollama ${ol.up ? `up (${ol.models.map((m) => m.name).join(", ") || "no models"})` : "DOWN"}`);
+  if (!adminConfigured) console.warn("[worker] SPOT_ADMIN_EMAILS not set: the Server page in the app stays hidden");
+
+  // Heartbeat for the app's Server page.
+  const users = new Map<string, { email?: string | null; name?: string | null }>();
+  const pushStatus = async () => {
+    const ollama = await ollamaState();
+    const states = await Promise.all(
+      [...commandListeners.keys()].map(async (uid) => {
+        const s = (await sessionRef(uid).get()).data() ?? {};
+        return { uid, email: users.get(uid)?.email ?? null, name: users.get(uid)?.name ?? null, status: String(s.status ?? "idle"), phone: s.phone ? `•••${String(s.phone).slice(-4)}` : null };
+      }),
+    );
+    await writeServerStatus({ ollama: { ...ollama, url: OLLAMA_URL }, sessions: states, geminiServerKey: hasServerGeminiKey });
+  };
+  setInterval(() => void pushStatus().catch((e) => console.error("[stats]", e.message)), HEARTBEAT_MS).unref();
+  setTimeout(() => void pushStatus().catch(() => undefined), 5_000);
 
   // Every user doc gets a command listener; users who've linked WhatsApp get a live session.
   db.collection("users").onSnapshot((q) => {
     for (const ch of q.docChanges()) {
       const uid = ch.doc.id;
+      users.set(uid, { email: ch.doc.data().email ?? null, name: ch.doc.data().name ?? null });
       if (ch.type === "removed") {
+        unwatchKeys(uid);
         commandListeners.get(uid)?.();
         commandListeners.delete(uid);
         void sessions.stop(uid);

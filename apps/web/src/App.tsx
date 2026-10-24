@@ -9,6 +9,7 @@ import { LineupBoard } from "./routes/Lineup";
 import { Comics } from "./routes/Comics";
 import { Shows } from "./routes/Shows";
 import { SettingsPage } from "./routes/Settings";
+import { ServerPage } from "./routes/Server";
 
 export default function App() {
   const user = useAuthUser();
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="/comics" element={<Comics />} />
               <Route path="/shows" element={<Shows />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/server" element={<ServerPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Shell>

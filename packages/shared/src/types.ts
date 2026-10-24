@@ -18,7 +18,9 @@ export interface Settings {
   ack: { enabled: boolean; template: string };
   confirm: { template: string };
   reject: { enabled: boolean; template: string };
-  model: { provider: "ollama" | "gemini"; name: string; fallback: boolean };
+  /** @deprecated read `ai`; kept so older docs still load. */
+  model?: { provider: "ollama" | "gemini"; name: string; fallback: boolean };
+  ai: AiSettings;
   ignoreGroups: boolean;
   timezone: string; // IANA, e.g. Asia/Kolkata
   debounceSeconds: number;
@@ -237,6 +239,9 @@ export type CommandType =
   | "send_action"
   | "send_offer"
   | "send_host_poll"
+  | "list_models"
+  | "test_ai"
+  | "pull_model"
   | "plan_group_sync"
   | "sync_group"
   | "send_message";
@@ -247,4 +252,44 @@ export interface Command {
   status: "pending" | "running" | "done" | "error";
   error?: string | null;
   createdAt: number;
+}
+
+export type AiProvider = "ollama" | "gemini";
+export interface AiRoute {
+  provider: AiProvider;
+  model: string;
+}
+export interface AiSettings {
+  primary: AiRoute;
+  fallback: AiRoute | null;
+}
+
+/** users/{uid}/secrets/ai. Write-only from the app; only the worker reads it. */
+export interface AiSecrets {
+  geminiKey?: string | null;
+}
+
+/** users/{uid}.aiKeys: safe-to-show summary of what's stored in secrets. */
+export interface AiKeyStatus {
+  gemini?: { set: boolean; last4?: string | null; updatedAt?: number } | null;
+}
+
+/** servers/{id}: a worker machine's heartbeat, readable by its admins. */
+export interface ServerStatus {
+  id: string;
+  hostname: string;
+  platform: string; // "linux", "win32", "darwin"
+  osRelease: string;
+  arch: string;
+  version: string; // git sha or package version
+  startedAt: number;
+  lastSeen: number;
+  cpu: { model: string; cores: number; load1: number; usage: number }; // usage 0..1
+  memory: { total: number; free: number; process: number };
+  disk?: { total: number; free: number } | null;
+  ollama: { up: boolean; url: string; models: { name: string; size: number }[]; loaded: string[] };
+  geminiServerKey: boolean;
+  sessions: { uid: string; email?: string | null; name?: string | null; status: string; phone?: string | null }[];
+  counters: { messagesIn: number; classified: number; sent: number; errors: number };
+  admins: string[]; // lower-case emails
 }

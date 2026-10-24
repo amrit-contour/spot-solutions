@@ -128,12 +128,14 @@ if (-not (Test-Path $EnvFile)) {
   if ($key.type -ne "service_account" -or -not $key.project_id) { throw "That file isn't a Firebase service-account key. Generate one in Firebase console -> Project settings -> Service accounts." }
   Copy-Item $src $KeyFile -Force
   Ok "Key for project '$($key.project_id)'"
-  $gemini = Read-Host "  Gemini API key for backup when the laptop is slow (optional, press Enter to skip)"
+  # Gemini keys are added per curator in the app (Settings -> AI models), not here.
+  $admin = (Read-Host "  Your email, to see this server's health in the app (Enter to skip)").Trim().ToLower()
   @"
 FIREBASE_SERVICE_ACCOUNT=$KeyFile
 FIREBASE_PROJECT_ID=$($key.project_id)
 OLLAMA_URL=http://127.0.0.1:11434
-GEMINI_API_KEY=$gemini
+GEMINI_API_KEY=
+SPOT_ADMIN_EMAILS=$admin
 WWEBJS_DATA=$DataDir\wwebjs
 CHROME_PATH=
 "@ | Set-Content -Encoding ASCII $EnvFile

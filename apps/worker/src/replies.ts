@@ -82,7 +82,7 @@ export async function handleOnboardingReply(uid: string, comicId: string, texts:
   const comic = (await ref.get()).data() as Comic | undefined;
   if (comic?.onboarding !== "asked") return false;
   const { settings } = watchUser(uid);
-  const p = await extractProfile(texts, settings.model);
+  const p = await extractProfile(uid, texts, settings.ai);
   if (!p.name && !p.scene && !p.years) return false; // not an answer; let normal intake read it
   await ref.set(
     {

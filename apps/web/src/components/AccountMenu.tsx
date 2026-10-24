@@ -1,16 +1,21 @@
 import { useState } from "react";
 import { signOut } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "../lib/app";
+import { useServers } from "../routes/Server";
 import { auth } from "../lib/firebase";
 import { savedMode, setMode, type ThemeMode } from "../lib/theme";
 import { Menu } from "./Menu";
 import { Avatar, Segmented, cx } from "./ui";
-import { IconLogout, IconMoon, IconSun } from "./icons";
+import { IconLogout, IconMoon, IconServer, IconSun } from "./icons";
 
 export function AccountMenu() {
   const { user } = useApp();
   const [mode, setModeState] = useState<ThemeMode>(savedMode());
   const name = user.displayName ?? user.email ?? "You";
+  const servers = useServers();
+  const nav = useNavigate();
+  const anyDown = servers?.some((s) => Date.now() - s.lastSeen > 90_000);
   return (
     <Menu
       align="right"
@@ -45,6 +50,20 @@ export function AccountMenu() {
               ]}
             />
           </div>
+          {servers && servers.length > 0 && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                close();
+                nav("/server");
+              }}
+              className="state-layer flex w-full items-center gap-3 border-t border-outline-variant/60 px-4 py-3 text-left type-label-l"
+            >
+              <IconServer className="icon size-5 text-primary" />
+              <span className="flex-1">Server</span>
+              <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : "bg-[#3fb950]")} />
+            </button>
+          )}
           <button
             role="menuitem"
             onClick={() => {

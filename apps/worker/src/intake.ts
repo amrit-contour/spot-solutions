@@ -26,6 +26,7 @@ import { col, db } from "./firebase.ts";
 import { classify } from "./gemma.ts";
 import { watchUser } from "./userData.ts";
 import { sendQueued } from "./sendQueue.ts";
+import { counters } from "./stats.ts";
 import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
 
 const MAX_CONTEXT = 12;
@@ -77,6 +78,7 @@ export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.
   if (!isDirectHumanMessage(msg)) return;
   const since = liveSince.get(uid);
   if (!since || msg.timestamp * 1000 < since - 5_000) return;
+  counters.messagesIn++;
   const contact = await resolveContact(client, msg);
   const key = `${uid}|${contact.id}`;
   const p = pending.get(key);
@@ -110,13 +112,13 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   // Answers to things you started (a spot offer, the "who are you?" question) come first.
   if (await handleOfferReply(uid, client, p.contact.id, burst)) return;
   if (await handleOnboardingReply(uid, p.contact.id, burst)) return;
-  const first = await classify(burst, activeShows, settings.model);
+  const first = await classify(uid, burst, activeShows, settings.ai);
   if (first.kind && ["cancel_spot", "status_query", "last_spot_query", "show_info"].includes(first.kind)) {
     console.log(`[intake] ${p.contact.name}: ${first.kind} — ${first.note}`);
     if (settings.selfService.enabled) await draftAction(uid, client, p, first, week);
     return;
   }
-  const intent = existing ? await classify(messages.map((m) => m.body), activeShows, settings.model) : first;
+  const intent = existing ? await classify(uid, messages.map((m) => m.body), activeShows, settings.ai) : first;
   console.log(`[intake] ${p.contact.name}: spot=${intent.isSpotRequest} conf=${intent.confidence} (${intent.model}) — ${intent.note}`);
 
   // Privacy: chats that aren't spot requests are never stored.

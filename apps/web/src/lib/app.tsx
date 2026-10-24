@@ -4,6 +4,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import {
   DEFAULT_SETTINGS,
+  aiFromLegacy,
   rolloverDayFor,
   weekOf,
   type Comic,
@@ -92,7 +93,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       micCheck: { ...DEFAULT_SETTINGS.micCheck, ...s.micCheck },
       hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...s.hostPoll },
       offers: { ...DEFAULT_SETTINGS.offers, ...s.offers },
-      model: { ...DEFAULT_SETTINGS.model, ...s.model },
+      ai: aiFromLegacy(s),
     };
   }, [userDoc.data]);
 

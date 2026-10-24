@@ -15,7 +15,8 @@ import { useCollection } from "../lib/data";
 import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
 import { ConnectCard } from "../components/ConnectCard";
-import { Bubble, Button, Field, Segmented, Select, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
+import { AiModels } from "../components/AiModels";
+import { Bubble, Button, Field, Select, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield } from "../components/icons";
 
 function Section({ title, icon: I, description, children, aside }: { title: string; icon: typeof IconChat; description?: ReactNode; children: ReactNode; aside?: ReactNode }) {
@@ -105,8 +106,6 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled }: { valu
 export function SettingsPage() {
   const { settings, saveSettings } = useApp();
   const [withMinutes, setWithMinutes] = useState(true);
-  const [modelName, setModelName] = useState(settings.model.name);
-  useEffect(() => setModelName(settings.model.name), [settings.model.name]);
 
   useEffect(() => {
     if (location.hash === "#whatsapp") document.getElementById("whatsapp")?.scrollIntoView({ behavior: "smooth" });
@@ -185,32 +184,8 @@ export function SettingsPage() {
 
         <AfterShowSection />
 
-        <Section title="Model" icon={IconCpu} description="Which Gemma reads your DMs. Local is private and free; the Gemini API is a backup for when your laptop is slow or off.">
-          <div className="flex flex-col gap-6">
-            <Segmented
-              value={settings.model.provider}
-              onChange={(p) => saveSettings({ model: { ...settings.model, provider: p } })}
-              options={[
-                { value: "ollama", label: "Local · Ollama", icon: IconShield },
-                { value: "gemini", label: "Gemini API" },
-              ]}
-            />
-            <div className="grid gap-6 sm:grid-cols-2">
-              <Field label="Ollama model" hint="gemma3:4b fits an 8 GB laptop. Try gemma3:1b on older machines.">
-                <TextInput value={modelName} onChange={(e) => setModelName(e.target.value)} onBlur={() => modelName !== settings.model.name && saveSettings({ model: { ...settings.model, name: modelName } })} className="font-mono" />
-              </Field>
-              <Field label="Wait for a pause of" hint="Messages sent in a burst are read together.">
-                <Stepper value={settings.debounceSeconds} onChange={(v) => saveSettings({ debounceSeconds: v })} min={5} max={300} suffix="sec" />
-              </Field>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <div className="type-title-s">Fall back to the Gemini API</div>
-                <div className="type-body-s text-on-surface-variant">Only used when the local model fails or times out. The worker needs a GEMINI_API_KEY for this.</div>
-              </div>
-              <Switch checked={settings.model.fallback} onChange={(v) => saveSettings({ model: { ...settings.model, fallback: v } })} label="Gemini fallback" />
-            </div>
-          </div>
+        <Section title="AI models" icon={IconCpu} description="Pick which model reads your DMs, and a backup. Local Ollama keeps chats on your server and costs nothing; Gemini is smarter but sends message text to Google.">
+          <AiModels />
         </Section>
 
       </div>

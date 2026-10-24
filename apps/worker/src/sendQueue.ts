@@ -1,6 +1,7 @@
 // Outgoing messages go through one queue per client with human-ish jitter,
 // so a lineup blast of 20 confirmations doesn't look like a bot to WhatsApp.
 import type WAWebJS from "whatsapp-web.js";
+import { counters } from "./stats.ts";
 
 const queues = new WeakMap<WAWebJS.Client, Promise<unknown>>();
 const MIN_MS = Number(process.env.SEND_JITTER_MIN_MS ?? 3000);
@@ -42,7 +43,9 @@ export function sendQueued(client: WAWebJS.Client, to: string, body: string) {
     let last: unknown;
     for (const id of candidates) {
       try {
-        return await client.sendMessage(id, body);
+        const m = await client.sendMessage(id, body);
+        counters.sent++;
+        return m;
       } catch (e) {
         last = e;
       }

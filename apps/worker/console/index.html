@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Spot Server</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,300..800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --primary: #7a5416; --on-primary: #fff; --primary-c: #ffddb0; --on-primary-c: #2a1800;
+    --tertiary-c: #d7e8cd; --on-tertiary-c: #121f0e;
+    --error: #ba1a1a; --error-c: #ffdad6; --on-error-c: #410002;
+    --surface: #fff8f4; --s-low: #fcf2e9; --s-cont: #f6ece3; --s-high: #f1e7dd; --s-highest: #ebe1d8;
+    --on-surface: #201a14; --on-surface-v: #51453a; --outline-v: #d5c4b5; --ok: #2f9a46;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --primary: #f2bc6e; --on-primary: #432c00; --primary-c: #5f4100; --on-primary-c: #ffddb0;
+    --tertiary-c: #3a4b33; --on-tertiary-c: #d7e8cd;
+    --error: #ffb4ab; --error-c: #93000a; --on-error-c: #ffdad6;
+    --surface: #18120c; --s-low: #211a14; --s-cont: #251e18; --s-high: #302822; --s-highest: #3b332c;
+    --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950;
+    color-scheme: dark;
+  } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--on-surface); font: 400 15px/1.45 "Roboto Flex", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: clamp(24px, 6.5vw, 34px); overflow-wrap: anywhere; line-height: 1.15; font-weight: 550; letter-spacing: -.015em; font-variation-settings: "wdth" 115, "opsz" 48; margin: 0; }
+  h2 { font-size: 17px; font-weight: 600; margin: 0 0 12px; }
+  .muted { color: var(--on-surface-v); }
+  .small { font-size: 13px; }
+  .mono { font-family: "Roboto Mono", monospace; font-size: 13px; }
+  header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 24px; }
+  .logo { width: 48px; height: 48px; flex: none; }
+  .grow { flex: 1; min-width: 0; }
+  .grid { display: grid; gap: 16px; }
+  @media (min-width: 760px) { .g2 { grid-template-columns: 1fr 1fr; } .g4 { grid-template-columns: repeat(4, 1fr); } }
+  .g4 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--s-low); border-radius: 16px; padding: 20px; }
+  .card.tight { padding: 0; overflow: hidden; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12px; font-weight: 600; letter-spacing: .03em; }
+  .chip.ok { background: var(--tertiary-c); color: var(--on-tertiary-c); }
+  .chip.bad { background: var(--error-c); color: var(--on-error-c); }
+  .chip.neutral { border: 1px solid var(--outline-v); color: var(--on-surface-v); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--error); }
+  .row { display: flex; align-items: center; gap: 12px; padding: 14px 20px; }
+  .row + .row { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
+  .meter { height: 8px; border-radius: 99px; background: var(--s-highest); overflow: hidden; margin-top: 6px; }
+  .meter > i { display: block; height: 100%; background: var(--primary); border-radius: inherit; transition: width .5s cubic-bezier(.23,1,.32,1); }
+  .meter > i.warn { background: var(--error); }
+  .stat { font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+  .stat b { font-weight: 600; font-size: 14px; }
+  button, .btn { appearance: none; border: 0; cursor: pointer; font: 600 14px "Roboto Flex", sans-serif; letter-spacing: .01em; height: 40px; padding: 0 18px; border-radius: 99px; background: var(--primary); color: var(--on-primary); transition: transform .16s cubic-bezier(.23,1,.32,1), opacity .15s; display: inline-flex; align-items: center; gap: 8px; }
+  button:active:not(:disabled) { transform: scale(.97); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.tonal { background: var(--primary-c); color: var(--on-primary-c); }
+  button.text, .btn.text { background: transparent; color: var(--primary); padding: 0 12px; }
+  button.sm { height: 32px; padding: 0 12px; font-size: 12px; }
+  input[type=text], input[type=password], textarea { width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid var(--outline-v); border-radius: 8px; padding: 10px 14px; outline: none; }
+  input:focus, textarea:focus { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--on-surface-v); margin: 14px 0 6px; }
+  .step { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; }
+  .step + .step { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
+  .num { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; flex: none; background: var(--s-highest); }
+  .num.done { background: var(--primary); color: var(--on-primary); }
+  .drop { border: 1.5px dashed var(--outline-v); border-radius: 12px; padding: 18px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, transparent); }
+  pre.logs { margin: 0; max-height: 420px; overflow: auto; padding: 16px 20px; background: var(--s-cont); font: 12px/1.55 "Roboto Mono", monospace; white-space: pre-wrap; word-break: break-word; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--on-surface); color: var(--surface); padding: 12px 18px; border-radius: 8px; font-size: 14px; transition: all .25s cubic-bezier(.23,1,.32,1); pointer-events: none; max-width: calc(100vw - 32px); }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .models { display: flex; flex-wrap: wrap; gap: 6px; }
+  .locked { text-align: center; padding: 80px 16px; }
+  a { color: var(--primary); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main id="app"><p class="muted">Loading…</p></main>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+const fmt = (b) => b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB";
+const up = (s) => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3500); }
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { status: r.status });
+  return j;
+}
+const meter = (label, used, total, detail) => {
+  const p = total ? Math.min(1, used / total) : 0;
+  return `<div><div class="stat"><span>${label}</span><span class="muted">${detail}</span></div><div class="meter"><i class="${p > .9 ? "warn" : ""}" style="width:${(p * 100).toFixed(1)}%"></i></div></div>`;
+};
+const logo = `<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="14" fill="var(--primary)"/><path d="M19 0h10l9 42H10z" fill="var(--on-primary)" opacity=".13"/><ellipse cx="24" cy="40.5" rx="12" ry="2.6" fill="var(--on-primary)" opacity=".25"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="var(--on-primary)"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="var(--primary)"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="var(--primary)"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="var(--on-primary)" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="var(--on-primary)"/></svg>`;
+
+let state = null, editing = false;
+
+function render() {
+  const s = state, c = s.config, k = c.key;
+  const allUp = s.services.worker && s.services.ollama;
+  const steps = [
+    { done: !!(k && k.projectId), title: "Firebase key", body: k && k.projectId ? `Project <b>${esc(k.projectId)}</b> · <span class="mono">${esc(k.clientEmail)}</span>` : "Firebase console → Project settings → Service accounts → <b>Generate new private key</b>. Drop the .json here." },
+    { done: c.admins.length > 0, title: "Admins", body: c.admins.length ? c.admins.map(esc).join(", ") : "Emails that can see this server's page in the Spot Solutions app." },
+    { done: !!c.geminiServerKey, optional: true, title: "Server Gemini key (optional)", body: c.geminiServerKey ? `Set · <span class="mono">${esc(c.geminiServerKey)}</span>. Used for curators who haven't added their own.` : "Curators add their own key in the app (Settings → AI models). Set one here only to share a key with everyone." },
+  ];
+  $("#app").innerHTML = `
+  <header>${logo}
+    <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
+    <span class="chip ${allUp ? "ok" : "bad"}">${allUp ? "All services running" : "Needs attention"}</span>
+  </header>
+
+  <div class="grid g2">
+    <section class="card tight">
+      <h2 style="padding:20px 20px 4px">Services</h2>
+      <div class="row"><span class="dot ${s.services.worker ? "ok" : "bad"}"></span><div class="grow"><b>Spot Solutions worker</b><div class="muted small">${s.services.worker ? "Running" : k ? "Stopped. Check the logs below." : "Waits for the Firebase key"}</div></div><button class="tonal sm" data-restart="worker">Restart</button></div>
+      <div class="row"><span class="dot ${s.services.ollama ? "ok" : "bad"}"></span><div class="grow"><b>Ollama</b><div class="muted small">${s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"} installed` : "Not responding"}</div></div><button class="tonal sm" data-restart="ollama">Restart</button></div>
+      ${s.ollama.models.length ? `<div class="row"><div class="models">${s.ollama.models.map((m) => `<span class="chip neutral mono">${esc(m.name)} · ${fmt(m.size)}</span>`).join("")}</div></div>` : ""}
+    </section>
+    <section class="card grid" style="gap:14px">
+      <h2 style="margin:0">Machine</h2>
+      ${meter("CPU", s.cpu.usage, 1, `${Math.round(s.cpu.usage * 100)}% · ${s.cpu.cores} cores · load ${s.cpu.load[0].toFixed(2)}`)}
+      ${meter("Memory", s.memory.total - s.memory.free, s.memory.total, `${fmt(s.memory.total - s.memory.free)} of ${fmt(s.memory.total)}`)}
+      ${s.disk ? meter("Disk", s.disk.total - s.disk.free, s.disk.total, `${fmt(s.disk.free)} free of ${fmt(s.disk.total)}`) : ""}
+      <div class="muted small">${esc(s.cpu.model)}</div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <h2>Setup</h2>
+    ${steps.map((st, i) => `<div class="step"><span class="num ${st.done ? "done" : ""}">${st.done ? "✓" : i + 1}</span><div class="grow"><b>${st.title}</b><div class="muted small" style="margin-top:2px">${st.body}</div></div></div>`).join("")}
+    <div class="drop" id="drop" style="margin-top:8px"><b>${k ? "Replace Firebase key" : "Drop your service-account .json here"}</b><div class="muted small">or click to choose the file</div><input type="file" id="file" accept=".json,application/json" hidden></div>
+    <form id="cfg">
+      <label for="admins">Admin emails (comma separated)</label>
+      <input type="text" id="admins" value="${esc(c.admins.join(", "))}" placeholder="you@gmail.com">
+      <label for="gemini">Server Gemini key ${c.geminiServerKey ? `(current ${esc(c.geminiServerKey)}; leave blank to keep, type <span class="mono">-</span> to remove)` : "(optional)"}</label>
+      <input type="password" id="gemini" autocomplete="off" placeholder="AIza…">
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button type="submit">Save &amp; restart worker</button><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app" target="_blank" rel="noreferrer">Open Spot Solutions ↗</a></div>
+    </form>
+  </section>
+
+  <section class="card tight" style="margin-top:16px">
+    <div class="row" style="padding-bottom:8px"><h2 class="grow" style="margin:0">Worker logs</h2><span class="muted small">refreshes every 5 s</span></div>
+    <pre class="logs" id="logs">${esc(s.logs)}</pre>
+  </section>`;
+
+  const logs = $("#logs"); logs.scrollTop = logs.scrollHeight;
+  document.querySelectorAll("[data-restart]").forEach((b) => b.onclick = async () => {
+    b.disabled = true; b.textContent = "Restarting…";
+    try { const r = await api("/api/restart", { service: b.dataset.restart }); toast(r.active ? "Restarted" : "Restart sent, not active yet: check the logs"); } catch (e) { toast(e.message); }
+    refresh();
+  });
+  const drop = $("#drop"), file = $("#file");
+  drop.onclick = () => file.click();
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files[0]); };
+  file.onchange = () => upload(file.files[0]);
+  ["admins", "gemini"].forEach((id) => { $("#" + id).onfocus = () => editing = true; $("#" + id).onblur = () => editing = false; });
+  $("#cfg").onsubmit = async (e) => {
+    e.preventDefault();
+    const g = $("#gemini").value.trim();
+    const body = { admins: $("#admins").value.split(",").map((x) => x.trim()).filter(Boolean) };
+    if (g) body.geminiKey = g === "-" ? "" : g;
+    try { await api("/api/config", body); toast("Saved. Worker restarting."); editing = false; } catch (err) { toast(err.message); }
+    refresh();
+  };
+}
+
+async function upload(f) {
+  if (!f) return;
+  try {
+    const key = JSON.parse(await f.text());
+    const r = await api("/api/key", key);
+    toast(`Key saved for ${r.projectId}. Worker starting…`);
+  } catch (e) { toast(e.message.includes("JSON") ? "That file isn't valid JSON." : e.message); }
+  refresh();
+}
+
+async function refresh() {
+  try {
+    state = await api("/api/status");
+    if (!editing) render();
+    else $("#logs").textContent = state.logs;
+  } catch (e) {
+    if (e.status === 401) $("#app").innerHTML = `<div class="locked">${logo}<h1 style="margin-top:16px">Locked</h1><p class="muted">Open this page with the link the installer printed (it ends in <span class="mono">?token=…</span>).<br>Forgot it? On the server run <span class="mono">sudo spot-console-url</span>.</p></div>`;
+    else toast(e.message);
+  }
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

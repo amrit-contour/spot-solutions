@@ -1,13 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
-import { DAY_NAMES, type Intent, type IntentKind, type Settings, type Show, type Weekday } from "@spot/shared";
+import { DAY_NAMES, type AiSettings, type Intent, type IntentKind, type Show, type Weekday } from "@spot/shared";
+import { generateJson } from "./llm.ts";
 
 const KINDS: IntentKind[] = ["spot_request", "cancel_spot", "status_query", "last_spot_query", "show_info", "other"];
-
-const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
-const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 90_000);
-const GEMINI_MODEL = process.env.GEMINI_GEMMA_MODEL ?? "gemma-3-27b-it";
-
-const gemini = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 const SCHEMA = {
   type: "object",
@@ -93,70 +87,12 @@ function parseIntent(raw: string, model: string, messages: string[]): Intent {
   };
 }
 
-// Models whose Ollama build rejects JSON-schema output; we parse free text for these.
-const noSchema = new Set<string>();
-
-async function viaOllama(prompt: string, model: string, messages: string[]): Promise<Intent> {
-  const call = (structured: boolean) =>
-    fetch(`${OLLAMA_URL}/api/chat`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
-      body: JSON.stringify({
-        model,
-        stream: false,
-        think: false,
-        ...(structured ? { format: SCHEMA } : {}),
-        keep_alive: "24h",
-        options: { temperature: 0 },
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-  let res = await call(!noSchema.has(model));
-  if (res.status === 501 && !noSchema.has(model)) {
-    noSchema.add(model);
-    res = await call(false);
-  }
-  if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as { message: { content: string } };
-  return parseIntent(data.message.content, `ollama/${model}`, messages);
-}
-
-async function viaGemini(prompt: string, messages: string[]): Promise<Intent> {
-  if (!gemini) throw new Error("GEMINI_API_KEY not set");
-  const res = await gemini.models.generateContent({ model: GEMINI_MODEL, contents: prompt, config: { temperature: 0 } });
-  return parseIntent(res.text ?? "", `gemini/${GEMINI_MODEL}`, messages);
-}
-
-// Ollama runs one generation at a time; queue here so a catch-up burst doesn't pile into timeouts.
-let gate: Promise<unknown> = Promise.resolve();
-export function classify(messages: string[], shows: Show[], model: Settings["model"]): Promise<Intent> {
-  const run = gate.catch(() => undefined).then(() => classifyNow(messages, shows, model));
-  gate = run;
-  return run;
-}
-
-async function classifyNow(messages: string[], shows: Show[], model: Settings["model"]): Promise<Intent> {
+/** Classify one comic's burst of messages. `uid` picks whose Gemini key to use. */
+export async function classify(uid: string | null, messages: string[], shows: Show[], ai: AiSettings): Promise<Intent> {
   // Long automated messages (bills, OTPs, listings) confuse small models; a spot ask is never an essay.
   const trimmed = messages.map((m) => (m.length > 400 ? `${m.slice(0, 400)}…` : m));
-  const prompt = buildPrompt(trimmed, shows);
-  if (model.provider === "gemini") return viaGemini(prompt, trimmed);
-  try {
-    return await viaOllama(prompt, model.name, trimmed);
-  } catch (err) {
-    if (!model.fallback || !gemini) throw err;
-    console.warn("[gemma] local model failed, falling back to Gemini API:", (err as Error).message);
-    return viaGemini(prompt, trimmed);
-  }
-}
-
-export async function ollamaHealthy(): Promise<boolean> {
-  try {
-    const r = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) });
-    return r.ok;
-  } catch {
-    return false;
-  }
+  const { text, model } = await generateJson(uid, ai, buildPrompt(trimmed, shows), SCHEMA);
+  return parseIntent(text, model, trimmed);
 }
 
 const PROFILE_SCHEMA = {
@@ -171,7 +107,7 @@ const PROFILE_SCHEMA = {
 };
 
 /** Pull name / home scene / years doing comedy / travelling out of a reply to the onboarding question. */
-export async function extractProfile(messages: string[], model: Settings["model"]) {
+export async function extractProfile(uid: string | null, messages: string[], ai: AiSettings) {
   const text = messages.map((m) => (m.length > 500 ? m.slice(0, 500) : m)).join("\n");
   const prompt = `A stand-up comic replied to "What's your name, which comedy scene are you from, how long have you been doing comedy, and are you travelling?".
 Their reply:
@@ -179,22 +115,7 @@ ${text}
 
 Return ONLY JSON: {"name": "full name or empty", "scene": "city/scene or empty", "years": number of years doing comedy (months as a fraction, 0 if unknown), "travelling": true if visiting from another city}.
 Use only what they actually said. Never invent a name.`;
-  const run = async () => {
-    if (model.provider === "gemini" && gemini) {
-      const r = await gemini.models.generateContent({ model: GEMINI_MODEL, contents: prompt, config: { temperature: 0 } });
-      return r.text ?? "";
-    }
-    const res = await fetch(`${OLLAMA_URL}/api/chat`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
-      body: JSON.stringify({ model: model.name, stream: false, think: false, ...(noSchema.has(model.name) ? {} : { format: PROFILE_SCHEMA }), options: { temperature: 0 }, messages: [{ role: "user", content: prompt }] }),
-    });
-    if (!res.ok) throw new Error(`ollama ${res.status}`);
-    return ((await res.json()) as { message: { content: string } }).message.content;
-  };
-  const out = (gate = gate.catch(() => undefined).then(run)) as Promise<string>;
-  const raw = await out;
+  const { text: raw } = await generateJson(uid, ai, prompt, PROFILE_SCHEMA);
   const o = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as Record<string, unknown>;
   const name = String(o.name ?? "").trim();
   const scene = String(o.scene ?? "").trim();

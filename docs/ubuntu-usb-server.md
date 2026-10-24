@@ -58,32 +58,35 @@ Optional, but handy: install [Tailscale](https://tailscale.com/download/linux) (
 
 ## 4. Install Spot Solutions
 
-Copy your Firebase service-account key over (from the machine that has it):
+On the server (in its own terminal, or over SSH):
 
 ```bash
-scp apps/worker/service-account.json you@spot-server.local:~/
+curl -fsSL https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install.sh | sudo ADMIN_EMAILS=you@gmail.com bash
 ```
 
-Then on the server:
+It asks nothing. It installs Node, Chrome's libraries, Ollama and Gemma (about a 3.3 GB download), and three services that start on boot and restart on crash:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install.sh | sudo bash
-```
+| Service | What it does |
+|---|---|
+| `ollama` | Local AI |
+| `spot-worker` | WhatsApp + curation. Idle until a Firebase key is added. |
+| `spot-console` | Local web console on port **7420** |
 
-It asks for your Firebase project ID and the key's path (`/home/you/service-account.json`). Then it installs Node, Ollama and Gemma, and sets up two services that start on boot and restart if they crash: `ollama` and `spot-worker`. Delete the copied key from your home folder afterwards; the installer keeps its own locked-down copy.
+At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it from your phone or Mac on the same Wi-Fi.
 
-```bash
-journalctl -u spot-worker -f     # live logs
-systemctl status spot-worker     # is it up?
-```
+## 5. Finish setup in the console
 
-Prefer containers? `docker compose -f deploy/docker-compose.yml up -d` from a clone of the repo does the same thing.
+The console shows services, CPU/RAM/disk, installed models and live worker logs, with Restart buttons.
 
-## 5. Link WhatsApp
+1. **Firebase key:** Firebase console → Spot Solutions → gear icon → Project settings → Service accounts → **Generate new private key**. Drag the downloaded `.json` onto the console. The worker starts by itself.
+2. **Admins:** your email (already set if you passed `ADMIN_EMAILS`). It unlocks **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere.
+3. **Server Gemini key:** optional. Leave it blank; each curator adds their own in the app under **Settings → AI models**, where they can test it, browse models and pick a primary and a fallback.
 
-On any computer, open **spot-solutions.web.app → Settings → Show QR code** and scan it with your phone (WhatsApp → Linked devices). From then on the server keeps the session alive. You run everything else from your phone, with the app installed to your home screen.
+Lost the link? `sudo spot-console-url`.
 
-Linking only reads messages that arrive *after* you link. Auto-acknowledge stays off until you turn it on in Settings.
+## 6. Link WhatsApp
+
+Open **spot-solutions.web.app → Settings → Show QR code** on a computer and scan it with your phone (WhatsApp → Linked devices). Only messages that arrive after linking are read, and auto-acknowledge stays off until you turn it on.
 
 ## Several curators on one server
 

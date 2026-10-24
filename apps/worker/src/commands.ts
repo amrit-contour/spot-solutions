@@ -27,6 +27,7 @@ import { col, db, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
+import { ollamaPull, ollamaState, testRoute } from "./llm.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>) => Promise<unknown>;
 
@@ -250,6 +251,23 @@ const handlers: Record<Command["type"], Handler> = {
     const msg = await enqueueTask(client, () => client.sendMessage(groupId, poll));
     const doc: HostPoll = { id: week, weekOf: week, groupId, messageId: msg.id._serialized, options, votes: {}, voterNames: {}, sentAt: Date.now() };
     await col(uid, "polls").doc(week).set(doc);
+  },
+
+  /** Models available on this server's Ollama. */
+  async list_models() {
+    return ollamaState();
+  },
+
+  /** Try a provider/model end to end with the curator's key. */
+  async test_ai(uid, { provider, model }) {
+    return testRoute(uid, { provider: provider as "ollama" | "gemini", model: String(model) });
+  },
+
+  /** Download an Ollama model onto the server. */
+  async pull_model(_uid, { model }) {
+    if (!/^[\w.:\/-]{1,80}$/.test(String(model))) throw new Error("Invalid model name");
+    await ollamaPull(String(model));
+    return ollamaState();
   },
 
   async send_message(uid, { to, body }) {

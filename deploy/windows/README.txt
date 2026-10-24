@@ -16,6 +16,7 @@ INSTALL
   2. Double-click "Install Spot Solutions.cmd" and click Yes on the admin prompt.
   3. It installs Node.js, Git, Ollama and the Gemma model (about 3.5 GB download).
   4. A file picker opens: choose the .json key. (The project ID is read from it.)
+     Then type your email so this server shows up under Account -> Server in the app.
   5. When it says Done, open https://spot-solutions.web.app on any computer
      -> Settings -> Show QR code, and scan it from WhatsApp on your phone.
 

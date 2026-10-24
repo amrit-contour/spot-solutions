@@ -3,6 +3,12 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
 
+    // Worker machines' health. Visible to the admins that server lists in SPOT_ADMIN_EMAILS.
+    match /servers/{id} {
+      allow read: if request.auth != null && request.auth.token.email != null
+        && request.auth.token.email.lower() in resource.data.admins;
+    }
+
     match /users/{uid} {
       // Curators can't flip worker-owned fields on their own doc.
       allow read, create: if isOwner(uid);
@@ -13,6 +19,8 @@ service cloud.firestore {
       match /session/{doc} { allow read: if isOwner(uid); }
       match /groups/{doc}  { allow read: if isOwner(uid); }
       match /offers/{doc}  { allow read: if isOwner(uid); }
+      // API keys: the curator can set or clear them but never read them back; only the worker (Admin SDK) reads.
+      match /secrets/{doc} { allow create, update, delete: if isOwner(uid); }
       match /polls/{doc}   { allow read: if isOwner(uid); }
 
       // Commands: curator can enqueue pending commands and read results, nothing else.
@@ -20,7 +28,7 @@ service cloud.firestore {
         allow read: if isOwner(uid);
         allow create: if isOwner(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'plan_group_sync', 'sync_group', 'send_message'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message'];
       }
 
       match /{coll}/{id} {
