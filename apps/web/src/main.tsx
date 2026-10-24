@@ -5,6 +5,7 @@ import { MotionConfig } from "motion/react";
 import "./index.css";
 import { installTheme, savedMode, setMode } from "./lib/theme";
 import App from "./App";
+import "./lib/install";
 
 installTheme();
 setMode(savedMode());

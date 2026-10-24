@@ -81,7 +81,7 @@ const handlers: Record<Command["type"], Handler> = {
         minutes: show.includeSlotTime ? (slot.minutes ?? show.defaultMinutes) : null,
       });
       try {
-        await sendQueued(client, comic.id, body);
+        await sendQueued(client, comic.chatId ?? comic.id, body);
         results[comic.id] = "sent";
       } catch (e) {
         results[comic.id] = `failed: ${(e as Error).message}`;
@@ -121,7 +121,7 @@ const handlers: Record<Command["type"], Handler> = {
     for (const r of targets) {
       const name = (comics.get(r.comicId)?.name ?? r.comicName).split(" ")[0];
       try {
-        await sendQueued(client, r.comicId, renderTemplate(settings.reject.template, { name }));
+        await sendQueued(client, comics.get(r.comicId)?.chatId ?? r.comicId, renderTemplate(settings.reject.template, { name }));
         await col(uid, "requests").doc(r.id).update({ status: "rejected", rejectedAt: Date.now(), updatedAt: Date.now() });
         sent++;
       } catch (e) {

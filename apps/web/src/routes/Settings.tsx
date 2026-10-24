@@ -9,10 +9,11 @@ import {
   renderTemplate,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
+import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
 import { ConnectCard } from "../components/ConnectCard";
 import { Bubble, Button, Field, Segmented, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
-import { IconChat, IconChatCheck, IconChatCross, IconCpu, IconShield } from "../components/icons";
+import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconPhone, IconShield } from "../components/icons";
 
 function Section({ title, icon: I, description, children, aside }: { title: string; icon: typeof IconChat; description?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
@@ -113,11 +114,16 @@ export function SettingsPage() {
       <PageHeader title="Settings" subtitle="How Spot Solutions talks on your behalf" />
       <div className="flex flex-col gap-4 px-4 pb-12 sm:px-8">
         <ConnectCard />
+        <InstallCard />
 
         <Section
           title="Auto-acknowledge"
           icon={IconChat}
-          description="Reply as soon as Gemma spots a request, so nobody's left on read. Sent once per comic per week."
+          description={
+            <>
+              Off by default. When on, it replies only when Gemma quotes a clear ask at 85%+ confidence, in a message that arrived in the last 10 minutes. It never replies to businesses or to chats from before you linked, and sends at most once per comic per week.
+            </>
+          }
           aside={<Switch checked={settings.ack.enabled} onChange={(v) => saveSettings({ ack: { ...settings.ack, enabled: v } })} label="Auto-acknowledge" />}
         >
           <TemplateEditor value={settings.ack.template} fallback={DEFAULT_ACK_TEMPLATE} disabled={!settings.ack.enabled} onSave={(t) => saveSettings({ ack: { ...settings.ack, template: t } })} />
@@ -180,5 +186,29 @@ export function SettingsPage() {
 
       </div>
     </div>
+  );
+}
+
+function InstallCard() {
+  const { installed, canPrompt, ios, install } = useInstall();
+  if (installed) return null;
+  return (
+    <Section title="Install the app" icon={IconPhone} description="Add Spot Solutions to your home screen. It opens full screen like a native app, and you can triage requests on the go.">
+      {canPrompt ? (
+        <Button icon={IconCheck} onClick={() => void install().then((ok) => ok && toast.success("Installed. Find it on your home screen."))}>
+          Install app
+        </Button>
+      ) : ios ? (
+        <ol className="flex flex-col gap-2 type-body-m text-on-surface-variant">
+          <li>1. Open this page in <span className="text-on-surface">Safari</span>.</li>
+          <li>2. Tap the <span className="text-on-surface">Share</span> button.</li>
+          <li>3. Choose <span className="text-on-surface">Add to Home Screen</span>.</li>
+        </ol>
+      ) : (
+        <p className="type-body-m text-on-surface-variant">
+          Open this site in Chrome or Edge, then use the browser menu → <span className="text-on-surface">Install app</span> (or <span className="text-on-surface">Add to Home screen</span> on Android).
+        </p>
+      )}
+    </Section>
   );
 }

@@ -137,27 +137,15 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
       transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
       className="overflow-hidden rounded-lg bg-surface-low"
     >
-      <div className="flex gap-4 p-4 sm:p-5">
+      <div className="flex gap-3 px-4 pt-4 sm:gap-4 sm:px-5 sm:pt-5">
         <Avatar name={r.comicName} size={44} tone={performedLastWeek ? "secondary" : "primary"} />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h3 className="type-title-m">{r.comicName}</h3>
-            {tier && tier !== "open" && (
-              <Chip tone="tertiary" icon={IconStar}>
-                {tier}
-              </Chip>
-            )}
-            {performedLastWeek && (
-              <Chip icon={IconHistory} className="border-dashed">
-                Performed last week
-              </Chip>
-            )}
-            <span className="ml-auto type-label-m text-on-surface-variant tabular">{timeAgo(r.updatedAt, now)}</span>
+          <div className="flex items-baseline gap-2">
+            <h3 className="min-w-0 flex-1 truncate type-title-m">{r.comicName}</h3>
+            <span className="flex-none type-label-m text-on-surface-variant tabular">{timeAgo(r.updatedAt, now)}</span>
           </div>
-
-          <p className="mt-1.5 type-body-l text-on-surface">{r.intent.note || `“${last?.body}”`}</p>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <p className="mt-0.5 type-body-m text-on-surface-variant sm:type-body-l">{r.intent.note || `“${last?.body}”`}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
             {r.intent.preferredDays.length ? (
               r.intent.preferredDays.map((d) => (
                 <Chip key={d} tone="primary">
@@ -167,12 +155,21 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
             ) : (
               <Chip>Any day</Chip>
             )}
+            {tier && tier !== "open" && (
+              <Chip tone="tertiary" icon={IconStar}>
+                {tier}
+              </Chip>
+            )}
+            {performedLastWeek && (
+              <Chip icon={IconHistory} className="border-dashed">
+                Last week
+              </Chip>
+            )}
             {r.ackedAt && (
-              <span className="inline-flex items-center gap-1 type-label-m text-on-surface-variant">
-                <IconChatCheck className="icon size-4" /> Acknowledged
+              <span className="inline-flex items-center gap-1 px-1 type-label-m text-on-surface-variant">
+                <IconChatCheck className="icon size-4" /> Acked
               </span>
             )}
-            <Confidence value={r.intent.confidence} />
           </div>
         </div>
       </div>
@@ -180,23 +177,26 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: [0.2, 0, 0, 1] }}>
-            <div className="flex flex-col gap-2 border-t border-outline-variant/60 bg-surface-lowest px-5 py-4">
+            <div className="mt-4 flex flex-col gap-2 border-t border-outline-variant/40 bg-surface-lowest px-4 py-4 sm:px-5">
               {r.messages.map((m) => (
                 <Bubble key={m.id} meta={new Date(m.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}>
                   {m.body}
                 </Bubble>
               ))}
-              <span className="mt-1 type-label-s text-on-surface-variant">Read by {r.intent.model ?? "Gemma"}</span>
+              <span className="mt-1 type-label-s text-on-surface-variant">
+                Read by {r.intent.model ?? "Gemma"} · {Math.round(r.intent.confidence * 100)}% sure
+              </span>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="flex flex-wrap items-center gap-2 px-4 pb-4 sm:px-5">
-        <button onClick={() => setOpen((o) => !o)} className="state-layer inline-flex h-8 items-center gap-1 rounded-full px-3 type-label-l text-on-surface-variant">
+      <div className="mt-3 flex items-center gap-2 border-t border-outline-variant/40 py-2 pr-3 pl-2 sm:pr-4 sm:pl-3">
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="state-layer inline-flex h-10 items-center gap-1.5 rounded-full px-3 type-label-l text-on-surface-variant">
           {r.messages.length} message{r.messages.length > 1 ? "s" : ""}
           <IconArrowDown className={cx("icon size-4 transition-transform duration-200", open && "rotate-180")} />
         </button>
+        <Confidence value={r.intent.confidence} />
         <div className="flex-1" />
         {r.status === "rejected" ? (
           <Chip icon={IconChatCheck}>Regret sent</Chip>
@@ -206,7 +206,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
           </Button>
         ) : (
           <>
-            {!placedIn && <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} className="size-8" />}
+            {!placedIn && <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} />}
             {placedShow ? (
               <Chip tone="success" icon={r.status === "confirmed" ? IconCheck : IconMic}>
                 {r.status === "confirmed" ? "Confirmed" : "In"} · {placedShow.name}
@@ -215,7 +215,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
               <Menu
                 align="right"
                 trigger={(toggle) => (
-                  <Button size="sm" icon={IconMic} onClick={toggle} disabled={!shows.length}>
+                  <Button icon={IconMic} onClick={toggle} disabled={!shows.length}>
                     Assign
                   </Button>
                 )}
@@ -256,7 +256,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
 function Confidence({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   return (
-    <span className="ml-auto inline-flex items-center gap-2 type-label-s text-on-surface-variant" title={`Gemma is ${pct}% sure this is a spot request`}>
+    <span className="hidden items-center gap-2 type-label-s text-on-surface-variant min-[420px]:inline-flex" title={`Gemma is ${pct}% sure this is a spot request`}>
       <span className="relative h-1 w-12 overflow-hidden rounded-full bg-surface-highest">
         <motion.span className="absolute inset-y-0 left-0 rounded-full bg-primary" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }} />
       </span>

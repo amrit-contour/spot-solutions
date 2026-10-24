@@ -5,7 +5,7 @@ import path from "node:path";
 import WAWebJS from "whatsapp-web.js";
 import type { SessionState } from "@spot/shared";
 import { FieldValue, sessionRef, userRef } from "./firebase.ts";
-import { catchUp, enqueue } from "./intake.ts";
+import { enqueue, markLive } from "./intake.ts";
 import { unwatchUser, watchUser } from "./userData.ts";
 
 const { Client, LocalAuth } = WAWebJS;
@@ -72,7 +72,7 @@ class SessionManager {
       await setState(uid, { status: "ready", qr: null, phone: me?.wid?.user ?? null, pushName: me?.pushname ?? null, error: null });
       await userRef(uid).set({ waEnabled: true, selfId: me?.wid?._serialized ?? null }, { merge: true });
       console.log(`[session] ${uid} ready as +${me?.wid?.user}`);
-      catchUp(uid, client).catch((e) => console.error("[session] catch-up failed", e));
+      markLive(uid); // backlog is ignored: only messages from now on are read
     });
     client.on("message", (msg) => {
       enqueue(uid, client, msg).catch((e) => console.error("[intake] enqueue failed", e));

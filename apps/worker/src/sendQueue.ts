@@ -20,11 +20,33 @@ export function enqueueTask<T>(client: WAWebJS.Client, task: () => Promise<T>): 
   return next;
 }
 
+/** Current WhatsApp addresses most people by @lid; phone-based ids throw "No LID for user". */
+export async function deliverableId(client: WAWebJS.Client, to: string) {
+  if (!to.endsWith("@c.us")) return to;
+  try {
+    const [r] = await client.getContactLidAndPhone([to]);
+    return r?.lid ?? to;
+  } catch {
+    return to;
+  }
+}
+
 export function sendQueued(client: WAWebJS.Client, to: string, body: string) {
   return enqueueTask(client, async () => {
-    const chat = await client.getChatById(to);
-    await chat.sendStateTyping();
+    const target = await deliverableId(client, to);
+    const chat = await client.getChatById(target).catch(() => null);
+    await chat?.sendStateTyping().catch(() => undefined);
     await sleep(Math.min(4000, 600 + body.length * 25));
-    return client.sendMessage(to, body);
+    // Try the resolved id, then the raw id, then the raw digits as a lid (older records stored lids as @c.us).
+    const candidates = [...new Set([target, to, to.replace(/@c\.us$/, "@lid")])];
+    let last: unknown;
+    for (const id of candidates) {
+      try {
+        return await client.sendMessage(id, body);
+      } catch (e) {
+        last = e;
+      }
+    }
+    throw last;
   });
 }

@@ -2,7 +2,8 @@
 // upsert one request per comic per week, and auto-acknowledge once.
 import type WAWebJS from "whatsapp-web.js";
 import {
-  INTENT_THRESHOLD,
+  AUTO_ACK_MAX_AGE_MS,
+  AUTO_ACK_THRESHOLD,
   MAYBE_THRESHOLD,
   renderTemplate,
   weekOf,
@@ -20,7 +21,7 @@ const MAX_CONTEXT = 12;
 interface Pending {
   timer: NodeJS.Timeout;
   messages: InboundMessage[];
-  contact: { id: string; name: string; phone: string };
+  contact: { id: string; chatId: string; name: string; nameSource: NonNullable<Comic["nameSource"]>; phone: string; isBusiness: boolean };
 }
 
 const pending = new Map<string, Pending>();
@@ -32,20 +33,39 @@ export function isDirectHumanMessage(msg: WAWebJS.Message) {
   return true;
 }
 
-/** Resolve the stable phone-based id (`91xxxxxxxxxx@c.us`) for a sender, even when WhatsApp hands us an @lid. */
-export async function resolveContact(msg: WAWebJS.Message) {
-  const contact = await msg.getContact();
-  const phone = contact.number || msg.from.split("@")[0];
-  return {
-    id: `${phone}@c.us`,
-    name: contact.pushname || contact.name || contact.shortName || `+${phone}`,
-    phone,
-  };
+/** Stable identity for a sender. WhatsApp often hands us an @lid; map it back to the phone number when it'll tell us. */
+export async function resolveContact(client: WAWebJS.Client, msg: WAWebJS.Message) {
+  const chatId = msg.from;
+  const contact = await msg.getContact().catch(() => null);
+  let pn: string | undefined = chatId.endsWith("@c.us") ? chatId : undefined;
+  if (!pn) {
+    try {
+      pn = (await client.getContactLidAndPhone([chatId]))[0]?.pn;
+    } catch {
+      /* unknown mapping — fall back to the lid */
+    }
+  }
+  const phone = pn?.split("@")[0] ?? "";
+  const id = pn ?? chatId;
+  // Prefer the name saved in the curator's phone, then the person's WhatsApp profile name.
+  const saved = contact?.isMyContact ? contact.name?.trim() : undefined;
+  const profile = contact?.pushname?.trim();
+  const name = saved || profile || (phone ? `+${phone}` : "Unknown");
+  const nameSource = saved ? "contact" : profile ? "whatsapp" : "number";
+  // Banks, telcos, delivery apps: business or verified accounts never get an automatic reply.
+  const isBusiness = Boolean(contact?.isBusiness || contact?.isEnterprise);
+  return { id, chatId, name, nameSource, phone, isBusiness } as const;
 }
+
+/** Messages from before this moment (per curator) are backlog: never read, never answered. */
+const liveSince = new Map<string, number>();
+export const markLive = (uid: string) => liveSince.set(uid, Date.now());
 
 export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.Message) {
   if (!isDirectHumanMessage(msg)) return;
-  const contact = await resolveContact(msg);
+  const since = liveSince.get(uid);
+  if (!since || msg.timestamp * 1000 < since - 5_000) return;
+  const contact = await resolveContact(client, msg);
   const key = `${uid}|${contact.id}`;
   const p = pending.get(key);
   const item: InboundMessage = { id: msg.id._serialized, body: msg.body.slice(0, 1000), at: msg.timestamp * 1000 };
@@ -83,7 +103,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   const request: SpotRequest = {
     id: reqRef.id,
     comicId: p.contact.id,
-    comicName: existing?.comicName ?? p.contact.name,
+    comicName: p.contact.nameSource === "number" && existing?.comicName ? existing.comicName : p.contact.name,
     weekOf: week,
     messages,
     // A follow-up like "thanks" shouldn't downgrade an earlier clear request.
@@ -97,28 +117,44 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   const comicRef = col(uid, "comics").doc(p.contact.id);
   await db.runTransaction(async (tx) => {
     const comic = await tx.get(comicRef);
-    if (!comic.exists) {
-      const c: Comic = { id: p.contact.id, name: p.contact.name, phone: p.contact.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
+    const cur = comic.data() as Comic | undefined;
+    if (!cur) {
+      const c: Comic = { id: p.contact.id, chatId: p.contact.chatId, name: p.contact.name, nameSource: p.contact.nameSource, phone: p.contact.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
       tx.set(comicRef, c);
+    } else {
+      const patch: Partial<Comic> = {};
+      if (cur.chatId !== p.contact.chatId) patch.chatId = p.contact.chatId;
+      // Keep auto names fresh (e.g. you saved them in your phone since), never override a hand-edited one.
+      const rank = { number: 0, whatsapp: 1, contact: 2, manual: 3 } as const;
+      const curRank = rank[cur.nameSource ?? "whatsapp"];
+      if (cur.nameSource !== "manual" && cur.name !== p.contact.name && rank[p.contact.nameSource] >= Math.min(curRank, 2)) {
+        patch.name = p.contact.name;
+        patch.nameSource = p.contact.nameSource;
+      }
+      if (Object.keys(patch).length) tx.update(comicRef, patch);
     }
     tx.set(reqRef, request);
   });
 
-  if (settings.ack.enabled && !request.ackedAt && request.intent.confidence >= INTENT_THRESHOLD && !locked) {
-    const name = (await comicRef.get()).data()?.name ?? p.contact.name;
-    const body = renderTemplate(settings.ack.template, { name: name.split(" ")[0] });
-    await sendQueued(client, p.contact.id, body);
-    await reqRef.update({ ackedAt: Date.now(), status: "acked" });
-  }
+  // Every guard must pass before anything is sent on the curator's behalf.
+  const newest = Math.max(...p.messages.map((m) => m.at));
+  const okToAck =
+    settings.ack.enabled &&
+    !locked &&
+    !request.ackedAt &&
+    intent.isSpotRequest &&
+    intent.confidence >= AUTO_ACK_THRESHOLD &&
+    !p.contact.isBusiness &&
+    Date.now() - newest < AUTO_ACK_MAX_AGE_MS;
+  if (okToAck) await acknowledge(uid, client, request);
 }
 
-/** After downtime, replay unread DMs so nothing asked overnight is missed. */
-export async function catchUp(uid: string, client: WAWebJS.Client) {
-  const chats = await client.getChats();
-  const unread = chats.filter((c) => !c.isGroup && c.unreadCount > 0).slice(0, 100);
-  for (const chat of unread) {
-    const msgs = await chat.fetchMessages({ limit: Math.min(chat.unreadCount, MAX_CONTEXT) });
-    for (const m of msgs) await enqueue(uid, client, m);
-  }
-  if (unread.length) console.log(`[intake] ${uid} catching up on ${unread.length} unread chats`);
+async function acknowledge(uid: string, client: WAWebJS.Client, r: SpotRequest) {
+  const { settings } = watchUser(uid);
+  if (!settings.ack.enabled) return;
+  const comic = (await col(uid, "comics").doc(r.comicId).get()).data() as Comic | undefined;
+  const body = renderTemplate(settings.ack.template, { name: (comic?.name ?? r.comicName).split(" ")[0] });
+  await sendQueued(client, comic?.chatId ?? r.comicId, body);
+  await col(uid, "requests").doc(r.id).update({ ackedAt: Date.now(), status: "acked" });
+  console.log(`[ack] sent to ${comic?.name ?? r.comicName}`);
 }

@@ -59,7 +59,7 @@ export function Comics() {
                       {c.tier === "featured" && <IconCrown className="icon size-4 text-tertiary" />}
                       {c.tier === "regular" && <IconStar className="icon size-4 text-secondary" />}
                     </span>
-                    <span className="block type-body-s text-on-surface-variant tabular">+{c.phone}</span>
+                    <span className="block type-body-s text-on-surface-variant tabular">{c.phone ? `+${c.phone}` : "Number hidden by WhatsApp"}</span>
                   </span>
                   <span className="hidden flex-wrap justify-end gap-1.5 sm:flex">
                     {(c.regularOf ?? []).map((sid) => {
@@ -96,11 +96,13 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
 
   const save = async () => {
     const phone = (d.phone ?? "").replace(/\D/g, "");
-    if (!d.name?.trim() || phone.length < 10) return toast.error("Name and a full phone number with country code, please");
-    const full = phone.length === 10 ? `91${phone}` : phone;
+    if (!d.name?.trim()) return toast.error("Give them a name");
+    if (isNew && phone.length < 10) return toast.error("Add their WhatsApp number with country code");
+    const full = !phone ? "" : phone.length === 10 ? `91${phone}` : phone;
     const id = d.id ?? `${full}@c.us`;
     const regularOf = d.regularOf ?? [];
-    await setDoc(userDoc(uid, "comics", id), { ...d, id, phone: full, tier: d.tier ?? "open", regularOf, lastPerformedWeek: d.lastPerformedWeek ?? null });
+    const nameSource = value?.name !== d.name || isNew ? "manual" : (d.nameSource ?? "manual");
+    await setDoc(userDoc(uid, "comics", id), { ...d, id, nameSource, phone: full, tier: d.tier ?? "open", regularOf, lastPerformedWeek: d.lastPerformedWeek ?? null });
     // Keep each show's regulars list in sync with the comic's "regular of".
     await Promise.all(
       shows.map((s) => {
@@ -140,9 +142,14 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
       }
     >
       <div className="flex flex-col gap-6">
-        <Field label="Name"><TextInput value={d.name ?? ""} onChange={(e) => setD({ ...d, name: e.target.value })} autoFocus={isNew} /></Field>
+        <Field
+          label="Name"
+          hint={d.nameSource === "contact" ? "From your phone contacts" : d.nameSource === "whatsapp" ? "Their WhatsApp name. Save them in your phone, or edit it here." : d.nameSource === "manual" ? "Set by you. WhatsApp won't change it." : undefined}
+        >
+          <TextInput value={d.name ?? ""} onChange={(e) => setD({ ...d, name: e.target.value })} autoFocus={isNew} />
+        </Field>
         <Field label="WhatsApp number" hint={isNew ? "With country code, e.g. 9198xxxxxxxx" : "Linked to their WhatsApp; can't be changed"}>
-          <TextInput value={d.phone ?? ""} disabled={!isNew} inputMode="tel" onChange={(e) => setD({ ...d, phone: e.target.value })} />
+          <TextInput value={isNew ? (d.phone ?? "") : d.phone ? `+${d.phone}` : "Hidden by WhatsApp (privacy)"} disabled={!isNew} inputMode="tel" onChange={(e) => setD({ ...d, phone: e.target.value })} />
         </Field>
         <Field label="Experience">
           <Segmented value={d.tier ?? "open"} onChange={(t) => setD({ ...d, tier: t })} options={TIERS} />

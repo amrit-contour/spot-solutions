@@ -18,6 +18,13 @@ const cases: [string[], boolean, number[]][] = [
   [["yo", "kab free hai", "need to try some new bits before my special, mon chalega"], true, [1]],
   [["paid the ₹200 for last week"], false, []],
   [["guru monday spot sigutta?"], true, [1]],
+  [["Dear User,\nYour bill has been generated. Turn on AutoPay to never miss a due date. Amount ₹499 due 12 Oct."], false, []],
+  [["NOTICE: Account Inactivity Notification\nYour payments bank account will be marked inactive. Please transact to keep it active."], false, []],
+  [["Property: 2BHK apartment, furnished\nRent: 30,000\nLocation: HSR Layout\nContact for visit"], false, []],
+  [["https://example.com/share/v/abc123"], false, []],
+  [["Your payment of ₹1,250.00 at a restaurant was successful"], false, []],
+  [["Can i get a spot for Tue?"], true, [2]],
+  [["Hi! I'm new to the Bangalore scene and would love to get on one of your mics sometime"], true, []],
 ];
 
 const model = { ...DEFAULT_SETTINGS.model, name: process.argv[2] ?? DEFAULT_SETTINGS.model.name, fallback: false };

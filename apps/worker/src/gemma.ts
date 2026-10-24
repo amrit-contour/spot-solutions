@@ -27,7 +27,7 @@ export function buildPrompt(messages: string[], shows: Pick<Show, "name" | "week
   return `You help a stand-up comedy open-mic curator in Bangalore triage WhatsApp DMs.
 Comics ask for a "spot" (a slot to perform) in many ways: English, Hindi, Kannada or Hinglish, slang, indirect hints. Examples of spot requests:
 "bro any spot this monday?", "bhai tuesday ka mic hai kya, naya 5 hai", "can I come up next week", "put me down for mon pls", "is there space on the lineup".
-NOT spot requests: casual chat, memes, audience questions (tickets, entry fee, bringing friends to WATCH a show), payment talk, replies like "thanks"/"ok" with no ask.
+NOT spot requests: bank/UPI/bill/OTP/delivery/promo notifications, property or job listings, forwarded links, casual chat, memes, audience questions (tickets, entry fee, bringing friends to WATCH a show), payment talk, replies like "thanks"/"ok" with no ask.
 
 Shows this week:
 ${showList}
@@ -44,10 +44,26 @@ Reply ONLY with JSON:
 {"evidence": "...", "is_spot_request": boolean, "confidence": 0..1, "preferred_days": [...], "show_hint": "show name or empty", "note": "<=12 word summary for the curator, e.g. 'wants Monday, trying new 5'"}`;
 }
 
-function parseIntent(raw: string, model: string): Intent {
+const norm = (t: string) => t.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
+
+/** The model must quote the ask. If its "evidence" isn't actually in the messages, it made it up. */
+export function evidenceIsReal(evidence: string, messages: string[]) {
+  const ev = norm(evidence);
+  if (!ev) return false;
+  const text = norm(messages.join(" "));
+  if (text.includes(ev)) return true;
+  const words = ev.split(" ").filter((w) => w.length > 1);
+  const hits = words.filter((w) => text.includes(w)).length;
+  return words.length > 0 && hits / words.length >= 0.75;
+}
+
+function parseIntent(raw: string, model: string, messages: string[]): Intent {
   const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
   const o = JSON.parse(json) as Record<string, unknown>;
-  if (o.is_spot_request && !String(o.evidence ?? "").trim()) o.is_spot_request = false;
+  if (o.is_spot_request && !evidenceIsReal(String(o.evidence ?? ""), messages)) {
+    o.is_spot_request = false;
+    o.note = "No actual ask found in the messages";
+  }
   const days = (Array.isArray(o.preferred_days) ? o.preferred_days : [])
     .map((d) => DAY_NAMES.findIndex((n) => n.toLowerCase() === String(d).toLowerCase()))
     .filter((d) => d >= 0) as Weekday[];
@@ -65,7 +81,7 @@ function parseIntent(raw: string, model: string): Intent {
 // Models whose Ollama build rejects JSON-schema output; we parse free text for these.
 const noSchema = new Set<string>();
 
-async function viaOllama(prompt: string, model: string): Promise<Intent> {
+async function viaOllama(prompt: string, model: string, messages: string[]): Promise<Intent> {
   const call = (structured: boolean) =>
     fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
@@ -88,24 +104,34 @@ async function viaOllama(prompt: string, model: string): Promise<Intent> {
   }
   if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);
   const data = (await res.json()) as { message: { content: string } };
-  return parseIntent(data.message.content, `ollama/${model}`);
+  return parseIntent(data.message.content, `ollama/${model}`, messages);
 }
 
-async function viaGemini(prompt: string): Promise<Intent> {
+async function viaGemini(prompt: string, messages: string[]): Promise<Intent> {
   if (!gemini) throw new Error("GEMINI_API_KEY not set");
   const res = await gemini.models.generateContent({ model: GEMINI_MODEL, contents: prompt, config: { temperature: 0 } });
-  return parseIntent(res.text ?? "", `gemini/${GEMINI_MODEL}`);
+  return parseIntent(res.text ?? "", `gemini/${GEMINI_MODEL}`, messages);
 }
 
-export async function classify(messages: string[], shows: Show[], model: Settings["model"]): Promise<Intent> {
-  const prompt = buildPrompt(messages, shows);
-  if (model.provider === "gemini") return viaGemini(prompt);
+// Ollama runs one generation at a time; queue here so a catch-up burst doesn't pile into timeouts.
+let gate: Promise<unknown> = Promise.resolve();
+export function classify(messages: string[], shows: Show[], model: Settings["model"]): Promise<Intent> {
+  const run = gate.catch(() => undefined).then(() => classifyNow(messages, shows, model));
+  gate = run;
+  return run;
+}
+
+async function classifyNow(messages: string[], shows: Show[], model: Settings["model"]): Promise<Intent> {
+  // Long automated messages (bills, OTPs, listings) confuse small models; a spot ask is never an essay.
+  const trimmed = messages.map((m) => (m.length > 400 ? `${m.slice(0, 400)}…` : m));
+  const prompt = buildPrompt(trimmed, shows);
+  if (model.provider === "gemini") return viaGemini(prompt, trimmed);
   try {
-    return await viaOllama(prompt, model.name);
+    return await viaOllama(prompt, model.name, trimmed);
   } catch (err) {
     if (!model.fallback || !gemini) throw err;
     console.warn("[gemma] local model failed, falling back to Gemini API:", (err as Error).message);
-    return viaGemini(prompt);
+    return viaGemini(prompt, trimmed);
   }
 }
 

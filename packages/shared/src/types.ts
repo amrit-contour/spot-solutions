@@ -47,8 +47,11 @@ export interface Show {
 }
 
 export interface Comic {
-  id: string; // whatsapp id, e.g. 919876543210@c.us
+  id: string; // stable id: phone-based (919876543210@c.us) when known, else the @lid
+  chatId?: string; // the JID WhatsApp actually delivers to (often @lid on current WhatsApp)
   name: string;
+  /** Where `name` came from. Only "manual" names are left alone when WhatsApp data changes. */
+  nameSource?: "contact" | "whatsapp" | "number" | "manual";
   phone: string;
   tier: Tier;
   notes?: string;
