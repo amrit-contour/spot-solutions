@@ -1,0 +1,483 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { where } from "firebase/firestore";
+import { Link } from "react-router-dom";
+import { AnimatePresence, motion } from "motion/react";
+import { toast } from "sonner";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  DAY_NAMES,
+  DAY_SHORT,
+  INTENT_THRESHOLD,
+  dateInWeek,
+  formatDate,
+  formatTime,
+  pendingRejections,
+  renderTemplate,
+  shiftWeek,
+  type Comic,
+  type Lineup,
+  type Show,
+  type Slot,
+  type SpotRequest,
+} from "@spot/shared";
+import { useApp } from "../lib/app";
+import { runCommand, useCollection } from "../lib/data";
+import { markRequest, repeatLastWeek, setLineupStatus, setSlots } from "../lib/lineup";
+import { PageHeader } from "../components/Shell";
+import { WeekSwitcher } from "../components/WeekSwitcher";
+import { Menu, MenuItem } from "../components/Menu";
+import { GroupSyncSheet } from "../components/GroupSyncSheet";
+import { Avatar, Bubble, Button, Chip, Empty, IconButton, Sheet, cx } from "../components/ui";
+import { IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClock, IconGroup, IconHistory, IconMenuDots, IconMic, IconRepeat, IconSend, IconSofa, IconStar } from "../components/icons";
+
+const BENCH = "bench";
+
+type Columns = Record<string, string[]>;
+
+export function LineupBoard() {
+  const { uid, week, shows, comicsById } = useApp();
+  const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
+  const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
+  const activeShows = useMemo(() => shows.filter((s) => s.active), [shows]);
+  const lastWeek = shiftWeek(week, -1);
+
+  const lineupByShow = useMemo(() => new Map(lineups.data.map((l) => [l.showId, l])), [lineups.data]);
+  const requestByComic = useMemo(() => new Map(requests.data.map((r) => [r.comicId, r])), [requests.data]);
+
+  // Source of truth from Firestore → local columns (overridden while dragging).
+  const remote = useMemo<Columns>(() => {
+    const placed = new Set<string>();
+    const cols: Columns = {};
+    for (const s of activeShows) {
+      cols[s.id] = (lineupByShow.get(s.id)?.slots ?? []).map((x) => x.comicId);
+      cols[s.id].forEach((c) => placed.add(c));
+    }
+    cols[BENCH] = requests.data
+      .filter((r) => r.status !== "dismissed" && !placed.has(r.comicId) && (r.intent.confidence >= INTENT_THRESHOLD || r.status !== "new"))
+      .sort((a, b) => {
+        const pa = comicsById.get(a.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
+        const pb = comicsById.get(b.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
+        return pa - pb || a.createdAt - b.createdAt;
+      })
+      .map((r) => r.comicId);
+    return cols;
+  }, [activeShows, lineupByShow, requests.data, comicsById, lastWeek]);
+
+  const [cols, setCols] = useState<Columns>(remote);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const dragFrom = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeId) setCols(remote);
+  }, [remote, activeId]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const containerOf = (id: string) => (id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
+  const locked = (showId: string) => lineupByShow.get(showId)?.status === "confirmed";
+
+  const onStart = ({ active }: DragStartEvent) => {
+    setActiveId(String(active.id));
+    dragFrom.current = containerOf(String(active.id)) ?? null;
+  };
+
+  const onOver = ({ active, over }: DragOverEvent) => {
+    if (!over) return;
+    const from = containerOf(String(active.id));
+    const to = containerOf(String(over.id));
+    if (!from || !to || from === to || (to !== BENCH && locked(to))) return;
+    setCols((c) => {
+      const fromItems = c[from].filter((x) => x !== active.id);
+      const overIdx = c[to].indexOf(String(over.id));
+      const toItems = [...c[to]];
+      toItems.splice(overIdx >= 0 ? overIdx : toItems.length, 0, String(active.id));
+      return { ...c, [from]: fromItems, [to]: toItems };
+    });
+  };
+
+  const onEnd = async ({ active, over }: DragEndEvent) => {
+    const id = String(active.id);
+    const origin = dragFrom.current;
+    setActiveId(null);
+    if (!over || !origin) return setCols(remote);
+    const to = containerOf(String(over.id));
+    if (!to) return setCols(remote);
+    let next = cols;
+    if (to === containerOf(id)) {
+      const oldIdx = cols[to].indexOf(id);
+      const newIdx = cols[to].indexOf(String(over.id));
+      if (newIdx >= 0 && oldIdx !== newIdx) next = { ...cols, [to]: arrayMove(cols[to], oldIdx, newIdx) };
+      setCols(next);
+    }
+    const touched = new Set([origin, to].filter((k) => k !== BENCH));
+    const keepMinutes = (show: Show, ids: string[]): Slot[] => {
+      const prev = new Map<string, Slot>();
+      for (const l of lineups.data) for (const s of l.slots) prev.set(s.comicId, s);
+      return ids.map((cid) => ({ comicId: cid, minutes: prev.get(cid)?.minutes ?? (show.includeSlotTime ? (show.defaultMinutes ?? null) : null) }));
+    };
+    try {
+      for (const sid of touched) {
+        const show = activeShows.find((s) => s.id === sid);
+        if (show && !locked(sid)) await setSlots(uid, week, show, keepMinutes(show, next[sid]));
+      }
+      if (origin !== to) await markRequest(uid, week, id, to !== BENCH);
+    } catch (e) {
+      toast.error((e as Error).message);
+      setCols(remote);
+    }
+  };
+
+  const activeComic = activeId ? comicsById.get(activeId) : undefined;
+  const placedAll = new Set(lineups.data.flatMap((l) => l.slots.map((x) => x.comicId)));
+  const regrets = pendingRejections(requests.data, placedAll);
+  const openShows = activeShows.filter((s) => !["confirmed", "cancelled"].includes(lineupByShow.get(s.id)?.status ?? "draft"));
+
+  if (!activeShows.length) {
+    return (
+      <div className="mx-auto max-w-5xl">
+        <PageHeader title="Lineup" actions={<WeekSwitcher />} />
+        <Empty icon={IconCalendarMark} title="No shows yet" action={<Link to="/shows"><Button icon={IconCalendarMark}>Set up shows</Button></Link>}>
+          Add the mics you curate (venue, day, time, slot count) and they'll show up here as columns.
+        </Empty>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Lineup"
+        subtitle={`${Object.entries(cols).filter(([k]) => k !== BENCH).reduce((n, [, v]) => n + v.length, 0)} placed across ${activeShows.length} show${activeShows.length > 1 ? "s" : ""}`}
+        actions={<WeekSwitcher />}
+      />
+      <RegretBanner count={regrets.length} openShows={openShows.length} />
+      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActiveId(null), setCols(remote))}>
+        <div className="flex flex-col gap-4 px-4 pb-10 sm:px-8 lg:flex-row lg:items-start">
+          <Column id={BENCH} className="lg:sticky lg:top-4 lg:w-72 lg:flex-none">
+            <div className="mb-3 flex items-center justify-between px-1">
+              <div>
+                <h2 className="type-title-m">Waiting</h2>
+                <p className="type-body-s text-on-surface-variant">Drag into a show</p>
+              </div>
+              <span className="rounded-full bg-surface-high px-2 py-0.5 type-label-m tabular">{cols[BENCH]?.length ?? 0}</span>
+            </div>
+            <SortableContext items={cols[BENCH] ?? []} strategy={verticalListSortingStrategy}>
+              <ul className="flex min-h-24 flex-col gap-2">
+                {(cols[BENCH] ?? []).map((cid) => (
+                  <ComicTile key={cid} id={cid} comic={comicsById.get(cid)} request={requestByComic.get(cid)} lastWeek={lastWeek} />
+                ))}
+                {!cols[BENCH]?.length && (
+                  <li className="flex flex-col items-center gap-2 rounded-md border border-dashed border-outline-variant px-4 py-8 text-center type-body-m text-on-surface-variant">
+                    <IconSofa className="icon size-6 text-primary" />
+                    Everyone's placed.
+                  </li>
+                )}
+              </ul>
+            </SortableContext>
+          </Column>
+
+          <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            {activeShows.map((show) => (
+              <ShowColumn key={show.id} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+            ))}
+          </div>
+        </div>
+        <DragOverlay dropAnimation={{ duration: 220, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}>
+          {activeId ? (
+            <motion.div initial={{ transform: "scale(1)" }} animate={{ transform: "scale(1.03)", rotate: -1 }} transition={{ type: "spring", duration: 0.3, bounce: 0.3 }} className="rounded-md shadow-xl">
+              <TileBody comic={activeComic} id={activeId} request={requestByComic.get(activeId)} lastWeek={lastWeek} lifted />
+            </motion.div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  );
+}
+
+function Column({ id, children, className }: { id: string; children: React.ReactNode; className?: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <section ref={setNodeRef} className={cx("rounded-xl bg-surface-low p-3 transition-[box-shadow] duration-150", isOver && "shadow-[inset_0_0_0_2px_var(--md-sys-color-primary)]", className)}>
+      {children}
+    </section>
+  );
+}
+
+function TileBody({ comic, id, request, lastWeek, lifted, index, minutes }: { comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null }) {
+  const name = comic?.name ?? request?.comicName ?? `+${id.split("@")[0]}`;
+  const performed = comic?.lastPerformedWeek === lastWeek;
+  return (
+    <div className={cx("flex items-center gap-3 rounded-md px-3 py-2.5", lifted ? "bg-surface-highest" : "bg-surface-container")}>
+      {index !== undefined ? <span className="w-5 text-center type-label-l text-on-surface-variant tabular">{index + 1}</span> : <Avatar name={name} size={32} tone={performed ? "secondary" : "primary"} />}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate type-title-s">{name}</span>
+          {comic?.tier && comic.tier !== "open" && <IconStar className="icon size-3.5 flex-none text-tertiary" aria-label={comic.tier} />}
+        </div>
+        <div className="flex items-center gap-1.5 type-body-s text-on-surface-variant">
+          {performed && (
+            <span className="inline-flex items-center gap-0.5">
+              <IconHistory className="icon size-3.5" /> last week
+            </span>
+          )}
+          {request?.intent.preferredDays.length ? <span>{request.intent.preferredDays.map((d) => DAY_SHORT[d]).join(" · ")}</span> : !performed && <span>any day</span>}
+        </div>
+      </div>
+      {minutes ? (
+        <span className="inline-flex items-center gap-1 type-label-m text-on-surface-variant tabular">
+          <IconClock className="icon size-3.5" />
+          {minutes}m
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled }: { id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cx("touch-none select-none", !disabled && "cursor-grab active:cursor-grabbing", isDragging && "opacity-30")}
+      {...attributes}
+      {...listeners}
+    >
+      <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} />
+    </li>
+  );
+}
+
+function ShowColumn({ regretsAfter, show, ids, lineup, comicsById, requestByComic, lastWeek }: { regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+  const { uid, week, venues } = useApp();
+  const venue = venues.find((v) => v.id === show.venueId);
+  const status = lineup?.status ?? "draft";
+  const confirmed = status === "confirmed";
+  const cancelled = status === "cancelled";
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const fill = Math.min(1, ids.length / Math.max(1, show.slotCount));
+  const minutesOf = new Map(lineup?.slots.map((s) => [s.comicId, s.minutes]));
+
+  // Open the group review the moment the worker finishes computing the diff.
+  const syncStatus = lineup?.groupSync?.status;
+  const prevSync = useRef(syncStatus);
+  useEffect(() => {
+    if (prevSync.current !== "pending" && syncStatus === "pending") setSyncOpen(true);
+    prevSync.current = syncStatus;
+  }, [syncStatus]);
+
+  const repeat = async () => {
+    const n = await repeatLastWeek(uid, week, show);
+    toast(n ? `Brought back last week's ${n} comics` : "Last week's lineup was empty");
+  };
+
+  return (
+    <Column id={show.id} className={cx(cancelled && "opacity-60")}>
+      <header className="mb-3 px-1">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="type-label-m text-primary">
+              {DAY_NAMES[show.weekday]} · {formatDate(dateInWeek(week, show.weekday))} · {formatTime(show.startTime)}
+            </p>
+            <h2 className="mt-0.5 truncate type-title-l">{show.name}</h2>
+            {venue && <p className="truncate type-body-s text-on-surface-variant">{venue.name}</p>}
+          </div>
+          {confirmed ? (
+            <Chip tone="success" icon={IconCheck}>Sent</Chip>
+          ) : cancelled ? (
+            <Chip tone="error" icon={IconCancel}>Cancelled</Chip>
+          ) : (
+            <Menu
+              align="right"
+              trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}
+            >
+              {(close) => (
+                <>
+                  <MenuItem onClick={() => (close(), void repeat())}>Repeat last week's lineup</MenuItem>
+                  <MenuItem onClick={() => (close(), void setLineupStatus(uid, week, show, "cancelled"))}>Mark mic cancelled</MenuItem>
+                </>
+              )}
+            </Menu>
+          )}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-highest">
+            <motion.div className={cx("h-full rounded-full", fill >= 1 ? "bg-tertiary" : "bg-primary")} animate={{ width: `${fill * 100}%` }} transition={{ type: "spring", duration: 0.5, bounce: 0.1 }} />
+          </div>
+          <span className="type-label-m tabular text-on-surface-variant">
+            {ids.length}/{show.slotCount}
+          </span>
+        </div>
+      </header>
+
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <ol className="flex min-h-32 flex-col gap-2">
+          {ids.map((cid, i) => (
+            <ComicTile key={cid} id={cid} index={i} comic={comicsById.get(cid)} request={requestByComic.get(cid)} lastWeek={lastWeek} minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null} disabled={confirmed} />
+          ))}
+          {Array.from({ length: Math.max(0, Math.min(3, show.slotCount - ids.length)) }).map((_, i) => (
+            <li key={`empty-${i}`} className="grid h-12 place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70">
+              {i === 0 && !ids.length ? "Drop comics here" : `Slot ${ids.length + i + 1}`}
+            </li>
+          ))}
+        </ol>
+      </SortableContext>
+
+      <footer className="mt-3 flex flex-wrap items-center gap-2">
+        {cancelled ? (
+          <Button size="sm" variant="text" onClick={() => setLineupStatus(uid, week, show, "draft")}>Reopen</Button>
+        ) : confirmed ? (
+          <>
+            <span className="inline-flex flex-1 items-center gap-1.5 type-label-m text-on-surface-variant">
+              <svg viewBox="0 0 24 24" className="draw-check size-4 text-primary" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+              Confirmations sent
+            </span>
+            {show.groupId && (
+              <Button size="sm" variant="tonal" icon={IconGroup} onClick={() => setSyncOpen(true)}>
+                Group
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            {!ids.length && (
+              <Button size="sm" variant="text" icon={IconRepeat} onClick={repeat}>
+                Repeat last week
+              </Button>
+            )}
+            <div className="flex-1" />
+            <Button size="sm" icon={IconSend} disabled={!ids.length} onClick={() => setConfirmOpen(true)}>
+              Confirm & send
+            </Button>
+          </>
+        )}
+      </footer>
+
+      <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
+      {lineup && <GroupSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} show={show} lineup={lineup} />}
+    </Column>
+  );
+}
+
+function ConfirmSheet({ open, onClose, show, ids, lineup, regretsAfter }: { open: boolean; onClose: () => void; show: Show; ids: string[]; lineup?: Lineup; regretsAfter: number }) {
+  const { uid, week, settings, venues, comicsById } = useApp();
+  const [sending, setSending] = useState(false);
+  const venue = venues.find((v) => v.id === show.venueId);
+  const minutesOf = new Map(lineup?.slots.map((s) => [s.comicId, s.minutes]));
+  const preview = (cid: string) =>
+    renderTemplate(settings.confirm.template, {
+      name: (comicsById.get(cid)?.name ?? "").split(" ")[0],
+      show: show.name,
+      venue: venue?.name,
+      mapsLink: venue?.mapsLink,
+      day: DAY_NAMES[show.weekday],
+      date: formatDate(dateInWeek(week, show.weekday)),
+      time: formatTime(show.startTime),
+      minutes: show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null,
+    });
+
+  const send = async () => {
+    setSending(true);
+    const t = toast.loading(`Sending ${ids.length} confirmations, a few seconds apart…`);
+    try {
+      await runCommand(uid, "send_confirmations", { lineupId: `${week}_${show.id}` }, 15 * 60_000);
+      toast.success(`${show.name} is locked in`, { id: t });
+      onClose();
+    } catch (e) {
+      toast.error((e as Error).message, { id: t });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={`Confirm ${show.name}`}
+      wide
+      footer={
+        <>
+          <Button variant="text" onClick={onClose}>Not yet</Button>
+          <Button icon={IconSend} loading={sending} onClick={send}>
+            Send {ids.length} confirmation{ids.length > 1 ? "s" : ""}
+          </Button>
+        </>
+      }
+    >
+      <p className="type-body-m text-on-surface-variant">
+        Each comic gets their own WhatsApp message, spaced a few seconds apart.
+        {show.groupId ? " Then you'll review who to add to and remove from the show's group." : ""}
+      </p>
+      {settings.reject.enabled && regretsAfter > 0 && (
+        <p className="mt-3 flex items-start gap-2 rounded-md bg-surface-container p-3 type-body-m text-on-surface-variant">
+          <IconChatCross className="icon mt-0.5 size-4 flex-none text-primary" />
+          This is the last show this week, so the {regretsAfter} comic{regretsAfter > 1 ? "s" : ""} still waiting will also get your regret message.
+        </p>
+      )}
+      <ul className="mt-5 flex flex-col gap-5">
+        <AnimatePresence initial={false}>
+          {ids.map((cid, i) => (
+            <motion.li key={cid} initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: i * 0.03 } }} className="flex flex-col gap-2">
+              <span className="flex items-center gap-2 type-label-l">
+                <span className="w-5 text-on-surface-variant tabular">{i + 1}</span>
+                {comicsById.get(cid)?.name ?? cid}
+              </span>
+              <Bubble outgoing>{preview(cid)}</Bubble>
+            </motion.li>
+          ))}
+        </AnimatePresence>
+      </ul>
+      {!ids.length && <Empty icon={IconMic} title="No one placed yet" />}
+    </Sheet>
+  );
+}
+
+function RegretBanner({ count, openShows }: { count: number; openShows: number }) {
+  const { uid, week, settings } = useApp();
+  const [busy, setBusy] = useState(false);
+  if (!count || !settings.reject.enabled) return null;
+  const final = openShows === 0;
+  const send = async () => {
+    setBusy(true);
+    const t = toast.loading(`Sending ${count} regret message${count > 1 ? "s" : ""}…`);
+    try {
+      const r = await runCommand<{ sent: number }>(uid, "send_rejections", { weekOf: week, onlyIfFinal: true }, 15 * 60_000);
+      toast.success(`${r.sent} regret${r.sent === 1 ? "" : "s"} sent`, { id: t });
+    } catch (e) {
+      toast.error((e as Error).message, { id: t });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <motion.div initial={{ opacity: 0, transform: "translateY(-4px)" }} animate={{ opacity: 1, transform: "translateY(0px)" }} className="mx-4 mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-surface-container px-4 py-3 sm:mx-8">
+      <IconChatCross className="icon size-5 text-primary" />
+      <p className="flex-1 type-body-m text-on-surface-variant">
+        {final ? (
+          <><span className="text-on-surface">{count} comic{count > 1 ? "s" : ""}</span> asked but didn't make it this week.</>
+        ) : (
+          <><span className="text-on-surface">{count} still waiting.</span> They'll get your regret message once {openShows === 1 ? "the last show is" : `all ${openShows} open shows are`} confirmed.</>
+        )}
+      </p>
+      {final && (
+        <Button size="sm" variant="tonal" icon={IconSend} loading={busy} onClick={send}>
+          Send regrets
+        </Button>
+      )}
+    </motion.div>
+  );
+}

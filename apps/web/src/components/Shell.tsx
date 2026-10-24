@@ -1,0 +1,118 @@
+import type { ReactNode } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+import { AnimatePresence, motion } from "motion/react";
+import { useApp } from "../lib/app";
+import { cx, type Icon } from "./ui";
+import { IconCalendar, IconComics, IconInbox, IconMic, IconPhone, IconSettings } from "./icons";
+import { Logo } from "./Logo";
+
+const NAV: { to: string; label: string; icon: Icon }[] = [
+  { to: "/", label: "Requests", icon: IconInbox },
+  { to: "/lineup", label: "Lineup", icon: IconMic },
+  { to: "/comics", label: "Comics", icon: IconComics },
+  { to: "/shows", label: "Shows", icon: IconCalendar },
+  { to: "/settings", label: "Settings", icon: IconSettings },
+];
+
+export function useConnection() {
+  const { session, workerOnline } = useApp();
+  if (!workerOnline) return { tone: "error" as const, label: "Server offline", short: "Offline" };
+  if (session?.status === "ready") return { tone: "ok" as const, label: `WhatsApp · +${session.phone ?? ""}`, short: "Live" };
+  if (session?.status === "qr" || session?.status === "starting" || session?.status === "authenticated") return { tone: "wait" as const, label: "Linking WhatsApp…", short: "Linking" };
+  return { tone: "idle" as const, label: "WhatsApp not linked", short: "Unlinked" };
+}
+
+function StatusDot({ tone }: { tone: "ok" | "wait" | "error" | "idle" }) {
+  const c = { ok: "bg-[#3fb950]", wait: "bg-primary", error: "bg-error", idle: "bg-outline" }[tone];
+  return (
+    <span className="relative inline-flex size-2.5">
+      {tone !== "idle" && tone !== "error" && <span className={cx("pulse-ring absolute inset-0 rounded-full", c)} />}
+      <span className={cx("relative size-2.5 rounded-full", c)} />
+    </span>
+  );
+}
+
+function NavItem({ to, label, icon: I, rail }: { to: string; label: string; icon: Icon; rail?: boolean }) {
+  return (
+    <NavLink to={to} end={to === "/"} className="group flex flex-1 flex-col items-center gap-1 outline-none sm:flex-none">
+      {({ isActive }) => (
+        <>
+          <span className={cx("state-layer relative grid h-8 w-14 place-items-center rounded-full transition-colors duration-200", isActive ? "text-on-secondary-container" : "text-on-surface-variant", rail && "h-8")}>
+            {isActive && <motion.span layoutId={rail ? "nav-rail" : "nav-bar"} className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.45, bounce: 0.2 }} />}
+            <I className="icon relative size-6" />
+          </span>
+          <span className={cx("type-label-m transition-colors", isActive ? "text-on-surface" : "text-on-surface-variant")}>{label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+export function Shell({ children }: { children: ReactNode }) {
+  const loc = useLocation();
+  const conn = useConnection();
+  return (
+    <div className="flex min-h-dvh bg-surface">
+      {/* Rail ≥ 600px */}
+      <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-24 flex-none flex-col items-center gap-3 bg-surface py-5 sm:flex">
+        <NavLink to="/" aria-label="Spot Solutions home" className="mb-5">
+          <Logo className="size-11" />
+        </NavLink>
+        {NAV.map((n) => (
+          <NavItem key={n.to} {...n} rail />
+        ))}
+        <div className="flex-1" />
+        <NavLink to="/settings#whatsapp" title={conn.label} className="state-layer flex flex-col items-center gap-1.5 rounded-lg px-2 py-2 text-on-surface-variant">
+          <span className="relative">
+            <IconPhone className="icon size-6" />
+            <span className="absolute -right-1 -bottom-0.5">
+              <StatusDot tone={conn.tone} />
+            </span>
+          </span>
+          <span className="type-label-s">{conn.short}</span>
+        </NavLink>
+      </nav>
+
+      <main className="min-w-0 flex-1 pb-24 sm:pb-0">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={loc.pathname}
+            initial={{ opacity: 0, transform: "translateY(6px)" }}
+            animate={{ opacity: 1, transform: "translateY(0px)", transition: { duration: 0.22, ease: [0.23, 1, 0.32, 1] } }}
+            exit={{ opacity: 0, transition: { duration: 0.08 } }}
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {/* Bottom bar < 600px */}
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-20 items-center bg-surface-container px-2 pb-[env(safe-area-inset-bottom)] sm:hidden">
+        {NAV.map((n) => (
+          <NavItem key={n.to} {...n} />
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+export function PageHeader({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
+  const conn = useConnection();
+  return (
+    <header className="px-4 pt-6 pb-4 sm:px-8 sm:pt-8">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex items-center gap-2 type-label-m text-on-surface-variant sm:hidden">
+            <StatusDot tone={conn.tone} /> {conn.label}
+          </div>
+          <h1 className="type-display-s text-balance">{title}</h1>
+          {subtitle && <p className="mt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+      {children}
+    </header>
+  );
+}
+
+export { StatusDot };

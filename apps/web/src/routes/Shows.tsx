@@ -1,0 +1,286 @@
+import { useState } from "react";
+import { addDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { motion } from "motion/react";
+import { toast } from "sonner";
+import { DAY_SHORT, formatTime, type GroupInfo, type Show, type Venue, type Weekday } from "@spot/shared";
+import { useApp } from "../lib/app";
+import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
+import { PageHeader } from "../components/Shell";
+import { Button, Chip, Empty, Field, IconButton, Select, Sheet, Stepper, Switch, TextInput, cx } from "../components/ui";
+import { IconAdd, IconBuilding, IconClock, IconGroup, IconMap, IconPen, IconRefresh, IconStar, IconTrash, IconWarn } from "../components/icons";
+
+const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
+
+const newShow = (venueId: string): Omit<Show, "id"> => ({
+  name: "",
+  venueId,
+  weekday: 1,
+  startTime: "20:00",
+  slotCount: 8,
+  includeSlotTime: false,
+  defaultMinutes: 5,
+  active: true,
+  groupId: null,
+  regulars: [],
+  protected: [],
+});
+
+export function Shows() {
+  const { shows, venues } = useApp();
+  const [editingShow, setEditingShow] = useState<Partial<Show> | null>(null);
+  const [editingVenue, setEditingVenue] = useState<Partial<Venue> | null>(null);
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <PageHeader
+        title="Shows"
+        subtitle="The mics you curate, and where they happen"
+        actions={
+          <>
+            <Button variant="tonal" icon={IconBuilding} onClick={() => setEditingVenue({})}>
+              Venue
+            </Button>
+            <Button icon={IconAdd} onClick={() => (venues.length ? setEditingShow(newShow(venues[0].id)) : setEditingVenue({}))}>
+              Show
+            </Button>
+          </>
+        }
+      />
+      <div className="grid gap-8 px-4 pb-12 sm:px-8">
+        {!venues.length ? (
+          <Empty icon={IconBuilding} title="Start with a venue" action={<Button icon={IconAdd} onClick={() => setEditingVenue({})}>Add venue</Button>}>
+            Where do your mics happen? Add the club first, then its weekly shows.
+          </Empty>
+        ) : (
+          venues.map((v) => {
+            const vs = shows.filter((s) => s.venueId === v.id);
+            return (
+              <section key={v.id}>
+                <div className="mb-3 flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
+                    <IconBuilding className="icon size-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="type-title-l">{v.name}</h2>
+                    {v.area && <p className="type-body-s text-on-surface-variant">{v.area}</p>}
+                  </div>
+                  <IconButton icon={IconPen} label={`Edit ${v.name}`} onClick={() => setEditingVenue(v)} />
+                </div>
+                <motion.ul className="grid gap-3 sm:grid-cols-2" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
+                  {vs.map((s) => (
+                    <motion.li key={s.id} variants={{ hidden: { opacity: 0, transform: "translateY(6px)" }, show: { opacity: 1, transform: "translateY(0px)" } }}>
+                      <button onClick={() => setEditingShow(s)} className={cx("state-layer pressable flex w-full items-start gap-4 rounded-lg bg-surface-low p-4 text-left", !s.active && "opacity-60")}>
+                        <span className="grid size-14 flex-none place-items-center rounded-md bg-primary-container text-on-primary-container">
+                          <span className="type-title-m">{DAY_SHORT[s.weekday]}</span>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate type-title-m">{s.name}</span>
+                          <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 type-body-m text-on-surface-variant">
+                            <span className="inline-flex items-center gap-1"><IconClock className="icon size-4" />{formatTime(s.startTime)}</span>
+                            <span className="tabular">{s.slotCount} slots{s.includeSlotTime && s.defaultMinutes ? ` · ${s.defaultMinutes} min` : ""}</span>
+                          </span>
+                          <span className="mt-2 flex flex-wrap gap-1.5">
+                            {s.groupId ? <Chip icon={IconGroup}>Group linked</Chip> : <Chip className="border-dashed">No group</Chip>}
+                            {s.regulars?.length ? <Chip tone="tertiary" icon={IconStar}>{s.regulars.length} regular{s.regulars.length > 1 ? "s" : ""}</Chip> : null}
+                            {!s.active && <Chip>Paused</Chip>}
+                          </span>
+                        </span>
+                      </button>
+                    </motion.li>
+                  ))}
+                  <li>
+                    <button onClick={() => setEditingShow(newShow(v.id))} className="state-layer flex h-full min-h-24 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-outline-variant type-label-l text-on-surface-variant">
+                      <IconAdd className="icon size-5" /> Add a show at {v.name}
+                    </button>
+                  </li>
+                </motion.ul>
+              </section>
+            );
+          })
+        )}
+      </div>
+      <ShowEditor value={editingShow} onClose={() => setEditingShow(null)} />
+      <VenueEditor value={editingVenue} onClose={() => setEditingVenue(null)} />
+    </div>
+  );
+}
+
+function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: () => void }) {
+  const { uid, venues, comics, session } = useApp();
+  const groups = useCollection<GroupInfo>(uid, "groups");
+  const [draft, setDraft] = useState<Partial<Show>>({});
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [lastValue, setLastValue] = useState<Partial<Show> | null>(null);
+  if (value !== lastValue) {
+    setLastValue(value);
+    if (value) setDraft(value);
+  }
+  const set = <K extends keyof Show>(k: K, v: Show[K]) => setDraft((d) => ({ ...d, [k]: v }));
+  const group = groups.data.find((g) => g.id === draft.groupId);
+
+  const refreshGroups = async () => {
+    setLoadingGroups(true);
+    try {
+      const r = await runCommand<{ count: number }>(uid, "list_groups", {}, 120_000);
+      toast(`Found ${r.count} groups`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+
+  const save = async () => {
+    if (!draft.name?.trim()) return toast.error("Give the show a name");
+    const { id, ...data } = draft as Show;
+    if (id) await setDoc(userDoc(uid, "shows", id), data);
+    else await addDoc(userCol(uid, "shows"), data);
+    onClose();
+  };
+  const remove = async () => {
+    if (draft.id && confirm(`Delete ${draft.name}? Past lineups stay.`)) {
+      await deleteDoc(userDoc(uid, "shows", draft.id));
+      onClose();
+    }
+  };
+  const toggleIn = (k: "regulars" | "protected", id: string) => {
+    const cur = new Set(draft[k] ?? []);
+    if (cur.has(id)) cur.delete(id);
+    else cur.add(id);
+    set(k, [...cur]);
+  };
+
+  return (
+    <Sheet
+      open={Boolean(value)}
+      onClose={onClose}
+      title={draft.id ? "Edit show" : "New show"}
+      wide
+      footer={
+        <>
+          {draft.id && <Button variant="text" icon={IconTrash} onClick={remove} className="mr-auto text-error">Delete</Button>}
+          <Button variant="text" onClick={onClose}>Cancel</Button>
+          <Button onClick={save}>Save</Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-6">
+        <Field label="Show name">
+          <TextInput value={draft.name ?? ""} onChange={(e) => set("name", e.target.value)} placeholder="Monday Mic" autoFocus />
+        </Field>
+        <Field label="Venue">
+          <Select value={draft.venueId ?? ""} onChange={(v) => set("venueId", v)} options={venues.map((v) => ({ value: v.id, label: v.name }))} />
+        </Field>
+        <Field label="Day">
+          <div className="flex flex-wrap gap-1.5">
+            {WEEKDAYS.map((d) => (
+              <Chip key={d} selected={draft.weekday === d} onClick={() => set("weekday", d)}>
+                {DAY_SHORT[d]}
+              </Chip>
+            ))}
+          </div>
+        </Field>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <Field label="Starts at">
+            <TextInput type="time" value={draft.startTime ?? "20:00"} onChange={(e) => set("startTime", e.target.value)} />
+          </Field>
+          <Field label="Slots">
+            <Stepper value={draft.slotCount ?? 8} onChange={(v) => set("slotCount", v)} min={1} max={40} />
+          </Field>
+        </div>
+
+        <div className="rounded-lg bg-surface-container p-4">
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <div className="type-title-s">Mention set length</div>
+              <div className="type-body-s text-on-surface-variant">Adds "⏱ 5 min set" to confirmations. Leave off for shows without a fixed limit.</div>
+            </div>
+            <Switch checked={Boolean(draft.includeSlotTime)} onChange={(v) => set("includeSlotTime", v)} label="Mention set length" />
+          </div>
+          {draft.includeSlotTime && (
+            <div className="mt-4 flex items-center gap-3">
+              <span className="type-body-m text-on-surface-variant">Default</span>
+              <Stepper value={draft.defaultMinutes ?? 5} onChange={(v) => set("defaultMinutes", v)} min={1} max={30} suffix="min" />
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <div className="type-title-s">Active</div>
+            <div className="type-body-s text-on-surface-variant">Paused shows are hidden from the lineup board.</div>
+          </div>
+          <Switch checked={draft.active ?? true} onChange={(v) => set("active", v)} label="Active" />
+        </div>
+
+        <section className="border-t border-outline-variant pt-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 type-title-m"><IconGroup className="icon size-5 text-primary" /> WhatsApp group</h3>
+            <Button size="sm" variant="text" icon={IconRefresh} onClick={refreshGroups} loading={loadingGroups} disabled={session?.status !== "ready"}>
+              Refresh
+            </Button>
+          </div>
+          <Select value={draft.groupId ?? ""} onChange={(v) => set("groupId", v || null)} placeholder="No group" options={groups.data.map((g) => ({ value: g.id, label: `${g.name} · ${g.participants}` }))} />
+          {group && !group.isAdmin && (
+            <p className="mt-2 flex items-center gap-1.5 type-body-s text-error"><IconWarn className="icon size-4" /> You're not an admin of this group, so comics can't be added or removed.</p>
+          )}
+          {!groups.data.length && <p className="mt-2 type-body-s text-on-surface-variant">Tap Refresh to load your groups from WhatsApp.</p>}
+
+          {draft.groupId && (
+            <div className="mt-5 grid gap-5">
+              <PeoplePicker label="Regulars (always stay in the group)" icon={IconStar} selected={draft.regulars ?? []} onToggle={(id) => toggleIn("regulars", id)} people={comics} />
+              <PeoplePicker label="Protected (co-hosts, staff)" icon={IconMap} selected={draft.protected ?? []} onToggle={(id) => toggleIn("protected", id)} people={comics} />
+            </div>
+          )}
+        </section>
+      </div>
+    </Sheet>
+  );
+}
+
+function PeoplePicker({ label, people, selected, onToggle, icon }: { label: string; people: { id: string; name: string }[]; selected: string[]; onToggle: (id: string) => void; icon: typeof IconStar }) {
+  const [q, setQ] = useState("");
+  const sel = new Set(selected);
+  const list = people.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => Number(sel.has(b.id)) - Number(sel.has(a.id)));
+  return (
+    <div>
+      <div className="mb-2 type-label-l text-on-surface-variant">{label}</div>
+      <TextInput placeholder="Search comics" value={q} onChange={(e) => setQ(e.target.value)} className="h-10" />
+      <div className="mt-2 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+        {list.slice(0, 40).map((p) => (
+          <Chip key={p.id} selected={sel.has(p.id)} onClick={() => onToggle(p.id)} icon={sel.has(p.id) ? icon : undefined}>
+            {p.name}
+          </Chip>
+        ))}
+        {!people.length && <span className="type-body-s text-on-surface-variant">Comics appear here once they message you, or when you add them in Comics.</span>}
+      </div>
+    </div>
+  );
+}
+
+function VenueEditor({ value, onClose }: { value: Partial<Venue> | null; onClose: () => void }) {
+  const { uid } = useApp();
+  const [draft, setDraft] = useState<Partial<Venue>>({});
+  const [last, setLast] = useState<Partial<Venue> | null>(null);
+  if (value !== last) {
+    setLast(value);
+    if (value) setDraft(value);
+  }
+  const save = async () => {
+    if (!draft.name?.trim()) return toast.error("Venue needs a name");
+    const { id, ...data } = draft as Venue;
+    if (id) await setDoc(userDoc(uid, "venues", id), data);
+    else await addDoc(userCol(uid, "venues"), data);
+    onClose();
+  };
+  return (
+    <Sheet open={Boolean(value)} onClose={onClose} title={draft.id ? "Edit venue" : "New venue"} footer={<><Button variant="text" onClick={onClose}>Cancel</Button><Button onClick={save}>Save</Button></>}>
+      <div className="flex flex-col gap-6">
+        <Field label="Name"><TextInput value={draft.name ?? ""} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="The Comedy Club" autoFocus /></Field>
+        <Field label="Area"><TextInput value={draft.area ?? ""} onChange={(e) => setDraft({ ...draft, area: e.target.value })} placeholder="Indiranagar" /></Field>
+        <Field label="Google Maps link" hint="Shared in confirmations through {{mapsLink}}"><TextInput value={draft.mapsLink ?? ""} onChange={(e) => setDraft({ ...draft, mapsLink: e.target.value })} placeholder="https://maps.app.goo.gl/…" /></Field>
+      </div>
+    </Sheet>
+  );
+}
+

@@ -1,0 +1,15 @@
+{
+  "name": "spot-solutions",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Open-mic lineup curation on autopilot: WhatsApp + local Gemma.",
+  "license": "MIT",
+  "scripts": {
+    "dev:web": "pnpm --filter @spot/web dev",
+    "dev:worker": "pnpm --filter @spot/worker dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

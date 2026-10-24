@@ -1,0 +1,37 @@
+// Per-user Firestore reads the worker needs on hot paths, kept warm with snapshot listeners.
+import { DEFAULT_SETTINGS, type Settings, type Show, type Venue } from "@spot/shared";
+import { col, userRef } from "./firebase.ts";
+
+interface Cache {
+  settings: Settings;
+  shows: Show[];
+  venues: Venue[];
+  unsub: (() => void)[];
+}
+
+const caches = new Map<string, Cache>();
+
+export function watchUser(uid: string): Cache {
+  let c = caches.get(uid);
+  if (c) return c;
+  const cache: Cache = { settings: DEFAULT_SETTINGS, shows: [], venues: [], unsub: [] };
+  cache.unsub.push(
+    userRef(uid).onSnapshot((s) => {
+      const data = s.data()?.settings as Partial<Settings> | undefined;
+      cache.settings = { ...DEFAULT_SETTINGS, ...data, ack: { ...DEFAULT_SETTINGS.ack, ...data?.ack }, confirm: { ...DEFAULT_SETTINGS.confirm, ...data?.confirm }, reject: { ...DEFAULT_SETTINGS.reject, ...data?.reject }, model: { ...DEFAULT_SETTINGS.model, ...data?.model } };
+    }),
+    col(uid, "shows").onSnapshot((q) => {
+      cache.shows = q.docs.map((d) => ({ ...(d.data() as Show), id: d.id }));
+    }),
+    col(uid, "venues").onSnapshot((q) => {
+      cache.venues = q.docs.map((d) => ({ ...(d.data() as Venue), id: d.id }));
+    }),
+  );
+  caches.set(uid, cache);
+  return cache;
+}
+
+export function unwatchUser(uid: string) {
+  caches.get(uid)?.unsub.forEach((u) => u());
+  caches.delete(uid);
+}
