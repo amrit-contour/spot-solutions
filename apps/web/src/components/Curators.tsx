@@ -9,7 +9,7 @@ import { db } from "../lib/firebase";
 import { useAccessConfig } from "../lib/access";
 import { timeAgo } from "../lib/data";
 import { Avatar, Button, Card, Chip, Stepper } from "./ui";
-import { IconCheck, IconClose, IconComics } from "./icons";
+import { IconArrowDown, IconCheck, IconClose, IconComics } from "./icons";
 
 export function Curators() {
   const { user } = useApp();
@@ -95,7 +95,10 @@ export function Curators() {
 
       {removed.length > 0 && (
         <details className="group">
-          <summary className="cursor-pointer list-none bg-surface-container px-4 py-2 type-label-m text-on-surface-variant">Removed or declined ({removed.length})</summary>
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 bg-surface-container px-4 py-2 type-label-m text-on-surface-variant [&::-webkit-details-marker]:hidden">
+            <IconArrowDown className="icon size-4 transition-transform duration-200 group-open:rotate-180" />
+            Removed or declined ({removed.length})
+          </summary>
           <ul className="divide-y divide-outline-variant/40">
             {removed.map((e) => (
               <Row key={e.uid} e={e}>

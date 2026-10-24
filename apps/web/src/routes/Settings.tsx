@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
   DAY_NAMES,
@@ -16,22 +18,66 @@ import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
 import { ConnectCard } from "../components/ConnectCard";
 import { AiModels } from "../components/AiModels";
-import { Bubble, Button, Field, Select, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
+import { Bubble, Button, Field, Segmented, Select, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield } from "../components/icons";
+
+const TABS = [
+  { id: "whatsapp", label: "WhatsApp & app", icon: IconPhone },
+  { id: "messages", label: "Messages", icon: IconChat },
+  { id: "rules", label: "Rules & replies", icon: IconShield },
+  { id: "show", label: "Around the show", icon: IconMic },
+  { id: "ai", label: "AI models", icon: IconCpu },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+
+function useSettingsTab(): TabId {
+  const { hash } = useLocation();
+  const id = hash.replace("#", "");
+  return (TABS.some((t) => t.id === id) ? id : "whatsapp") as TabId;
+}
+
+/** Side menu on desktop, scrolling tabs on phones. One topic on screen at a time. */
+function SettingsNav({ current }: { current: TabId }) {
+  return (
+    <nav aria-label="Settings sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 lg:sticky lg:top-6 lg:w-60 lg:flex-none lg:flex-col">
+      {TABS.map((t) => {
+        const active = t.id === current;
+        return (
+          <Link
+            key={t.id}
+            to={`#${t.id}`}
+            replace
+            aria-current={active ? "page" : undefined}
+            className={cx(
+              "state-layer relative flex h-10 flex-none items-center gap-2.5 rounded-full px-4 type-label-l whitespace-nowrap lg:h-12 lg:px-4",
+              active ? "text-on-secondary-container" : "text-on-surface-variant",
+            )}
+          >
+            {active && <motion.span layoutId="settings-tab" className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
+            <t.icon className="icon relative size-5" />
+            <span className="relative">{t.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 function Section({ title, icon: I, description, children, aside }: { title: string; icon: typeof IconChat; description?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className="rounded-xl bg-surface-low p-4 sm:p-6">
-      <div className="mb-4 sm:mb-5">
-        <div className="flex items-center gap-3 sm:gap-4">
-          <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
-            <I className="icon size-5" />
-          </span>
-          <h2 className="min-w-0 flex-1 type-title-l">{title}</h2>
-          {aside}
+      {/* Header: icon beside a title+description block, so the text shares one left edge.
+          The body below spans the card, lining up with the icon. */}
+      <header className="mb-5 flex items-start gap-4">
+        <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
+          <I className="icon size-5" />
+        </span>
+        <div className="min-w-0 flex-1 pt-1.5">
+          <h2 className="type-title-l">{title}</h2>
+          {description && <p className="mt-1 max-w-[68ch] type-body-m text-on-surface-variant">{description}</p>}
         </div>
-        {description && <p className="mt-2 type-body-m text-on-surface-variant sm:mt-1 sm:pl-14">{description}</p>}
-      </div>
+        {aside && <div className="flex-none pt-1">{aside}</div>}
+      </header>
       {children}
     </section>
   );
@@ -58,9 +104,9 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled }: { valu
   };
 
   return (
-    <div className={cx("grid gap-5 lg:grid-cols-2", disabled && "pointer-events-none opacity-50")}>
+    <div className={cx("grid items-start gap-5 lg:grid-cols-2", disabled && "pointer-events-none opacity-50")}>
       <div className="flex flex-col gap-3">
-        <TextArea ref={ref} value={draft} onChange={(e) => setDraft(e.target.value)} rows={6} spellCheck={false} className="font-mono text-sm" />
+        <TextArea ref={ref} value={draft} onChange={(e) => setDraft(e.target.value)} rows={5} spellCheck={false} className="min-h-0 font-mono text-sm" />
         <div className="flex flex-wrap gap-1.5">
           {TEMPLATE_VARIABLES.map((v) => (
             <button key={v.key} onClick={() => insert(v.key)} className="state-layer pressable h-7 rounded-sm bg-surface-high px-2.5 font-mono text-xs text-on-surface-variant" title={`Insert ${v.label}`}>
@@ -69,7 +115,7 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled }: { valu
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="text" onClick={() => setDraft(fallback)} disabled={draft === fallback}>
+          <Button size="sm" variant="text" className="-ml-3" onClick={() => setDraft(fallback)} disabled={draft === fallback}>
             Reset to default
           </Button>
           <div className="flex-1" />
@@ -93,7 +139,7 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled }: { valu
           </Button>
         </div>
       </div>
-      <div className="flex flex-col rounded-lg bg-surface-lowest p-4">
+      <div className="flex flex-col rounded-lg bg-surface-container p-4">
         <span className="mb-3 type-label-m text-on-surface-variant">Preview</span>
         <Bubble outgoing meta="9:41 PM">
           {renderTemplate(draft, { ...SAMPLE_VARS, ...extraVars }) || <span className="opacity-50">Empty message</span>}
@@ -107,18 +153,35 @@ export function SettingsPage() {
   const { settings, saveSettings } = useApp();
   const [withMinutes, setWithMinutes] = useState(true);
 
-  useEffect(() => {
-    if (location.hash === "#whatsapp") document.getElementById("whatsapp")?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+  const tab = useSettingsTab();
+  const [msg, setMsg] = useState<"ack" | "confirm" | "reject">("ack");
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full">
       <PageHeader title="Settings" subtitle="How Spot Solutions talks on your behalf" />
-      <div className="flex flex-col gap-4 px-4 pb-12 sm:px-8">
-        <ConnectCard />
-        <InstallCard />
+      <div className="flex flex-col gap-6 px-4 pb-12 sm:px-8 lg:flex-row lg:items-start lg:gap-8">
+        <SettingsNav current={tab} />
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+        {tab === "whatsapp" && (
+          <>
+            <ConnectCard />
+            <InstallCard />
+          </>
+        )}
+        {tab === "messages" && (
+          <>
+            <Segmented
+              value={msg}
+              onChange={setMsg}
+              options={[
+                { value: "ack", label: "Acknowledge" },
+                { value: "confirm", label: "Confirmation" },
+                { value: "reject", label: "Regret" },
+              ]}
+            />
 
-        <Section
+        {msg === "ack" && (
+<Section
           title="Auto-acknowledge"
           icon={IconChat}
           description={
@@ -130,8 +193,10 @@ export function SettingsPage() {
         >
           <TemplateEditor value={settings.ack.template} fallback={DEFAULT_ACK_TEMPLATE} disabled={!settings.ack.enabled} onSave={(t) => saveSettings({ ack: { ...settings.ack, template: t } })} />
         </Section>
+        )}
 
-        <Section
+        {msg === "confirm" && (
+<Section
           title="Confirmation message"
           icon={IconChatCheck}
           description={
@@ -148,8 +213,10 @@ export function SettingsPage() {
         >
           <TemplateEditor value={settings.confirm.template} fallback={DEFAULT_CONFIRM_TEMPLATE} extraVars={{ minutes: withMinutes ? 5 : null }} onSave={(t) => saveSettings({ confirm: { template: t } })} />
         </Section>
+        )}
 
-        <Section
+        {msg === "reject" && (
+<Section
           title="Regret message"
           icon={IconChatCross}
           description="When every show for the week is confirmed or cancelled, anyone who asked but wasn't placed gets this. Dismissed requests are skipped."
@@ -157,7 +224,12 @@ export function SettingsPage() {
         >
           <TemplateEditor value={settings.reject.template} fallback={DEFAULT_REJECT_TEMPLATE} disabled={!settings.reject.enabled} onSave={(t) => saveSettings({ reject: { ...settings.reject, template: t } })} />
         </Section>
+        )}
 
+          </>
+        )}
+        {tab === "rules" && (
+          <>
         <RulesSection />
 
         <Section
@@ -182,11 +254,16 @@ export function SettingsPage() {
           </div>
         </Section>
 
-        <AfterShowSection />
+          </>
+        )}
+        {tab === "show" && <AfterShowSection />}
+        {tab === "ai" && (
 
         <Section title="AI models" icon={IconCpu} description="Pick which model reads your DMs, and a backup. Local Ollama keeps chats on your server and costs nothing; Gemini is smarter but sends message text to Google.">
           <AiModels />
         </Section>
+        )}
+        </div>
 
       </div>
     </div>

@@ -163,7 +163,7 @@ export function LineupBoard() {
 
   if (!activeShows.length) {
     return (
-      <div className="mx-auto max-w-5xl">
+      <div className="w-full">
         <PageHeader title="Lineup" actions={<WeekSwitcher />} />
         <Empty icon={IconCalendarMark} title="No shows yet" action={<Link to="/shows"><Button icon={IconCalendarMark}>Set up shows</Button></Link>}>
           Add the mics you curate (venue, day, time, slot count) and they'll show up here as columns.

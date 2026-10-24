@@ -31,7 +31,7 @@ export function Shows() {
   const [editingVenue, setEditingVenue] = useState<Partial<Venue> | null>(null);
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full">
       <PageHeader
         title="Shows"
         subtitle="The mics you curate, and where they happen"
@@ -66,7 +66,7 @@ export function Shows() {
                   </div>
                   <IconButton icon={IconPen} label={`Edit ${v.name}`} onClick={() => setEditingVenue(v)} />
                 </div>
-                <motion.ul className="grid gap-3 sm:grid-cols-2" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
+                <motion.ul className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
                   {vs.map((s) => (
                     <motion.li key={s.id} variants={{ hidden: { opacity: 0, transform: "translateY(6px)" }, show: { opacity: 1, transform: "translateY(0px)" } }}>
                       <button onClick={() => setEditingShow(s)} className={cx("state-layer pressable flex w-full items-start gap-4 rounded-lg bg-surface-low p-4 text-left", !s.active && "opacity-60")}>

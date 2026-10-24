@@ -63,6 +63,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <NavItem key={n.to} {...n} rail />
         ))}
         <div className="flex-1" />
+        <AccountMenu align="left" />
         <NavLink to="/settings#whatsapp" title={conn.label} className="state-layer flex flex-col items-center gap-1.5 rounded-lg px-2 py-2 text-on-surface-variant">
           <span className="relative">
             <IconPhone className="icon size-6" />
@@ -94,10 +95,11 @@ export function Shell({ children }: { children: ReactNode }) {
 export function PageHeader({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
   const conn = useConnection();
   return (
-    <header className="px-4 pt-4 pb-4 sm:px-8 sm:pt-6">
-      <div className="mb-3 flex items-center justify-end gap-3">
-        <NavLink to="/settings#whatsapp" className="state-layer mr-auto inline-flex items-center gap-2 rounded-full px-2 py-1 type-label-m text-on-surface-variant sm:hidden">
-          <StatusDot tone={conn.tone} /> {conn.label}
+    <header className="px-4 pt-3 pb-4 sm:px-8 sm:pt-10">
+      {/* Phones: status + account on top. Desktop keeps both in the nav rail. */}
+      <div className="mb-3 flex items-center gap-3 sm:hidden">
+        <NavLink to="/settings#whatsapp" className="state-layer mr-auto inline-flex min-w-0 items-center gap-2 rounded-full px-2 py-1 type-label-m text-on-surface-variant">
+          <StatusDot tone={conn.tone} /> <span className="truncate">{conn.label}</span>
         </NavLink>
         <AccountMenu />
       </div>

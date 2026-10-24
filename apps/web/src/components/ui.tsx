@@ -9,6 +9,7 @@ import {
   type SVGProps,
   type TextareaHTMLAttributes,
 } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { initials } from "../lib/data";
 import { IconClose } from "./icons";
@@ -214,7 +215,7 @@ export function Segmented<T extends string | number>({ value, onChange, options,
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className={cx("relative flex flex-1 items-center justify-center gap-1.5 rounded-full px-3.5 type-label-l transition-colors duration-150", active ? "text-on-secondary-container" : "text-on-surface-variant")}
+            className={cx("relative flex flex-1 items-center justify-center gap-1.5 rounded-full px-3.5 type-label-l whitespace-nowrap transition-colors duration-150", active ? "text-on-secondary-container" : "text-on-surface-variant")}
           >
             {active && <motion.span layoutId={id} className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
             {o.icon && <o.icon className="icon relative size-4" />}
@@ -263,43 +264,47 @@ export function Empty({ icon: I, title, children, action }: { icon: Icon; title:
   );
 }
 
-/** Side sheet on wide screens, bottom sheet on phones. */
+/**
+ * Full-screen editor panel (M3 full-screen dialog). Covers the content area (the nav rail
+ * stays visible on desktop), uses the whole height, and keeps actions in reach:
+ * in the top bar on desktop, in a bottom bar on phones.
+ */
 export function Sheet({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   useEffect(() => {
     if (!open) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", k);
+      document.body.style.overflow = "";
+    };
   }, [open, onClose]);
-  return (
+  // Portal: an ancestor's transform (the page-enter animation) would otherwise trap `fixed`.
+  return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50">
-          <motion.div className="absolute inset-0 bg-scrim/40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }} onClick={onClose} />
-          <motion.aside
-            role="dialog"
-            aria-modal
-            className={cx(
-              "absolute flex flex-col bg-surface-low shadow-2xl",
-              "inset-x-0 bottom-0 max-h-[92dvh] rounded-t-xl",
-              "sm:inset-y-2 sm:right-2 sm:left-auto sm:max-h-none sm:rounded-xl",
-              wide ? "sm:w-[560px]" : "sm:w-[440px]",
-            )}
-            initial={{ transform: "translateY(24px)", opacity: 0 }}
-            animate={{ transform: "translateY(0px)", opacity: 1, transition: { duration: 0.32, ease: [0.05, 0.7, 0.1, 1] } }}
-            exit={{ transform: "translateY(16px)", opacity: 0, transition: { duration: 0.16, ease: [0.3, 0, 0.8, 0.15] } }}
-          >
-            <div className="mx-auto mt-3 h-1 w-8 rounded-full bg-outline-variant sm:hidden" />
-            <header className="flex items-center gap-2 px-6 pt-4 pb-2 sm:pt-6">
-              <h2 className="flex-1 type-headline-s">{title}</h2>
-              <IconButton icon={IconClose} label="Close" onClick={onClose} />
-            </header>
-            <div className="flex-1 overflow-y-auto px-6 pb-6">{children}</div>
-            {footer && <footer className="flex justify-end gap-2 border-t border-outline-variant px-6 py-4">{footer}</footer>}
-          </motion.aside>
-        </div>
+        <motion.div
+          role="dialog"
+          aria-modal
+          className="fixed inset-0 z-50 flex flex-col bg-surface sm:left-24"
+          initial={{ opacity: 0, transform: "translateY(12px)" }}
+          animate={{ opacity: 1, transform: "translateY(0px)", transition: { duration: 0.24, ease: [0.05, 0.7, 0.1, 1] } }}
+          exit={{ opacity: 0, transform: "translateY(8px)", transition: { duration: 0.14, ease: [0.3, 0, 0.8, 0.15] } }}
+        >
+          <header className="flex h-16 flex-none items-center gap-2 border-b border-outline-variant/60 bg-surface px-2 pt-[env(safe-area-inset-top)] sm:h-[72px] sm:px-6">
+            <IconButton icon={IconClose} label="Close" tone="tonal" onClick={onClose} />
+            <h2 className="ml-2 min-w-0 flex-1 truncate type-title-l sm:type-headline-s">{title}</h2>
+            {footer && <div className="hidden items-center gap-2 sm:flex">{footer}</div>}
+          </header>
+          <div className="flex-1 overflow-y-auto overscroll-contain">
+            <div className={cx("mx-auto w-full px-4 py-6 sm:px-8 sm:py-8", wide ? "max-w-4xl" : "max-w-2xl")}>{children}</div>
+          </div>
+          {footer && <footer className="flex flex-none items-center justify-end gap-2 border-t border-outline-variant/60 bg-surface-low px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:hidden">{footer}</footer>}
+        </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
 

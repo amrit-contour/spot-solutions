@@ -73,7 +73,7 @@ export function Requests() {
   const linked = session?.status === "ready";
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full">
       <PageHeader
         title="Requests"
         subtitle={requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
@@ -99,7 +99,7 @@ export function Requests() {
         ) : grouped[lane].length === 0 ? (
           <LaneEmpty lane={lane} />
         ) : (
-          <motion.ul className="grid gap-3" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
+          <motion.ul className="grid items-start gap-3 xl:grid-cols-2" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
             <AnimatePresence initial={false}>
               {grouped[lane].map((r) => (
                 <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={comicsById.get(r.comicId)?.lastPerformedWeek === lastWeek} tier={comicsById.get(r.comicId)?.tier} />

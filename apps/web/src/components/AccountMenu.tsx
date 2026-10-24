@@ -10,7 +10,7 @@ import { Menu } from "./Menu";
 import { Avatar, Segmented, cx } from "./ui";
 import { IconLogout, IconMoon, IconServer, IconSun } from "./icons";
 
-export function AccountMenu() {
+export function AccountMenu({ align = "right" }: { align?: "left" | "right" }) {
   const { user } = useApp();
   const [mode, setModeState] = useState<ThemeMode>(savedMode());
   const name = user.displayName ?? user.email ?? "You";
@@ -20,7 +20,7 @@ export function AccountMenu() {
   const admin = isAdmin(useAccessConfig(), user.email);
   return (
     <Menu
-      align="right"
+      align={align}
       trigger={(toggle, open) => (
         <button onClick={toggle} aria-label="Account" aria-expanded={open} className={cx("state-layer pressable rounded-full p-0.5", open && "ring-2 ring-primary")}>
           {user.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}

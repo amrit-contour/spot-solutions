@@ -53,7 +53,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
               )}
               {view === "offline" && (
                 <p className="mt-2 type-body-l text-on-surface-variant">
-                  Your Spot Solutions server isn't reachable. Start the worker on your laptop (<code className="rounded-xs bg-surface-high px-1.5 py-0.5 font-mono text-[0.85em]">pnpm dev:worker</code> or <code className="rounded-xs bg-surface-high px-1.5 py-0.5 font-mono text-[0.85em]">docker compose up -d</code>), then come back.
+                  Your Spot Solutions server isn't reachable. Make sure the laptop running it is on and connected to the internet; this card updates by itself once it's back.
                 </p>
               )}
               {(view === "idle" || view === "starting" || view === "qr") && (

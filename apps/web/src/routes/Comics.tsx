@@ -33,7 +33,7 @@ export function Comics() {
   );
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full">
       <PageHeader title="Comics" subtitle={`${comics.length} on your roster. New faces are added when they message you.`} actions={<Button icon={IconUserPlus} onClick={() => setEditing({ tier: "open" })}>Add comic</Button>}>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <div className="relative min-w-60 flex-1">

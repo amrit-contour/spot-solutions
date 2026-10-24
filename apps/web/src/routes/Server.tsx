@@ -207,7 +207,7 @@ export function ServerPage() {
   const { user } = useApp();
   const admin = isAdmin(useAccessConfig(), user.email);
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full">
       <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" />
       <div className="flex flex-col gap-10 px-4 pb-12 sm:px-8">
         {admin && <Curators />}

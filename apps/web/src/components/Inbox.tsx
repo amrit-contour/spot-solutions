@@ -25,7 +25,7 @@ export function Notices() {
   const list = [...notices.data].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
   if (!list.length) return null;
   return (
-    <ul className="mb-4 flex flex-col gap-2">
+    <ul className="mb-4 grid gap-2 xl:grid-cols-2">
       <AnimatePresence initial={false}>
         {list.map((n) => (
           <motion.li
@@ -56,7 +56,7 @@ export function ActionInbox() {
         Needs a reply
         <span className="rounded-full bg-primary px-1.5 type-label-s text-on-primary tabular">{actions.data.length}</span>
       </h2>
-      <ul className="flex flex-col gap-3">
+      <ul className="grid items-start gap-3 xl:grid-cols-2">
         <AnimatePresence initial={false}>
           {actions.data.map((a) => (
             <ActionCard key={a.id} a={a} />
@@ -129,7 +129,7 @@ export function MicCheck() {
   const due = confirmed.data.filter((l) => !l.outcome && l.date && l.date < today).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
   if (!settings.micCheck.enabled || !due.length) return null;
   return (
-    <ul className="mb-4 flex flex-col gap-2">
+    <ul className="mb-4 grid gap-2 xl:grid-cols-2">
       {due.map((l) => {
         const show = shows.find((s) => s.id === l.showId);
         return (

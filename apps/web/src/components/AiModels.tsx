@@ -1,7 +1,6 @@
 // Settings → AI models: Gemini key (write-only), model lists, primary + fallback routes with live tests.
 import { useEffect, useState } from "react";
 import { deleteDoc, doc, setDoc } from "firebase/firestore";
-import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import type { AiKeyStatus, AiProvider, AiRoute } from "@spot/shared";
 import { useApp } from "../lib/app";
@@ -69,44 +68,28 @@ export function AiModels() {
     <div className="flex flex-col gap-6">
       <GeminiKey status={gemini} count={geminiModels.length} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <RouteCard title="Primary" hint="Reads every message first." route={settings.ai.primary} options={options} ollama={ollama} geminiReady={Boolean(gemini?.set)} onChange={(r) => setAi({ primary: r })} />
         <RouteCard
-          title="Primary"
-          hint="Reads every message first."
-          route={settings.ai.primary}
+          title="Fallback"
+          hint="Used only if the primary fails or times out."
+          route={settings.ai.fallback}
           options={options}
           ollama={ollama}
           geminiReady={Boolean(gemini?.set)}
-          onChange={(r) => setAi({ primary: r })}
+          onChange={(r) => setAi({ fallback: r })}
+          toggle={{
+            on: Boolean(settings.ai.fallback),
+            set: (v) =>
+              setAi({
+                fallback: v
+                  ? settings.ai.primary.provider === "ollama"
+                    ? { provider: "gemini", model: geminiModels.find((m) => m.startsWith("gemma-3-27b")) ?? geminiModels[0] ?? "gemma-3-27b-it" }
+                    : { provider: "ollama", model: ollama?.models[0]?.name ?? "gemma3:4b" }
+                  : null,
+              }),
+          }}
         />
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3 rounded-lg bg-surface-container px-4 py-3">
-            <div className="flex-1">
-              <div className="type-title-s">Fallback</div>
-              <div className="type-body-s text-on-surface-variant">Used only if the primary fails or times out.</div>
-            </div>
-            <Switch
-              checked={Boolean(settings.ai.fallback)}
-              onChange={(v) =>
-                setAi({
-                  fallback: v
-                    ? settings.ai.primary.provider === "ollama"
-                      ? { provider: "gemini", model: geminiModels.find((m) => m.startsWith("gemma-3-27b")) ?? geminiModels[0] ?? "gemma-3-27b-it" }
-                      : { provider: "ollama", model: ollama?.models[0]?.name ?? "gemma3:4b" }
-                    : null,
-                })
-              }
-              label="Use a fallback model"
-            />
-          </div>
-          <AnimatePresence initial={false}>
-            {settings.ai.fallback && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
-                <RouteCard title="Fallback" route={settings.ai.fallback} options={options} ollama={ollama} geminiReady={Boolean(gemini?.set)} onChange={(r) => setAi({ fallback: r })} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
       </div>
 
       <OllamaPanel ollama={ollama} loading={loadingOllama} onRefresh={refreshOllama} onPulled={setOllama} online={workerOnline} />
@@ -167,9 +150,9 @@ function GeminiKey({ status, count }: { status?: AiKeyStatus["gemini"]; count: n
       </div>
       {showInput ? (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <TextInput type="password" autoComplete="off" placeholder="AIza…" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void save()} className="h-11 font-mono" />
+          <TextInput type="password" autoComplete="off" placeholder="AIza…" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void save()} className="font-mono" />
           <div className="flex gap-2">
-            <Button onClick={save} loading={busy} disabled={!key.trim()} icon={IconShield}>
+            <Button onClick={save} loading={busy} disabled={!key.trim()} icon={IconShield} className="h-12">
               Test & save
             </Button>
             {editing && (
@@ -201,10 +184,12 @@ function RouteCard({
   ollama,
   geminiReady,
   onChange,
+  toggle,
 }: {
   title: string;
   hint?: string;
-  route: AiRoute;
+  route: AiRoute | null;
+  toggle?: { on: boolean; set: (v: boolean) => void };
   options: (p: AiProvider) => string[];
   ollama: OllamaList | null;
   geminiReady: boolean;
@@ -212,6 +197,24 @@ function RouteCard({
 }) {
   const { uid, workerOnline } = useApp();
   const [test, setTest] = useState<{ state: "idle" | "running" | "ok" | "fail"; msg?: string }>({ state: "idle" });
+  useEffect(() => setTest({ state: "idle" }), [route?.provider, route?.model]);
+  const header = (
+    <div className="mb-4 flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="type-title-s">{title}</div>
+        {hint && <div className="type-body-s text-on-surface-variant">{hint}</div>}
+      </div>
+      {toggle && <Switch checked={toggle.on} onChange={toggle.set} label={`Use a ${title.toLowerCase()} model`} />}
+    </div>
+  );
+  if (!route) {
+    return (
+      <div className="rounded-lg border border-outline-variant p-4">
+        {header}
+        <p className="type-body-s text-on-surface-variant">Off. If the primary fails, that message is skipped and noted in the server log.</p>
+      </div>
+    );
+  }
   const list = options(route.provider);
   const missing = route.provider === "gemini" ? !geminiReady : ollama ? !ollama.models.some((m) => m.name === route.model) : false;
 
@@ -224,28 +227,23 @@ function RouteCard({
       setTest({ state: "fail", msg: (e as Error).message });
     }
   };
-  useEffect(() => setTest({ state: "idle" }), [route.provider, route.model]);
-
   return (
     <div className="rounded-lg border border-outline-variant p-4">
-      <div className="mb-3 flex items-baseline justify-between gap-2">
-        <span className="type-title-s">{title}</span>
-        {hint && <span className="type-body-s text-on-surface-variant">{hint}</span>}
-      </div>
+      {header}
       <Segmented
         size="sm"
         value={route.provider}
         onChange={(p) => onChange({ provider: p, model: options(p)[0] ?? (p === "ollama" ? "gemma3:4b" : "gemma-3-27b-it") })}
         options={[
-          { value: "ollama", label: "Local · Ollama", icon: IconCpu },
-          { value: "gemini", label: "Gemini API", icon: IconSparkle },
+          { value: "ollama", label: "Ollama", icon: IconCpu },
+          { value: "gemini", label: "Gemini", icon: IconSparkle },
         ]}
       />
       <div className="mt-3">
         {list.length ? (
           <Select value={list.includes(route.model) ? route.model : ""} onChange={(m) => onChange({ ...route, model: m })} placeholder={list.includes(route.model) ? undefined : `${route.model} (not available)`} options={list.map((m) => ({ value: m, label: m }))} className="font-mono text-sm" />
         ) : (
-          <TextInput value={route.model} onChange={(e) => onChange({ ...route, model: e.target.value })} className="h-11 font-mono text-sm" />
+          <TextInput value={route.model} onChange={(e) => onChange({ ...route, model: e.target.value })} className="font-mono text-sm" />
         )}
       </div>
       {missing && (
@@ -312,8 +310,8 @@ function OllamaPanel({ ollama, loading, onRefresh, onPulled, online }: { ollama:
         </ul>
       )}
       <div className="mt-3 flex gap-2">
-        <TextInput placeholder="gemma3:1b, gemma3:12b, qwen3:4b…" value={name} onChange={(e) => setName(e.target.value)} className="h-10 font-mono text-sm" disabled={!online} />
-        <Button size="sm" variant="tonal" onClick={pull} loading={pulling} disabled={!online || !name.trim()}>
+        <TextInput placeholder="gemma3:1b, gemma3:12b, qwen3:4b…" value={name} onChange={(e) => setName(e.target.value)} className="font-mono text-sm" disabled={!online} />
+        <Button variant="tonal" className="h-12" onClick={pull} loading={pulling} disabled={!online || !name.trim()}>
           Pull
         </Button>
       </div>
