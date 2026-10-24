@@ -133,3 +133,6 @@
 /* Scanning line over the QR while we wait for the phone */
 @keyframes scan { 0% { transform: translateY(0); } 50% { transform: translateY(calc(var(--qr) - 2px)); } 100% { transform: translateY(0); } }
 .scanline { animation: scan 2.8s var(--ease-emphasized) infinite; }
+
+@keyframes page-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.page-enter { animation: page-enter 220ms var(--ease-out-strong) both; }

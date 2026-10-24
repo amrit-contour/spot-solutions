@@ -47,8 +47,8 @@ export function useApp() {
 export function useAuthUser() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   useEffect(() => {
-    // Local dev only: sign in with a custom token minted by scripts/seed-demo.ts.
-    const devToken = import.meta.env.DEV ? new URLSearchParams(location.search).get("devToken") : null;
+    // Localhost only: sign in with a custom token minted by scripts/seed-demo.ts (needs the service account, so not a bypass).
+    const devToken = location.hostname === "localhost" ? new URLSearchParams(location.search).get("devToken") : null;
     if (devToken) {
       history.replaceState(null, "", location.pathname);
       void import("firebase/auth").then(({ signInWithCustomToken }) => signInWithCustomToken(auth, devToken));

@@ -10,7 +10,6 @@ import { unwatchUser, watchUser } from "./userData.ts";
 
 const { Client, LocalAuth } = WAWebJS;
 const DATA_DIR = process.env.WWEBJS_DATA ?? path.resolve(".wwebjs_auth");
-const HEARTBEAT_MS = 30_000;
 
 const setState = (uid: string, s: Partial<SessionState>) =>
   sessionRef(uid).set({ ...s, lastSeen: Date.now() }, { merge: true });
@@ -19,14 +18,6 @@ class SessionManager {
   private clients = new Map<string, WAWebJS.Client>();
   private ready = new Set<string>();
   private restarting = new Set<string>();
-
-  constructor() {
-    setInterval(() => {
-      for (const uid of this.clients.keys()) {
-        sessionRef(uid).set({ lastSeen: Date.now() }, { merge: true }).catch(() => undefined);
-      }
-    }, HEARTBEAT_MS).unref();
-  }
 
   get(uid: string) {
     return this.ready.has(uid) ? this.clients.get(uid) : undefined;
@@ -42,9 +33,24 @@ class SessionManager {
     return this.clients.has(uid);
   }
 
+  private starting = new Set<string>();
+
   async start(uid: string) {
-    if (this.clients.has(uid)) return;
+    // Claim synchronously: the connect command and the users listener can both call this in the same tick.
+    if (this.clients.has(uid) || this.starting.has(uid)) return;
+    this.starting.add(uid);
+    try {
+      await this.launch(uid);
+    } finally {
+      this.starting.delete(uid);
+    }
+  }
+
+  private async launch(uid: string) {
     watchUser(uid);
+    // A crashed worker can leave Chromium's profile lock behind; clear it so the session reopens.
+    const profile = path.join(DATA_DIR, `session-${uid}`);
+    await Promise.all(["SingletonLock", "SingletonCookie", "SingletonSocket"].map((f) => rm(path.join(profile, f), { force: true })));
     await setState(uid, { status: "starting", qr: null, error: null });
 
     const client = new Client({

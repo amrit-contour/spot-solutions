@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { useApp } from "../lib/app";
 import { cx, type Icon } from "./ui";
 import { IconCalendar, IconComics, IconInbox, IconMic, IconPhone, IconSettings } from "./icons";
 import { Logo } from "./Logo";
+import { AccountMenu } from "./AccountMenu";
 
 const NAV: { to: string; label: string; icon: Icon }[] = [
   { to: "/", label: "Requests", icon: IconInbox },
@@ -74,16 +75,10 @@ export function Shell({ children }: { children: ReactNode }) {
       </nav>
 
       <main className="min-w-0 flex-1 pb-24 sm:pb-0">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={loc.pathname}
-            initial={{ opacity: 0, transform: "translateY(6px)" }}
-            animate={{ opacity: 1, transform: "translateY(0px)", transition: { duration: 0.22, ease: [0.23, 1, 0.32, 1] } }}
-            exit={{ opacity: 0, transition: { duration: 0.08 } }}
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
+        {/* CSS keyframes, not AnimatePresence: they always run to the end, so a route can never get stuck invisible. */}
+        <div key={loc.pathname} className="page-enter">
+          {children}
+        </div>
       </main>
 
       {/* Bottom bar < 600px */}
@@ -99,12 +94,15 @@ export function Shell({ children }: { children: ReactNode }) {
 export function PageHeader({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
   const conn = useConnection();
   return (
-    <header className="px-4 pt-6 pb-4 sm:px-8 sm:pt-8">
+    <header className="px-4 pt-4 pb-4 sm:px-8 sm:pt-6">
+      <div className="mb-3 flex items-center justify-end gap-3">
+        <NavLink to="/settings#whatsapp" className="state-layer mr-auto inline-flex items-center gap-2 rounded-full px-2 py-1 type-label-m text-on-surface-variant sm:hidden">
+          <StatusDot tone={conn.tone} /> {conn.label}
+        </NavLink>
+        <AccountMenu />
+      </div>
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
-          <div className="mb-2 flex items-center gap-2 type-label-m text-on-surface-variant sm:hidden">
-            <StatusDot tone={conn.tone} /> {conn.label}
-          </div>
           <h1 className="type-display-s text-balance">{title}</h1>
           {subtitle && <p className="mt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>}
         </div>

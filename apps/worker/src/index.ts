@@ -1,11 +1,16 @@
 // Spot Solutions worker: keeps every curator's WhatsApp session alive and executes
 // commands the web app drops into Firestore. Only outbound connections — no ports.
-import { col, db } from "./firebase.ts";
+import { col, db, sessionRef } from "./firebase.ts";
 import { runCommand } from "./commands.ts";
 import { sessions } from "./sessions.ts";
 import { ollamaHealthy } from "./gemma.ts";
 
 const commandListeners = new Map<string, () => void>();
+const HEARTBEAT_MS = 30_000;
+
+// Every curator sees the worker as online, even before linking WhatsApp — otherwise there's no way to ask for a QR.
+const beat = (uid: string) => sessionRef(uid).set({ lastSeen: Date.now() }, { merge: true }).catch(() => undefined);
+setInterval(() => commandListeners.forEach((_, uid) => void beat(uid)), HEARTBEAT_MS).unref();
 
 function watchCommands(uid: string) {
   if (commandListeners.has(uid)) return;
@@ -16,6 +21,7 @@ function watchCommands(uid: string) {
       (err) => console.error(`[commands] ${uid} listener error`, err),
     );
   commandListeners.set(uid, unsub);
+  void sessionRef(uid).get().then((s) => (s.exists ? beat(uid) : sessionRef(uid).set({ status: "idle", lastSeen: Date.now() })));
 }
 
 async function main() {
@@ -38,6 +44,8 @@ async function main() {
 
   const shutdown = async () => {
     console.log("[worker] shutting down");
+    // Mark everyone offline right away instead of waiting for the heartbeat to go stale.
+    await Promise.all([...commandListeners.keys()].map((uid) => sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined)));
     await sessions.stopAll();
     process.exit(0);
   };

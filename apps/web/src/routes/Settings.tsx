@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { signOut } from "firebase/auth";
 import { toast } from "sonner";
 import {
   DEFAULT_ACK_TEMPLATE,
@@ -10,12 +9,10 @@ import {
   renderTemplate,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { auth } from "../lib/firebase";
-import { savedMode, setMode, type ThemeMode } from "../lib/theme";
 import { PageHeader } from "../components/Shell";
 import { ConnectCard } from "../components/ConnectCard";
 import { Bubble, Button, Field, Segmented, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
-import { IconChat, IconChatCheck, IconChatCross, IconCpu, IconLogout, IconMoon, IconSettings, IconShield, IconSun } from "../components/icons";
+import { IconChat, IconChatCheck, IconChatCross, IconCpu, IconShield } from "../components/icons";
 
 function Section({ title, icon: I, description, children, aside }: { title: string; icon: typeof IconChat; description?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
@@ -102,8 +99,7 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled }: { valu
 }
 
 export function SettingsPage() {
-  const { settings, saveSettings, user } = useApp();
-  const [mode, setModeState] = useState<ThemeMode>(savedMode());
+  const { settings, saveSettings } = useApp();
   const [withMinutes, setWithMinutes] = useState(true);
   const [modelName, setModelName] = useState(settings.model.name);
   useEffect(() => setModelName(settings.model.name), [settings.model.name]);
@@ -182,27 +178,6 @@ export function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="Appearance & account" icon={IconSettings}>
-          <div className="flex flex-wrap items-center gap-4">
-            <Segmented
-              value={mode}
-              onChange={(m) => {
-                setMode(m);
-                setModeState(m);
-              }}
-              options={[
-                { value: "system", label: "System" },
-                { value: "light", label: "Light", icon: IconSun },
-                { value: "dark", label: "Dark", icon: IconMoon },
-              ]}
-            />
-            <div className="flex-1" />
-            <span className="type-body-m text-on-surface-variant">{user.email}</span>
-            <Button variant="outlined" icon={IconLogout} onClick={() => signOut(auth)}>
-              Sign out
-            </Button>
-          </div>
-        </Section>
       </div>
     </div>
   );
