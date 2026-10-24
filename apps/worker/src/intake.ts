@@ -5,8 +5,18 @@ import {
   AUTO_ACK_MAX_AGE_MS,
   AUTO_ACK_THRESHOLD,
   MAYBE_THRESHOLD,
+  DAY_NAMES,
+  dateInWeek,
+  formatDate,
+  formatTime,
+  holdFor,
+  lastSpot,
+  localNow,
   renderTemplate,
   weekOf,
+  type ComicAction,
+  type Intent,
+  type Lineup,
   type Comic,
   type InboundMessage,
   type SpotRequest,
@@ -92,7 +102,16 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     .slice(-MAX_CONTEXT);
 
   const activeShows = shows.filter((s) => s.active);
-  const intent = await classify(messages.map((m) => m.body), activeShows, settings.model);
+  // Read the new burst on its own first: "cancel my spot" from someone already booked shouldn't be
+  // blended into their earlier spot request.
+  const burst = p.messages.map((m) => m.body);
+  const first = await classify(burst, activeShows, settings.model);
+  if (first.kind && ["cancel_spot", "status_query", "last_spot_query"].includes(first.kind)) {
+    console.log(`[intake] ${p.contact.name}: ${first.kind} — ${first.note}`);
+    if (settings.selfService.enabled) await draftAction(uid, client, p, first, week);
+    return;
+  }
+  const intent = existing ? await classify(messages.map((m) => m.body), activeShows, settings.model) : first;
   console.log(`[intake] ${p.contact.name}: spot=${intent.isSpotRequest} conf=${intent.confidence} (${intent.model}) — ${intent.note}`);
 
   // Privacy: chats that aren't spot requests are never stored.
@@ -100,6 +119,10 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
 
   const now = Date.now();
   const locked = existing && ["confirmed", "dismissed", "assigned", "rejected"].includes(existing.status);
+  const known = (await col(uid, "comics").doc(p.contact.id).get()).data() as Comic | undefined;
+  const newest = Math.max(...p.messages.map((m) => m.at));
+  // V1 rules: banned/ignored/host lists, the weekly request window, and last week's performers.
+  const hold = existing?.holdOverridden || locked ? (existing?.hold ?? null) : holdFor({ comic: known, week, at: new Date(newest), rules: settings.rules, timeZone: settings.timezone });
   const request: SpotRequest = {
     id: reqRef.id,
     comicId: p.contact.id,
@@ -110,6 +133,8 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     intent: existing && existing.intent.confidence > intent.confidence ? { ...existing.intent, note: intent.note ?? existing.intent.note } : intent,
     status: locked ? existing.status : (existing?.status ?? "new"),
     ackedAt: existing?.ackedAt ?? null,
+    hold,
+    holdOverridden: existing?.holdOverridden ?? false,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -137,9 +162,9 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   });
 
   // Every guard must pass before anything is sent on the curator's behalf.
-  const newest = Math.max(...p.messages.map((m) => m.at));
   const okToAck =
     settings.ack.enabled &&
+    (!hold || request.holdOverridden) &&
     !locked &&
     !request.ackedAt &&
     intent.isSpotRequest &&
@@ -157,4 +182,46 @@ async function acknowledge(uid: string, client: WAWebJS.Client, r: SpotRequest) 
   await sendQueued(client, comic?.chatId ?? r.comicId, body);
   await col(uid, "requests").doc(r.id).update({ ackedAt: Date.now(), status: "acked" });
   console.log(`[ack] sent to ${comic?.name ?? r.comicName}`);
+}
+
+/** Draft a reply for a booked comic's question or drop-out. Sent only when the curator approves (or opted into auto-send). */
+async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, intent: Intent, week: string) {
+  const { settings, shows } = watchUser(uid);
+  const comic = (await col(uid, "comics").doc(p.contact.id).get()).data() as Comic | undefined;
+  const first = (comic?.name ?? p.contact.name).split(" ")[0];
+  const lineups = (await col(uid, "lineups").where("weekOf", "==", week).get()).docs.map((d) => d.data() as Lineup);
+  const mine = lineups.find((l) => l.slots.some((s) => s.comicId === p.contact.id));
+  const show = shows.find((s) => s.id === mine?.showId);
+  const when = show && mine ? `${show.name}, ${DAY_NAMES[show.weekday]} ${formatDate(dateInWeek(week, show.weekday))} at ${formatTime(show.startTime)}` : "";
+
+  let draft: string;
+  if (intent.kind === "cancel_spot") {
+    draft = mine ? `Okay ${first}, I've cancelled your spot for ${when}. See you next time! 🫡` : `Hey ${first}, you don't have a spot this week, so there's nothing to cancel.`;
+  } else if (intent.kind === "status_query") {
+    draft = mine?.status === "confirmed" ? `Yes! You're on ${when}.` : mine ? `You're pencilled in, but the lineup isn't final yet. I'll confirm soon.` : `You don't have a spot this week yet. I'll let you know once the lineup is out.`;
+  } else {
+    const last = lastSpot(comic?.history, localNow(new Date(), settings.timezone).date);
+    draft = last ? `Your last spot was ${last.showName} on ${formatDate(last.date)}.` : `I don't have a record of your last spot yet.`;
+  }
+
+  const action: Omit<ComicAction, "id"> = {
+    kind: intent.kind as ComicAction["kind"],
+    comicId: p.contact.id,
+    comicName: comic?.name ?? p.contact.name,
+    weekOf: week,
+    message: p.messages.map((m) => m.body).join("\n"),
+    draft,
+    lineupId: intent.kind === "cancel_spot" && mine && mine.status !== "cancelled" ? `${week}_${mine.showId}` : null,
+    status: "pending",
+    createdAt: Date.now(),
+  };
+  const ref = await col(uid, "actions").add(action);
+
+  const fresh = Date.now() - Math.max(...p.messages.map((m) => m.at)) < AUTO_ACK_MAX_AGE_MS;
+  if (settings.selfService.autoSend && fresh && !p.contact.isBusiness) {
+    const { dropFromLineup } = await import("./commands.ts");
+    if (action.lineupId) await dropFromLineup(uid, client, p.contact.id, action.lineupId);
+    await sendQueued(client, comic?.chatId ?? p.contact.chatId, draft);
+    await ref.update({ status: "sent", sentAt: Date.now() });
+  }
 }

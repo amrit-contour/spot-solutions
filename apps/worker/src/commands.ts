@@ -10,8 +10,11 @@ import {
   formatTime,
   lineupId,
   pendingRejections,
+  localNow,
   renderTemplate,
+  withHistory,
   type Command,
+  type ComicAction,
   type Comic,
   type GroupSyncPlan,
   type Lineup,
@@ -89,15 +92,18 @@ const handlers: Record<Command["type"], Handler> = {
     }
 
     const batch = db.batch();
+    const date = dateInWeek(lineup.weekOf, show.weekday);
     for (const slot of lineup.slots) {
       if (!results[slot.comicId]?.startsWith("sent")) continue;
-      batch.set(col(uid, "comics").doc(slot.comicId), { lastPerformedWeek: lineup.weekOf }, { merge: true });
+      const history = withHistory(comics.get(slot.comicId)?.history, { date, showId: show.id, showName: show.name, status: "confirmed" });
+      batch.set(col(uid, "comics").doc(slot.comicId), { lastPerformedWeek: lineup.weekOf, history }, { merge: true });
       batch.set(col(uid, "requests").doc(`${lineup.weekOf}_${slot.comicId}`), { status: "confirmed", updatedAt: Date.now() }, { merge: true });
     }
     batch.update(lineupRef, { status: "confirmed", sentAt: Date.now() });
     await batch.commit();
 
-    if (show.groupId) await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
+    // Show-day groups are handled by the scheduler on the day; otherwise review the group now.
+    if (show.groupId && show.groupMode !== "show_day") await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
     // Last show of the week locked in → everyone still waiting gets a regret.
     if (settings.reject.enabled && (await weekIsFinal(uid, lineup.weekOf, shows))) {
       await handlers.send_rejections(uid, { weekOf: lineup.weekOf });
@@ -195,6 +201,18 @@ const handlers: Record<Command["type"], Handler> = {
     return results;
   },
 
+  /** Curator approved a drafted reply (and for cancellations, the drop-out itself). */
+  async send_action(uid, { actionId, body }) {
+    const client = sessions.require(uid);
+    const ref = col(uid, "actions").doc(String(actionId));
+    const action = (await ref.get()).data() as ComicAction | undefined;
+    if (!action || action.status !== "pending") throw new Error("Nothing to send");
+    if (action.kind === "cancel_spot" && action.lineupId) await dropFromLineup(uid, client, action.comicId, action.lineupId);
+    const comic = (await col(uid, "comics").doc(action.comicId).get()).data() as Comic | undefined;
+    await sendQueued(client, comic?.chatId ?? action.comicId, String(body ?? action.draft));
+    await ref.update({ status: "sent", sentAt: Date.now() });
+  },
+
   async send_message(uid, { to, body }) {
     await sendQueued(sessions.require(uid), String(to), String(body));
   },
@@ -205,7 +223,61 @@ async function weekIsFinal(uid: string, week: string, shows: Show[]) {
   const active = shows.filter((s) => s.active);
   if (!active.length) return false;
   const snaps = await db.getAll(...active.map((s) => col(uid, "lineups").doc(lineupId(week, s.id))));
-  return snaps.every((s) => ["confirmed", "cancelled"].includes((s.data() as Lineup | undefined)?.status ?? "draft"));
+  return snaps.every((s) => ["confirmed", "cancelled", "canned"].includes((s.data() as Lineup | undefined)?.status ?? "draft"));
+}
+
+/** A comic drops out: free the slot, log it, and pull them from the group if the show is today. */
+export async function dropFromLineup(uid: string, client: WAWebJS.Client, comicId: string, id: string) {
+  const { shows, settings } = watchUser(uid);
+  const lineupRef = col(uid, "lineups").doc(id);
+  const lineup = (await lineupRef.get()).data() as Lineup | undefined;
+  if (!lineup) return;
+  const show = shows.find((s) => s.id === lineup.showId);
+  const date = show ? dateInWeek(lineup.weekOf, show.weekday) : lineup.date;
+  await lineupRef.update({
+    slots: lineup.slots.filter((s) => s.comicId !== comicId),
+    dropped: [...(lineup.dropped ?? []), { comicId, at: Date.now() }],
+  });
+  const comicRef = col(uid, "comics").doc(comicId);
+  const comic = (await comicRef.get()).data() as Comic | undefined;
+  const history = withHistory(comic?.history, { date, showId: lineup.showId, showName: show?.name ?? "Show", status: "cancelled" });
+  await comicRef.set({ history, ...(comic?.lastPerformedWeek === lineup.weekOf ? { lastPerformedWeek: null } : {}) }, { merge: true });
+  await col(uid, "requests").doc(`${lineup.weekOf}_${comicId}`).set({ status: "dismissed", updatedAt: Date.now() }, { merge: true });
+  if (show?.groupId && localNow(new Date(), settings.timezone).date === date) {
+    const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;
+    const lid = (await lidMap(client, group)).get(comicId);
+    await group.removeParticipants([lid ?? comicId]).catch(() => undefined);
+  }
+  await notice(uid, "info", `${comic?.name ?? "A comic"} dropped out of ${show?.name ?? "a show"}. A slot is open.`);
+}
+
+export async function notice(uid: string, level: "info" | "warn", text: string) {
+  await col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false });
+}
+
+/**
+ * Show-day group update: one automatic pass on the day of the show.
+ * Same safety rules as the manual sync (admins, regulars, protected and unidentified members stay).
+ */
+export async function runShowDaySync(uid: string, id: string) {
+  const client = sessions.require(uid);
+  const { shows } = watchUser(uid);
+  const lineupRef = col(uid, "lineups").doc(id);
+  const plan = (await handlers.plan_group_sync(uid, { lineupId: id })) as GroupSyncPlan;
+  const results = (await handlers.sync_group(uid, { lineupId: id, exclude: [] })) as NonNullable<GroupSyncPlan["results"]>;
+  const lineup = (await lineupRef.get()).data() as Lineup;
+  const show = shows.find((s) => s.id === lineup.showId) as Show;
+  await lineupRef.update({ showDaySyncedOn: dateInWeek(lineup.weekOf, show.weekday) });
+
+  const comics = await loadComics(uid, [...plan.toAdd, ...lineup.slots.map((s) => s.comicId)]);
+  const failed = Object.entries(results).filter(([, r]) => r === "failed").map(([cid]) => comics.get(cid)?.name ?? `+${cid.split("@")[0]}`);
+  if (failed.length) await notice(uid, "warn", `${show.name}: couldn't update ${failed.join(", ")} in the group. Add them by hand.`);
+
+  if (show.postLineupToGroup && show.groupId && lineup.slots.length) {
+    const names = lineup.slots.map((s, i) => `${i + 1}. ${comics.get(s.comicId)?.name ?? "TBA"}`).join("\n");
+    await sendQueued(client, show.groupId, `*${show.name}: tonight's lineup* (${formatTime(show.startTime)})\n\n${names}`);
+  }
+  console.log(`[show-day] ${uid} ${show.name}: +${plan.toAdd.length} −${plan.toRemove.length}`);
 }
 
 async function loadComics(uid: string, ids: string[]) {

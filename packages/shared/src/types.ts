@@ -22,6 +22,50 @@ export interface Settings {
   ignoreGroups: boolean;
   timezone: string; // IANA, e.g. Asia/Kolkata
   debounceSeconds: number;
+  rules: RuleSettings;
+  selfService: { enabled: boolean; autoSend: boolean };
+}
+
+export interface RuleSettings {
+  /** Only accept requests inside this weekly window; others are held as mid-week asks. */
+  window: { enabled: boolean; startDay: Weekday; startTime: string; endDay: Weekday; endTime: string };
+  /** Hold requests from comics who performed last week. */
+  skipLastWeek: boolean;
+}
+
+/** Why a request was held back instead of landing in Asked. */
+export type HoldReason = "midweek" | "last_week" | "banned" | "ignored" | "host";
+
+export type ComicList = "banned" | "ignored" | "host";
+
+export interface SpotHistoryEntry {
+  date: string; // YYYY-MM-DD of the show
+  showId: string;
+  showName: string;
+  status: "confirmed" | "cancelled" | "canned";
+}
+
+/** A comic asked something other than a spot: drafted reply waiting for the curator. */
+export interface ComicAction {
+  id: string;
+  kind: "cancel_spot" | "status_query" | "last_spot_query";
+  comicId: string;
+  comicName: string;
+  weekOf: string;
+  message: string;
+  draft: string;
+  /** For cancel_spot: which lineup the comic is in. */
+  lineupId?: string | null;
+  status: "pending" | "sent" | "dismissed";
+  createdAt: number;
+}
+
+export interface AppNotice {
+  id: string;
+  level: "info" | "warn";
+  text: string;
+  createdAt: number;
+  read: boolean;
 }
 
 export interface Venue {
@@ -44,6 +88,10 @@ export interface Show {
   groupId?: string | null;
   regulars: string[]; // comic ids that stay in the group
   protected: string[]; // never removed (co-hosts etc.)
+  /** "confirm": review the group right after confirming. "show_day": update it automatically on the day. */
+  groupMode?: "confirm" | "show_day";
+  showDaySyncTime?: string; // "12:00"
+  postLineupToGroup?: boolean;
 }
 
 export interface Comic {
@@ -57,9 +105,14 @@ export interface Comic {
   notes?: string;
   lastPerformedWeek?: string | null; // weekOf key
   regularOf?: string[]; // show ids
+  list?: ComicList | null;
+  history?: SpotHistoryEntry[]; // newest first, capped
 }
 
+export type IntentKind = "spot_request" | "cancel_spot" | "status_query" | "last_spot_query" | "other";
+
 export interface Intent {
+  kind?: IntentKind;
   isSpotRequest: boolean;
   confidence: number; // 0..1
   preferredDays: Weekday[];
@@ -86,6 +139,9 @@ export interface SpotRequest {
   status: RequestStatus;
   ackedAt?: number | null;
   rejectedAt?: number | null;
+  hold?: HoldReason | null;
+  /** Curator chose to let a held request through. */
+  holdOverridden?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -110,9 +166,14 @@ export interface Lineup {
   showId: string;
   date: string; // YYYY-MM-DD
   slots: Slot[];
-  status: "draft" | "confirmed" | "cancelled";
+  /** cancelled = called off in advance; canned = it was meant to happen but didn't. */
+  status: "draft" | "confirmed" | "cancelled" | "canned";
   sentAt?: number | null;
   groupSync?: GroupSyncPlan | null;
+  /** Comics who dropped out after confirmation. */
+  dropped?: { comicId: string; at: number }[];
+  /** Date the show-day group update ran, so it happens once. */
+  showDaySyncedOn?: string | null;
 }
 
 export interface GroupInfo {
@@ -128,6 +189,7 @@ export type CommandType =
   | "list_groups"
   | "send_confirmations"
   | "send_rejections"
+  | "send_action"
   | "plan_group_sync"
   | "sync_group"
   | "send_message";

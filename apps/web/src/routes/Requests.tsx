@@ -6,8 +6,13 @@ import { toast } from "sonner";
 import { updateDoc } from "firebase/firestore";
 import {
   DAY_SHORT,
+  HOLD_LABEL,
   INTENT_THRESHOLD,
+  cancellations,
+  daysBetween,
   formatTime,
+  lastSpot,
+  localNow,
   shiftWeek,
   type Lineup,
   type Show,
@@ -21,18 +26,28 @@ import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
 import { Avatar, Bubble, Button, Chip, Empty, IconButton, cx } from "../components/ui";
 import { ConnectCard } from "../components/ConnectCard";
-import { IconArrowDown, IconChatCheck, IconCheck, IconHistory, IconInbox, IconMic, IconSkip, IconSparkle, IconStar } from "../components/icons";
+import { ActionInbox, Notices } from "../components/Inbox";
+import { IconArrowDown, IconChatCheck, IconCheck, IconHistory, IconInbox, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
-type Lane = "asked" | "maybe" | "placed" | "closed";
+type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
 const LANES: { id: Lane; label: string }[] = [
   { id: "asked", label: "Asked" },
   { id: "maybe", label: "Maybe" },
+  { id: "held", label: "Held" },
   { id: "placed", label: "Placed" },
   { id: "closed", label: "Closed" },
 ];
 
 const laneOf = (r: SpotRequest): Lane =>
-  r.status === "dismissed" || r.status === "rejected" ? "closed" : r.status === "assigned" || r.status === "confirmed" ? "placed" : r.intent.confidence >= INTENT_THRESHOLD ? "asked" : "maybe";
+  r.status === "dismissed" || r.status === "rejected"
+    ? "closed"
+    : r.status === "assigned" || r.status === "confirmed"
+      ? "placed"
+      : r.hold && !r.holdOverridden
+        ? "held"
+        : r.intent.confidence >= INTENT_THRESHOLD
+          ? "asked"
+          : "maybe";
 
 export function Requests() {
   const { uid, week, session, shows, comicsById } = useApp();
@@ -42,7 +57,7 @@ export function Requests() {
   const lastWeek = shiftWeek(week, -1);
 
   const grouped = useMemo(() => {
-    const g: Record<Lane, SpotRequest[]> = { asked: [], maybe: [], placed: [], closed: [] };
+    const g: Record<Lane, SpotRequest[]> = { asked: [], maybe: [], held: [], placed: [], closed: [] };
     for (const r of requests.data) g[laneOf(r)].push(r);
     // Fairness first: people who didn't perform last week float up, then first-come.
     for (const k of Object.keys(g) as Lane[])
@@ -76,6 +91,8 @@ export function Requests() {
       </PageHeader>
 
       <div className="px-4 pb-10 sm:px-8">
+        <Notices />
+        {lane === "asked" && <ActionInbox />}
         {!linked && !requests.data.length ? (
           <ConnectCard compact />
         ) : grouped[lane].length === 0 ? (
@@ -104,6 +121,7 @@ function LaneEmpty({ lane }: { lane: Lane }) {
     asked: ["Inbox zero. Go write.", "New spot requests show up here as they arrive. Gemma reads each burst of messages together, so a hey, a pause and then the ask count as one request."],
     maybe: ["Nothing borderline", "Messages Gemma wasn't sure about land here, so nothing gets missed."],
     placed: ["No one placed yet", "Assign comics to a show from Asked, or drag them on the Lineup board."],
+    held: ["Nothing held back", "Requests that break your rules land here: outside the request window, performed last week, or from someone on your banned, ignored or host list. You can still let them through."],
     closed: ["Nothing closed", "Dismissed requests and comics who got a regret message stay here for the week."],
   };
   return (
@@ -114,9 +132,14 @@ function LaneEmpty({ lane }: { lane: Lane }) {
 }
 
 function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRequest; shows: Show[]; lineups: Lineup[]; performedLastWeek: boolean; tier?: string }) {
-  const { uid, week } = useApp();
+  const { uid, week, comicsById, settings } = useApp();
   const now = useNow(30_000);
   const [open, setOpen] = useState(false);
+  const comic = comicsById.get(r.comicId);
+  const today = localNow(new Date(now), settings.timezone).date;
+  const prev = lastSpot(comic?.history, today);
+  const cancels = cancellations(comic?.history);
+  const held = r.hold && !r.holdOverridden;
   const placedIn = lineups.find((l) => l.slots.some((s) => s.comicId === r.comicId));
   const placedShow = shows.find((s) => s.id === placedIn?.showId);
   const preferred = new Set(r.intent.preferredDays);
@@ -145,7 +168,16 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
             <span className="flex-none type-label-m text-on-surface-variant tabular">{timeAgo(r.updatedAt, now)}</span>
           </div>
           <p className="mt-0.5 type-body-m text-on-surface-variant sm:type-body-l">{r.intent.note || `“${last?.body}”`}</p>
+          <p className="mt-1 type-body-s text-on-surface-variant">
+            {prev ? `Last spot ${daysBetween(prev.date, today)} days ago (${prev.showName})` : "No spot on record"}
+            {cancels > 0 && <span className="text-error"> · {cancels} cancellation{cancels > 1 ? "s" : ""}</span>}
+          </p>
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            {r.hold && (
+              <Chip tone={held ? "error" : "neutral"} icon={IconShield} className={cx(!held && "line-through")}>
+                {HOLD_LABEL[r.hold]}
+              </Chip>
+            )}
             {r.intent.preferredDays.length ? (
               r.intent.preferredDays.map((d) => (
                 <Chip key={d} tone="primary">
@@ -198,7 +230,14 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
         </button>
         <Confidence value={r.intent.confidence} />
         <div className="flex-1" />
-        {r.status === "rejected" ? (
+        {held ? (
+          <>
+            <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} />
+            <Button variant="tonal" onClick={() => void updateDoc(userDoc(uid, "requests", r.id), { holdOverridden: true, updatedAt: Date.now() })}>
+              Allow anyway
+            </Button>
+          </>
+        ) : r.status === "rejected" ? (
           <Chip icon={IconChatCheck}>Regret sent</Chip>
         ) : r.status === "dismissed" ? (
           <Button size="sm" variant="text" onClick={() => setStatus(r.ackedAt ? "acked" : "new")}>

@@ -27,6 +27,15 @@ const cases: [string[], boolean, number[]][] = [
   [["Hi! I'm new to the Bangalore scene and would love to get on one of your mics sometime"], true, []],
 ];
 
+// [messages, expected kind]
+const kindCases: [string[], string][] = [
+  [["bro can't make it monday, something came up. please cancel my spot"], "cancel_spot"],
+  [["hey did I get a spot this week?"], "status_query"],
+  [["when was the last time I performed at your mic?"], "last_spot_query"],
+  [["any spot this tuesday?"], "spot_request"],
+  [["thanks for the set yesterday!"], "other"],
+];
+
 const model = { ...DEFAULT_SETTINGS.model, name: process.argv[2] ?? DEFAULT_SETTINGS.model.name, fallback: false };
 let ok = 0;
 for (const [msgs, want, days] of cases) {
@@ -37,3 +46,10 @@ for (const [msgs, want, days] of cases) {
   console.log(`${pass ? "PASS" : "FAIL"} ${Date.now() - t}ms conf=${r.confidence} days=${r.preferredDays} | ${msgs.join(" / ")} | ${r.note}`);
 }
 console.log(`\n${ok}/${cases.length} correct with ${model.name}`);
+let kOk = 0;
+for (const [msgs, want] of kindCases) {
+  const r = await classify(msgs, shows, model);
+  kOk += r.kind === want ? 1 : 0;
+  console.log(`${r.kind === want ? "PASS" : "FAIL"} kind=${r.kind} (want ${want}) | ${msgs.join(" / ")}`);
+}
+console.log(`${kOk}/${kindCases.length} kinds correct`);

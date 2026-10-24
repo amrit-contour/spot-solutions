@@ -10,6 +10,9 @@ export const DEFAULT_SETTINGS: Settings = {
   ignoreGroups: true,
   timezone: "Asia/Kolkata",
   debounceSeconds: 45,
+  // V1 defaults: requests open Saturday 3 PM, close Monday 10 AM.
+  rules: { window: { enabled: false, startDay: 6, startTime: "15:00", endDay: 1, endTime: "10:00" }, skipLastWeek: false },
+  selfService: { enabled: true, autoSend: false },
 };
 
 /** Confidence at/above which a message becomes a request (and gets acked). */
@@ -22,6 +25,6 @@ export const AUTO_ACK_THRESHOLD = 0.85;
 export const AUTO_ACK_MAX_AGE_MS = 10 * 60_000;
 
 /** Requests that should get a regret once the week's lineups are final. */
-export function pendingRejections<R extends { comicId: string; status: string; intent: { confidence: number } }>(requests: R[], placed: Set<string>): R[] {
-  return requests.filter((r) => ["new", "acked"].includes(r.status) && r.intent.confidence >= INTENT_THRESHOLD && !placed.has(r.comicId));
+export function pendingRejections<R extends { comicId: string; status: string; intent: { confidence: number }; hold?: string | null; holdOverridden?: boolean }>(requests: R[], placed: Set<string>): R[] {
+  return requests.filter((r) => ["new", "acked"].includes(r.status) && r.intent.confidence >= INTENT_THRESHOLD && !placed.has(r.comicId) && (!r.hold || r.holdOverridden));
 }

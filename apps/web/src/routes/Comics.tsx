@@ -2,12 +2,14 @@ import { useMemo, useState } from "react";
 import { deleteDoc, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { formatDate, shiftWeek, type Comic, type Tier } from "@spot/shared";
+import { cancellations, formatDate, shiftWeek, type Comic, type ComicList, type Tier } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { userDoc } from "../lib/data";
 import { PageHeader } from "../components/Shell";
 import { Avatar, Button, Chip, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, cx } from "../components/ui";
 import { IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus } from "../components/icons";
+
+const LIST_LABEL: Record<ComicList, string> = { host: "Host", ignored: "Ignored", banned: "Banned" };
 
 const TIERS: { value: Tier; label: string }[] = [
   { value: "open", label: "Open" },
@@ -58,6 +60,7 @@ export function Comics() {
                       <span className="truncate type-title-m">{c.name}</span>
                       {c.tier === "featured" && <IconCrown className="icon size-4 text-tertiary" />}
                       {c.tier === "regular" && <IconStar className="icon size-4 text-secondary" />}
+                      {c.list && <Chip tone={c.list === "host" ? "tertiary" : "error"}>{LIST_LABEL[c.list]}</Chip>}
                     </span>
                     <span className="block type-body-s text-on-surface-variant tabular">{c.phone ? `+${c.phone}` : "Number hidden by WhatsApp"}</span>
                   </span>
@@ -154,6 +157,18 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
         <Field label="Experience">
           <Segmented value={d.tier ?? "open"} onChange={(t) => setD({ ...d, tier: t })} options={TIERS} />
         </Field>
+        <Field label="List" hint="Requests from hosts, ignored or banned comics are held back automatically. You can still allow them one by one.">
+          <Segmented
+            value={d.list ?? "none"}
+            onChange={(v) => setD({ ...d, list: v === "none" ? null : (v as ComicList) })}
+            options={[
+              { value: "none", label: "None" },
+              { value: "host", label: "Host" },
+              { value: "ignored", label: "Ignore" },
+              { value: "banned", label: "Ban" },
+            ]}
+          />
+        </Field>
         {shows.length > 0 && (
           <Field label="Regular at" hint="Regulars stay in the show's WhatsApp group even in weeks they're not on.">
             <div className="flex flex-wrap gap-1.5">
@@ -164,6 +179,29 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
               ))}
             </div>
           </Field>
+        )}
+        {!isNew && (
+          <div>
+            <div className="mb-2 flex items-center justify-between type-label-l text-on-surface-variant">
+              <span>Spot history</span>
+              {cancellations(d.history) > 0 && <span className="text-error">{cancellations(d.history)} cancelled</span>}
+            </div>
+            {d.history?.length ? (
+              <ul className="overflow-hidden rounded-md bg-surface-container">
+                {d.history.slice(0, 8).map((h) => (
+                  <li key={`${h.date}-${h.showId}`} className="flex items-center gap-3 border-b border-outline-variant/40 px-3 py-2 last:border-0">
+                    <span className="w-16 type-label-m tabular text-on-surface-variant">{formatDate(h.date)}</span>
+                    <span className="flex-1 truncate type-body-m">{h.showName}</span>
+                    <span className={cx("type-label-m", h.status === "confirmed" ? "text-primary" : h.status === "cancelled" ? "text-error" : "text-on-surface-variant")}>
+                      {h.status === "confirmed" ? "Performed" : h.status === "cancelled" ? "Cancelled" : "Mic didn't happen"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="type-body-s text-on-surface-variant">No spots yet. History builds as you confirm lineups.</p>
+            )}
+          </div>
         )}
         <Field label="Notes"><TextArea value={d.notes ?? ""} onChange={(e) => setD({ ...d, notes: e.target.value })} placeholder="Closer material, good with crowd work…" /></Field>
       </div>

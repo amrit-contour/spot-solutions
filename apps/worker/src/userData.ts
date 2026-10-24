@@ -18,7 +18,7 @@ export function watchUser(uid: string): Cache {
   cache.unsub.push(
     userRef(uid).onSnapshot((s) => {
       const data = s.data()?.settings as Partial<Settings> | undefined;
-      cache.settings = { ...DEFAULT_SETTINGS, ...data, ack: { ...DEFAULT_SETTINGS.ack, ...data?.ack }, confirm: { ...DEFAULT_SETTINGS.confirm, ...data?.confirm }, reject: { ...DEFAULT_SETTINGS.reject, ...data?.reject }, model: { ...DEFAULT_SETTINGS.model, ...data?.model } };
+      cache.settings = { ...DEFAULT_SETTINGS, ...data, ack: { ...DEFAULT_SETTINGS.ack, ...data?.ack }, confirm: { ...DEFAULT_SETTINGS.confirm, ...data?.confirm }, reject: { ...DEFAULT_SETTINGS.reject, ...data?.reject }, rules: { ...DEFAULT_SETTINGS.rules, ...data?.rules, window: { ...DEFAULT_SETTINGS.rules.window, ...data?.rules?.window } }, selfService: { ...DEFAULT_SETTINGS.selfService, ...data?.selfService }, model: { ...DEFAULT_SETTINGS.model, ...data?.model } };
     }),
     col(uid, "shows").onSnapshot((q) => {
       cache.shows = q.docs.map((d) => ({ ...(d.data() as Show), id: d.id }));

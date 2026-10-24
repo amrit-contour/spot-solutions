@@ -18,7 +18,10 @@ The worker only makes outbound connections. No ports, no tunnel. The web app dro
 - **Gemma:** evidence-first JSON prompt (English, Hinglish, Kannada slang). It runs locally via Ollama, and falls back to Gemma on the Gemini API only if the local model fails.
 - **Messages:** acknowledgement, confirmation and regret templates use `{{name}}`, `{{show}}`, `{{venue}}`, `{{day}}`, `{{date}}`, `{{time}}`, `{{minutes}}` and `{{mapsLink}}`, plus optional sections such as `{{#minutes}}…{{/minutes}}`.
 - **Fairness helpers:** a "performed last week" flag, experience tiers, Gemma's day-preference chips, and "repeat last week's lineup" for weeks after a cancelled mic.
-- **Group sync:** after confirming, you review who gets added to and removed from the show group. Admins, regulars and protected members always stay.
+- **Request rules (from V1):** a weekly request window (e.g. Sat 3 PM–Mon 10 AM), skipping last week's performers, and host/ignore/ban lists. Rule-breakers land in a *Held* tab.
+- **Spot history:** every comic carries "last spot N days ago" and a cancellation count, and "mic didn't happen" stops a canned show from counting.
+- **Comic self-service:** "can't make it Monday", "am I up this week?" and "when was my last spot?" are understood and drafted as replies. A cancellation frees the slot once you send.
+- **Group sync:** after confirming, you review who gets added to and removed from the show group. Admins, regulars and protected members always stay. Or set a show to update its group automatically on the day and post the lineup there.
 
 ## Run it
 
@@ -50,6 +53,15 @@ curl -fsSL https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/depl
 ```
 
 Or use Docker: `docker compose -f deploy/docker-compose.yml up -d`.
+
+**On Windows**, open PowerShell as Administrator:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+irm https://raw.githubusercontent.com/amrit-dash/spot-solutions/main/deploy/install-windows.ps1 | iex
+```
+
+It installs Node, Git, Ollama and Gemma with winget, runs the worker as a startup task that restarts on crash, and keeps the laptop awake while plugged in.
 
 ## Safety
 

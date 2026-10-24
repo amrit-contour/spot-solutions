@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
+  DAY_NAMES,
   DEFAULT_ACK_TEMPLATE,
   DEFAULT_CONFIRM_TEMPLATE,
   DEFAULT_REJECT_TEMPLATE,
@@ -156,6 +157,23 @@ export function SettingsPage() {
           <TemplateEditor value={settings.reject.template} fallback={DEFAULT_REJECT_TEMPLATE} disabled={!settings.reject.enabled} onSave={(t) => saveSettings({ reject: { ...settings.reject, template: t } })} />
         </Section>
 
+        <RulesSection />
+
+        <Section
+          title="Replies to comics"
+          icon={IconChat}
+          description="When a booked comic writes “can't make it Monday”, “am I up this week?” or “when was my last spot?”, Gemma drafts a reply under Requests → Needs a reply."
+          aside={<Switch checked={settings.selfService.enabled} onChange={(v) => saveSettings({ selfService: { ...settings.selfService, enabled: v } })} label="Draft replies to comics" />}
+        >
+          <div className={cx("flex items-center gap-4", !settings.selfService.enabled && "pointer-events-none opacity-50")}>
+            <div className="flex-1">
+              <div className="type-title-s">Send without asking me</div>
+              <div className="type-body-s text-on-surface-variant">Off: nothing goes out until you tap Send. On: replies go out straight away (fresh messages from people only), and a cancellation frees the slot automatically.</div>
+            </div>
+            <Switch checked={settings.selfService.autoSend} onChange={(v) => saveSettings({ selfService: { ...settings.selfService, autoSend: v } })} label="Send replies automatically" />
+          </div>
+        </Section>
+
         <Section title="Model" icon={IconCpu} description="Which Gemma reads your DMs. Local is private and free; the Gemini API is a backup for when your laptop is slow or off.">
           <div className="flex flex-col gap-6">
             <Segmented
@@ -209,6 +227,62 @@ function InstallCard() {
           Open this site in Chrome or Edge, then use the browser menu → <span className="text-on-surface">Install app</span> (or <span className="text-on-surface">Add to Home screen</span> on Android).
         </p>
       )}
+    </Section>
+  );
+}
+
+const DAYS = [1, 2, 3, 4, 5, 6, 0] as const;
+
+function RulesSection() {
+  const { settings, saveSettings } = useApp();
+  const r = settings.rules;
+  const setWindow = (patch: Partial<typeof r.window>) => saveSettings({ rules: { ...r, window: { ...r.window, ...patch } } });
+  const daySelect = (value: number, onChange: (d: number) => void) => (
+    <select value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-12 rounded-sm border border-outline bg-transparent px-3 type-body-l outline-none focus:border-primary">
+      {DAYS.map((d) => (
+        <option key={d} value={d}>
+          {DAY_NAMES[d]}
+        </option>
+      ))}
+    </select>
+  );
+  return (
+    <Section title="Request rules" icon={IconShield} description="Requests that break a rule go to the Held tab instead of Asked. Nothing is sent to them, and you can still allow any of them.">
+      <div className="flex flex-col gap-6">
+        <div>
+          <div className="flex items-center gap-4">
+            <div className="flex-1">
+              <div className="type-title-s">Request window</div>
+              <div className="type-body-s text-on-surface-variant">Only take requests during this time each week. Anything else is held as a mid-week ask.</div>
+            </div>
+            <Switch checked={r.window.enabled} onChange={(v) => setWindow({ enabled: v })} label="Request window" />
+          </div>
+          {r.window.enabled && (
+            <div className="mt-4 grid gap-4 rounded-lg bg-surface-container p-4 sm:grid-cols-2">
+              <Field label="Opens">
+                <div className="flex gap-2">
+                  {daySelect(r.window.startDay, (d) => setWindow({ startDay: d as never }))}
+                  <TextInput type="time" value={r.window.startTime} onChange={(e) => setWindow({ startTime: e.target.value })} />
+                </div>
+              </Field>
+              <Field label="Closes">
+                <div className="flex gap-2">
+                  {daySelect(r.window.endDay, (d) => setWindow({ endDay: d as never }))}
+                  <TextInput type="time" value={r.window.endTime} onChange={(e) => setWindow({ endTime: e.target.value })} />
+                </div>
+              </Field>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <div className="type-title-s">Skip last week's comics</div>
+            <div className="type-body-s text-on-surface-variant">Hold requests from anyone who performed last week, so newer faces get a shot.</div>
+          </div>
+          <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Skip last week's comics" />
+        </div>
+        <p className="type-body-s text-on-surface-variant">Hosts, ignored and banned comics are set per person in Comics.</p>
+      </div>
     </Section>
   );
 }

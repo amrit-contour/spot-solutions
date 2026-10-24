@@ -86,3 +86,33 @@ describe("pendingRejections", () => {
     expect(out.map((r) => r.comicId)).toEqual(["a"]);
   });
 });
+
+import { holdFor, inWindow, lastSpot, withHistory } from "./rules.ts";
+describe("rules", () => {
+  const tz = "Asia/Kolkata";
+  const w = { enabled: true, startDay: 6 as const, startTime: "15:00", endDay: 1 as const, endTime: "10:00" };
+  const rules = { window: w, skipLastWeek: true };
+  it("request window wraps Sat 3 PM → Mon 10 AM", () => {
+    expect(inWindow(new Date("2026-10-24T16:00:00+05:30"), w, tz)).toBe(true); // Sat 4 PM
+    expect(inWindow(new Date("2026-10-25T23:00:00+05:30"), w, tz)).toBe(true); // Sun night
+    expect(inWindow(new Date("2026-10-26T09:59:00+05:30"), w, tz)).toBe(true); // Mon 9:59
+    expect(inWindow(new Date("2026-10-26T10:00:00+05:30"), w, tz)).toBe(false); // Mon 10:00
+    expect(inWindow(new Date("2026-10-24T14:00:00+05:30"), w, tz)).toBe(false); // Sat 2 PM
+    expect(inWindow(new Date("2026-10-22T12:00:00+05:30"), w, tz)).toBe(false); // Thu
+  });
+  it("holds by list, window, then last week", () => {
+    const at = new Date("2026-10-25T12:00:00+05:30");
+    const base = { id: "a", name: "A", phone: "", tier: "open" as const };
+    expect(holdFor({ comic: { ...base, list: "banned" }, week: "2026-10-26", at, rules, timeZone: tz })).toBe("banned");
+    expect(holdFor({ comic: { ...base, lastPerformedWeek: "2026-10-19" }, week: "2026-10-26", at, rules, timeZone: tz })).toBe("last_week");
+    expect(holdFor({ comic: base, week: "2026-10-26", at: new Date("2026-10-22T12:00:00+05:30"), rules, timeZone: tz })).toBe("midweek");
+    expect(holdFor({ comic: base, week: "2026-10-26", at, rules, timeZone: tz })).toBe(null);
+  });
+  it("history keeps newest first and finds the last real spot", () => {
+    let h = withHistory([], { date: "2026-10-13", showId: "m", showName: "Mon", status: "confirmed" });
+    h = withHistory(h, { date: "2026-10-20", showId: "m", showName: "Mon", status: "cancelled" });
+    h = withHistory(h, { date: "2026-10-27", showId: "t", showName: "Tue", status: "confirmed" });
+    expect(h.map((x) => x.date)).toEqual(["2026-10-27", "2026-10-20", "2026-10-13"]);
+    expect(lastSpot(h, "2026-10-24")?.date).toBe("2026-10-13");
+  });
+});

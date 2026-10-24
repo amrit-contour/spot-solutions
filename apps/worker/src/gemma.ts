@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
-import { DAY_NAMES, type Intent, type Settings, type Show, type Weekday } from "@spot/shared";
+import { DAY_NAMES, type Intent, type IntentKind, type Settings, type Show, type Weekday } from "@spot/shared";
+
+const KINDS: IntentKind[] = ["spot_request", "cancel_spot", "status_query", "last_spot_query", "other"];
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 90_000);
@@ -11,13 +13,14 @@ const SCHEMA = {
   type: "object",
   properties: {
     evidence: { type: "string" },
+    kind: { type: "string", enum: KINDS },
     is_spot_request: { type: "boolean" },
     confidence: { type: "number" },
     preferred_days: { type: "array", items: { type: "string", enum: [...DAY_NAMES] } },
     show_hint: { type: "string" },
     note: { type: "string" },
   },
-  required: ["evidence", "is_spot_request", "confidence", "preferred_days", "note"],
+  required: ["evidence", "kind", "is_spot_request", "confidence", "preferred_days", "note"],
 };
 
 export function buildPrompt(messages: string[], shows: Pick<Show, "name" | "weekday" | "startTime">[]) {
@@ -35,13 +38,19 @@ ${showList}
 Messages from one person, oldest first (read them together as one conversation):
 ${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}
 
+Comics who already have a spot may also write about it:
+- cancel_spot: they want to drop out ("can't make it monday", "cancel my spot", "something came up, have to back out").
+- status_query: they ask if/when they are on this week ("am I up this week?", "did I get a spot?").
+- last_spot_query: they ask when they last performed here.
+
 Think step by step:
-1. evidence: copy the exact words where they ask to perform / get a slot. If there are none, use "".
-2. is_spot_request: true ONLY if evidence is non-empty. Mentioning a show, thanking, paying or praising is NOT asking.
-3. preferred_days: only days they literally name (mon, monday, tue, "kal" etc). If they name none, []. If they say any day works, list every show day.
+1. kind: one of spot_request, cancel_spot, status_query, last_spot_query, other.
+2. evidence: copy the exact words that show that kind (the ask, the cancellation, the question). For "other" use "".
+3. is_spot_request: true ONLY if kind is spot_request and evidence is non-empty. Mentioning a show, thanking, paying or praising is NOT asking.
+4. preferred_days: only days they literally name (mon, monday, tue, "kal" etc). If they name none, []. If they say any day works, list every show day.
 
 Reply ONLY with JSON:
-{"evidence": "...", "is_spot_request": boolean, "confidence": 0..1, "preferred_days": [...], "show_hint": "show name or empty", "note": "<=12 word summary for the curator, e.g. 'wants Monday, trying new 5'"}`;
+{"evidence": "...", "kind": "...", "is_spot_request": boolean, "confidence": 0..1, "preferred_days": [...], "show_hint": "show name or empty", "note": "<=12 word summary for the curator, e.g. 'wants Monday, trying new 5'"}`;
 }
 
 const norm = (t: string) => t.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
@@ -60,15 +69,19 @@ export function evidenceIsReal(evidence: string, messages: string[]) {
 function parseIntent(raw: string, model: string, messages: string[]): Intent {
   const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
   const o = JSON.parse(json) as Record<string, unknown>;
-  if (o.is_spot_request && !evidenceIsReal(String(o.evidence ?? ""), messages)) {
-    o.is_spot_request = false;
+  let kind = (KINDS.includes(o.kind as IntentKind) ? o.kind : o.is_spot_request ? "spot_request" : "other") as IntentKind;
+  // Every kind except "other" needs a real quote from the messages, or we treat it as noise.
+  if (kind !== "other" && !evidenceIsReal(String(o.evidence ?? ""), messages)) {
+    kind = "other";
     o.note = "No actual ask found in the messages";
   }
+  o.is_spot_request = kind === "spot_request";
   const days = (Array.isArray(o.preferred_days) ? o.preferred_days : [])
     .map((d) => DAY_NAMES.findIndex((n) => n.toLowerCase() === String(d).toLowerCase()))
     .filter((d) => d >= 0) as Weekday[];
   const confidence = Math.max(0, Math.min(1, Number(o.confidence) || 0));
   return {
+    kind,
     isSpotRequest: Boolean(o.is_spot_request),
     confidence: o.is_spot_request ? confidence : Math.min(confidence, 0.3),
     preferredDays: [...new Set(days)],

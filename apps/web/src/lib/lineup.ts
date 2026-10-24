@@ -1,5 +1,5 @@
 import { getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
-import { dateInWeek, lineupId, shiftWeek, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
+import { dateInWeek, lineupId, shiftWeek, withHistory, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
 import { db } from "./firebase";
 import { userDoc } from "./data";
 
@@ -62,4 +62,17 @@ export async function setLineupStatus(uid: string, week: string, show: Show, sta
   const ref = lineupRef(uid, week, show.id);
   const cur = (await getDoc(ref)).data() as Lineup | undefined;
   await setDoc(ref, { ...(cur ?? blank(week, show)), status });
+}
+
+/** The mic was meant to happen but didn't: it shouldn't count as anyone's spot. */
+export async function markCanned(uid: string, lineup: Lineup, show: Show, comics: Map<string, import("@spot/shared").Comic>) {
+  const date = dateInWeek(lineup.weekOf, show.weekday);
+  await updateDoc(lineupRef(uid, lineup.weekOf, show.id), { status: "canned" });
+  await Promise.all(
+    lineup.slots.map((s) => {
+      const c = comics.get(s.comicId);
+      const history = withHistory(c?.history, { date, showId: show.id, showName: show.name, status: "canned" });
+      return setDoc(userDoc(uid, "comics", s.comicId), { history, ...(c?.lastPerformedWeek === lineup.weekOf ? { lastPerformedWeek: null } : {}) }, { merge: true });
+    }),
+  );
 }

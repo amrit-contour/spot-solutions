@@ -6,7 +6,7 @@ import { DAY_SHORT, formatTime, type GroupInfo, type Show, type Venue, type Week
 import { useApp } from "../lib/app";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
 import { PageHeader } from "../components/Shell";
-import { Button, Chip, Empty, Field, IconButton, Select, Sheet, Stepper, Switch, TextInput, cx } from "../components/ui";
+import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, cx } from "../components/ui";
 import { IconAdd, IconBuilding, IconClock, IconGroup, IconMap, IconPen, IconRefresh, IconStar, IconTrash, IconWarn } from "../components/icons";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
@@ -228,6 +228,30 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
 
           {draft.groupId && (
             <div className="mt-5 grid gap-5">
+              <Field label="Update the group" hint={draft.groupMode === "show_day" ? "On the show's day, last week's comics are removed and this lineup is added automatically. Admins, regulars and protected members always stay." : "Right after you confirm, you review who gets added and removed."}>
+                <Segmented
+                  value={draft.groupMode ?? "confirm"}
+                  onChange={(v) => set("groupMode", v)}
+                  options={[
+                    { value: "confirm", label: "Review on confirm" },
+                    { value: "show_day", label: "Auto on show day" },
+                  ]}
+                />
+              </Field>
+              {draft.groupMode === "show_day" && (
+                <div className="grid gap-5 rounded-lg bg-surface-container p-4 sm:grid-cols-2">
+                  <Field label="Run at">
+                    <TextInput type="time" value={draft.showDaySyncTime ?? "12:00"} onChange={(e) => set("showDaySyncTime", e.target.value)} />
+                  </Field>
+                  <div className="flex items-center gap-3 sm:pt-6">
+                    <div className="flex-1">
+                      <div className="type-title-s">Post the lineup</div>
+                      <div className="type-body-s text-on-surface-variant">Sends tonight's running order to the group</div>
+                    </div>
+                    <Switch checked={Boolean(draft.postLineupToGroup)} onChange={(v) => set("postLineupToGroup", v)} label="Post the lineup to the group" />
+                  </div>
+                </div>
+              )}
               <PeoplePicker label="Regulars (always stay in the group)" icon={IconStar} selected={draft.regulars ?? []} onToggle={(id) => toggleIn("regulars", id)} people={comics} />
               <PeoplePicker label="Protected (co-hosts, staff)" icon={IconMap} selected={draft.protected ?? []} onToggle={(id) => toggleIn("protected", id)} people={comics} />
             </div>

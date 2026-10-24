@@ -4,6 +4,7 @@ import { col, db, sessionRef } from "./firebase.ts";
 import { runCommand } from "./commands.ts";
 import { sessions } from "./sessions.ts";
 import { ollamaHealthy } from "./gemma.ts";
+import { startScheduler } from "./scheduler.ts";
 
 const commandListeners = new Map<string, () => void>();
 const HEARTBEAT_MS = 30_000;
@@ -41,6 +42,8 @@ async function main() {
       if (ch.doc.data().waEnabled && !sessions.running(uid)) void sessions.start(uid);
     }
   });
+
+  startScheduler(() => commandListeners.keys());
 
   const shutdown = async () => {
     console.log("[worker] shutting down");

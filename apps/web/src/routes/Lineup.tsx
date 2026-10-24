@@ -26,6 +26,7 @@ import {
   dateInWeek,
   formatDate,
   formatTime,
+  localNow,
   pendingRejections,
   renderTemplate,
   shiftWeek,
@@ -37,7 +38,7 @@ import {
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, useCollection } from "../lib/data";
-import { markRequest, placeComic, repeatLastWeek, setLineupStatus, setSlots, unplaceComic } from "../lib/lineup";
+import { markCanned, markRequest, placeComic, repeatLastWeek, setLineupStatus, setSlots, unplaceComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
@@ -68,7 +69,7 @@ export function LineupBoard() {
       cols[s.id].forEach((c) => placed.add(c));
     }
     cols[BENCH] = requests.data
-      .filter((r) => r.status !== "dismissed" && !placed.has(r.comicId) && (r.intent.confidence >= INTENT_THRESHOLD || r.status !== "new"))
+      .filter((r) => !["dismissed", "rejected"].includes(r.status) && !placed.has(r.comicId) && (!r.hold || r.holdOverridden) && (r.intent.confidence >= INTENT_THRESHOLD || r.status !== "new"))
       .sort((a, b) => {
         const pa = comicsById.get(a.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
         const pb = comicsById.get(b.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
@@ -300,11 +301,15 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
 }
 
 function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, requestByComic, lastWeek }: { onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
-  const { uid, week, venues } = useApp();
+  const { uid, week, venues, settings } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
   const confirmed = status === "confirmed";
-  const cancelled = status === "cancelled";
+  const canned = status === "canned";
+  // Canned and cancelled both mean the mic is off; only the label differs.
+  const cancelled = status === "cancelled" || canned;
+  const showDate = dateInWeek(week, show.weekday);
+  const past = localNow(new Date(), settings.timezone).date >= showDate;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const fill = Math.min(1, ids.length / Math.max(1, show.slotCount));
@@ -335,9 +340,25 @@ function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, req
             {venue && <p className="truncate type-body-s text-on-surface-variant">{venue.name}</p>}
           </div>
           {confirmed ? (
+            <div className="flex items-center gap-1">
             <Chip tone="success" icon={IconCheck}>Sent</Chip>
+            <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}>
+              {(close) => (
+                <MenuItem
+                  disabled={!past}
+                  hint={past ? undefined : "after the show"}
+                  onClick={() => {
+                    close();
+                    if (lineup && confirm(`Mark ${show.name} as not happening? It won't count as a spot for anyone on it.`)) void markCanned(uid, lineup, show, comicsById).then(() => toast("Marked as didn't happen"));
+                  }}
+                >
+                  Mic didn't happen
+                </MenuItem>
+              )}
+            </Menu>
+            </div>
           ) : cancelled ? (
-            <Chip tone="error" icon={IconCancel}>Cancelled</Chip>
+            <Chip tone="error" icon={IconCancel}>{canned ? "Didn't happen" : "Cancelled"}</Chip>
           ) : (
             <Menu
               align="right"
@@ -375,14 +396,19 @@ function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, req
         </ol>
       </SortableContext>
 
+      {lineup?.dropped?.length ? (
+        <p className="mt-2 px-1 type-body-s text-error">Dropped out: {lineup.dropped.map((d) => comicsById.get(d.comicId)?.name ?? "comic").join(", ")}</p>
+      ) : null}
+
       <footer className="mt-3 flex flex-wrap items-center gap-2">
-        {cancelled ? (
+        {canned ? null : cancelled ? (
           <Button size="sm" variant="text" onClick={() => setLineupStatus(uid, week, show, "draft")}>Reopen</Button>
         ) : confirmed ? (
           <>
             <span className="inline-flex flex-1 items-center gap-1.5 type-label-m text-on-surface-variant">
               <svg viewBox="0 0 24 24" className="draw-check size-4 text-primary" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
               Confirmations sent
+              {show.groupMode === "show_day" && show.groupId && <span className="text-on-surface-variant/80"> · group updates {lineup?.showDaySyncedOn ? "done" : `on the day at ${formatTime(show.showDaySyncTime ?? "12:00")}`}</span>}
             </span>
             {show.groupId && (
               <Button size="sm" variant="tonal" icon={IconGroup} onClick={() => setSyncOpen(true)}>
