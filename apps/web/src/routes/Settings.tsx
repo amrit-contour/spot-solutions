@@ -17,16 +17,16 @@ import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconPhone, 
 
 function Section({ title, icon: I, description, children, aside }: { title: string; icon: typeof IconChat; description?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
-    <section className="rounded-xl bg-surface-low p-5 sm:p-6">
-      <div className="mb-5 flex items-start gap-4">
-        <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
-          <I className="icon size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="type-title-l">{title}</h2>
-          {description && <p className="mt-0.5 type-body-m text-on-surface-variant">{description}</p>}
+    <section className="rounded-xl bg-surface-low p-4 sm:p-6">
+      <div className="mb-4 sm:mb-5">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
+            <I className="icon size-5" />
+          </span>
+          <h2 className="min-w-0 flex-1 type-title-l">{title}</h2>
+          {aside}
         </div>
-        {aside}
+        {description && <p className="mt-2 type-body-m text-on-surface-variant sm:mt-1 sm:pl-14">{description}</p>}
       </div>
       {children}
     </section>

@@ -64,9 +64,9 @@ export function Requests() {
         subtitle={requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
         actions={<WeekSwitcher />}
       >
-        <div className="mt-6 flex gap-1 overflow-x-auto border-b border-outline-variant" role="tablist">
+        <div className="-mx-4 mt-5 flex overflow-x-auto border-b border-outline-variant px-4 [scrollbar-width:none] sm:mx-0 sm:mt-6 sm:gap-1 sm:px-0" role="tablist">
           {LANES.map((l) => (
-            <button key={l.id} role="tab" aria-selected={lane === l.id} onClick={() => setLane(l.id)} className="state-layer relative flex items-center gap-2 rounded-t-sm px-4 pt-2 pb-3 type-title-s">
+            <button key={l.id} role="tab" aria-selected={lane === l.id} onClick={() => setLane(l.id)} className="state-layer relative flex flex-1 items-center justify-center gap-1.5 rounded-t-sm px-2.5 pt-2 pb-3 type-title-s whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4">
               <span className={lane === l.id ? "text-primary" : "text-on-surface-variant"}>{l.label}</span>
               <span className={cx("rounded-full px-1.5 type-label-s tabular", lane === l.id ? "bg-primary text-on-primary" : "bg-surface-high text-on-surface-variant")}>{grouped[l.id].length}</span>
               {lane === l.id && <motion.span layoutId="lane-ink" className="absolute inset-x-3 bottom-0 h-[3px] rounded-t-full bg-primary" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}

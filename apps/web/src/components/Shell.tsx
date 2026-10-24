@@ -103,10 +103,10 @@ export function PageHeader({ title, subtitle, actions, children }: { title: Reac
       </div>
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
-          <h1 className="type-display-s text-balance">{title}</h1>
+          <h1 className="type-headline-m text-balance sm:type-display-s">{title}</h1>
           {subtitle && <p className="mt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
       </div>
       {children}
     </header>

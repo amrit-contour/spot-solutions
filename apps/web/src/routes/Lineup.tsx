@@ -7,7 +7,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCorners,
   useDroppable,
   useSensor,
@@ -36,13 +37,13 @@ import {
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, useCollection } from "../lib/data";
-import { markRequest, repeatLastWeek, setLineupStatus, setSlots } from "../lib/lineup";
+import { markRequest, placeComic, repeatLastWeek, setLineupStatus, setSlots, unplaceComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
 import { GroupSyncSheet } from "../components/GroupSyncSheet";
 import { Avatar, Bubble, Button, Chip, Empty, IconButton, Sheet, cx } from "../components/ui";
-import { IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClock, IconGroup, IconHistory, IconMenuDots, IconMic, IconRepeat, IconSend, IconSofa, IconStar } from "../components/icons";
+import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconMic, IconRepeat, IconSend, IconSofa, IconStar } from "../components/icons";
 
 const BENCH = "bench";
 
@@ -84,7 +85,17 @@ export function LineupBoard() {
     if (!activeId) setCols(remote);
   }, [remote, activeId]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  // Touch: long-press to drag, so a normal swipe still scrolls the page.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const addTo = async (cid: string, show: Show) => {
+    await placeComic(uid, week, show, cid, lineups.data);
+    toast.success(`${(comicsById.get(cid)?.name ?? requestByComic.get(cid)?.comicName ?? "Comic").split(" ")[0]} → ${show.name}`);
+  };
+  const removeFrom = (cid: string, show: Show) => unplaceComic(uid, week, show, cid, lineupByShow.get(show.id));
   const containerOf = (id: string) => (id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
   const locked = (showId: string) => lineupByShow.get(showId)?.status === "confirmed";
 
@@ -169,14 +180,36 @@ export function LineupBoard() {
             <div className="mb-3 flex items-center justify-between px-1">
               <div>
                 <h2 className="type-title-m">Waiting</h2>
-                <p className="type-body-s text-on-surface-variant">Drag into a show</p>
+                <p className="type-body-s text-on-surface-variant"><span className="sm:hidden">Tap + or long-press to drag</span><span className="hidden sm:inline">Drag into a show</span></p>
               </div>
               <span className="rounded-full bg-surface-high px-2 py-0.5 type-label-m tabular">{cols[BENCH]?.length ?? 0}</span>
             </div>
             <SortableContext items={cols[BENCH] ?? []} strategy={verticalListSortingStrategy}>
               <ul className="flex min-h-24 flex-col gap-2">
                 {(cols[BENCH] ?? []).map((cid) => (
-                  <ComicTile key={cid} id={cid} comic={comicsById.get(cid)} request={requestByComic.get(cid)} lastWeek={lastWeek} />
+                  <ComicTile
+                    key={cid}
+                    id={cid}
+                    comic={comicsById.get(cid)}
+                    request={requestByComic.get(cid)}
+                    lastWeek={lastWeek}
+                    action={
+                      <Menu align="right" trigger={(t) => <IconButton icon={IconAdd} label="Add to a show" onClick={t} className="size-9" />}>
+                        {(close) =>
+                          activeShows.map((s) => {
+                            const l = lineupByShow.get(s.id);
+                            const preferred = requestByComic.get(cid)?.intent.preferredDays.includes(s.weekday);
+                            return (
+                              <MenuItem key={s.id} highlighted={preferred} hint={`${l?.slots.length ?? 0}/${s.slotCount}`} disabled={l?.status === "confirmed" || l?.status === "cancelled"} onClick={() => (close(), void addTo(cid, s))}>
+                                {s.name}
+                                <span className="block type-body-s text-on-surface-variant">{DAY_SHORT[s.weekday]} · {formatTime(s.startTime)}</span>
+                              </MenuItem>
+                            );
+                          })
+                        }
+                      </Menu>
+                    }
+                  />
                 ))}
                 {!cols[BENCH]?.length && (
                   <li className="flex flex-col items-center gap-2 rounded-md border border-dashed border-outline-variant px-4 py-8 text-center type-body-m text-on-surface-variant">
@@ -190,7 +223,7 @@ export function LineupBoard() {
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
@@ -215,11 +248,11 @@ function Column({ id, children, className }: { id: string; children: React.React
   );
 }
 
-function TileBody({ comic, id, request, lastWeek, lifted, index, minutes }: { comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null }) {
+function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action }: { comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode }) {
   const name = comic?.name ?? request?.comicName ?? `+${id.split("@")[0]}`;
   const performed = comic?.lastPerformedWeek === lastWeek;
   return (
-    <div className={cx("flex items-center gap-3 rounded-md px-3 py-2.5", lifted ? "bg-surface-highest" : "bg-surface-container")}>
+    <div className={cx("flex min-h-14 items-center gap-3 rounded-md py-2 pl-3", action ? "pr-1" : "pr-3", lifted ? "bg-surface-highest" : "bg-surface-container")}>
       {index !== undefined ? <span className="w-5 text-center type-label-l text-on-surface-variant tabular">{index + 1}</span> : <Avatar name={name} size={32} tone={performed ? "secondary" : "primary"} />}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
@@ -241,26 +274,32 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes }: { co
           {minutes}m
         </span>
       ) : null}
+      {action && (
+        // Stop the drag sensors from treating a tap on the button as the start of a drag.
+        <span onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          {action}
+        </span>
+      )}
     </div>
   );
 }
 
-function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled }: { id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean }) {
+function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action }: { id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cx("touch-none select-none", !disabled && "cursor-grab active:cursor-grabbing", isDragging && "opacity-30")}
+      className={cx("select-none [-webkit-touch-callout:none]", !disabled && "cursor-grab active:cursor-grabbing", isDragging && "opacity-30")}
       {...attributes}
       {...listeners}
     >
-      <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} />
+      <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} />
     </li>
   );
 }
 
-function ShowColumn({ regretsAfter, show, ids, lineup, comicsById, requestByComic, lastWeek }: { regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+function ShowColumn({ onRemove, regretsAfter, show, ids, lineup, comicsById, requestByComic, lastWeek }: { onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
   const { uid, week, venues } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
@@ -326,7 +365,7 @@ function ShowColumn({ regretsAfter, show, ids, lineup, comicsById, requestByComi
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ol className="flex min-h-32 flex-col gap-2">
           {ids.map((cid, i) => (
-            <ComicTile key={cid} id={cid} index={i} comic={comicsById.get(cid)} request={requestByComic.get(cid)} lastWeek={lastWeek} minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null} disabled={confirmed} />
+            <ComicTile key={cid} id={cid} index={i} comic={comicsById.get(cid)} request={requestByComic.get(cid)} lastWeek={lastWeek} minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null} disabled={confirmed} action={confirmed || cancelled ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />} />
           ))}
           {Array.from({ length: Math.max(0, Math.min(3, show.slotCount - ids.length)) }).map((_, i) => (
             <li key={`empty-${i}`} className="grid h-12 place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70">

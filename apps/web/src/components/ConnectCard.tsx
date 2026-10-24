@@ -39,8 +39,8 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
   const view = !workerOnline && status !== "ready" ? "offline" : status === "ready" ? "ready" : status === "qr" ? "qr" : status === "starting" || status === "authenticated" || busy ? "starting" : "idle";
 
   return (
-    <section id="whatsapp" className={cx("overflow-hidden rounded-xl bg-surface-low", compact ? "p-6 sm:p-8" : "p-6")}>
-      <div className="grid items-center gap-8 md:grid-cols-[1fr_auto]">
+    <section id="whatsapp" className={cx("overflow-hidden rounded-xl bg-surface-low", compact ? "p-5 sm:p-8" : "p-4 sm:p-6")}>
+      <div className="grid items-center gap-6 md:grid-cols-[1fr_auto] md:gap-8">
         <div>
           <h2 className="type-headline-s">{view === "ready" ? "WhatsApp is linked" : "Link your WhatsApp"}</h2>
           <AnimatePresence mode="wait" initial={false}>
@@ -54,6 +54,11 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
               {view === "offline" && (
                 <p className="mt-2 type-body-l text-on-surface-variant">
                   Your Spot Solutions server isn't reachable. Start the worker on your laptop (<code className="rounded-xs bg-surface-high px-1.5 py-0.5 font-mono text-[0.85em]">pnpm dev:worker</code> or <code className="rounded-xs bg-surface-high px-1.5 py-0.5 font-mono text-[0.85em]">docker compose up -d</code>), then come back.
+                </p>
+              )}
+              {(view === "idle" || view === "starting" || view === "qr") && (
+                <p className="mt-3 rounded-md bg-surface-container px-3 py-2 type-body-s text-on-surface-variant md:hidden">
+                  Linking needs a second screen. Open spot-solutions.web.app on a laptop and scan the code there with this phone.
                 </p>
               )}
               {(view === "idle" || view === "starting" || view === "qr") && (
@@ -85,7 +90,12 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
           </p>
         </div>
 
-        <div className="relative grid place-items-center rounded-xl-plus bg-surface-lowest" style={{ width: QR_SIZE + 40, height: QR_SIZE + 40 }}>
+        <div
+          className={cx(
+            "relative order-first mx-auto grid w-full place-items-center rounded-xl-plus bg-surface-lowest md:order-none md:w-[256px]",
+            view === "qr" ? "aspect-square max-w-[256px]" : "h-36 md:h-[256px]",
+          )}
+        >
           <AnimatePresence mode="wait">
             {view === "qr" && session?.qr ? (
               <motion.div key={session.qr} className="relative" style={{ ["--qr" as string]: `${QR_SIZE}px` }} initial={{ opacity: 0, filter: "blur(6px)" }} animate={{ opacity: 1, filter: "blur(0px)" }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
@@ -94,9 +104,9 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
               </motion.div>
             ) : (
               <motion.div key={view} initial={{ opacity: 0, transform: "scale(0.94)" }} animate={{ opacity: 1, transform: "scale(1)" }} exit={{ opacity: 0 }} transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }} className="flex flex-col items-center gap-3 text-center">
-                <span className={cx("relative grid size-20 place-items-center rounded-full", view === "ready" ? "bg-secondary-container text-on-secondary-container" : view === "offline" ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary")}>
+                <span className={cx("relative grid size-14 place-items-center rounded-full md:size-20", view === "ready" ? "bg-secondary-container text-on-secondary-container" : view === "offline" ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary")}>
                   {view === "starting" && <span className="pulse-ring absolute inset-0 rounded-full bg-primary/30" />}
-                  {view === "ready" ? <IconCheck className="icon size-10" /> : view === "offline" ? <IconServer className="icon size-10" /> : <IconPhone className="icon size-10" />}
+                  {view === "ready" ? <IconCheck className="icon size-7 md:size-10" /> : view === "offline" ? <IconServer className="icon size-7 md:size-10" /> : <IconPhone className="icon size-7 md:size-10" />}
                 </span>
                 <span className="type-label-l text-on-surface-variant">{view === "ready" ? "Connected" : view === "offline" ? "Server offline" : view === "starting" ? "Starting WhatsApp…" : "Not linked"}</span>
               </motion.div>
