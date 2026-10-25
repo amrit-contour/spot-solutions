@@ -3,18 +3,22 @@ import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import type { AccessEntry } from "@spot/shared";
+import type { AccessEntry, ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "../lib/firebase";
 import { useAccessConfig } from "../lib/access";
 import { timeAgo } from "../lib/data";
-import { Avatar, Button, Card, Chip, Stepper } from "./ui";
-import { IconArrowDown, IconCheck, IconClose, IconComics } from "./icons";
+import { Avatar, Button, Card, Chip, IconButton, Stepper } from "./ui";
+import { Menu, MenuItem } from "./Menu";
+import { DeleteDataDialog, RemoveUserDialog } from "./AdminDataTools";
+import { IconArrowDown, IconCheck, IconClose, IconComics, IconMenuDots } from "./icons";
 
-export function Curators() {
+export function Curators({ servers }: { servers: ServerStatus[] | null }) {
   const { user } = useApp();
   const cfg = useAccessConfig();
   const [list, setList] = useState<AccessEntry[]>([]);
+  const [deleting, setDeleting] = useState<AccessEntry | null>(null);
+  const [removing, setRemoving] = useState<AccessEntry | null>(null);
   useEffect(() => onSnapshot(collection(db, "access"), (q) => setList(q.docs.map((d) => ({ ...(d.data() as AccessEntry), uid: d.id })))), []);
 
   const pending = list.filter((e) => e.status === "pending").sort((a, b) => a.requestedAt - b.requestedAt);
@@ -29,6 +33,17 @@ export function Curators() {
     await updateDoc(doc(db, "access", e.uid), { status, decidedAt: Date.now(), decidedBy: user.email ?? user.uid });
     toast.success(status === "approved" ? `${e.name ?? e.email} can now use Spot Solutions` : status === "removed" ? "Access removed" : "Moved back to pending");
   };
+
+  const dataMenu = (e: AccessEntry, withRemove: boolean) => (
+    <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label={`More for ${e.name ?? e.email}`} onClick={t} className="size-9" />}>
+      {(close) => (
+        <>
+          <MenuItem onClick={() => (close(), setDeleting(e))}>Delete data…</MenuItem>
+          {withRemove && <MenuItem onClick={() => (close(), setRemoving(e))}>Remove and delete everything…</MenuItem>}
+        </>
+      )}
+    </Menu>
+  );
 
   const Row = ({ e, children }: { e: AccessEntry; children: React.ReactNode }) => (
     <motion.li layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} className="flex flex-wrap items-center gap-3 px-4 py-3">
@@ -88,6 +103,7 @@ export function Curators() {
                   Remove
                 </Button>
               )}
+              {dataMenu(e, e.uid !== user.uid && !cfg?.admins.includes(e.email ?? ""))}
             </Row>
           ))}
         </AnimatePresence>
@@ -106,11 +122,14 @@ export function Curators() {
                 <Button size="sm" variant="text" onClick={() => void decide(e, "approved")} disabled={full}>
                   Restore
                 </Button>
+                {dataMenu(e, false)}
               </Row>
             ))}
           </ul>
         </details>
       )}
+      <DeleteDataDialog entry={deleting} servers={servers} onClose={() => setDeleting(null)} />
+      <RemoveUserDialog entry={removing} servers={servers} onClose={() => setRemoving(null)} />
     </Card>
   );
 }

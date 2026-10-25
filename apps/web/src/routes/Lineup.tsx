@@ -28,6 +28,8 @@ import {
   formatTime,
   localNow,
   pendingRejections,
+  planLineupReset,
+  planWeekReset,
   renderTemplate,
   shiftWeek,
   type Comic,
@@ -46,6 +48,7 @@ import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
 import { GroupSyncSheet } from "../components/GroupSyncSheet";
+import { ResetDialog } from "../components/ResetDialog";
 import { Avatar, Bubble, Button, Chip, Empty, IconButton, Sheet, cx } from "../components/ui";
 import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconMic, IconRepeat, IconSend, IconSofa, IconStar } from "../components/icons";
 
@@ -61,6 +64,8 @@ export function LineupBoard() {
   const poll = useDocument<HostPoll>(["users", uid, "polls", week]);
   const activeShows = useMemo(() => shows.filter((s) => s.active), [shows]);
   const lastWeek = shiftWeek(week, -1);
+  const [resetWeekOpen, setResetWeekOpen] = useState(false);
+  const weekPlans = useMemo(() => planWeekReset(lineups.data, requests.data), [lineups.data, requests.data]);
 
   const lineupByShow = useMemo(() => new Map(lineups.data.map((l) => [l.showId, l])), [lineups.data]);
   const requestByComic = useMemo(() => new Map(requests.data.map((r) => [r.comicId, r])), [requests.data]);
@@ -181,9 +186,17 @@ export function LineupBoard() {
           <>
             <HostPollButton />
             <WeekSwitcher />
+            <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Week options" onClick={t} className="size-9" />}>
+              {(close) => (
+                <MenuItem disabled={!weekPlans.length} hint={weekPlans.length ? undefined : "nothing placed"} onClick={() => (close(), setResetWeekOpen(true))}>
+                  Reset this week's lineups…
+                </MenuItem>
+              )}
+            </Menu>
           </>
         }
       />
+      <ResetDialog open={resetWeekOpen} onClose={() => setResetWeekOpen(false)} plans={weekPlans} shows={activeShows} scope="week" />
       <RegretBanner count={regrets.length} openShows={openShows.length} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActiveId(null), setCols(remote))}>
         <div className="flex flex-col gap-4 px-4 pb-10 sm:px-8 lg:flex-row lg:items-start">
@@ -234,7 +247,7 @@ export function LineupBoard() {
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} offers={offers.data} poll={poll.data} onAdd={(cid) => addTo(cid, show)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} offers={offers.data} poll={poll.data} onAdd={(cid) => addTo(cid, show)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
@@ -310,7 +323,7 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
   );
 }
 
-function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, lineup, comicsById, requestByComic, lastWeek }: { offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string) => Promise<void>; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string) => Promise<void>; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
   const { uid, week, venues, settings } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
@@ -323,6 +336,8 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const resetPlan = lineup ? planLineupReset(lineup, requests) : null;
   const pendingOffers = offers.filter((o) => o.showId === show.id && o.status === "pending");
   const hostsFree = Object.entries(poll?.votes ?? {}).filter(([, v]) => v.includes(show.id)).map(([k]) => ({ id: k.replace(/_/g, "."), name: poll?.voterNames[k] ?? k }));
   const fill = Math.min(1, ids.length / Math.max(1, show.slotCount));
@@ -371,6 +386,9 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
                 >
                   Mic didn't happen
                 </MenuItem>
+                <MenuItem disabled={!resetPlan} onClick={() => (close(), setResetOpen(true))}>
+                  Reset lineup…
+                </MenuItem>
                 </>
               )}
             </Menu>
@@ -386,6 +404,7 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
                 <>
                   <MenuItem onClick={() => (close(), void repeat())}>Repeat last week's lineup</MenuItem>
                   <MenuItem disabled={ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>Offer a spot…</MenuItem>
+                  <MenuItem disabled={!resetPlan} onClick={() => (close(), setResetOpen(true))}>Reset lineup…</MenuItem>
                   <MenuItem onClick={() => (close(), void setLineupStatus(uid, week, show, "cancelled"))}>Mark mic cancelled</MenuItem>
                 </>
               )}
@@ -464,6 +483,7 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
       </footer>
 
       <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
+      <ResetDialog open={resetOpen} onClose={() => setResetOpen(false)} plans={resetPlan ? [resetPlan] : []} shows={[show]} scope="show" />
       <OfferSheet open={offerOpen} onClose={() => setOfferOpen(false)} show={show} exclude={ids} />
       {lineup && <GroupSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} show={show} lineup={lineup} />}
     </Column>

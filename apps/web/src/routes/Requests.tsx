@@ -26,8 +26,9 @@ import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
 import { Avatar, Bubble, Button, Chip, Empty, IconButton, cx } from "../components/ui";
 import { ConnectCard } from "../components/ConnectCard";
+import { ClearOldRequests } from "../components/ClearOldRequests";
 import { ActionInbox, MicCheck, Notices } from "../components/Inbox";
-import { IconArrowDown, IconChatCheck, IconCheck, IconHistory, IconInbox, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
+import { IconArrowDown, IconChatCheck, IconCheck, IconHistory, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
 type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
 const LANES: { id: Lane; label: string }[] = [
@@ -54,6 +55,7 @@ export function Requests() {
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const [lane, setLane] = useState<Lane>("asked");
+  const [clearOpen, setClearOpen] = useState(false);
   const lastWeek = shiftWeek(week, -1);
 
   const grouped = useMemo(() => {
@@ -77,7 +79,14 @@ export function Requests() {
       <PageHeader
         title="Requests"
         subtitle={requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
-        actions={<WeekSwitcher />}
+        actions={
+          <>
+            <WeekSwitcher />
+            <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="More" onClick={t} className="size-9" />}>
+              {(close) => <MenuItem onClick={() => (close(), setClearOpen(true))}>Clear old requests…</MenuItem>}
+            </Menu>
+          </>
+        }
       >
         <div className="-mx-4 mt-5 flex overflow-x-auto border-b border-outline-variant px-4 [scrollbar-width:none] sm:mx-0 sm:mt-6 sm:gap-1 sm:px-0" role="tablist">
           {LANES.map((l) => (
@@ -90,6 +99,7 @@ export function Requests() {
         </div>
       </PageHeader>
 
+      <ClearOldRequests open={clearOpen} onClose={() => setClearOpen(false)} />
       <div className="px-4 pb-10 sm:px-8">
         <MicCheck />
         <Notices />
