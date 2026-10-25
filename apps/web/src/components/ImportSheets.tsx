@@ -4,7 +4,7 @@ import { comicIdForPhone, parsePeopleFile, type WaContact } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
 import { importPeople, rosterLookup } from "../lib/people";
-import { Avatar, Button, Chip, Empty, Spinner, TextInput, cx } from "./ui";
+import { Avatar, Button, Chip, Empty, Spinner, cx } from "./ui";
 import { Sheet } from "./ui";
 import { IconCheck, IconPhone, IconSearch, IconUserPlus, IconWarn } from "./icons";
 

@@ -12,7 +12,7 @@ export function pickServer(servers: ServerStatus[] | null, uid?: string) {
 }
 
 export async function runAdminData(serverId: string, type: "delete_user_data" | "remove_user" | "wipe_demo", payload: AdminDataPayload, by: string, timeoutMs = 10 * 60_000) {
-  const ref = await addDoc(collection(db, "servers", serverId, "commands"), { type, payload, status: "pending", by, createdAt: Date.now() } satisfies ServerCommand);
+  const ref = await addDoc(collection(db, "servers", serverId, "commands"), { type, payload: { ...payload }, status: "pending", by, createdAt: Date.now() } satisfies ServerCommand);
   return new Promise<AdminDataResult>((resolve, reject) => {
     const t = setTimeout(() => (unsub(), reject(new Error("The server didn't respond"))), timeoutMs);
     const unsub = onSnapshot(ref, (d) => {
