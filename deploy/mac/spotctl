@@ -2,6 +2,8 @@
 # Spot Solutions server control for macOS (Apple Silicon and Intel). No Homebrew or Xcode needed.
 #
 #   spotctl setup        download Node, Ollama, Gemma and the worker; install launch agents
+#                        SPOT_NO_LOCAL_MODEL=1 spotctl setup   Gemini-only: no Ollama/Gemma, AI runs on Gemini
+#                        (kept on later updates; SPOT_NO_LOCAL_MODEL=0 spotctl setup switches back)
 #   spotctl start|stop   start or stop the whole server (Ollama, worker, console)
 #   spotctl restart [worker|ollama|console]
 #   spotctl status       one line per service, machine-readable (used by the app)
@@ -40,6 +42,9 @@ find_ollama() {
 
 ollama_up() { curl -fs --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; }
 
+# Gemini-only server: no Ollama or Gemma at all. Chosen at setup (SPOT_NO_LOCAL_MODEL=1), remembered in a marker file.
+no_local() { [[ -f "$ROOT/.no-local-model" ]]; }
+
 # Ollama already running from somewhere else (Ollama.app, brew services)? Then we use it and
 # don't install our own agent, to avoid two servers fighting over port 11434.
 external_ollama() { [[ -f "$ROOT/.external-ollama" ]]; }
@@ -67,6 +72,7 @@ $args  </array>
     <key>SPOT_DATA_DIR</key><string>$DATA</string>
     <key>SPOT_ENV_FILE</key><string>$APP/apps/worker/.env</string>
     <key>SPOT_OLLAMA_EXE</key><string>$(find_ollama)</string>
+    <key>SPOT_NO_LOCAL_MODEL</key><string>$(no_local && echo 1 || echo 0)</string>
   </dict>
   <key>WorkingDirectory</key><string>$APP/apps/worker</string>
   <key>RunAtLoad</key><$runatload/>
@@ -84,7 +90,10 @@ EOF
 write_agents() {
   mkdir -p "$AGENTS" "$LOGS"
   local node; node="$(node_bin)"
-  if ! external_ollama; then plist com.spotsolutions.ollama "$(find_ollama)" serve; else rm -f "$AGENTS/com.spotsolutions.ollama.plist"; fi
+  if no_local; then
+    loaded com.spotsolutions.ollama && launchctl bootout "gui/$UID_N/com.spotsolutions.ollama" 2>/dev/null || true
+    rm -f "$AGENTS/com.spotsolutions.ollama.plist"
+  elif ! external_ollama; then plist com.spotsolutions.ollama "$(find_ollama)" serve; else rm -f "$AGENTS/com.spotsolutions.ollama.plist"; fi
   # The worker waits for a Firebase key; the console is where you add it.
   plist com.spotsolutions.worker /bin/bash -c "while [ ! -f '$DATA/service-account.json' ]; do sleep 10; done; exec '$node' '$APP/apps/worker/node_modules/tsx/dist/cli.mjs' --env-file-if-exists=.env src/index.ts"
   # caffeinate holds a "don't sleep" assertion for exactly as long as the server runs.
@@ -106,6 +115,15 @@ cmd_setup() {
   fi
   ok "Node $("$(node_bin)" -v)"
 
+  # Explicit choice wins; otherwise keep what an earlier setup chose.
+  case "${SPOT_NO_LOCAL_MODEL:-}" in
+    1|true|yes) touch "$ROOT/.no-local-model" ;;
+    0|false|no) rm -f "$ROOT/.no-local-model" ;;
+  esac
+  if no_local; then
+    step "Gemini-only server: skipping Ollama and Gemma"
+    ok "AI will use Gemini (add a Gemini key in the console or the app)"
+  else
   step "Ollama"
   if ollama_up && [[ ! -f "$AGENTS/com.spotsolutions.ollama.plist" ]]; then
     touch "$ROOT/.external-ollama"; ok "Using the Ollama already running on this Mac"
@@ -117,6 +135,7 @@ cmd_setup() {
       [[ -x "$RT/ollama/ollama" ]] || die "Ollama download didn't contain the expected binary"
     fi
     ok "Ollama at $(find_ollama)"
+  fi
   fi
 
   step "Spot Solutions code"
@@ -137,6 +156,8 @@ WWEBJS_DATA=$DATA/wwebjs
 CHROME_PATH=
 EOF
   fi
+  # Record the choice (the worker reads this to report localModel: false and route AI to Gemini).
+  { grep -v '^SPOT_NO_LOCAL_MODEL=' "$env" || true; echo "SPOT_NO_LOCAL_MODEL=$(no_local && echo 1 || echo 0)"; } > "$env.tmp" && mv "$env.tmp" "$env"
   chmod 600 "$env"; chmod 700 "$DATA"
   ok "Keys go in through the console (Spot Server app, or http://localhost:7420)"
 
@@ -144,9 +165,11 @@ EOF
   touch "$ROOT/.start-at-login"
   write_agents
   cmd_start
-  step "Gemma ($MODEL)"
-  for _ in $(seq 1 30); do ollama_up && break; sleep 1; done
-  "$(find_ollama)" pull "$MODEL" || die "Downloading $MODEL failed"
+  if ! no_local; then
+    step "Gemma ($MODEL)"
+    for _ in $(seq 1 30); do ollama_up && break; sleep 1; done
+    "$(find_ollama)" pull "$MODEL" || die "Downloading $MODEL failed"
+  fi
   ok "Done. Open the console to add your Firebase key."
 }
 
@@ -176,10 +199,12 @@ cmd_status() {
   echo "installed=$installed"
   for l in "${LABELS[@]}"; do
     local s=stopped
-    if [[ $l == com.spotsolutions.ollama ]] && external_ollama; then ollama_up && s=external || s=stopped
+    if [[ $l == com.spotsolutions.ollama ]] && no_local; then s=off
+    elif [[ $l == com.spotsolutions.ollama ]] && external_ollama; then ollama_up && s=external || s=stopped
     elif running "$l"; then s=running; elif loaded "$l"; then s=starting; fi
     echo "${l#com.spotsolutions.}=$s"
   done
+  echo "localmodel=$(no_local && echo off || echo on)"
   echo "key=$([[ -f "$DATA/service-account.json" ]] && echo yes || echo no)"
   echo "awake=$([[ "$(pmset -g | awk '/SleepDisabled/{print $2}')" == 1 ]] && echo on || echo off)"
   echo "login=$([[ -f "$ROOT/.start-at-login" ]] && echo on || echo off)"
@@ -222,5 +247,5 @@ case "${1:-}" in
   login) shift; cmd_login "${1:-}" ;;
   logs) tail -n 100 -F "$LOGS/worker.log" ;;
   uninstall) shift; cmd_uninstall "${1:-}" ;;
-  *) sed -n '2,13p' "$0"; exit 1 ;;
+  *) sed -n '2,15p' "$0"; exit 1 ;;
 esac

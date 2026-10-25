@@ -5,11 +5,14 @@ import { GoogleGenAI } from "@google/genai";
 import type { AiRoute, AiSettings } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { counters } from "./stats.ts";
+import { AiPolicyError, planRoutes } from "./aiRouting.ts";
 
 export const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 90_000);
 const GEMINI_TIMEOUT_MS = 30_000;
 const SERVER_GEMINI_KEY = process.env.GEMINI_API_KEY || null;
+/** Set by the installers for Gemini-only servers. */
+export const NO_LOCAL_MODEL = /^(1|true|yes)$/i.test(process.env.SPOT_NO_LOCAL_MODEL ?? "");
 export const hasServerGeminiKey = Boolean(SERVER_GEMINI_KEY);
 
 type Schema = Record<string, unknown>;
@@ -44,6 +47,7 @@ function geminiFor(uid: string | null) {
 const noSchema = new Set<string>(); // Ollama models that reject JSON-schema output
 
 async function ollama(model: string, prompt: string, schema: Schema) {
+  if (NO_LOCAL_MODEL) throw new Error("This server has no local model (Gemini-only)");
   const call = (structured: boolean) =>
     fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
@@ -94,31 +98,34 @@ let gate: Promise<unknown> = Promise.resolve();
 /** Run a prompt that must answer in JSON. Returns the raw text and which model produced it. */
 export function generateJson(uid: string | null, ai: AiSettings, prompt: string, schema: Schema) {
   const task = gate.catch(() => undefined).then(async () => {
-    try {
-      const text = await run(uid, ai.primary, prompt, schema);
-      counters.classified++;
-      return { text, model: `${ai.primary.provider}/${ai.primary.model}` };
-    } catch (err) {
-      if (!ai.fallback) {
-        counters.errors++;
-        throw err;
-      }
-      console.warn(`[llm] ${ai.primary.provider}/${ai.primary.model} failed, trying ${ai.fallback.provider}/${ai.fallback.model}:`, (err as Error).message);
+    // The account's AI policy decides which routes exist at all (local_only never reaches Gemini).
+    const routes = planRoutes(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY));
+    if (!routes.length) {
+      counters.errors++;
+      throw new AiPolicyError("AI policy is Local only, but no local model is selected for this account.");
+    }
+    let last: unknown;
+    for (const [i, route] of routes.entries()) {
       try {
-        const text = await run(uid, ai.fallback, prompt, schema);
+        const text = await run(uid, route, prompt, schema);
         counters.classified++;
-        return { text, model: `${ai.fallback.provider}/${ai.fallback.model}` };
-      } catch (e2) {
-        counters.errors++;
-        throw e2;
+        return { text, model: `${route.provider}/${route.model}` };
+      } catch (err) {
+        last = err;
+        const next = routes[i + 1];
+        if (next) console.warn(`[llm] ${route.provider}/${route.model} failed, trying ${next.provider}/${next.model}:`, (err as Error).message);
       }
     }
+    counters.errors++;
+    throw last;
   });
   gate = task;
   return task;
 }
 
 export async function ollamaState() {
+  // Gemini-only servers (SPOT_NO_LOCAL_MODEL=1) have no Ollama at all: answer at once, no network call.
+  if (NO_LOCAL_MODEL) return { up: false, models: [], loaded: [] as string[] };
   try {
     const [tags, ps] = await Promise.all([
       fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json() as Promise<{ models: { name: string; size: number }[] }>),
@@ -126,7 +133,7 @@ export async function ollamaState() {
         .then((r) => r.json() as Promise<{ models: { name: string }[] }>)
         .catch(() => ({ models: [] })),
     ]);
-    return { up: true, models: tags.models.map((m) => ({ name: m.name, size: m.size })), loaded: ps.models.map((m) => m.name) };
+    return { up: true, models: (tags.models ?? []).map((m) => ({ name: m.name, size: m.size })), loaded: ps.models.map((m) => m.name) };
   } catch {
     return { up: false, models: [], loaded: [] as string[] };
   }
@@ -134,6 +141,7 @@ export async function ollamaState() {
 
 /** Download a model into Ollama (used by the "Pull" button in the app). */
 export async function ollamaPull(model: string) {
+  if (NO_LOCAL_MODEL) throw new Error("This server runs without a local model (Gemini-only)");
   const res = await fetch(`${OLLAMA_URL}/api/pull`, { method: "POST", body: JSON.stringify({ model, stream: false }), signal: AbortSignal.timeout(60 * 60_000) });
   if (!res.ok) throw new Error(`pull failed: ${(await res.text()).slice(0, 200)}`);
 }

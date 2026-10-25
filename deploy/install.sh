@@ -8,7 +8,12 @@
 #   ollama        local AI
 #   spot-worker   WhatsApp + curation (starts once a Firebase key is added)
 #   spot-console  local web console on port 7420: status, logs, key upload, restarts
-# Asks nothing: add keys from the console afterwards. Re-running updates and restarts.
+# Add keys from the console afterwards. Re-running updates and restarts.
+#
+# Gemini-only server (no Ollama/Gemma download; AI goes to Gemini, needs a Gemini key):
+#   curl -fsSL https://spot-solutions.web.app/install.sh | sudo SPOT_NO_LOCAL_MODEL=1 bash
+#   (or pass --no-local-model). If you run it from a terminal and set neither, it asks once.
+# A Gemini-only server can't host accounts whose AI policy is "Local only".
 set -euo pipefail
 
 SRC_URL="${SPOT_SRC_URL:-https://spot-solutions.web.app/dl/spot-solutions.tar.gz}"
@@ -19,9 +24,23 @@ MODEL="${GEMMA_MODEL:-gemma3:4b}"
 PNPM="pnpm@9.15.4"
 PORT=7420
 
+for arg in "$@"; do if [[ "$arg" == "--no-local-model" ]]; then SPOT_NO_LOCAL_MODEL=1; fi; done
 [[ $EUID -eq 0 ]] || { echo "Run with sudo."; exit 1; }
 . /etc/os-release
 case "${ID} ${ID_LIKE:-}" in *ubuntu*|*debian*|*kali*) ;; *) echo "Warning: built for Ubuntu/Debian/Kali, you're on ${PRETTY_NAME}. Trying anyway." ;; esac
+
+# Local model or Gemini-only? Explicit env/flag wins; else keep what a previous install chose; else ask on a terminal.
+ENV_FILE="${APP_DIR}/apps/worker/.env"
+if [[ -z "${SPOT_NO_LOCAL_MODEL:-}" ]]; then
+  if [[ -f "${ENV_FILE}" ]] && grep -q '^SPOT_NO_LOCAL_MODEL=1' "${ENV_FILE}"; then
+    SPOT_NO_LOCAL_MODEL=1
+  elif [[ ! -f "${ENV_FILE}" && -t 1 && -r /dev/tty ]]; then
+    printf 'Run AI on this machine with Ollama + Gemma (about 3.5 GB, needs ~4 GB of free memory)? [Y/n] (n = Gemini only) ' > /dev/tty
+    read -r -t 30 ans < /dev/tty 2>/dev/null || ans=""
+    if [[ "${ans}" =~ ^[Nn] ]]; then SPOT_NO_LOCAL_MODEL=1; fi
+  fi
+fi
+case "${SPOT_NO_LOCAL_MODEL:-}" in 1|true|yes) NO_LOCAL=1 ;; *) NO_LOCAL=0 ;; esac
 
 step() { printf '\n\033[1;33m▸ %s\033[0m\n' "$*"; }
 ok()   { printf '  \033[32m%s\033[0m\n' "$*"; }
@@ -46,6 +65,10 @@ fi
 NODE="$(command -v node)"
 ok "Node $(node -v)"
 
+if [[ "${NO_LOCAL}" == 1 ]]; then
+  step "Gemini-only server: skipping Ollama and Gemma"
+  ok "AI will use Gemini (add a Gemini key in the console or the app)"
+else
 step "Ollama + ${MODEL}"
 command -v ollama >/dev/null || curl -fsSL https://ollama.com/install.sh | sh
 mkdir -p /etc/systemd/system/ollama.service.d
@@ -59,6 +82,7 @@ systemctl enable --now ollama
 for _ in $(seq 1 30); do curl -fs http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
 ollama pull "${MODEL}"
 ok "Gemma ready"
+fi
 
 step "Service account and code"
 id -u "${SVC_USER}" >/dev/null 2>&1 || useradd --system --create-home --home-dir "${DATA_DIR}" --shell /usr/sbin/nologin "${SVC_USER}"
@@ -71,7 +95,6 @@ sudo -u "${SVC_USER}" -H bash -c "cd ${APP_DIR} && npx -y ${PNPM} install --froz
 ok "Code at ${APP_DIR}"
 
 step "Configuration"
-ENV_FILE="${APP_DIR}/apps/worker/.env"
 if [[ ! -f "${ENV_FILE}" ]]; then
   cat > "${ENV_FILE}" <<EOF
 FIREBASE_SERVICE_ACCOUNT=${DATA_DIR}/service-account.json
@@ -81,10 +104,13 @@ GEMINI_API_KEY=
 WWEBJS_DATA=${DATA_DIR}/wwebjs
 CHROME_PATH=
 SPOT_ADMIN_EMAILS=${ADMIN_EMAILS:-}
+SPOT_NO_LOCAL_MODEL=${NO_LOCAL}
 EOF
 elif [[ -n "${ADMIN_EMAILS:-}" ]]; then
   sed -i "s|^SPOT_ADMIN_EMAILS=.*|SPOT_ADMIN_EMAILS=${ADMIN_EMAILS}|" "${ENV_FILE}"
 fi
+# Record the choice (also when re-running to switch between local model and Gemini-only).
+if grep -q '^SPOT_NO_LOCAL_MODEL=' "${ENV_FILE}"; then sed -i "s|^SPOT_NO_LOCAL_MODEL=.*|SPOT_NO_LOCAL_MODEL=${NO_LOCAL}|" "${ENV_FILE}"; else echo "SPOT_NO_LOCAL_MODEL=${NO_LOCAL}" >> "${ENV_FILE}"; fi
 chown "${SVC_USER}:${SVC_USER}" "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
@@ -96,11 +122,12 @@ chmod 440 /etc/sudoers.d/spot-console
 visudo -cf /etc/sudoers.d/spot-console >/dev/null
 
 step "systemd services"
+OLLAMA_UNIT=""; [[ "${NO_LOCAL}" == 1 ]] || OLLAMA_UNIT=" ollama.service"
 cat > /etc/systemd/system/spot-worker.service <<EOF
 [Unit]
 Description=Spot Solutions worker (WhatsApp + Gemma)
-After=network-online.target ollama.service
-Wants=network-online.target ollama.service
+After=network-online.target${OLLAMA_UNIT}
+Wants=network-online.target${OLLAMA_UNIT}
 # Stays idle until a Firebase key is uploaded in the console.
 ConditionPathExists=${DATA_DIR}/service-account.json
 
@@ -162,7 +189,9 @@ step "Done"
 echo "One-time setup: open the server console from a phone or laptop on THIS Wi-Fi:"
 /usr/local/bin/spot-console-url | sed 's/^/  /'
 echo
-echo "1. Drop your Firebase service-account key into the console (starts the worker)."
+echo "1. Drop this server's own Firebase key into the console (starts the worker). One key per device:"
+echo "   on your admin Mac run: deploy/new-server-key.sh <device-name>   (see /help → Running several servers)"
+if [[ "${NO_LOCAL}" == 1 ]]; then echo "   Gemini-only: also add a Gemini key (console, or each curator in the app)."; fi
 echo "2. Add your email under Admins to see this server in the app."
 echo "3. Link WhatsApp at https://spot-solutions.web.app → Settings."
 echo "After that, everything (including restarts and logs) is in the app → Account → Server, from anywhere."

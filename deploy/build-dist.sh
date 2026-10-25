@@ -11,6 +11,9 @@ git archive HEAD | tar -x -C "$TMP"
 echo "$SHA" > "$TMP/VERSION"
 tar -czf "$DIST/dl/spot-solutions.tar.gz" -C "$TMP" .
 cp deploy/install.sh "$DIST/install.sh"
+# Admin helpers for per-device Firebase keys (need gcloud; contain no secrets).
+cp deploy/new-server-key.sh "$DIST/new-server-key.sh"
+cp deploy/revoke-server-key.sh "$DIST/revoke-server-key.sh"
 cp deploy/windows/install.ps1 "$DIST/install.ps1"
 (cd deploy && rm -f "$TMP/w.zip" && cp -R windows "$TMP/SpotSolutions-Windows" && cd "$TMP" && zip -qr w.zip SpotSolutions-Windows)
 mv "$TMP/w.zip" "$DIST/dl/SpotSolutions-Windows.zip"
@@ -22,4 +25,4 @@ if command -v swiftc >/dev/null; then
 fi
 cp deploy/mac/install-mac.sh "$DIST/install-mac.sh"
 rm -rf "$TMP"
-echo "dist: install.sh, install.ps1, dl/spot-solutions.tar.gz ($SHA), dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip, install-mac.sh"
+echo "dist: install.sh, install.ps1, dl/spot-solutions.tar.gz ($SHA), dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip, install-mac.sh, new-server-key.sh, revoke-server-key.sh"

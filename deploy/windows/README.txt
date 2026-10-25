@@ -16,10 +16,13 @@ INSTALL
   2. Double-click "Install Spot Solutions.cmd" and click Yes on the admin prompt.
      It installs Node.js and Ollama, downloads Gemma (~3.3 GB), and sets up two
      startup tasks: the worker and the Server Console. It asks you nothing.
+     No room for Gemma (under ~8 GB RAM)? Double-click "Install Spot Solutions (Gemini
+     only).cmd" instead: no Ollama, no download; AI runs on Gemini (add a key in the
+     console or the app). That server can't host accounts set to "Local only".
   3. The Server Console opens (also on your desktop as "Spot Server Console"):
-     - drop in your Firebase service-account key (.json). Get it at
-       console.firebase.google.com -> project -> gear -> Project settings ->
-       Service accounts -> Generate new private key. The worker starts by itself.
+     - drop in this laptop's own Firebase key (.json). One key per device: on the admin's
+       Mac run deploy/new-server-key.sh <name> (see the Server guide, "Running several
+       servers"). The worker starts by itself.
      - add your email under Admins, so the server shows in the app (Account -> Server).
   4. Open "Spot Solutions" on the desktop -> Settings -> Show QR code, and scan it
      from WhatsApp on your phone.

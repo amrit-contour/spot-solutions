@@ -17,6 +17,7 @@ const SECTIONS = [
   { id: "before", title: "Before you start" },
   { id: "install", title: "Install the server" },
   { id: "setup", title: "First-time setup" },
+  { id: "several-servers", title: "Running several servers" },
   { id: "everyday", title: "Start, stop and restart" },
   { id: "always-on", title: "Keep it always on" },
   { id: "logs", title: "Logs and health" },
@@ -179,14 +180,14 @@ export function HelpPage() {
               <>
                 <P>Open <B>Terminal</B> and run:</P>
                 <Cmd>curl -fsSL https://spot-solutions.web.app/install-mac.sh | bash</Cmd>
-                <P>This puts <B>Spot Server</B> in Applications and opens it. Or download <a className="text-primary underline-offset-4 hover:underline" href="/dl/SpotServer-mac.zip">SpotServer-mac.zip</a>, double-click it and drag the app into Applications.</P>
+                <P>This puts <B>Spot Server</B> in Applications and opens it. Or download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/SpotServer-mac.zip?v=${__BUILD_ID__}`} download>SpotServer-mac.zip</a>, double-click it and drag the app into Applications.</P>
                 <Callout>Downloaded through a browser, macOS says it can't check the developer the first time. Open <B>System Settings → Privacy & Security</B> and click <B>Open Anyway</B>. The Terminal install avoids this.</Callout>
               </>
             )}
             {os === "windows" && (
               <>
                 <Steps>
-                  <li>Download <a className="text-primary underline-offset-4 hover:underline" href="/dl/SpotSolutions-Windows.zip">SpotSolutions-Windows.zip</a> and unzip it.</li>
+                  <li>Download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/SpotSolutions-Windows.zip?v=${__BUILD_ID__}`} download>SpotSolutions-Windows.zip</a> and unzip it.</li>
                   <li>Double-click <B>Install Spot Solutions.cmd</B> and click <B>Yes</B> on the admin prompt.</li>
                   <li>Wait while it installs Node.js and Ollama and downloads Gemma (about 3.5 GB).</li>
                 </Steps>
@@ -219,6 +220,21 @@ export function HelpPage() {
             </Steps>
             <Callout tone="ok">That's it. From now on you can manage the server from the app, from anywhere. The console is only needed for the key.</Callout>
             <P>Other curators don't touch the server. They sign in on the website, you approve them under <B>Account → Server → Curators</B>, and they link their own WhatsApp from their Settings.</P>
+          </Section>
+
+          <Section id="several-servers" title="Running several servers">
+            <P>You can run as many servers as you like. Each WhatsApp account runs on one server at a time. If that server goes offline, another one takes the account over with its saved login, with no new QR scan.</P>
+            <P><B>One key per device.</B> Never copy one Firebase key between computers. On your own Mac (with the Google Cloud CLI signed in), from the project folder, make a key for each server and drop it into that server's console:</P>
+            <Cmd>deploy/new-server-key.sh studio-mac</Cmd>
+            <P>The key can only use the database, the login backups and push notifications, nothing else. Lost or retired a device? Revoke just that one, and the others carry on:</P>
+            <Cmd>deploy/revoke-server-key.sh studio-mac</Cmd>
+            <P>Add <Code>--dry-run</Code> to either script to see what it would do without changing anything.</P>
+            <P><B>Gemini-only servers.</B> A computer without room for Gemma (under about 8 GB of memory) can still be a server. Install it without the local model, and it answers with Gemini instead. Add a Gemini key in its console or in the app.</P>
+            {os === "mac" && <P>In Spot Server, tick <B>Gemini only</B> before <B>Set up this Mac</B>.</P>}
+            {os === "windows" && <P>Double-click <Code>Install Spot Solutions (Gemini only).cmd</Code> instead of the normal one.</P>}
+            {os === "linux" && <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | sudo SPOT_NO_LOCAL_MODEL=1 bash</Cmd>}
+            <P><B>What "Local only" means.</B> A curator who picks Local only never has their chats sent to Gemini. Only servers running Gemma can host that account, so a Gemini-only server will not take it. If no Gemma server is online, the account waits until one is. With the default, Local first, any server can host the account and Gemini answers when Gemma is down.</P>
+            <Callout>Keep at least one server with Gemma if any curator uses Local only.</Callout>
           </Section>
 
           <Section id="everyday" title="Start, stop and restart">

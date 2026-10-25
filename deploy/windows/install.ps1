@@ -1,8 +1,7 @@
 <#
   Spot Solutions worker: native install for Windows 10/11.
 
-  Installs Node.js and Ollama (via winget, with a direct-download fallback for Node),
-  pulls Gemma, clones the repo, and registers a Scheduled Task that starts the worker at boot
+  Installs its own Node.js (C:\SpotSolutions\node) and Ollama (via winget), pulls Gemma, clones the repo, and registers a Scheduled Task that starts the worker at boot
   (before anyone logs in) and restarts it if it crashes. Also stops the laptop sleeping on power.
 
   Easiest: double-click "Install Spot Solutions.cmd". Or, in PowerShell as Administrator:
@@ -11,9 +10,19 @@
     irm https://spot-solutions.web.app/install.ps1 | iex
 
   Re-running is safe: it updates the code and restarts the task.
+
+  Gemini-only server (skips Ollama and the Gemma download; AI goes to Gemini, so add a Gemini key later):
+  double-click "Install Spot Solutions (Gemini only).cmd", or set $env:SPOT_NO_LOCAL_MODEL = "1" before running the install.
+  Re-running without it keeps whatever the previous install chose. A Gemini-only server can't host accounts set to "Local only".
 #>
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue" # Invoke-WebRequest is painfully slow with the progress bar
+# Run through `irm | iex`, PowerShell blames every error on "line 1". Show the real statement instead.
+trap {
+  Write-Host "`n  Install failed: $($_.Exception.Message)" -ForegroundColor Red
+  Write-Host "  At: $("$($_.InvocationInfo.Line)".Trim())" -ForegroundColor Red
+  break
+}
 
 $SrcUrl    = if ($env:SPOT_SRC_URL) { $env:SPOT_SRC_URL } else { "https://spot-solutions.web.app/dl/spot-solutions.tar.gz" }
 $Root      = "C:\SpotSolutions"
@@ -23,6 +32,12 @@ $ModelsDir = "$Root\ollama"   # shared by the tray app and the boot task, so Gem
 $ChromeDir = "$Root\chrome"   # Chrome for WhatsApp Web, readable by the SYSTEM account
 $TaskName  = "SpotSolutionsWorker"
 $Model     = if ($env:GEMMA_MODEL) { $env:GEMMA_MODEL } else { "gemma3:4b" }
+
+# Gemini-only? An explicit SPOT_NO_LOCAL_MODEL wins; otherwise keep what an earlier install wrote to .env.
+$NoLocal = $false
+if ($env:SPOT_NO_LOCAL_MODEL) { $NoLocal = ($env:SPOT_NO_LOCAL_MODEL -match '^(1|true|yes)$') }
+elseif ((Test-Path "$AppDir\apps\worker\.env") -and (Select-String -Path "$AppDir\apps\worker\.env" -Pattern '^SPOT_NO_LOCAL_MODEL=1' -Quiet)) { $NoLocal = $true }
+$NoLocalFlag = if ($NoLocal) { "1" } else { "0" }
 
 function Step($msg) { Write-Host "`n> $msg" -ForegroundColor Yellow }
 function Ok($msg) { Write-Host "  $msg" -ForegroundColor Green }
@@ -48,34 +63,53 @@ function Winget-Install($id) {
   winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements | Out-Host
 }
 
-$NodeCandidates   = @("$env:ProgramFiles\nodejs\node.exe", "${env:ProgramFiles(x86)}\nodejs\node.exe", "$env:LOCALAPPDATA\Programs\nodejs\node.exe")
 $OllamaCandidates = @("$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe")
 
 Step "Node.js"
-$Node = Find-Exe "node" $NodeCandidates
-if (-not $Node) { Winget-Install "OpenJS.NodeJS.LTS"; $Node = Find-Exe "node" $NodeCandidates }
-if (-not $Node) {
-  Write-Host "  winget didn't work, downloading Node.js from nodejs.org..."
-  $v = (Invoke-RestMethod "https://nodejs.org/dist/index.json" | Where-Object { $_.lts -and $_.version -like "v22.*" } | Select-Object -First 1).version
-  $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
-  $msi = "$env:TEMP\node-$v-$arch.msi"
-  Invoke-WebRequest "https://nodejs.org/dist/$v/node-$v-$arch.msi" -OutFile $msi
-  Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait
-  $Node = Find-Exe "node" $NodeCandidates
+# Our own copy in C:\SpotSolutions\node. The boot task runs as SYSTEM, which can't use per-user
+# installs (nvm, Volta, fnm, AppData), and a system Node may be too old or a shim that prints nothing.
+$NodeDir = "$Root\node"
+$Node    = "$NodeDir\node.exe"
+function Node-Major {
+  if (-not (Test-Path $Node)) { return 0 }
+  $v = "$(& $Node -v 2>$null)".Trim()
+  if ($v -match '^v(\d+)\.') { return [int]$Matches[1] } else { return 0 }
 }
-if (-not $Node) { throw "Couldn't install Node.js. Install it from https://nodejs.org (LTS), then run this again." }
-$NodeDir = Split-Path $Node
+if ((Node-Major) -lt 22) {
+  $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+  $v = "v22.12.0"
+  try {
+    # Assign first: Windows PowerShell passes a JSON array down the pipeline as one item otherwise.
+    $releases = Invoke-RestMethod "https://nodejs.org/dist/index.json"
+    $latest = ($releases | Where-Object { $_.lts -and $_.version -like "v22.*" } | Select-Object -First 1).version
+    if ($latest) { $v = $latest }
+  } catch { Write-Host "  Couldn't read the Node.js release list, using $v" }
+  Write-Host "  Downloading Node.js $v ($arch)..."
+  $zip = "$env:TEMP\node-$v-win-$arch.zip"
+  Invoke-WebRequest "https://nodejs.org/dist/$v/node-$v-win-$arch.zip" -OutFile $zip
+  $unpack = "$env:TEMP\spot-node"
+  Remove-Item -Recurse -Force $unpack, $NodeDir -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory -Force -Path $unpack | Out-Null
+  tar.exe -xf $zip -C $unpack
+  if ($LASTEXITCODE -ne 0) { throw "Unpacking Node.js failed." }
+  Move-Item "$unpack\node-$v-win-$arch" $NodeDir
+}
+$major = Node-Major
+if ($major -lt 22) { throw "Couldn't set up Node.js in $NodeDir. Check the internet connection and run this again." }
 $env:Path = "$NodeDir;$env:Path"
-$nodeVersion = (& $Node -v)
-if ([int]($nodeVersion.TrimStart("v").Split(".")[0]) -lt 22) { throw "Node $nodeVersion is too old. Spot Solutions needs Node 22 or newer. Update it from https://nodejs.org and run this again." }
-Ok "Node $nodeVersion at $Node"
+Ok "Node $(& $Node -v) at $Node"
 
+New-Item -ItemType Directory -Force -Path $ModelsDir, $DataDir, $ChromeDir | Out-Null
+$Ollama = $null
+if ($NoLocal) {
+  Step "Gemini-only server: skipping Ollama and Gemma"
+  Ok "AI will use Gemini (add a Gemini key in the Server Console or the app)"
+} else {
 Step "Ollama + Gemma ($Model)"
 $Ollama = Find-Exe "ollama" $OllamaCandidates
 if (-not $Ollama) { Winget-Install "Ollama.Ollama"; $Ollama = Find-Exe "ollama" $OllamaCandidates }
 if (-not $Ollama) { throw "Couldn't install Ollama. Install it from https://ollama.com/download, then run this again." }
 Ok "Ollama at $Ollama"
-New-Item -ItemType Directory -Force -Path $ModelsDir, $DataDir, $ChromeDir | Out-Null
 [Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $ModelsDir, "Machine")
 [Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", "24h", "Machine")
 $env:OLLAMA_MODELS = $ModelsDir
@@ -88,6 +122,7 @@ for ($i = 0; $i -lt 30; $i++) {
 }
 & $Ollama pull $Model
 if ($LASTEXITCODE -ne 0) { throw "Downloading $Model failed. Check the internet connection and run this again." }
+} # end of: not Gemini-only
 
 Step "Spot Solutions code"
 [Environment]::SetEnvironmentVariable("PUPPETEER_CACHE_DIR", $ChromeDir, "Machine")
@@ -119,8 +154,14 @@ GEMINI_API_KEY=
 SPOT_ADMIN_EMAILS=$($env:ADMIN_EMAILS)
 WWEBJS_DATA=$DataDir\wwebjs
 CHROME_PATH=
+SPOT_NO_LOCAL_MODEL=$NoLocalFlag
 "@ | Set-Content -Encoding ASCII $EnvFile
 }
+# Record the choice in an existing .env too (re-running to switch between local model and Gemini-only).
+$envText = Get-Content $EnvFile -Raw
+if ($envText -match '(?m)^SPOT_NO_LOCAL_MODEL=') { $envText = $envText -replace '(?m)^SPOT_NO_LOCAL_MODEL=.*', "SPOT_NO_LOCAL_MODEL=$NoLocalFlag" }
+else { $envText = $envText.TrimEnd() + "`r`nSPOT_NO_LOCAL_MODEL=$NoLocalFlag`r`n" }
+Set-Content -Encoding ASCII $EnvFile $envText
 # Only SYSTEM (the boot tasks) and Administrators can read config and keys.
 icacls $DataDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
 icacls $EnvFile /inheritance:r /grant:r "SYSTEM:F" "Administrators:F" | Out-Null
@@ -140,7 +181,7 @@ Set-Location '$AppDir\apps\worker'
 while (`$true) {
   # Idle until a Firebase key is added in the Server Console.
   if (-not (Test-Path '$KeyFile')) { Start-Sleep 10; continue }
-  if (-not (Ollama-Up)) { Start-Process -FilePath '$Ollama' -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 }
+  if ('$NoLocalFlag' -ne '1' -and -not (Ollama-Up)) { Start-Process -FilePath '$Ollama' -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 }
   "`$(Get-Date -Format s) starting worker" | Out-File -Append -Encoding utf8 '$DataDir\worker.log'
   & '$Node' '$AppDir\apps\worker\node_modules\tsx\dist\cli.mjs' --env-file-if-exists=.env src\index.ts *>> '$DataDir\worker.log'
   Start-Sleep 10
@@ -154,8 +195,8 @@ $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGo
              -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
-# Hand Ollama over to the task: stop the copy this installer started.
-Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# Hand Ollama over to the task: stop the copy this installer started (nothing to stop when Gemini-only).
+if (-not $NoLocal) { Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }
 Start-ScheduledTask -TaskName $TaskName
 Ok "Task '$TaskName' registered and started"
 
@@ -212,7 +253,8 @@ $token = (Get-Content "$DataDir\console-token" -ErrorAction SilentlyContinue)
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Dhcp,Manual -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.*" } | Select-Object -First 1).IPAddress
 Write-Host ""
 Write-Host "Open 'Spot Server Console' on the desktop (it's opening now):" -ForegroundColor Green
-Write-Host "  1. Drop your Firebase service-account key into it. The worker starts by itself."
+Write-Host "  1. Drop this server's own Firebase key into it (one key per device; admins create it with deploy/new-server-key.sh, see /help). The worker starts by itself."
+if ($NoLocal) { Write-Host "     Gemini-only: also add a Gemini key (Server Console, or each curator in the app)." }
 Write-Host "  2. Add your email under Admins to see this server in the app, from anywhere."
 Write-Host "  3. Link WhatsApp at https://spot-solutions.web.app -> Settings."
 if ($token -and $ip) { Write-Host "From a phone on this Wi-Fi: http://${ip}:7420/?token=$token" -ForegroundColor Cyan }

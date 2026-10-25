@@ -9,7 +9,8 @@
     "dev:worker": "pnpm --filter @spot/worker dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "deploy:web": "pnpm --filter @spot/web build && bash deploy/build-dist.sh && firebase deploy --only hosting,firestore:rules"
   },
   "packageManager": "pnpm@9.15.4"
 }

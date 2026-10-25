@@ -19,13 +19,16 @@ final class Server: ObservableObject {
     @Published var log: String = ""
     @Published var lastError: String? = nil
     @Published var adminEmail: String = ""
+    @Published var geminiOnly: Bool = false      // setup option: skip Ollama/Gemma, AI runs on Gemini
 
     private var timer: Timer?
     private let ctl = Bundle.main.path(forResource: "spotctl", ofType: nil) ?? ""
 
     var installed: Bool { status["installed"] == "yes" }
+    var localModel: Bool { status["localmodel"] != "off" }
     var services: [(String, String)] {
-        [("Ollama (Gemma)", status["ollama"] ?? "stopped"), ("WhatsApp worker", status["worker"] ?? "stopped"), ("Server console", status["console"] ?? "stopped")]
+        let rest = [("WhatsApp worker", status["worker"] ?? "stopped"), ("Server console", status["console"] ?? "stopped")]
+        return localModel ? [("Ollama (Gemma)", status["ollama"] ?? "stopped")] + rest : rest   // Gemini-only: no Ollama row
     }
     var running: Bool { status["console"] == "running" || status["worker"] == "running" }
     var allUp: Bool { services.allSatisfy { $0.1 == "running" || $0.1 == "external" } }
@@ -138,8 +141,8 @@ struct SetupView: View {
                     Logo(size: 56)
                     Text("Turn this Mac into a\nSpot Solutions server").font(.system(size: 30, weight: .semibold, design: .rounded))
                     VStack(alignment: .leading, spacing: 10) {
-                        Bullet("cpu", "Downloads Node.js, Ollama and Gemma (about 3.5 GB). No Homebrew needed.")
-                        Bullet("lock.shield", "Chats are read by Gemma on this Mac. They never reach a cloud AI.")
+                        Bullet("cpu", server.geminiOnly ? "Downloads Node.js only. No Homebrew needed." : "Downloads Node.js, Ollama and Gemma (about 3.5 GB). No Homebrew needed.")
+                        Bullet("lock.shield", server.geminiOnly ? "Chats are read by Gemini (add a Gemini key later). Accounts set to Local only can't run here." : "Chats are read by Gemma on this Mac. They never reach a cloud AI.")
                         Bullet("bolt.horizontal", "Runs in the background and restarts itself if it crashes.")
                         Bullet("laptopcomputer", "Optionally keeps running with the lid closed.")
                     }
@@ -147,8 +150,13 @@ struct SetupView: View {
                         Text("Your email (to see this server in the app)").font(.callout).foregroundStyle(.secondary)
                         TextField("you@gmail.com", text: $server.adminEmail).textFieldStyle(.roundedBorder).frame(maxWidth: 340)
                     }
+                    Toggle("Gemini only (no local model; skips the 3.5 GB download)", isOn: $server.geminiOnly)
+                        .toggleStyle(.checkbox).disabled(server.busy != nil)
                     Button {
-                        server.perform("Setting up", ["setup"], env: ["ADMIN_EMAILS": server.adminEmail.trimmingCharacters(in: .whitespaces).lowercased()])
+                        server.perform("Setting up", ["setup"], env: [
+                            "ADMIN_EMAILS": server.adminEmail.trimmingCharacters(in: .whitespaces).lowercased(),
+                            "SPOT_NO_LOCAL_MODEL": server.geminiOnly ? "1" : "0",
+                        ])
                     } label: {
                         Label(server.busy == nil ? "Set up this Mac" : "Setting up…", systemImage: "arrow.down.circle.fill").padding(.horizontal, 6)
                     }
@@ -263,7 +271,7 @@ struct DashboardView: View {
                 Menu {
                     Button("Update Spot Solutions") { server.perform("Updating", ["setup"]) }
                     Button("Restart worker") { server.perform("Restarting", ["restart", "worker"]) }
-                    Button("Restart Ollama") { server.perform("Restarting", ["restart", "ollama"]) }
+                    if server.localModel { Button("Restart Ollama") { server.perform("Restarting", ["restart", "ollama"]) } }
                     Divider()
                     Button("Uninstall (keep WhatsApp session and keys)…") {
                         if confirm("Uninstall Spot Server?", "Stops the server and removes the code. Your WhatsApp session and keys stay, so reinstalling picks up where you left off.") {

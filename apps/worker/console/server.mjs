@@ -132,7 +132,10 @@ function lanIps() {
     .filter((i) => i && i.family === "IPv4" && !i.internal)
     .map((i) => i.address);
 }
+// Gemini-only servers (SPOT_NO_LOCAL_MODEL=1 in .env) have no Ollama: don't probe, don't flag it as down.
+const noLocalModel = () => /^(1|true|yes)$/i.test(readEnv().SPOT_NO_LOCAL_MODEL ?? "");
 async function ollama() {
+  if (noLocalModel()) return { up: false, models: [] };
   try {
     const r = await fetch(`${OLLAMA}/api/tags`, { signal: AbortSignal.timeout(2500) });
     const j = await r.json();
@@ -155,7 +158,7 @@ async function status() {
   const env = readEnv();
   const [worker, ollamaSvc, o, d, logs] = await Promise.all([
     isActive("spot-worker"),
-    isActive("ollama"),
+    noLocalModel() ? false : isActive("ollama"),
     ollama(),
     disk(),
     workerLogs(),
@@ -173,6 +176,7 @@ async function status() {
     memory: { total: os.totalmem(), free: os.freemem() },
     disk: d,
     services: { worker, ollama: ollamaSvc },
+    localModel: !noLocalModel(),
     ollama: o,
     config: {
       key: keyInfo(),
@@ -254,6 +258,7 @@ createServer(async (req, res) => {
 
     if (url.pathname === "/api/restart" && req.method === "POST") {
       const { service } = await body(req);
+      if (service === "ollama" && noLocalModel()) return json(res, 400, { error: "This server runs without a local model (Gemini only)." });
       const unit = service === "ollama" ? "ollama" : "spot-worker";
       await restart(unit);
       return json(res, 200, { ok: true, active: await isActive(unit) });
