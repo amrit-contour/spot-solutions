@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { motion } from "motion/react";
 import type { ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
@@ -208,14 +209,14 @@ export function ServerPage() {
   const admin = isAdmin(useAccessConfig(), user.email);
   return (
     <div className="w-full">
-      <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" />
+      <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" actions={admin ? <Link to="/help" className="state-layer rounded-full border border-outline-variant px-4 py-2 type-label-l text-on-surface-variant">Server guide</Link> : undefined} />
       <div className="flex flex-col gap-10 px-4 pb-12 sm:px-8">
         {admin && <Curators />}
         {servers === null ? null : servers.length ? (
           servers.map((s) => <ServerCard key={s.id} s={s} />)
         ) : (
           <Empty icon={IconServer} title="No server reporting to you">
-            Servers show up here when their install lists your email as an admin. Add it once in the server console (port 7420, on the server's own network); after that you can manage it from here, anywhere.
+            Servers show up here when their install lists your email as an admin. Add it once in the server console (port 7420, on the server's own network); after that you can manage it from here, anywhere. <Link className="text-primary underline-offset-4 hover:underline" to="/help">Server guide</Link>
           </Empty>
         )}
       </div>

@@ -12,6 +12,8 @@ import { SettingsPage } from "./routes/Settings";
 import { ServerPage } from "./routes/Server";
 import { Waiting } from "./routes/Waiting";
 import { useAccess } from "./lib/access";
+import { HelpPage } from "./routes/Help";
+import { AdminOnly } from "./components/AdminOnly";
 
 export default function App() {
   const user = useAuthUser();
@@ -52,6 +54,7 @@ export default function App() {
               <Route path="/shows" element={<Shows />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/server" element={<ServerPage />} />
+              <Route path="/help" element={<AdminOnly><HelpPage /></AdminOnly>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Shell>
