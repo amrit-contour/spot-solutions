@@ -2,6 +2,9 @@ import {
   forwardRef,
   useEffect,
   useId,
+  useLayoutEffect,
+  useRef,
+  useState,
   type ButtonHTMLAttributes,
   type ComponentType,
   type InputHTMLAttributes,
@@ -166,10 +169,13 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
 const fieldBase =
   "w-full rounded-sm border border-outline bg-transparent px-4 type-body-l text-on-surface placeholder:text-on-surface-variant/60 outline-none transition-[border-color,box-shadow] duration-150 focus:border-primary focus:shadow-[inset_0_0_0_1px_var(--md-sys-color-primary)]";
 
-export function Field({ label, hint, children, htmlFor }: { label: string; hint?: ReactNode; children: ReactNode; htmlFor?: string }) {
+export function Field({ label, hint, info, children, htmlFor }: { label: string; hint?: ReactNode; info?: ReactNode; children: ReactNode; htmlFor?: string }) {
   return (
     <label className="flex flex-col gap-1.5" htmlFor={htmlFor}>
-      <span className="type-label-l text-on-surface-variant">{label}</span>
+      <span className="flex items-center gap-1 type-label-l text-on-surface-variant">
+        {label}
+        {info && <Info>{info}</Info>}
+      </span>
       {children}
       {hint && <span className="type-body-s text-on-surface-variant">{hint}</span>}
     </label>
@@ -203,10 +209,10 @@ export function Select({ value, onChange, options, className, placeholder }: { v
 }
 
 /** M3 segmented button with a sliding selection pill. */
-export function Segmented<T extends string | number>({ value, onChange, options, size = "md" }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; icon?: Icon }[]; size?: "sm" | "md" }) {
+export function Segmented<T extends string | number>({ value, onChange, options, size = "md", full }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; icon?: Icon }[]; size?: "sm" | "md"; full?: boolean }) {
   const id = useId();
   return (
-    <div className={cx("inline-flex rounded-full border border-outline-variant p-0.5", size === "sm" ? "h-9" : "h-10")} role="radiogroup">
+    <div className={cx("rounded-full border border-outline-variant p-0.5", full ? "flex w-full" : "inline-flex", size === "sm" ? "h-9" : "h-10")} role="radiogroup">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -323,6 +329,79 @@ export function Bubble({ children, outgoing, meta }: { children: ReactNode; outg
     <div className={cx("max-w-[85%] rounded-lg px-3.5 py-2 type-body-m whitespace-pre-wrap", outgoing ? "ml-auto rounded-br-xs bg-primary-container text-on-primary-container" : "rounded-bl-xs bg-surface-highest text-on-surface")}>
       {children}
       {meta && <span className="ml-2 align-bottom type-label-s opacity-60">{meta}</span>}
+    </div>
+  );
+}
+
+/**
+ * Small ⓘ that reveals help text on hover, focus or tap. Keeps long explanations off the page.
+ * Rendered in a portal and clamped to the viewport.
+ */
+export function Info({ children, label = "More info" }: { children: ReactNode; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !btn.current) return;
+    const r = btn.current.getBoundingClientRect();
+    const w = Math.min(320, window.innerWidth - 24);
+    setPos({ top: r.bottom + 8, left: Math.min(Math.max(12, r.left + r.width / 2 - w / 2), window.innerWidth - w - 12) });
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => !btn.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("scroll", () => setOpen(false), { once: true, capture: true });
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+  return (
+    <>
+      <button
+        ref={btn}
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onClick={(e) => (e.preventDefault(), setOpen((o) => !o))}
+        className="inline-grid size-6 flex-none place-items-center rounded-full text-on-surface-variant/70 transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        <svg viewBox="0 0 20 20" className="size-[18px]" fill="currentColor" aria-hidden>
+          <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-11.5a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM9.25 9a.75.75 0 0 1 1.5 0v4.5a.75.75 0 0 1-1.5 0V9Z" clipRule="evenodd" />
+        </svg>
+      </button>
+      {createPortal(
+        <AnimatePresence>
+          {open && pos && (
+            <motion.div
+              role="tooltip"
+              initial={{ opacity: 0, transform: "translateY(-4px)" }}
+              animate={{ opacity: 1, transform: "translateY(0px)", transition: { duration: 0.14, ease: [0.23, 1, 0.32, 1] } }}
+              exit={{ opacity: 0, transition: { duration: 0.08 } }}
+              style={{ position: "fixed", top: pos.top, left: pos.left, width: Math.min(320, window.innerWidth - 24) }}
+              className="pointer-events-none z-[70] rounded-sm bg-inverse-surface px-3 py-2 type-body-s text-inverse-on-surface shadow-lg"
+            >
+              {children}
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+/** One setting on one line: label (with ⓘ) on the left, control on the right. */
+export function SettingRow({ label, info, children, className }: { label: ReactNode; info?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <div className={cx("flex min-h-12 items-center gap-4", className)}>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="type-title-s">{label}</span>
+        {info && <Info>{info}</Info>}
+      </div>
+      <div className="flex flex-none items-center gap-2">{children}</div>
     </div>
   );
 }

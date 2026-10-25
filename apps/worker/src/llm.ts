@@ -145,3 +145,17 @@ export async function testRoute(uid: string, route: AiRoute) {
   if (!text.includes("true")) throw new Error(`Unexpected reply: ${text.slice(0, 120)}`);
   return { ms: Date.now() - t };
 }
+
+/** Text-capable Gemini/Gemma models this curator's key can use, newest first. */
+export async function listGeminiModels(uid: string) {
+  const key = keys.get(uid) || SERVER_GEMINI_KEY;
+  if (!key) throw new Error("Add a Gemini key first");
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(15_000) });
+  const body = (await res.json().catch(() => ({}))) as { models?: { name: string; supportedGenerationMethods?: string[] }[]; error?: { message?: string } };
+  if (!res.ok) throw new Error(body.error?.message ?? `Gemini said ${res.status}`);
+  return (body.models ?? [])
+    .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
+    .map((m) => m.name.replace(/^models\//, ""))
+    .filter((n) => /^(gemini|gemma)/.test(n) && !/(embedding|image|imagen|veo|tts|audio|live|vision|aqa|learnlm)/.test(n))
+    .sort((a, b) => Number(b.startsWith("gemini")) - Number(a.startsWith("gemini")) || b.localeCompare(a, undefined, { numeric: true }));
+}

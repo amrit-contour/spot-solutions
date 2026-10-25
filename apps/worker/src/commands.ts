@@ -27,7 +27,7 @@ import { col, db, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
-import { ollamaPull, ollamaState, testRoute } from "./llm.ts";
+import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>) => Promise<unknown>;
 
@@ -256,6 +256,13 @@ const handlers: Record<Command["type"], Handler> = {
   /** Models available on this server's Ollama. */
   async list_models() {
     return ollamaState();
+  },
+
+  /** Refresh the curator's Gemini model list with their stored key. */
+  async list_gemini_models(uid) {
+    const models = await listGeminiModels(uid);
+    await userRef(uid).set({ aiModels: { gemini: models, fetchedAt: Date.now() } }, { merge: true });
+    return { count: models.length };
   },
 
   /** Try a provider/model end to end with the curator's key. */

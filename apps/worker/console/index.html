@@ -186,7 +186,7 @@ async function refresh() {
     if (!editing) render();
     else $("#logs").textContent = state.logs;
   } catch (e) {
-    if (e.status === 401) $("#app").innerHTML = `<div class="locked">${logo}<h1 style="margin-top:16px">Locked</h1><p class="muted">Open this page with the link the installer printed (it ends in <span class="mono">?token=…</span>).<br>Forgot it? On the server run <span class="mono">sudo spot-console-url</span>.</p></div>`;
+    if (e.status === 401) $("#app").innerHTML = `<div class="locked">${logo}<h1 style="margin-top:16px">Locked</h1><p class="muted">Open this page with the link the installer printed (it ends in <span class="mono">?token=…</span>).<br>Forgot it? On the server run <span class="mono">sudo spot-console-url</span> (Linux), or open the <b>Spot Server Console</b> shortcut on the server's desktop (Windows).</p></div>`;
     else toast(e.message);
   }
 }

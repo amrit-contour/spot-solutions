@@ -62,7 +62,7 @@ service cloud.firestore {
         allow read: if isOwner(uid);
         allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message'];
       }
 
       match /{coll}/{id} {

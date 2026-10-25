@@ -119,7 +119,8 @@ export function watchServerCommands(onRestartWorker: () => Promise<void>) {
 
 async function restartOllama() {
   if (process.platform === "win32") {
-    await exec("powershell", ["-NoProfile", "-Command", "Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process ollama -ArgumentList serve -WindowStyle Hidden"]);
+    const exe = process.env.SPOT_OLLAMA_EXE ?? "ollama";
+    await exec("powershell", ["-NoProfile", "-Command", `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process -FilePath '${exe}' -ArgumentList serve -WindowStyle Hidden`]);
   } else {
     await exec("sudo", ["-n", "/usr/bin/systemctl", "restart", "ollama"], { timeout: 60_000 });
   }

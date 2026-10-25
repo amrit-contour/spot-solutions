@@ -240,6 +240,7 @@ export type CommandType =
   | "send_offer"
   | "send_host_poll"
   | "list_models"
+  | "list_gemini_models"
   | "test_ai"
   | "pull_model"
   | "plan_group_sync"

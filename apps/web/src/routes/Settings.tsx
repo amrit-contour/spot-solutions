@@ -18,7 +18,7 @@ import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
 import { ConnectCard } from "../components/ConnectCard";
 import { AiModels } from "../components/AiModels";
-import { Bubble, Button, Field, Segmented, Select, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
+import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield } from "../components/icons";
 
 const TABS = [
@@ -68,15 +68,14 @@ function Section({ title, icon: I, description, children, aside }: { title: stri
     <section className="rounded-xl bg-surface-low p-4 sm:p-6">
       {/* Header: icon beside a title+description block, so the text shares one left edge.
           The body below spans the card, lining up with the icon. */}
-      <header className="mb-5 flex items-start gap-4">
+      <header className="mb-5 flex items-center gap-3">
         <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
           <I className="icon size-5" />
         </span>
-        <div className="min-w-0 flex-1 pt-1.5">
-          <h2 className="type-title-l">{title}</h2>
-          {description && <p className="mt-1 max-w-[68ch] type-body-m text-on-surface-variant">{description}</p>}
-        </div>
-        {aside && <div className="flex-none pt-1">{aside}</div>}
+        <h2 className="min-w-0 type-title-l">{title}</h2>
+        {description && <Info label={`About ${title}`}>{description}</Info>}
+        <div className="flex-1" />
+        {aside && <div className="flex flex-none items-center gap-2">{aside}</div>}
       </header>
       {children}
     </section>
@@ -238,20 +237,12 @@ export function SettingsPage() {
           description="When a booked comic writes “can't make it Monday”, “am I up this week?” or “when was my last spot?”, Gemma drafts a reply under Requests → Needs a reply."
           aside={<Switch checked={settings.selfService.enabled} onChange={(v) => saveSettings({ selfService: { ...settings.selfService, enabled: v } })} label="Draft replies to comics" />}
         >
-          <div className={cx("flex items-center gap-4", !settings.selfService.enabled && "pointer-events-none opacity-50")}>
-            <div className="flex-1">
-              <div className="type-title-s">Send without asking me</div>
-              <div className="type-body-s text-on-surface-variant">Off: nothing goes out until you tap Send. On: replies go out straight away (fresh messages from people only), and a cancellation frees the slot automatically.</div>
-            </div>
+          <SettingRow label="Send without asking me" info={<>Off: nothing goes out until you tap Send. On: replies go out straight away (fresh messages from people only), and a cancellation frees the slot automatically.</>} className={cx(!settings.selfService.enabled && "pointer-events-none opacity-50")}>
             <Switch checked={settings.selfService.autoSend} onChange={(v) => saveSettings({ selfService: { ...settings.selfService, autoSend: v } })} label="Send replies automatically" />
-          </div>
-          <div className="mt-6 flex items-center gap-4">
-            <div className="flex-1">
-              <div className="type-title-s">Ask new faces who they are</div>
-              <div className="type-body-s text-on-surface-variant">When someone you haven't saved asks for a spot, draft “What's your name, which scene are you from, how long have you been doing comedy?”. Their answer fills in their profile.</div>
-            </div>
+          </SettingRow>
+          <SettingRow label="Ask new faces who they are" info={<>When someone you haven't saved asks for a spot, draft “What's your name, which scene are you from, how long have you been doing comedy?”. Their answer fills in their profile.</>}>
             <Switch checked={settings.onboarding.enabled} onChange={(v) => saveSettings({ onboarding: { enabled: v } })} label="Ask new faces who they are" />
-          </div>
+          </SettingRow>
         </Section>
 
           </>
@@ -310,18 +301,14 @@ function RulesSection() {
     </select>
   );
   return (
-    <Section title="Request rules" icon={IconShield} description="Requests that break a rule go to the Held tab instead of Asked. Nothing is sent to them, and you can still allow any of them.">
+    <Section title="Request rules" icon={IconShield} description="Requests that break a rule go to the Held tab instead of Asked. Nothing is sent to them, and you can still allow any of them. Hosts, ignored and banned comics are set per person in Comics.">
       <div className="flex flex-col gap-6">
         <div>
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <div className="type-title-s">Request window</div>
-              <div className="type-body-s text-on-surface-variant">Only take requests during this time each week. Anything else is held as a mid-week ask.</div>
-            </div>
+          <SettingRow label="Request window" info={<>Only take requests during this time each week. Anything else is held as a mid-week ask.</>}>
             <Switch checked={r.window.enabled} onChange={(v) => setWindow({ enabled: v })} label="Request window" />
-          </div>
+          </SettingRow>
           {r.window.enabled && (
-            <div className="mt-4 grid gap-4 rounded-lg bg-surface-container p-4 sm:grid-cols-2">
+            <div className="mt-2 mb-2 grid gap-4 rounded-lg bg-surface-container p-4 sm:grid-cols-2">
               <Field label="Opens">
                 <div className="flex gap-2">
                   {daySelect(r.window.startDay, (d) => setWindow({ startDay: d as never }))}
@@ -337,14 +324,9 @@ function RulesSection() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <div className="type-title-s">Skip last week's comics</div>
-            <div className="type-body-s text-on-surface-variant">Hold requests from anyone who performed last week, so newer faces get a shot.</div>
-          </div>
-          <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Skip last week's comics" />
-        </div>
-        <p className="type-body-s text-on-surface-variant">Hosts, ignored and banned comics are set per person in Comics.</p>
+        <SettingRow label="Skip last week's comics" info={<>Hold requests from anyone who performed last week, so newer faces get a shot.</>}>
+            <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Skip last week's comics" />
+          </SettingRow>
       </div>
     </Section>
   );
@@ -356,34 +338,26 @@ function AfterShowSection() {
   const m = settings.micCheck;
   return (
     <Section title="Around the show" icon={IconMic} description="Hosts' availability, last-minute spot offers, and checking the mic actually happened.">
-      <div className="flex flex-col gap-6">
-        <Field label="Hosts group" hint="“Ask hosts” on the Lineup page sends this group a poll of the week's shows. Votes show up on each show as “Hosts free”.">
+      <div className="flex flex-col gap-4">
+        <Field label="Hosts group" info="“Ask hosts” on the Lineup page sends this group a poll of the week's shows. Votes show up on each show as “Hosts free”.">
           <Select value={settings.hostPoll.groupId ?? ""} onChange={(v) => saveSettings({ hostPoll: { groupId: v || null } })} placeholder="None" options={groups.data.map((g) => ({ value: g.id, label: g.name }))} />
         </Field>
-        <Field label="Spot offers expire after" hint="Offer a spot from a show's menu on the Lineup page. No reply in time and the offer lapses.">
-          <Stepper value={settings.offers.expiryHours} onChange={(v) => saveSettings({ offers: { expiryHours: v } })} min={1} max={48} suffix="h" />
-        </Field>
-        <div>
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <div className="type-title-s">Did the mic happen?</div>
-              <div className="type-body-s text-on-surface-variant">The morning after each show, Requests asks you. “No” stops it counting as anyone's spot.</div>
-            </div>
+        <div className="grid gap-x-8 gap-y-2 rounded-lg bg-surface-container px-4 py-2 md:grid-cols-2">
+          <SettingRow label="Spot offers expire after" info="Offer a spot from a show's menu on the Lineup page. No reply in time and the offer lapses.">
+            <Stepper value={settings.offers.expiryHours} onChange={(v) => saveSettings({ offers: { expiryHours: v } })} min={1} max={48} suffix="h" />
+          </SettingRow>
+          <SettingRow label="Did the mic happen?" info="The morning after each show, Requests asks you. “No” stops it counting as anyone's spot.">
             <Switch checked={m.enabled} onChange={(v) => saveSettings({ micCheck: { ...m, enabled: v } })} label="Mic check" />
-          </div>
+          </SettingRow>
           {m.enabled && (
-            <div className="mt-4 grid gap-4 rounded-lg bg-surface-container p-4 sm:grid-cols-2">
-              <Field label="Ask from">
-                <TextInput type="time" value={m.time} onChange={(e) => saveSettings({ micCheck: { ...m, time: e.target.value } })} />
-              </Field>
-              <div className="flex items-center gap-3 sm:pt-6">
-                <div className="flex-1">
-                  <div className="type-title-s">Also ask on WhatsApp</div>
-                  <div className="type-body-s text-on-surface-variant">In your “Message yourself” chat. Reply yes or no there.</div>
-                </div>
+            <>
+              <SettingRow label="Ask from">
+                <TextInput type="time" value={m.time} onChange={(e) => saveSettings({ micCheck: { ...m, time: e.target.value } })} className="h-10 w-36" />
+              </SettingRow>
+              <SettingRow label="Also ask on WhatsApp" info="In your “Message yourself” chat. Reply yes or no there.">
                 <Switch checked={m.whatsapp} onChange={(v) => saveSettings({ micCheck: { ...m, whatsapp: v } })} label="Ask on WhatsApp" />
-              </div>
-            </div>
+              </SettingRow>
+            </>
           )}
         </div>
       </div>

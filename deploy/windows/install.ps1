@@ -105,43 +105,26 @@ $code = $LASTEXITCODE
 Pop-Location
 if ($code -ne 0) { throw "Installing dependencies failed (see above)." }
 
-Step "Firebase key"
+Step "Configuration"
+# Same flow as Linux: no questions here. Keys go in through the Server Console afterwards
+# (desktop shortcut), and the worker waits until a Firebase key is there.
 $EnvFile = "$AppDir\apps\worker\.env"
 $KeyFile = "$DataDir\service-account.json"
 if (-not (Test-Path $EnvFile)) {
-  Write-Host "  Pick your Firebase service-account key (the .json file you downloaded)."
-  $src = $null
-  try {
-    Add-Type -AssemblyName System.Windows.Forms
-    $dlg = New-Object System.Windows.Forms.OpenFileDialog
-    $dlg.Title = "Choose your Firebase service-account key (.json)"
-    $dlg.Filter = "JSON key (*.json)|*.json"
-    $dlg.InitialDirectory = "$env:USERPROFILE\Downloads"
-    if ($dlg.ShowDialog() -eq "OK") { $src = $dlg.FileName }
-  } catch { }
-  if (-not $src) { $src = (Read-Host "  Or paste the full path to the .json file").Trim('"', "'", " ") }
-  if (-not (Test-Path $src)) { throw "File not found: $src" }
-  $key = Get-Content $src -Raw | ConvertFrom-Json
-  if ($key.type -ne "service_account" -or -not $key.project_id) { throw "That file isn't a Firebase service-account key. Generate one in Firebase console -> Project settings -> Service accounts." }
-  Copy-Item $src $KeyFile -Force
-  Ok "Key for project '$($key.project_id)'"
-  # Gemini keys are added per curator in the app (Settings -> AI models), not here.
-  $admin = (Read-Host "  Your email, to see this server's health in the app (Enter to skip)").Trim().ToLower()
   @"
 FIREBASE_SERVICE_ACCOUNT=$KeyFile
-FIREBASE_PROJECT_ID=$($key.project_id)
+FIREBASE_PROJECT_ID=
 OLLAMA_URL=http://127.0.0.1:11434
 GEMINI_API_KEY=
-SPOT_ADMIN_EMAILS=$admin
+SPOT_ADMIN_EMAILS=$($env:ADMIN_EMAILS)
 WWEBJS_DATA=$DataDir\wwebjs
 CHROME_PATH=
 "@ | Set-Content -Encoding ASCII $EnvFile
-  # Only SYSTEM (the boot task) and Administrators can read the secrets.
-  foreach ($f in @($EnvFile, $KeyFile)) { icacls $f /inheritance:r /grant:r "SYSTEM:(R)" "Administrators:(F)" | Out-Null }
-  Write-Host "  You can now delete the downloaded key from $(Split-Path $src); a locked-down copy is in $DataDir." -ForegroundColor Cyan
-} else {
-  Ok "Already configured ($EnvFile)"
 }
+# Only SYSTEM (the boot tasks) and Administrators can read config and keys.
+icacls $DataDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+icacls $EnvFile /inheritance:r /grant:r "SYSTEM:F" "Administrators:F" | Out-Null
+Ok "Config at $EnvFile"
 
 Step "Start at boot"
 # Launcher: start Ollama if needed, then keep the worker running. Full paths, so it works as SYSTEM.
@@ -150,10 +133,13 @@ $Launcher = "$Root\run-worker.ps1"
 `$env:OLLAMA_MODELS = '$ModelsDir'
 `$env:OLLAMA_KEEP_ALIVE = '24h'
 `$env:PUPPETEER_CACHE_DIR = '$ChromeDir'
+`$env:SPOT_OLLAMA_EXE = '$Ollama'
 `$env:Path = '$NodeDir;' + `$env:Path
 function Ollama-Up { try { Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null; `$true } catch { `$false } }
 Set-Location '$AppDir\apps\worker'
 while (`$true) {
+  # Idle until a Firebase key is added in the Server Console.
+  if (-not (Test-Path '$KeyFile')) { Start-Sleep 10; continue }
   if (-not (Ollama-Up)) { Start-Process -FilePath '$Ollama' -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 }
   "`$(Get-Date -Format s) starting worker" | Out-File -Append -Encoding utf8 '$DataDir\worker.log'
   & '$Node' '$AppDir\apps\worker\node_modules\tsx\dist\cli.mjs' --env-file-if-exists=.env src\index.ts *>> '$DataDir\worker.log'
@@ -173,6 +159,46 @@ Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force -
 Start-ScheduledTask -TaskName $TaskName
 Ok "Task '$TaskName' registered and started"
 
+Step "Server Console (port 7420)"
+$ConsoleTask = "SpotSolutionsConsole"
+$cEnvScript = "$Root\run-console.ps1"
+@"
+`$env:SPOT_DATA_DIR = '$DataDir'
+`$env:SPOT_ENV_FILE = '$EnvFile'
+`$env:SPOT_OLLAMA_EXE = '$Ollama'
+`$env:OLLAMA_MODELS = '$ModelsDir'
+while (`$true) { & '$Node' '$AppDir\apps\worker\console\server.mjs' *>> '$DataDir\console.log'; Start-Sleep 5 }
+"@ | Set-Content -Encoding UTF8 $cEnvScript
+$cAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$cEnvScript`""
+Unregister-ScheduledTask -TaskName $ConsoleTask -Confirm:$false -ErrorAction SilentlyContinue
+Register-ScheduledTask -TaskName $ConsoleTask -Action $cAction -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+Start-ScheduledTask -TaskName $ConsoleTask
+# Reachable from phones/laptops on your home network (private profile only).
+Remove-NetFirewallRule -DisplayName "Spot Solutions Console" -ErrorAction SilentlyContinue
+New-NetFirewallRule -DisplayName "Spot Solutions Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private | Out-Null
+Ok "Console running, port 7420 open on private networks"
+
+Step "Desktop and Start Menu shortcuts"
+$shell = New-Object -ComObject WScript.Shell
+$edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
+$icon = "$Root\spot.ico"
+try { Invoke-WebRequest "https://spot-solutions.web.app/icons/spot.ico" -OutFile $icon } catch { $icon = $null }
+$places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Spot Solutions")
+New-Item -ItemType Directory -Force -Path $places[1] | Out-Null
+foreach ($dir in $places) {
+  foreach ($sc in @(
+    @{ Name = "Spot Server Console"; Url = "http://localhost:7420" },
+    @{ Name = "Spot Solutions"; Url = "https://spot-solutions.web.app" }
+  )) {
+    $lnk = $shell.CreateShortcut("$dir\$($sc.Name).lnk")
+    if (Test-Path $edge) { $lnk.TargetPath = $edge; $lnk.Arguments = "--app=$($sc.Url)" } else { $lnk.TargetPath = $sc.Url }
+    if ($icon) { $lnk.IconLocation = $icon }
+    $lnk.Save()
+  }
+}
+Ok "Shortcuts: 'Spot Server Console' and 'Spot Solutions' on the desktop and in Start"
+
 Step "Keep the laptop awake on power"
 powercfg /change standby-timeout-ac 0
 powercfg /change hibernate-timeout-ac 0
@@ -180,10 +206,14 @@ powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0  # lid closed o
 powercfg /setactive SCHEME_CURRENT
 Ok "Sleep off while plugged in, lid close ignored"
 
-Step "Checking it started"
-Start-Sleep 20
-if (Test-Path "$DataDir\worker.log") { Get-Content "$DataDir\worker.log" -Tail 5 }
+Step "Done"
+Start-Sleep 5
+$token = (Get-Content "$DataDir\console-token" -ErrorAction SilentlyContinue)
+$ip = (Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Dhcp,Manual -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.*" } | Select-Object -First 1).IPAddress
 Write-Host ""
-Write-Host "Done. Look for '[worker] starting · ollama up' above (it can take a minute)." -ForegroundColor Green
-Write-Host "Then open https://spot-solutions.web.app -> Settings -> Show QR code."
-Write-Host "Logs anytime: double-click 'View Logs.cmd'."
+Write-Host "Open 'Spot Server Console' on the desktop (it's opening now):" -ForegroundColor Green
+Write-Host "  1. Drop your Firebase service-account key into it. The worker starts by itself."
+Write-Host "  2. Add your email under Admins to see this server in the app, from anywhere."
+Write-Host "  3. Link WhatsApp at https://spot-solutions.web.app -> Settings."
+if ($token -and $ip) { Write-Host "From a phone on this Wi-Fi: http://${ip}:7420/?token=$token" -ForegroundColor Cyan }
+if (Test-Path $edge) { Start-Process $edge "--app=http://localhost:7420" } else { Start-Process "http://localhost:7420" }
