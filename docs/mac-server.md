@@ -10,7 +10,7 @@ Easiest, in Terminal:
 curl -fsSL https://spot-solutions.web.app/install-mac.sh | bash
 ```
 
-Or download [SpotServer.dmg](https://spot-solutions.web.app/dl/SpotServer.dmg), drag **Spot Server** into Applications, then open it. The first time macOS says it can't verify the developer: open **System Settings → Privacy & Security** and click **Open Anyway**. (The app isn't notarized by Apple; the Terminal install avoids this prompt.)
+Or download [SpotServer-mac.zip](https://spot-solutions.web.app/dl/SpotServer-mac.zip), double-click it, drag **Spot Server** into Applications, then open it. The first time macOS says it can't verify the developer: open **System Settings → Privacy & Security** and click **Open Anyway**. (The app isn't notarized by Apple; the Terminal install avoids this prompt.)
 
 ## Set up
 
