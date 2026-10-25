@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIRM_TEMPLATE, renderTemplate } from "./template.ts";
 import { dateInWeek, formatTime, shiftWeek, weekOf } from "./week.ts";
 import { diffGroup } from "./groupSync.ts";
+import { normalizePhone, parsePeopleFile, shouldUpdateName } from "./people.ts";
 
 describe("renderTemplate", () => {
   const base = { name: "Rohan", show: "Monday Mic", venue: "Laugh Store", day: "Monday", date: "27 Oct", time: "8:30 PM" };
@@ -146,5 +147,98 @@ describe("parseYesNo", () => {
     for (const y of ["Yes!", "haan bhai", "sure, book me", "Ok 👍", "chalega"]) expect(parseYesNo(y)).toBe(true);
     for (const n of ["no", "Nahi yaar", "can't make it sorry", "nope", "It didn't happen"]) expect(parseYesNo(n)).toBe(false);
     for (const u of ["what time is it?", "", "hmm let me check"]) expect(parseYesNo(u)).toBe(null);
+  });
+});
+
+describe("normalizePhone", () => {
+  it("prefixes 10-digit Indian numbers", () => {
+    expect(normalizePhone("98765 43210")).toBe("919876543210");
+    expect(normalizePhone("098765-43210")).toBe("919876543210");
+  });
+  it("strips +, spaces, dashes and brackets", () => {
+    expect(normalizePhone("+91 98765-43210")).toBe("919876543210");
+    expect(normalizePhone("(+44) 7700 900123")).toBe("447700900123");
+    expect(normalizePhone("0091 98765 43210")).toBe("919876543210");
+  });
+  it("rejects junk", () => {
+    expect(normalizePhone("")).toBe("");
+    expect(normalizePhone("12345")).toBe("");
+    expect(normalizePhone("abc")).toBe("");
+    expect(normalizePhone("1234567890123456")).toBe("");
+  });
+});
+
+describe("shouldUpdateName", () => {
+  it("never overwrites manual names", () => {
+    expect(shouldUpdateName({ name: "A", nameSource: "manual" }, { name: "B", nameSource: "contact" })).toBe(false);
+  });
+  it("lets a saved contact replace a profile name, not the reverse", () => {
+    expect(shouldUpdateName({ name: "A", nameSource: "whatsapp" }, { name: "B", nameSource: "contact" })).toBe(true);
+    expect(shouldUpdateName({ name: "A", nameSource: "contact" }, { name: "B", nameSource: "whatsapp" })).toBe(false);
+    expect(shouldUpdateName({ name: "+91", nameSource: "number" }, { name: "B", nameSource: "whatsapp" })).toBe(true);
+  });
+});
+
+describe("parsePeopleFile (CSV)", () => {
+  it("reads a Google Contacts export", () => {
+    const csv = [
+      "First Name,Middle Name,Last Name,Phonetic First Name,Phone 1 - Label,Phone 1 - Value,Phone 2 - Value",
+      'Rohan,,Mehta,,Mobile,+91 98765 43210,',
+      '"Aditi","K.","Rao",,Mobile,"98111 22233 ::: 98999 88777",',
+      "Nophone,,,,,,",
+    ].join("\r\n");
+    expect(parsePeopleFile(csv).people).toEqual([
+      { name: "Rohan Mehta", phone: "919876543210" },
+      { name: "Aditi K. Rao", phone: "919811122233" },
+    ]);
+  });
+  it("reads name,phone with a header and quoted commas", () => {
+    const { people } = parsePeopleFile('Name,Phone\n"Mehta, Rohan",9876543210\nAditi,+919811122233\n');
+    expect(people).toEqual([
+      { name: "Mehta, Rohan", phone: "919876543210" },
+      { name: "Aditi", phone: "919811122233" },
+    ]);
+  });
+  it("handles headerless files in either column order, and semicolons", () => {
+    expect(parsePeopleFile("Rohan,9876543210").people[0]).toEqual({ name: "Rohan", phone: "919876543210" });
+    expect(parsePeopleFile("9876543210,Rohan").people[0]).toEqual({ name: "Rohan", phone: "919876543210" });
+    expect(parsePeopleFile("name;mobile\nRohan;9876543210").people[0].phone).toBe("919876543210");
+  });
+  it("drops rows without a valid number and de-duplicates within the file", () => {
+    const r = parsePeopleFile("name,phone\nA,9876543210\nB,98765 43210\nC,nope\n");
+    expect(r.people).toHaveLength(1);
+    expect(r.duplicates).toBe(1);
+  });
+  it("uses the number as the name when blank", () => {
+    expect(parsePeopleFile("name,phone\n,9876543210").people[0].name).toBe("+919876543210");
+  });
+});
+
+describe("parsePeopleFile (vCard)", () => {
+  const vcf = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    "N:Mehta;Rohan;;;",
+    "FN:Rohan Mehta",
+    "item1.TEL;type=CELL;type=VOICE;type=pref:+91 98765 43210",
+    "TEL;TYPE=HOME:022 1234 5678",
+    "END:VCARD",
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    "N:Rao;Aditi;;;",
+    "TEL:tel:+919811122233",
+    "END:VCARD",
+    "BEGIN:VCARD",
+    "FN:No Number",
+    "END:VCARD",
+  ].join("\r\n");
+  it("reads FN and TEL, falls back to N, skips cards without a number", () => {
+    expect(parsePeopleFile(vcf).people).toEqual([
+      { name: "Rohan Mehta", phone: "919876543210" },
+      { name: "Aditi Rao", phone: "919811122233" },
+    ]);
+  });
+  it("unfolds long lines", () => {
+    expect(parsePeopleFile("BEGIN:VCARD\nFN:Rohan\n  Mehta\nTEL:9876543210\nEND:VCARD").people[0].name).toBe("Rohan Mehta");
   });
 });

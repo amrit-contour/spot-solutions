@@ -4,10 +4,13 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { cancellations, formatDate, shiftWeek, type Comic, type ComicList, type Tier } from "@spot/shared";
 import { useApp } from "../lib/app";
+import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
 import { PageHeader } from "../components/Shell";
+import { Menu, MenuItem } from "../components/Menu";
+import { ImportContactsSheet, ImportFileSheet } from "../components/ImportSheets";
 import { Avatar, Button, Chip, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, cx } from "../components/ui";
-import { IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus } from "../components/icons";
+import { IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "../components/icons";
 
 const LIST_LABEL: Record<ComicList, string> = { host: "Host", ignored: "Ignored", banned: "Banned" };
 
@@ -18,7 +21,9 @@ const TIERS: { value: Tier; label: string }[] = [
 ];
 
 export function Comics() {
-  const { comics, currentWeek, shows } = useApp();
+  const { comics, currentWeek, shows, session } = useApp();
+  const [importing, setImporting] = useState<"contacts" | "file" | null>(null);
+  const waHint = isDemoUser() ? "Off in demo" : session?.status !== "ready" ? "Connect WhatsApp" : undefined;
   const [q, setQ] = useState("");
   const [tier, setTier] = useState<Tier | "all">("all");
   const [editing, setEditing] = useState<Partial<Comic> | null>(null);
@@ -34,7 +39,27 @@ export function Comics() {
 
   return (
     <div className="w-full">
-      <PageHeader title="Comics" subtitle={`${comics.length} on your roster. New faces are added when they message you.`} actions={<Button icon={IconUserPlus} onClick={() => setEditing({ tier: "open" })}>Add comic</Button>}>
+      <PageHeader title="Comics" subtitle={`${comics.length} on your roster. New faces are added when they message you, or import your scene.`} actions={
+        <>
+          <Menu
+            align="right"
+            trigger={(t) => (
+              <Button variant="tonal" icon={IconImport} onClick={t}>
+                Import
+              </Button>
+            )}
+          >
+            {(close) => (
+              <>
+                <MenuItem disabled={Boolean(waHint)} hint={waHint} onClick={() => (close(), setImporting("contacts"))}>From WhatsApp contacts</MenuItem>
+                <MenuItem onClick={() => (close(), setImporting("file"))}>From a file (CSV / vCard)</MenuItem>
+              </>
+            )}
+          </Menu>
+          <Button icon={IconUserPlus} onClick={() => setEditing({ tier: "open" })}>Add comic</Button>
+        </>
+      }
+    >
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <div className="relative min-w-60 flex-1">
             <IconSearch className="icon pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-on-surface-variant" />
@@ -83,6 +108,8 @@ export function Comics() {
         )}
       </div>
       <ComicEditor value={editing} onClose={() => setEditing(null)} />
+      <ImportContactsSheet open={importing === "contacts"} onClose={() => setImporting(null)} />
+      <ImportFileSheet open={importing === "file"} onClose={() => setImporting(null)} />
     </div>
   );
 }

@@ -2,12 +2,13 @@ import { useState } from "react";
 import { addDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { DAY_SHORT, formatTime, type GroupInfo, type Show, type Venue, type Weekday } from "@spot/shared";
+import { DAY_SHORT, formatTime, type GroupInfo, type GroupMembersResult, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
+import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
 import { PageHeader } from "../components/Shell";
 import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, cx } from "../components/ui";
-import { IconAdd, IconBuilding, IconClock, IconGroup, IconMap, IconPen, IconRefresh, IconStar, IconTrash, IconWarn } from "../components/icons";
+import { IconAdd, IconBuilding, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconWarn } from "../components/icons";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
@@ -110,10 +111,13 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
   const groups = useCollection<GroupInfo>(uid, "groups");
   const [draft, setDraft] = useState<Partial<Show>>({});
   const [loadingGroups, setLoadingGroups] = useState(false);
+  const [pulling, setPulling] = useState(false);
+  const [memberIds, setMemberIds] = useState<string[] | null>(null);
   const [lastValue, setLastValue] = useState<Partial<Show> | null>(null);
   if (value !== lastValue) {
     setLastValue(value);
     if (value) setDraft(value);
+    setMemberIds(null);
   }
   const set = <K extends keyof Show>(k: K, v: Show[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const group = groups.data.find((g) => g.id === draft.groupId);
@@ -127,6 +131,22 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
       toast.error((e as Error).message);
     } finally {
       setLoadingGroups(false);
+    }
+  };
+
+  const pullMembers = async () => {
+    if (!draft.groupId) return;
+    setPulling(true);
+    try {
+      const r = await runCommand<GroupMembersResult>(uid, "pull_group_members", { groupId: draft.groupId }, 10 * 60_000);
+      setMemberIds(r.memberIds);
+      // Group admins are co-hosts by default. Applied to the draft; Save keeps it.
+      if (r.adminIds.length) setDraft((d) => ({ ...d, protected: [...new Set([...(d.protected ?? []), ...r.adminIds])] }));
+      toast.success(`${r.total} members, ${r.added} new comic${r.added === 1 ? "" : "s"} added${r.adminIds.length ? `, ${r.adminIds.length} admin${r.adminIds.length === 1 ? "" : "s"} marked protected` : ""}`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPulling(false);
     }
   };
 
@@ -225,6 +245,16 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
             <p className="mt-2 flex items-center gap-1.5 type-body-s text-error"><IconWarn className="icon size-4" /> You're not an admin of this group, so comics can't be added or removed.</p>
           )}
           {!groups.data.length && <p className="mt-2 type-body-s text-on-surface-variant">Tap Refresh to load your groups from WhatsApp.</p>}
+          {draft.groupId && (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Button size="sm" variant="tonal" icon={IconUserPlus} onClick={pullMembers} loading={pulling} disabled={isDemoUser() || session?.status !== "ready"}>
+                Get members from group
+              </Button>
+              <span className="type-body-s text-on-surface-variant">
+                {isDemoUser() ? "Needs a linked WhatsApp, so it's off in the demo." : memberIds ? `${memberIds.length} members loaded. Pick regulars and protected below.` : "Adds everyone in the group to your comics. Admins become protected."}
+              </span>
+            </div>
+          )}
 
           {draft.groupId && (
             <div className="mt-5 grid gap-5">
@@ -252,8 +282,8 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                   </div>
                 </div>
               )}
-              <PeoplePicker label="Regulars (always stay in the group)" icon={IconStar} selected={draft.regulars ?? []} onToggle={(id) => toggleIn("regulars", id)} people={comics} />
-              <PeoplePicker label="Protected (co-hosts, staff)" icon={IconMap} selected={draft.protected ?? []} onToggle={(id) => toggleIn("protected", id)} people={comics} />
+              <PeoplePicker label="Regulars (always stay in the group)" icon={IconStar} selected={draft.regulars ?? []} onToggle={(id) => toggleIn("regulars", id)} people={comics} members={memberIds} />
+              <PeoplePicker label="Protected (co-hosts, staff)" icon={IconMap} selected={draft.protected ?? []} onToggle={(id) => toggleIn("protected", id)} people={comics} members={memberIds} />
             </div>
           )}
         </section>
@@ -262,21 +292,32 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
   );
 }
 
-function PeoplePicker({ label, people, selected, onToggle, icon }: { label: string; people: { id: string; name: string }[]; selected: string[]; onToggle: (id: string) => void; icon: typeof IconStar }) {
+function PeoplePicker({ label, people, selected, onToggle, icon, members }: { label: string; people: { id: string; name: string }[]; selected: string[]; onToggle: (id: string) => void; icon: typeof IconStar; members: string[] | null }) {
   const [q, setQ] = useState("");
+  const [groupOnly, setGroupOnly] = useState(false);
   const sel = new Set(selected);
-  const list = people.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => Number(sel.has(b.id)) - Number(sel.has(a.id)));
+  const inGroup = new Set(members ?? []);
+  const needle = q.toLowerCase();
+  const rank = (id: string) => Number(sel.has(id)) * 2 + Number(inGroup.has(id));
+  const list = people
+    .filter((p) => (!groupOnly || inGroup.has(p.id) || sel.has(p.id)) && p.name.toLowerCase().includes(needle))
+    .sort((a, b) => rank(b.id) - rank(a.id) || a.name.localeCompare(b.name));
+  const cap = needle ? 80 : 40;
   return (
     <div>
-      <div className="mb-2 type-label-l text-on-surface-variant">{label}</div>
+      <div className="mb-2 flex items-center gap-2 type-label-l text-on-surface-variant">
+        <span className="flex-1">{label}</span>
+        {members && <Chip selected={groupOnly} onClick={() => setGroupOnly(!groupOnly)}>In this group</Chip>}
+      </div>
       <TextInput placeholder="Search comics" value={q} onChange={(e) => setQ(e.target.value)} className="h-10" />
       <div className="mt-2 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
-        {list.slice(0, 40).map((p) => (
+        {list.slice(0, cap).map((p) => (
           <Chip key={p.id} selected={sel.has(p.id)} onClick={() => onToggle(p.id)} icon={sel.has(p.id) ? icon : undefined}>
             {p.name}
           </Chip>
         ))}
-        {!people.length && <span className="type-body-s text-on-surface-variant">Comics appear here once they message you, or when you add them in Comics.</span>}
+        {list.length > cap && <span className="self-center type-body-s text-on-surface-variant">+{list.length - cap} more. Search to find them.</span>}
+        {!people.length && <span className="type-body-s text-on-surface-variant">Comics appear here once they message you, or when you add or import them in Comics.</span>}
       </div>
     </div>
   );

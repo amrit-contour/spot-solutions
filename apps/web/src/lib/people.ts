@@ -1,0 +1,38 @@
+import { writeBatch } from "firebase/firestore";
+import { shouldUpdateName, type Comic, type ImportPerson } from "@spot/shared";
+import { userDoc } from "./data";
+import { db } from "./firebase";
+
+export interface PersonToImport extends ImportPerson {
+  id: string;
+  nameSource: NonNullable<Comic["nameSource"]>;
+}
+
+/** Find a roster entry by comic id or phone (a comic known only by @lid has no phone-based id). */
+export function rosterLookup(comics: Comic[]) {
+  const byId = new Map(comics.map((c) => [c.id, c]));
+  const byPhone = new Map(comics.filter((c) => c.phone).map((c) => [c.phone, c]));
+  return (p: { id: string; phone: string }) => byId.get(p.id) ?? byPhone.get(p.phone);
+}
+
+/** Add new people and refresh names the precedence rules allow. Firestore batches cap at 500 writes. */
+export async function importPeople(uid: string, people: PersonToImport[], find: ReturnType<typeof rosterLookup>) {
+  let added = 0;
+  let updated = 0;
+  for (let i = 0; i < people.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const p of people.slice(i, i + 450)) {
+      const cur = find(p);
+      if (!cur) {
+        const c: Comic = { id: p.id, name: p.name, nameSource: p.nameSource, phone: p.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
+        batch.set(userDoc(uid, "comics", p.id), c);
+        added++;
+      } else if (shouldUpdateName(cur, p)) {
+        batch.update(userDoc(uid, "comics", cur.id), { name: p.name, nameSource: p.nameSource });
+        updated++;
+      }
+    }
+    await batch.commit();
+  }
+  return { added, updated };
+}
