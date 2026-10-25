@@ -4,20 +4,26 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import { promisify } from "node:util";
-import type { ServerStatus } from "@spot/shared";
+import type { FleetCapacity, FleetServerSummary, ServerStatus } from "@spot/shared";
 import { db } from "./firebase.ts";
+import { SERVER_ID } from "./serverIdentity.ts";
 import { recentLogs } from "./logbuf.ts";
+import { ADMIN_DATA_COMMANDS, runAdminDataCommand } from "./adminData.ts";
 
 const exec = promisify(execFile);
 
 export const counters = { messagesIn: 0, classified: 0, sent: 0, errors: 0 };
 
-export const SERVER_ID = (process.env.SPOT_SERVER_ID || os.hostname()).toLowerCase().replace(/[^a-z0-9-]/g, "-");
+export { SERVER_ID };
 const ADMINS = (process.env.SPOT_ADMIN_EMAILS ?? "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 const startedAt = Date.now();
+
+let fleetCapacity: (() => FleetCapacity) | null = null;
+/** fleet.ts registers itself here so every heartbeat carries the capacity fields. */
+export const setFleetProvider = (fn: () => FleetCapacity) => void (fleetCapacity = fn);
 
 function version() {
   try {
@@ -81,8 +87,14 @@ export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "se
     admins: ADMINS,
     logs: recentLogs.slice(-120),
     ...extra,
+    ...(fleetCapacity ? { fleet: fleetCapacity() } : {}),
   };
-  await db.collection("servers").doc(SERVER_ID).set(status);
+  // merge: fleet.ts also updates servers/{id}.fleet between heartbeats; never wipe it.
+  await db.collection("servers").doc(SERVER_ID).set(status, { merge: true });
+  if (status.fleet) {
+    const summary: FleetServerSummary = { id: SERVER_ID, hostname: status.hostname, platform: status.platform, lastSeen: status.lastSeen, ...status.fleet };
+    await db.collection("fleetServers").doc(SERVER_ID).set(summary, { merge: true });
+  }
 }
 
 export const adminConfigured = ADMINS.length > 0;
@@ -108,6 +120,8 @@ export function watchServerCommands(onRestartWorker: () => Promise<void>) {
             } else if (type === "restart_worker") {
               await ref.update({ status: "done" });
               await onRestartWorker(); // systemd / the Windows launcher brings us back up
+            } else if (ADMIN_DATA_COMMANDS.has(type)) {
+              await ref.update({ status: "done", result: await runAdminDataCommand(type, ch.doc.data()) });
             } else throw new Error(`Unknown ${type}`);
           } catch (e) {
             await ref.update({ status: "error", error: (e as Error).message }).catch(() => undefined);

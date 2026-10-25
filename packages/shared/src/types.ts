@@ -246,6 +246,9 @@ export type CommandType =
   | "pull_model"
   | "plan_group_sync"
   | "sync_group"
+  | "pull_group_members"
+  | "list_contacts"
+  | "move_account"
   | "send_message";
 
 export interface Command {
@@ -264,6 +267,8 @@ export interface AiRoute {
 export interface AiSettings {
   primary: AiRoute;
   fallback: AiRoute | null;
+  /** Where chats may be read: see AiPolicy in fleet.ts. Missing means DEFAULT_AI_POLICY. */
+  policy?: import("./fleet.ts").AiPolicy;
 }
 
 /** users/{uid}/secrets/ai. Write-only from the app; only the worker reads it. */
@@ -295,11 +300,16 @@ export interface ServerStatus {
   counters: { messagesIn: number; classified: number; sent: number; errors: number };
   admins: string[]; // lower-case emails
   logs?: string[]; // most recent last
+  /** Fleet capacity (docs/fleet.md). Missing on servers older than the fleet release. */
+  fleet?: import("./fleet.ts").FleetCapacity;
 }
 
 /** servers/{id}/commands/{cmd}: admin actions from the app's Server page. */
 export interface ServerCommand {
-  type: "restart_worker" | "restart_ollama";
+  type: "restart_worker" | "restart_ollama" | "delete_user_data" | "remove_user" | "wipe_demo";
+  /** delete_user_data / remove_user / wipe_demo: see AdminDataPayload. */
+  payload?: Record<string, unknown>;
+  result?: unknown;
   status: "pending" | "running" | "done" | "error";
   by: string;
   error?: string | null;

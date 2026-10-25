@@ -18,6 +18,9 @@ import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
 import { ConnectCard } from "../components/ConnectCard";
 import { AiModels } from "../components/AiModels";
+import { AiPolicyPicker } from "../components/AiPolicy";
+import { FleetCard } from "../components/FleetCard";
+import { NotifyCard } from "../components/NotifyCard";
 import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield } from "../components/icons";
 
@@ -164,6 +167,8 @@ export function SettingsPage() {
         {tab === "whatsapp" && (
           <>
             <ConnectCard />
+            <FleetCard />
+            <NotifyCard />
             <InstallCard />
           </>
         )}
@@ -251,6 +256,9 @@ export function SettingsPage() {
         {tab === "ai" && (
 
         <Section title="AI models" icon={IconCpu} description="Pick which model reads your DMs, and a backup. Local Ollama keeps chats on your server and costs nothing; Gemini is smarter but sends message text to Google.">
+          <div className="mb-4">
+            <AiPolicyPicker />
+          </div>
           <AiModels />
         </Section>
         )}

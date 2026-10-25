@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import {
+  DEFAULT_AI_POLICY,
   DEFAULT_SETTINGS,
   aiFromLegacy,
   rolloverDayFor,
@@ -15,6 +16,8 @@ import {
 } from "@spot/shared";
 import { auth, db } from "./firebase";
 import { useCollection, useDocument, useNow } from "./data";
+import { cloneDemo } from "./demo";
+import { useForegroundPush } from "./push";
 
 interface UserDoc {
   settings?: Partial<Settings>;
@@ -70,14 +73,17 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
   const venues = useCollection<Venue>(uid, "venues");
   const comics = useCollection<Comic>(uid, "comics");
   const now = useNow(10_000);
+  useForegroundPush();
 
   // First sign-in: create the user doc so the worker starts listening for this curator.
   useEffect(() => {
     const ref = doc(db, "users", uid);
     getDoc(ref).then((s) => {
-      if (!s.exists()) void setDoc(ref, { settings: DEFAULT_SETTINGS, email: user.email, name: user.displayName, createdAt: Date.now() });
+      if (s.exists()) return;
+      if (user.isAnonymous) void cloneDemo(uid);
+      else void setDoc(ref, { settings: DEFAULT_SETTINGS, email: user.email, name: user.displayName, createdAt: Date.now() });
     });
-  }, [uid, user.email, user.displayName]);
+  }, [uid, user.email, user.displayName, user.isAnonymous]);
 
   const settings = useMemo<Settings>(() => {
     const s = userDoc.data?.settings ?? {};
@@ -93,7 +99,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       micCheck: { ...DEFAULT_SETTINGS.micCheck, ...s.micCheck },
       hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...s.hostPoll },
       offers: { ...DEFAULT_SETTINGS.offers, ...s.offers },
-      ai: aiFromLegacy(s),
+      ai: { ...aiFromLegacy(s), policy: s.ai?.policy ?? DEFAULT_AI_POLICY },
     };
   }, [userDoc.data]);
 

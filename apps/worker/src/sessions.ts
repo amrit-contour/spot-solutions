@@ -8,9 +8,12 @@ import { FieldValue, col, sessionRef, userRef } from "./firebase.ts";
 import { catchUpSince, enqueue, markLive } from "./intake.ts";
 import { handleSelfReply, handleVote } from "./replies.ts";
 import { unwatchUser, watchUser } from "./userData.ts";
+import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
+import { wipeLogin } from "./vault.ts";
+import { prepareLoginSafe } from "./vaultCalls.ts";
 
 const { Client, LocalAuth } = WAWebJS;
-const DATA_DIR = process.env.WWEBJS_DATA ?? path.resolve(".wwebjs_auth");
+export { DATA_DIR };
 
 const BACKUP_EVERY_MS = 6 * 3600_000;
 const profileDir = (uid: string) => path.join(DATA_DIR, `session-${uid}`);
@@ -46,8 +49,19 @@ const notice = (uid: string, level: "info" | "warn", text: string) => col(uid, "
 const setState = (uid: string, s: Partial<SessionState>) =>
   sessionRef(uid).set({ ...s, lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true });
 
+/** Set by fleet.ts: sessions only run while this server holds the account's lease. */
+interface Hooks {
+  canRun?: (uid: string) => boolean;
+  onReady?: (uid: string, source: "local" | "cloud" | "fresh") => void;
+  onScanNeeded?: (uid: string) => void;
+  onLogout?: (uid: string) => void;
+}
+
 class SessionManager {
+  hooks: Hooks = {};
+  private sources = new Map<string, "local" | "cloud" | "fresh">();
   private clients = new Map<string, WAWebJS.Client>();
+  private stopping = new Map<string, WAWebJS.Client>(); // clients whose destroy() is still running, so kill() can reach them
   private ready = new Set<string>();
   private restarting = new Set<string>();
   private restoredOnce = new Set<string>();
@@ -72,6 +86,7 @@ class SessionManager {
   async start(uid: string) {
     // Claim synchronously: the connect command and the users listener can both call this in the same tick.
     if (this.clients.has(uid) || this.starting.has(uid)) return;
+    if (this.hooks.canRun && !this.hooks.canRun(uid)) return;
     this.starting.add(uid);
     try {
       await this.launch(uid);
@@ -81,6 +96,9 @@ class SessionManager {
   }
 
   private async launch(uid: string) {
+    // Newest login copy wins (docs/fleet.md): may download the cloud copy over a stale local profile.
+    this.sources.set(uid, await prepareLoginSafe(uid));
+    if (this.hooks.canRun && !this.hooks.canRun(uid)) return; // lease lost while downloading
     watchUser(uid);
     // A crashed worker can leave Chromium's profile lock behind; clear it so the session reopens.
     const profile = path.join(DATA_DIR, `session-${uid}`);
@@ -119,6 +137,7 @@ class SessionManager {
           }
         }
         console.warn(`[session] ${uid} needs to be re-linked`);
+        this.hooks.onScanNeeded?.(uid);
         void notice(uid, "warn", "WhatsApp asked to be linked again (it can happen after a power cut, or if the phone was offline for weeks). Open Settings → Show QR code and scan it.");
       }
       sawQr = true;
@@ -134,6 +153,7 @@ class SessionManager {
       console.log(`[session] ${uid} ready as +${me?.wid?.user}`);
       markLive(uid);
       this.restoredOnce.delete(uid);
+      this.hooks.onReady?.(uid, this.sources.get(uid) ?? "local");
       // Fresh link: old chats are never read. Restored link: read what arrived while we were down (no auto-replies).
       if (!sawQr && wasLinked) {
         catchUpSince(uid, client, offlineSince).then((n) => { if (n) void notice(uid, "info", `Server was offline for a while. Caught up on ${n} message${n === 1 ? "" : "s"} that came in meanwhile; nothing was sent automatically.`); }).catch((e) => console.error("[session] catch-up failed", e));
@@ -154,6 +174,7 @@ class SessionManager {
       enqueue(uid, client, msg).catch((e) => console.error("[intake] enqueue failed", e));
     });
     client.on("disconnected", async (reason) => {
+      if (this.clients.get(uid) !== client) return; // we stopped it on purpose (handoff, lost lease): not a crash
       console.warn(`[session] ${uid} disconnected: ${reason}`);
       this.ready.delete(uid);
       await setState(uid, { status: "disconnected", error: String(reason) });
@@ -161,6 +182,7 @@ class SessionManager {
       if (reason === "LOGOUT") {
         await this.wipe(uid);
         await userRef(uid).set({ waEnabled: false }, { merge: true });
+        this.hooks.onLogout?.(uid);
       } else {
         this.scheduleRestart(uid);
       }
@@ -193,9 +215,31 @@ class SessionManager {
     clearInterval(this.backupTimers.get(uid));
     this.backupTimers.delete(uid);
     unwatchUser(uid);
-    await c?.destroy().catch(() => undefined);
+    if (c) this.stopping.set(uid, c);
+    try {
+      await c?.destroy().catch(() => undefined);
+    } finally {
+      if (this.stopping.get(uid) === c) this.stopping.delete(uid);
+    }
     // Chromium is closed now, so this is the cleanest possible copy.
     if (opts.backup && wasReady) await backupSession(uid).catch((e) => console.error("[session] backup failed", e.message));
+  }
+
+  /**
+   * Hard stop for a client whose destroy() hung: detach every handler so nothing more is processed, then SIGKILL its
+   * Chromium so the account can't keep running (or sending) after the lease is released.
+   */
+  kill(uid: string) {
+    const c = this.clients.get(uid) ?? this.stopping.get(uid);
+    if (!c) return;
+    this.clients.delete(uid);
+    this.ready.delete(uid);
+    c.removeAllListeners();
+    try {
+      c.pupBrowser?.process()?.kill("SIGKILL");
+    } catch (e) {
+      console.warn(`[session] ${uid} kill failed:`, (e as Error).message);
+    }
   }
 
   async logout(uid: string) {
@@ -205,11 +249,12 @@ class SessionManager {
     await this.wipe(uid);
     await userRef(uid).set({ waEnabled: false }, { merge: true });
     await sessionRef(uid).set({ status: "idle", qr: null, phone: null, pushName: null, error: null, lastSeen: Date.now() });
+    this.hooks.onLogout?.(uid);
   }
 
+  /** The tombstone is written first (inside wipeLogin), then the local profile, backup, cloud copy and key go. If the tombstone fails nothing is deleted. */
   private async wipe(uid: string) {
-    await rm(profileDir(uid), { recursive: true, force: true });
-    await rm(backupDir(uid), { recursive: true, force: true });
+    await wipeLogin(uid, SERVER_ID).catch((e) => console.error("[session] wipeLogin failed; the local login was kept", e.message));
   }
 
   async stopAll() {

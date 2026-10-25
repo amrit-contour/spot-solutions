@@ -9,6 +9,8 @@ import { db } from "../lib/firebase";
 import { timeAgo, useNow } from "../lib/data";
 import { PageHeader } from "../components/Shell";
 import { Curators } from "../components/Curators";
+import { FleetView } from "../components/FleetView";
+import { WipeDemoCard } from "../components/AdminDataTools";
 import { isAdmin, useAccessConfig } from "../lib/access";
 import { Avatar, Button, Card, Chip, Empty, cx } from "../components/ui";
 import { IconCheck, IconCpu, IconRefresh, IconServer, IconWarn } from "../components/icons";
@@ -211,7 +213,9 @@ export function ServerPage() {
     <div className="w-full">
       <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" actions={admin ? <Link to="/help" className="state-layer rounded-full border border-outline-variant px-4 py-2 type-label-l text-on-surface-variant">Server guide</Link> : undefined} />
       <div className="flex flex-col gap-10 px-4 pb-12 sm:px-8">
-        {admin && <Curators />}
+        {admin && <FleetView servers={servers} />}
+        {admin && <Curators servers={servers} />}
+        {admin && <WipeDemoCard servers={servers} />}
         {servers === null ? null : servers.length ? (
           servers.map((s) => <ServerCard key={s.id} s={s} />)
         ) : (

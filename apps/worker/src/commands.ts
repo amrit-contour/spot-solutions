@@ -25,7 +25,9 @@ import {
 } from "@spot/shared";
 import { col, db, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
+import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
+import { listContacts, pullGroupMembers } from "./people.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
 import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 
@@ -39,6 +41,11 @@ const handlers: Record<Command["type"], Handler> = {
 
   async logout(uid) {
     await sessions.logout(uid);
+  },
+
+  // Runs on the current holder, or on the target when nobody holds the account (see fleet.gate).
+  async move_account(uid, { to }) {
+    return fleet.requestMove(uid, String(to ?? ""));
   },
 
   async list_groups(uid) {
@@ -277,6 +284,9 @@ const handlers: Record<Command["type"], Handler> = {
     return ollamaState();
   },
 
+  pull_group_members: pullGroupMembers,
+  list_contacts: listContacts,
+
   async send_message(uid, { to, body }) {
     await sendQueued(sessions.require(uid), String(to), String(body));
   },
@@ -394,6 +404,8 @@ export async function runCommand(uid: string, doc: QueryDocumentSnapshot) {
   inFlight.add(doc.id);
   const cmd = doc.data() as Command;
   try {
+    // Only the server holding the account's lease runs its commands; the rest leave them pending.
+    if ((await fleet.gate(uid, cmd.type, cmd.payload)) === "skip") return;
     // Claim it atomically so two worker instances never double-send.
     const claimed = await db.runTransaction(async (tx) => {
       const fresh = await tx.get(doc.ref);
@@ -401,7 +413,10 @@ export async function runCommand(uid: string, doc: QueryDocumentSnapshot) {
       tx.update(doc.ref, { status: "running", startedAt: Date.now() });
       return true;
     });
-    if (!claimed) return;
+    if (!claimed) {
+      fleet.releaseIfUnwanted(uid, doc.id); // the gate may have claimed the account just for this command
+      return;
+    }
     const handler = handlers[cmd.type];
     if (!handler) throw new Error(`Unknown command ${cmd.type}`);
     const result = await handler(uid, cmd.payload ?? {});

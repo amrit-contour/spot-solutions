@@ -39,8 +39,29 @@ service cloud.firestore {
         allow read: if isServerAdmin(id);
         allow create: if isServerAdmin(id)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['restart_worker', 'restart_ollama'];
+          && ((request.resource.data.type in ['restart_worker', 'restart_ollama'])
+            // Data tools cross users, so the worker trusts `by`: it has to be the signed-in admin.
+            || (request.resource.data.type in ['delete_user_data', 'remove_user', 'wipe_demo']
+              && request.resource.data.by is string && request.resource.data.by.lower() == email()));
       }
+    }
+
+    // Public per-server summary (hostname, capacity; no logs or admin emails). Servers write it; clients only read.
+    match /fleetServers/{id} {
+      allow read: if request.auth != null && (isAdmin() || isApproved(request.auth.uid));
+    }
+
+    // Each account's login-encryption key. Servers only; no client ever reads or writes it.
+    match /vaultKeys/{uid} { allow read, write: if false; }
+
+    // The demo account is a read-only template: demo visitors copy it into their own sandbox.
+    // Only the user doc and the collections the clone copies (apps/web/src/lib/demo.ts COLLECTIONS). Never
+    // secrets, commands, session, fleet or anything else under it.
+    match /users/demo-curator {
+      allow read: if request.auth != null;
+    }
+    match /users/demo-curator/{coll}/{id} {
+      allow read: if request.auth != null && coll in ['venues', 'shows', 'comics', 'requests', 'lineups', 'actions', 'notices'];
     }
 
     match /users/{uid} {
@@ -59,10 +80,34 @@ service cloud.firestore {
 
       // Commands: curator can enqueue pending commands and read results, nothing else.
       match /commands/{id} {
-        allow read: if isOwner(uid);
+        // Admins only see move_account commands (the Server page): never message or contact payloads.
+        allow read: if isOwner(uid) || (isAdmin() && resource.data.type == 'move_account');
         allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account'];
+        // Admins can move any approved curator's account to another server (Server page → Fleet).
+        allow create: if isAdmin() && isApproved(uid)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.type == 'move_account';
+      }
+
+      // Fleet (docs/fleet.md). Lease and vault are written only by servers (Admin SDK bypasses rules).
+      match /fleet/lease { allow read: if isOwner(uid) || isAdmin(); }
+      match /fleet/vault { allow read: if isOwner(uid) || isAdmin(); }
+      // The only thing a client may say: keep this account on that server (or nowhere in particular).
+      match /fleet/prefs {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create, update: if (isOwner(uid) || isAdmin())
+          && request.resource.data.keys().hasOnly(['pinned'])
+          && (request.resource.data.get('pinned', null) == null || request.resource.data.pinned is string);
+      }
+
+      // Push tokens, one doc per browser. The app registers and removes its own.
+      match /devices/{token} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.token == token
+          && request.resource.data.keys().hasOnly(['token', 'platform', 'userAgent', 'createdAt', 'lastSeen']);
       }
 
       match /{coll}/{id} {

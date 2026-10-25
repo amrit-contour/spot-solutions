@@ -5,41 +5,53 @@ import { col, db, sessionRef } from "./firebase.ts";
 import { notice, runCommand } from "./commands.ts";
 import { isAdminEmail, startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
+import { fleet } from "./fleet.ts";
+import { DEFAULT_AI_POLICY, type AiPolicy } from "@spot/shared";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
 import { SERVER_ID, adminConfigured, watchServerCommands, writeServerStatus } from "./stats.ts";
 import { startScheduler } from "./scheduler.ts";
 
 const commandListeners = new Map<string, () => void>();
 const HEARTBEAT_MS = 30_000;
+let shuttingDown = false;
 
 // Every curator sees the worker as online, even before linking WhatsApp — otherwise there's no way to ask for a QR.
 const beat = (uid: string) => sessionRef(uid).set({ lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true }).catch(() => undefined);
-setInterval(() => commandListeners.forEach((_, uid) => void beat(uid)), HEARTBEAT_MS).unref();
+setInterval(() => commandListeners.forEach((_, uid) => fleet.shouldBeat(uid) && void beat(uid)), HEARTBEAT_MS).unref();
 
 function watchCommands(uid: string) {
   if (commandListeners.has(uid)) return;
   const unsub = col(uid, "commands")
     .where("status", "==", "pending")
     .onSnapshot(
-      (q) => q.docChanges().forEach((ch) => ch.type === "added" && void runCommand(uid, ch.doc)),
+      (q) =>
+        q.docChanges().forEach((ch) => {
+          if (ch.type === "removed") return fleet.untrackCommand(uid, ch.doc.id); // left "pending": done, error or running
+          if (ch.type !== "added") return;
+          const d = ch.doc.data();
+          fleet.trackCommand(uid, ch.doc.id, String(d.type));
+          void runCommand(uid, ch.doc);
+        }),
       (err) => console.error(`[commands] ${uid} listener error`, err),
     );
   commandListeners.set(uid, unsub);
   watchKeys(uid);
-  void sessionRef(uid).get().then((s) => (s.exists ? beat(uid) : sessionRef(uid).set({ status: "idle", lastSeen: Date.now() })));
+  void sessionRef(uid).get().then((s) => (s.exists ? undefined : sessionRef(uid).set({ status: "idle", lastSeen: Date.now() })));
 }
 
 async function main() {
   const ol = await ollamaState();
   console.log(`[worker] starting · server "${SERVER_ID}" · ollama ${ol.up ? `up (${ol.models.map((m) => m.name).join(", ") || "no models"})` : "DOWN"}`);
+  fleet.setLocalModel(ol.up && ol.models.length > 0);
   if (!adminConfigured) console.warn("[worker] SPOT_ADMIN_EMAILS not set: the Server page in the app stays hidden");
 
   // Heartbeat for the app's Server page.
   const users = new Map<string, { email?: string | null; name?: string | null }>();
   const pushStatus = async () => {
     const ollama = await ollamaState();
+    fleet.setLocalModel(ollama.up && ollama.models.length > 0);
     const states = await Promise.all(
-      [...commandListeners.keys()].map(async (uid) => {
+      fleet.heldUids().map(async (uid) => {
         const s = (await sessionRef(uid).get()).data() ?? {};
         return { uid, email: users.get(uid)?.email ?? null, name: users.get(uid)?.name ?? null, status: String(s.status ?? "idle"), phone: s.phone ? `•••${String(s.phone).slice(-4)}` : null };
       }),
@@ -47,28 +59,45 @@ async function main() {
     await writeServerStatus({ ollama: { ...ollama, url: OLLAMA_URL }, sessions: states, geminiServerKey: hasServerGeminiKey });
   };
   setInterval(() => void pushStatus().catch((e) => console.error("[stats]", e.message)), HEARTBEAT_MS).unref();
-  setTimeout(() => void pushStatus().catch(() => undefined), 5_000);
+  await pushStatus().catch((e) => console.error("[stats]", e.message)); // peers need our capacity before ranking us
 
   // Only approved curators get a command listener; those who've linked WhatsApp also get a session.
   const userDocs = new Map<string, FirebaseFirestore.DocumentData>();
   let allowed = new Set<string>();
+  // Commands that were left pending because another server held the account (or nobody did) run once we do.
+  const rescanCommands = (uid: string) =>
+    void col(uid, "commands").where("status", "==", "pending").get().then((q) => q.docs.forEach((d) => void runCommand(uid, d))).catch(() => undefined);
   const reconcile = () => {
+    const known = new Map<string, { policy: AiPolicy; enabled: boolean }>();
     for (const uid of allowed) {
       const data = userDocs.get(uid);
       if (!data) continue;
       watchCommands(uid);
-      if (data.waEnabled && !sessions.running(uid)) void sessions.start(uid);
+      const policy: AiPolicy = data.settings?.ai?.policy === "local_only" ? "local_only" : DEFAULT_AI_POLICY;
+      known.set(uid, { policy, enabled: Boolean(data.waEnabled) });
+      if (data.waEnabled && fleet.holds(uid) && !sessions.running(uid)) void sessions.start(uid);
     }
+    fleet.sync(known);
     for (const uid of [...commandListeners.keys()]) {
       if (allowed.has(uid) && userDocs.has(uid)) continue;
       console.log(`[access] ${users.get(uid)?.email ?? uid} no longer allowed, stopping`);
       commandListeners.get(uid)?.();
       commandListeners.delete(uid);
       unwatchKeys(uid);
-      void sessions.stop(uid);
-      void sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined);
+      if (fleet.holds(uid)) void sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined);
     }
   };
+  fleet.start({
+    retryPending: rescanCommands,
+    onAcquire: (uid) => {
+      if (userDocs.get(uid)?.waEnabled) void sessions.start(uid); // pending commands are replayed once it is ready
+      else rescanCommands(uid);
+    },
+  });
+  sessions.hooks.onReady = ((prev) => (uid, source) => {
+    prev?.(uid, source);
+    setTimeout(() => rescanCommands(uid), 2_000).unref();
+  })(sessions.hooks.onReady);
 
   db.collection("users").onSnapshot((q) => {
     for (const ch of q.docChanges()) {
@@ -98,9 +127,14 @@ async function main() {
   if (adminConfigured) watchServerCommands(() => shutdown(75));
 
   const shutdown = async (code = 0) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log("[worker] shutting down");
-    // Mark everyone offline right away instead of waiting for the heartbeat to go stale.
-    await Promise.all([...commandListeners.keys()].map((uid) => sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined)));
+    setTimeout(() => process.exit(code), 60_000).unref(); // don't hang a restart on a slow upload
+    // Upload and release every account first so a peer takes over at once, then mark them offline.
+    const mine = fleet.heldUids();
+    await fleet.drain();
+    await Promise.all(mine.map((uid) => sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined)));
     await sessions.stopAll();
     process.exit(code);
   };

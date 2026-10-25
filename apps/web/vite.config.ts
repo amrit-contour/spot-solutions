@@ -40,12 +40,18 @@ export default defineConfig({
         // Installer downloads must reach the network, never the app shell.
         navigateFallbackDenylist: [/^\/dl\//, /^\/install(-mac)?\.(sh|ps1)$/],
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // Push (FCM) handlers live in public/fcm-sw.js and run inside this same service worker.
+        // Loaded with importScripts, so it stays out of the precache and the browser re-checks it on its own.
+        importScripts: ["fcm-sw.js"],
+        globIgnores: ["fcm-sw.js"],
         runtimeCaching: [
           { urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, handler: "StaleWhileRevalidate", options: { cacheName: "fonts" } },
         ],
       },
     }),
   ],
+  // Changes every build; appended to installer links so a stale browser cache can never answer them.
+  define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
   server: { port: 5173 },
   build: {
     rolldownOptions: {
