@@ -13,9 +13,12 @@ import path from "node:path";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
-const DATA = process.env.SPOT_DATA_DIR ?? (WIN ? "C:\\SpotSolutions\\data" : "/var/lib/spot-solutions");
-const ENV_FILE = process.env.SPOT_ENV_FILE ?? (WIN ? "C:\\SpotSolutions\\app\\apps\\worker\\.env" : "/opt/spot-solutions/apps/worker/.env");
-const WORKER_LOG = path.join(DATA, "worker.log");
+const MAC = process.platform === "darwin";
+const MAC_ROOT = path.join(os.homedir(), "Library", "Application Support", "SpotSolutions");
+const DATA = process.env.SPOT_DATA_DIR ?? (WIN ? "C:\\SpotSolutions\\data" : MAC ? path.join(MAC_ROOT, "data") : "/var/lib/spot-solutions");
+const ENV_FILE = process.env.SPOT_ENV_FILE ?? (WIN ? "C:\\SpotSolutions\\app\\apps\\worker\\.env" : MAC ? path.join(MAC_ROOT, "app", "apps", "worker", ".env") : "/opt/spot-solutions/apps/worker/.env");
+// Windows logs next to the data; macOS launch agents write to SpotSolutions/logs.
+const WORKER_LOG = MAC ? path.join(DATA, "..", "logs", "worker.log") : path.join(DATA, "worker.log");
 const OLLAMA_EXE = process.env.SPOT_OLLAMA_EXE ?? "ollama";
 const PORT = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
 const TOKEN_FILE = process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(DATA, "console-token");
@@ -65,12 +68,21 @@ async function sh(cmd, args, timeout = 5000) {
 const ps = (cmd, timeout) => sh("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", cmd], timeout);
 // The Windows launcher runs the worker as `node ... tsx ... src\index.ts` from C:\SpotSolutions.
 const WIN_WORKER = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*SpotSolutions*src*index.ts*' }";
+// macOS: launch agents from spotctl, in this user's GUI domain.
+const macLabel = (unit) => `com.spotsolutions.${unit === "spot-worker" ? "worker" : unit}`;
+const gui = () => `gui/${process.getuid()}`;
 async function isActive(unit) {
+  if (MAC) {
+    const out = await sh("launchctl", ["print", `${gui()}/${macLabel(unit)}`]);
+    if (out?.includes("state = running")) return true;
+    return unit === "ollama" ? (await ollama()).up : false; // Ollama may be the user's own install
+  }
   if (!WIN) return (await sh("systemctl", ["is-active", unit])) === "active";
   if (unit === "ollama") return (await ollama()).up;
   return Boolean(await ps(`(${WIN_WORKER} | Measure-Object).Count -gt 0 | % { if ($_) { 'yes' } }`));
 }
 async function restart(unit) {
+  if (MAC) return sh("launchctl", ["kickstart", "-k", `${gui()}/${macLabel(unit)}`], 30000);
   if (!WIN) return sh("sudo", ["-n", "/usr/bin/systemctl", "restart", unit], 30000);
   if (unit === "ollama") {
     return ps(`Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process -FilePath '${OLLAMA_EXE}' -ArgumentList serve -WindowStyle Hidden`, 30000);
@@ -88,7 +100,7 @@ function tailFile(file, bytes = 24000) {
   return buf.toString("utf8").split(/\r?\n/).slice(-150).join("\n");
 }
 async function workerLogs() {
-  return WIN ? tailFile(WORKER_LOG) : sh("journalctl", ["-u", "spot-worker", "-n", "150", "--no-pager", "-o", "short-iso"], 8000);
+  return WIN || MAC ? tailFile(WORKER_LOG) : sh("journalctl", ["-u", "spot-worker", "-n", "150", "--no-pager", "-o", "short-iso"], 8000);
 }
 async function disk() {
   if (WIN) {

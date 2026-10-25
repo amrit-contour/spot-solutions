@@ -121,6 +121,8 @@ async function restartOllama() {
   if (process.platform === "win32") {
     const exe = process.env.SPOT_OLLAMA_EXE ?? "ollama";
     await exec("powershell", ["-NoProfile", "-Command", `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process -FilePath '${exe}' -ArgumentList serve -WindowStyle Hidden`]);
+  } else if (process.platform === "darwin") {
+    await exec("launchctl", ["kickstart", "-k", `gui/${process.getuid!()}/com.spotsolutions.ollama`], { timeout: 60_000 });
   } else {
     await exec("sudo", ["-n", "/usr/bin/systemctl", "restart", "ollama"], { timeout: 60_000 });
   }

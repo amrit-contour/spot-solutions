@@ -9,3 +9,4 @@ service-account*.json
 .firebase
 *.log
 .DS_Store
+deploy/mac/dist/

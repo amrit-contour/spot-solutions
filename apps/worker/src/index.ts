@@ -94,17 +94,18 @@ async function main() {
   );
 
   startScheduler(() => commandListeners.keys());
-  if (adminConfigured) watchServerCommands(() => shutdown());
+  // Exit non-zero on a requested restart so every supervisor (systemd, launchd, the Windows loop) brings us back.
+  if (adminConfigured) watchServerCommands(() => shutdown(75));
 
-  const shutdown = async () => {
+  const shutdown = async (code = 0) => {
     console.log("[worker] shutting down");
     // Mark everyone offline right away instead of waiting for the heartbeat to go stale.
     await Promise.all([...commandListeners.keys()].map((uid) => sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined)));
     await sessions.stopAll();
-    process.exit(0);
+    process.exit(code);
   };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
 }
 
 main().catch((e) => {

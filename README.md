@@ -60,6 +60,12 @@ curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash
 
 Or use Docker: `docker compose -f deploy/docker-compose.yml up -d`.
 
+**On a Mac**, install the Spot Server app (start/stop, keep awake with the lid closed, embedded console). See [docs/mac-server.md](docs/mac-server.md):
+
+```bash
+curl -fsSL https://spot-solutions.web.app/install-mac.sh | bash
+```
+
 **On Windows**, download `SpotSolutions-Windows.zip` from the [spot-solutions.web.app/dl/SpotSolutions-Windows.zip](https://spot-solutions.web.app/dl/SpotSolutions-Windows.zip), unzip it and double-click `Install Spot Solutions.cmd`. Or, from PowerShell as Administrator:
 
 ```powershell

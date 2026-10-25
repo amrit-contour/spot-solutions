@@ -38,7 +38,7 @@ export default defineConfig({
         // App shell only. Firestore traffic is live data and must never be served stale.
         navigateFallback: "/index.html",
         // Installer downloads must reach the network, never the app shell.
-        navigateFallbackDenylist: [/^\/dl\//, /^\/install\.(sh|ps1)$/],
+        navigateFallbackDenylist: [/^\/dl\//, /^\/install(-mac)?\.(sh|ps1)$/],
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         runtimeCaching: [
           { urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, handler: "StaleWhileRevalidate", options: { cacheName: "fonts" } },
