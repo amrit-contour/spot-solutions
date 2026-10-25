@@ -110,6 +110,9 @@ WorkingDirectory=${APP_DIR}/apps/worker
 ExecStart=${NODE} ${APP_DIR}/apps/worker/node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env src/index.ts
 Restart=always
 RestartSec=10
+# Time to close WhatsApp cleanly and save a backup of each login before stopping.
+TimeoutStopSec=90
+KillSignal=SIGTERM
 MemoryHigh=5G
 Nice=5
 

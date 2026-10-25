@@ -35,6 +35,8 @@ interface Pending {
   timer: NodeJS.Timeout;
   messages: InboundMessage[];
   contact: { id: string; chatId: string; name: string; nameSource: NonNullable<Comic["nameSource"]>; phone: string; isBusiness: boolean };
+  /** Read while the server was down: triage it, but never reply on our own. */
+  quiet?: boolean;
 }
 
 const pending = new Map<string, Pending>();
@@ -74,10 +76,10 @@ export async function resolveContact(client: WAWebJS.Client, msg: WAWebJS.Messag
 const liveSince = new Map<string, number>();
 export const markLive = (uid: string) => liveSince.set(uid, Date.now());
 
-export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.Message) {
+export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.Message, opts: { quiet?: boolean } = {}) {
   if (!isDirectHumanMessage(msg)) return;
   const since = liveSince.get(uid);
-  if (!since || msg.timestamp * 1000 < since - 5_000) return;
+  if (!opts.quiet && (!since || msg.timestamp * 1000 < since - 5_000)) return;
   counters.messagesIn++;
   const contact = await resolveContact(client, msg);
   const key = `${uid}|${contact.id}`;
@@ -85,7 +87,9 @@ export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.
   const item: InboundMessage = { id: msg.id._serialized, body: msg.body.slice(0, 1000), at: msg.timestamp * 1000 };
   const { settings } = watchUser(uid);
   if (p) clearTimeout(p.timer);
-  const next: Pending = p ?? { messages: [], contact, timer: undefined as never };
+  const next: Pending = p ?? { messages: [], contact, timer: undefined as never, quiet: true };
+  // One live message in the burst makes the whole burst live.
+  next.quiet = Boolean(next.quiet && opts.quiet);
   if (!next.messages.some((m) => m.id === item.id)) next.messages.push(item);
   next.timer = setTimeout(() => {
     pending.delete(key);
@@ -170,6 +174,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
 
   // Every guard must pass before anything is sent on the curator's behalf.
   const okToAck =
+    !p.quiet &&
     settings.ack.enabled &&
     (!hold || request.holdOverridden) &&
     !locked &&
@@ -190,7 +195,8 @@ async function draftOnboarding(uid: string, client: WAWebJS.Client, p: Pending, 
   const { settings } = watchUser(uid);
   const greet = p.contact.nameSource === "whatsapp" ? ` ${p.contact.name.split(" ")[0]}` : "";
   const draft = `Hey${greet}! Don't think I have you saved yet 🙂 Could you tell me your full name, which comedy scene you're from, and how long you've been doing comedy? Also, are you travelling?`;
-  const ref = await col(uid, "actions").add({
+  const ref = col(uid, "actions").doc(actionId(p, "onboard"));
+  const created = await ref.create({
     kind: "onboard",
     comicId: p.contact.id,
     comicName: p.contact.name,
@@ -200,9 +206,10 @@ async function draftOnboarding(uid: string, client: WAWebJS.Client, p: Pending, 
     lineupId: null,
     status: "pending",
     createdAt: Date.now(),
-  } satisfies Omit<ComicAction, "id">);
+  } satisfies Omit<ComicAction, "id">).then(() => true).catch(() => false);
+  if (!created) return;
   const fresh = Date.now() - Math.max(...p.messages.map((m) => m.at)) < AUTO_ACK_MAX_AGE_MS;
-  if (settings.selfService.autoSend && fresh) {
+  if (settings.selfService.autoSend && fresh && !p.quiet) {
     await sendQueued(client, p.contact.chatId, draft);
     await ref.update({ status: "sent", sentAt: Date.now() });
     await col(uid, "comics").doc(p.contact.id).set({ onboarding: "asked" }, { merge: true });
@@ -258,13 +265,43 @@ async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, inte
     status: "pending",
     createdAt: Date.now(),
   };
-  const ref = await col(uid, "actions").add(action);
+  // Keyed by the first message, so re-reading the same messages (e.g. catch-up after a restart) never drafts twice.
+  const ref = col(uid, "actions").doc(actionId(p));
+  if (!(await ref.create(action).then(() => true).catch(() => false))) return;
 
   const fresh = Date.now() - Math.max(...p.messages.map((m) => m.at)) < AUTO_ACK_MAX_AGE_MS;
-  if (settings.selfService.autoSend && fresh && !p.contact.isBusiness) {
+  if (settings.selfService.autoSend && fresh && !p.quiet && !p.contact.isBusiness) {
     const { dropFromLineup } = await import("./commands.ts");
     if (action.lineupId) await dropFromLineup(uid, client, p.contact.id, action.lineupId);
     await sendQueued(client, comic?.chatId ?? p.contact.chatId, draft);
     await ref.update({ status: "sent", sentAt: Date.now() });
   }
+}
+
+const actionId = (p: Pending, prefix = "a") => `${prefix}_${p.messages[0].id}`.replace(/[^\w-]/g, "_").slice(0, 300);
+
+const CATCHUP_MAX_AGE_MS = 3 * 24 * 3600_000;
+
+/**
+ * After the server was down, read the DMs that arrived meanwhile so no spot request is lost.
+ * Read-only: they land in Requests / Needs a reply, but nothing is sent automatically.
+ * Only runs when an existing WhatsApp link was restored (never on a fresh QR link).
+ */
+export async function catchUpSince(uid: string, client: WAWebJS.Client, sinceMs: number) {
+  const since = Math.max(sinceMs - 60_000, Date.now() - CATCHUP_MAX_AGE_MS);
+  const chats = (await client.getChats())
+    .filter((c) => !c.isGroup && !c.isReadOnly && c.timestamp * 1000 > since)
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 60);
+  let n = 0;
+  for (const chat of chats) {
+    const msgs = await chat.fetchMessages({ limit: 15 }).catch(() => []);
+    for (const m of msgs) {
+      if (m.timestamp * 1000 <= since || m.fromMe) continue;
+      await enqueue(uid, client, m, { quiet: true });
+      n++;
+    }
+  }
+  if (n) console.log(`[intake] ${uid} caught up on ${n} messages from ${chats.length} chats received while offline`);
+  return n;
 }

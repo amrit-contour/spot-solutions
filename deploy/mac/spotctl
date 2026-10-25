@@ -72,6 +72,7 @@ $args  </array>
   <key>RunAtLoad</key><$runatload/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ThrottleInterval</key><integer>10</integer>
+  <key>ExitTimeOut</key><integer>90</integer>
   <key>ProcessType</key><string>Interactive</string>
   <key>StandardOutPath</key><string>$LOGS/${label#com.spotsolutions.}.log</string>
   <key>StandardErrorPath</key><string>$LOGS/${label#com.spotsolutions.}.log</string>

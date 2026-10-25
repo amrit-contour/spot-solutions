@@ -13,7 +13,7 @@ const commandListeners = new Map<string, () => void>();
 const HEARTBEAT_MS = 30_000;
 
 // Every curator sees the worker as online, even before linking WhatsApp — otherwise there's no way to ask for a QR.
-const beat = (uid: string) => sessionRef(uid).set({ lastSeen: Date.now() }, { merge: true }).catch(() => undefined);
+const beat = (uid: string) => sessionRef(uid).set({ lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true }).catch(() => undefined);
 setInterval(() => commandListeners.forEach((_, uid) => void beat(uid)), HEARTBEAT_MS).unref();
 
 function watchCommands(uid: string) {

@@ -10,7 +10,8 @@ export interface SessionState {
   qr?: string | null;
   phone?: string | null;
   pushName?: string | null;
-  lastSeen?: number; // epoch ms, worker heartbeat
+  lastSeen?: number; // epoch ms, worker heartbeat (0 after a clean shutdown)
+  aliveAt?: number; // last time the worker was processing messages; survives shutdown
   error?: string | null;
 }
 
