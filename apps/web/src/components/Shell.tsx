@@ -5,6 +5,9 @@ import { useApp } from "../lib/app";
 import { cx, type Icon } from "./ui";
 import { IconCalendar, IconComics, IconInbox, IconMic, IconPhone, IconSettings } from "./icons";
 import { Logo } from "./Logo";
+import { isDemoUser } from "../lib/demo";
+import { signInWithPopup, signOut } from "firebase/auth";
+import { auth, google } from "../lib/firebase";
 import { AccountMenu } from "./AccountMenu";
 
 const NAV: { to: string; label: string; icon: Icon }[] = [
@@ -17,6 +20,7 @@ const NAV: { to: string; label: string; icon: Icon }[] = [
 
 export function useConnection() {
   const { session, workerOnline } = useApp();
+  if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode · your own sandbox", short: "Demo" };
   if (!workerOnline) return { tone: "error" as const, label: "Server offline", short: "Offline" };
   if (session?.status === "ready") return { tone: "ok" as const, label: `WhatsApp · +${session.phone ?? ""}`, short: "Live" };
   if (session?.status === "qr" || session?.status === "starting" || session?.status === "authenticated") return { tone: "wait" as const, label: "Linking WhatsApp…", short: "Linking" };
@@ -76,6 +80,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </nav>
 
       <main className="min-w-0 flex-1 pb-24 sm:pb-0">
+        {isDemoUser() && <DemoBanner />}
         {/* CSS keyframes, not AnimatePresence: they always run to the end, so a route can never get stuck invisible. */}
         <div key={loc.pathname} className="page-enter">
           {children}
@@ -116,3 +121,24 @@ export function PageHeader({ title, subtitle, actions, children }: { title: Reac
 }
 
 export { StatusDot };
+
+function DemoBanner() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-tertiary-container px-4 py-2.5 text-on-tertiary-container sm:px-8">
+      <span className="type-label-l">Demo</span>
+      <span className="min-w-0 flex-1 basis-56 type-body-s">
+        <span className="sm:hidden">Your own copy of a curator's week. Changes stay here.</span>
+        <span className="hidden sm:inline">You're in your own copy of a demo curator's week. Drag comics, edit messages, explore everything. Changes stay in your sandbox, and WhatsApp features need a real account.</span>
+      </span>
+      <button
+        onClick={async () => {
+          await signOut(auth);
+          await signInWithPopup(auth, google);
+        }}
+        className="state-layer rounded-full bg-on-tertiary-container px-4 py-1.5 type-label-l text-tertiary-container"
+      >
+        Use my own account
+      </button>
+    </div>
+  );
+}

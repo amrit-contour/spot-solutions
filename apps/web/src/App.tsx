@@ -3,7 +3,7 @@ import { Toaster } from "sonner";
 import { AppProvider, useAuthUser } from "./lib/app";
 import { Shell } from "./components/Shell";
 import { Spinner } from "./components/ui";
-import { SignIn } from "./routes/SignIn";
+import { Landing } from "./routes/Landing";
 import { Requests } from "./routes/Requests";
 import { LineupBoard } from "./routes/Lineup";
 import { Comics } from "./routes/Comics";
@@ -37,7 +37,7 @@ export default function App() {
           <Spinner className="size-8" />
         </div>
       ) : user === null ? (
-        <SignIn />
+        <Landing />
       ) : access === undefined ? (
         <div className="grid min-h-dvh place-items-center text-primary">
           <Spinner className="size-8" />

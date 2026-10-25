@@ -9,6 +9,8 @@ export function useAccess(user: User | null | undefined) {
   const [entry, setEntry] = useState<AccessEntry | null | undefined>(undefined);
   useEffect(() => {
     if (!user) return setEntry(undefined);
+    // Demo visitors explore their own sandbox; they never join the approval queue or the server.
+    if (user.isAnonymous) return setEntry({ uid: user.uid, email: null, name: "Demo visitor", status: "approved", requestedAt: Date.now() });
     const ref = doc(db, "access", user.uid);
     return onSnapshot(
       ref,

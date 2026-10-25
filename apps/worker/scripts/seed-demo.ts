@@ -39,7 +39,7 @@ const msgs: Record<string, [string[], number[], number, string]> = {
 
 const batch = db.batch();
 batch.set(userRef(uid), { settings: DEFAULT_SETTINGS, name: "Demo Curator", email: "demo@spot.solutions", waEnabled: false, createdAt: now });
-batch.set(sessionRef(uid), { status: "ready", phone: "919845012345", pushName: "Amrit", lastSeen: now + 6 * H, qr: null, error: null });
+batch.set(sessionRef(uid), { status: "ready", phone: "919845012345", pushName: "Demo", lastSeen: now + 12 * H, qr: null, error: null });
 venues.forEach((v) => batch.set(col(uid, "venues").doc(v.id), v));
 shows.forEach((s) => batch.set(col(uid, "shows").doc(s.id), s));
 people.forEach(([name, phone, tier, lp], i) => {
@@ -57,7 +57,14 @@ people.forEach(([name, phone, tier, lp], i) => {
   };
   batch.set(col(uid, "requests").doc(r.id), r);
 });
-batch.set(col(uid, "lineups").doc(lineupId(week, "mon")), { id: lineupId(week, "mon"), weekOf: week, showId: "mon", date: week, slots: [{ comicId: "919800000004@c.us", minutes: 7 }], status: "draft", sentAt: null, groupSync: null });
+batch.set(col(uid, "lineups").doc(lineupId(week, "mon")), { id: lineupId(week, "mon"), weekOf: week, showId: "mon", date: week, slots: [{ comicId: "919800000004@c.us", minutes: 7 }, { comicId: "919800000001@c.us", minutes: 5 }, { comicId: "919800000009@c.us", minutes: 5 }], status: "draft", sentAt: null, groupSync: null });
+batch.set(col(uid, "requests").doc(`${week}_919800000001@c.us`), { status: "assigned" }, { merge: true });
+// A held request (performed last week) and a drafted reply waiting for the curator.
+batch.set(col(uid, "requests").doc(`${week}_919800000005@c.us`), { hold: "last_week", holdOverridden: false }, { merge: true });
+batch.set(col(uid, "actions").doc("demo-cancel"), { kind: "cancel_spot", comicId: "919800000002@c.us", comicName: "Ishita Rao", weekOf: week, message: "hey so sorry, can't make it tuesday 😭 something came up", draft: "No worries Ishita, I've freed up your Tuesday spot. See you next time! 🫡", lineupId: null, status: "pending", createdAt: now - H });
+batch.set(col(uid, "notices").doc("demo-notice"), { level: "info", text: "Karthik S introduced themselves: from Pune, 2 yrs in comedy, travelling.", createdAt: now - 2 * H, read: false });
+batch.set(db.collection("access").doc(uid), { uid, email: "demo@spot.solutions", name: "Demo Curator", photo: null, status: "approved", requestedAt: now, decidedAt: now, decidedBy: "demo" });
+batch.set(col(uid, "session").doc("state"), { aliveAt: now }, { merge: true });
 batch.set(col(uid, "lineups").doc(lineupId(last, "tue")), { id: lineupId(last, "tue"), weekOf: last, showId: "tue", date: last, slots: [{ comicId: "919800000002@c.us" }, { comicId: "919800000005@c.us" }, { comicId: "919800000009@c.us" }], status: "confirmed", sentAt: now - 7 * 24 * H, groupSync: null });
 await batch.commit();
 
