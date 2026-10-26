@@ -30,7 +30,8 @@ export default defineConfig({
           { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
         shortcuts: [
-          { name: "Requests", url: "/", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+          { name: "Calendar", url: "/", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+          { name: "Requests", url: "/requests", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
           { name: "Lineup", url: "/lineup", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
         ],
       },

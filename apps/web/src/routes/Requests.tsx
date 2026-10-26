@@ -35,7 +35,7 @@ import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
 import { IconArrowDown, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
-type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
+export type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
 const LANES: { id: Lane; label: string }[] = [
   { id: "asked", label: "Asked" },
   { id: "maybe", label: "Maybe" },
@@ -44,7 +44,7 @@ const LANES: { id: Lane; label: string }[] = [
   { id: "closed", label: "Closed" },
 ];
 
-const laneOf = (r: SpotRequest): Lane =>
+export const laneOf = (r: SpotRequest): Lane =>
   r.status === "dismissed" || r.status === "rejected"
     ? "closed"
     : r.status === "assigned" || r.status === "confirmed"
@@ -65,7 +65,7 @@ export function Requests() {
   const [rereading, setRereading] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const lastWeek = shiftWeek(week, -1);
-  // Phones and tablets show one view at a time; the URL keeps it linkable (/?view=updates). Desktop shows both.
+  // Phones and tablets show one view at a time; the URL keeps it linkable (/requests?view=updates). Desktop shows both.
   const [params, setParams] = useSearchParams();
   const view: "requests" | "updates" = params.get("view") === "updates" ? "updates" : "requests";
   const setView = (v: "requests" | "updates") => setParams(v === "updates" ? { view: "updates" } : {}, { replace: true });

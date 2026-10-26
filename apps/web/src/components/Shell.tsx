@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { useApp } from "../lib/app";
 import { cx, type Icon } from "./ui";
-import { IconCalendar, IconComics, IconInbox, IconMic, IconPhone, IconSettings } from "./icons";
+import { IconCalendar, IconCalendarMark, IconComics, IconInbox, IconMic, IconPhone, IconSettings } from "./icons";
 import { Logo } from "./Logo";
 import { isDemoUser } from "../lib/demo";
 import { signInWithPopup } from "firebase/auth";
@@ -13,8 +13,9 @@ import { AccountMenu } from "./AccountMenu";
 import { UpdatesProvider, useUpdates } from "../lib/updates";
 import { Count } from "./updates/shared";
 
-const NAV: { to: string; label: string; icon: Icon }[] = [
-  { to: "/", label: "Requests", icon: IconInbox },
+const NAV: { to: string; label: string; short?: string; icon: Icon }[] = [
+  { to: "/", label: "Calendar", short: "Home", icon: IconCalendarMark },
+  { to: "/requests", label: "Requests", icon: IconInbox },
   { to: "/lineup", label: "Lineup", icon: IconMic },
   { to: "/comics", label: "Comics", icon: IconComics },
   { to: "/shows", label: "Shows", icon: IconCalendar },
@@ -40,9 +41,9 @@ function StatusDot({ tone }: { tone: "ok" | "wait" | "error" | "idle" }) {
   );
 }
 
-function NavItem({ to, label, icon: I, rail }: { to: string; label: string; icon: Icon; rail?: boolean }) {
+function NavItem({ to, label, short, icon: I, rail }: { to: string; label: string; short?: string; icon: Icon; rail?: boolean }) {
   const { needsYou } = useUpdates();
-  const badge = to === "/" ? needsYou : 0;
+  const badge = to === "/requests" ? needsYou : 0;
   return (
     <NavLink to={to} end={to === "/"} className="group flex flex-1 flex-col items-center gap-1 outline-none sm:flex-none">
       {({ isActive }) => (
@@ -57,7 +58,7 @@ function NavItem({ to, label, icon: I, rail }: { to: string; label: string; icon
               </span>
             )}
           </span>
-          <span className={cx("type-label-m transition-colors", isActive ? "text-on-surface" : "text-on-surface-variant")}>{label}</span>
+          <span className={cx("type-label-m transition-colors", isActive ? "text-on-surface" : "text-on-surface-variant")}>{short && !rail ? short : label}</span>
         </>
       )}
     </NavLink>

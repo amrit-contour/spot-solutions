@@ -5,6 +5,7 @@ import { Shell } from "./components/Shell";
 import { Spinner } from "./components/ui";
 import { Landing } from "./routes/Landing";
 import { Requests } from "./routes/Requests";
+import { Home } from "./routes/Calendar";
 import { LineupBoard } from "./routes/Lineup";
 import { Comics } from "./routes/Comics";
 import { Shows } from "./routes/Shows";
@@ -55,7 +56,8 @@ export default function App() {
         <AppProvider user={user}>
           <Shell>
             <Routes>
-              <Route path="/" element={<Requests />} />
+              <Route path="/" element={<Home />} />
+              <Route path="/requests" element={<Requests />} />
               <Route path="/lineup" element={<LineupBoard />} />
               <Route path="/comics" element={<Comics />} />
               <Route path="/shows" element={<Shows />} />
