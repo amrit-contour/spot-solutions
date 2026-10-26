@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Comic, ContactPlan } from "@spot/shared";
 import { connectGoogleContacts, hasGoogleToken, planGoogleSync, reportGoogleError, runGoogleSync } from "../lib/googleContacts";
+import { callableMessage, planGoogleServer, runGoogleServer, useServerLink } from "../lib/googleServer";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -21,13 +22,15 @@ export function useGoogleSync() {
   const [planning, setPlanning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const running = useRef(false);
+  const server = useServerLink().state === "connected";
 
   const start = async (comics: Pick<Comic, "id" | "name" | "phone">[]) => {
     if (running.current) return;
     setPlanning(true);
     try {
-      if (!hasGoogleToken()) await connectGoogleContacts();
-      const p = await planGoogleSync(comics);
+      // Kept connected: the server reads Google Contacts, so no popup and no token in this browser.
+      if (!server && !hasGoogleToken()) await connectGoogleContacts();
+      const p = server ? await planGoogleServer(comics.map((c) => c.id)) : await planGoogleSync(comics);
       if (!p.create.length && !p.update.length) {
         toast.success(p.unchanged.length ? "Google Contacts already has all these names" : "Nothing to save to Google Contacts");
         return;
@@ -36,7 +39,8 @@ export function useGoogleSync() {
       setProgress(null);
       setOpen(true);
     } catch (e) {
-      reportGoogleError(e, "Couldn't read Google Contacts");
+      if (server) toast.error("Couldn't read Google Contacts", { description: callableMessage(e) });
+      else reportGoogleError(e, "Couldn't read Google Contacts");
     } finally {
       setPlanning(false);
     }
@@ -46,12 +50,22 @@ export function useGoogleSync() {
     if (!plan) return;
     running.current = true;
     try {
-      const r = await runGoogleSync(plan, (done, total) => setProgress({ done, total }));
+      const total = plan.create.length + plan.update.length;
+      // The server re-plans from the saved comics, so the browser only says which ones. It reports once, when done.
+      const r = server
+        ? await (async () => {
+            setProgress({ done: 0, total });
+            const out = await runGoogleServer([...plan.create, ...plan.update].map((c) => c.comicId));
+            setProgress({ done: total, total });
+            return out;
+          })()
+        : await runGoogleSync(plan, (done, t) => setProgress({ done, total: t }));
       const text = [r.created && `${n(r.created, "contact")} added`, r.updated && `${n(r.updated, "name")} updated`].filter(Boolean).join(", ") || "Nothing saved";
       if (r.failed) toast.warning(`${text}. ${n(r.failed, "contact")} failed, try again.`);
       else toast.success(`Google Contacts: ${text}`);
     } catch (e) {
-      reportGoogleError(e, "Couldn't finish saving to Google Contacts");
+      if (server) toast.error("Couldn't finish saving to Google Contacts", { description: callableMessage(e) });
+      else reportGoogleError(e, "Couldn't finish saving to Google Contacts");
     } finally {
       running.current = false;
     }

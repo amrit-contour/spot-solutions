@@ -201,3 +201,15 @@ To update a server by hand, run its installer again (see the guide for [Mac](mac
 | A removed or revoked server still seems alive | Its token can last up to an hour. Stop the worker on the device. |
 | Two servers answer the same chat | Look for a server on an older release. The lease stops two fleet servers running one account. |
 | A cloned laptop disk shows up as a new server | Expected. A cloned disk gets a new server id, so two servers never merge. |
+
+## Google Contacts, kept connected (one-time setup)
+
+`connectGoogleContacts`, `disconnectGoogleContacts`, `planGoogleContacts` and `runGoogleContacts` (callable, any real signed-in curator), the Firestore trigger `queueGoogleContact` and the scheduled `syncGoogleContacts` (every 2 minutes) save comic names to a curator's Google Contacts while the app is closed. They run as `spot-enroller`, need no new keys, and use two secrets and one parameter:
+
+1. APIs: People API (`people.googleapis.com`), Secret Manager, Eventarc and Cloud Scheduler (`deploy/setup-functions-iam.sh` enables them and gives `spot-enroller` `roles/eventarc.eventReceiver`; run it again).
+2. Google Cloud Console, APIs & Services, Credentials, open the Web client Firebase created ("Web client (auto created by Google Service)"). Under **Authorized JavaScript origins** add `https://spot-solutions.web.app`, `https://spot-solutions.firebaseapp.com` and `http://localhost:5173`. Copy its **Client secret**.
+3. `firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_SECRET` (paste the client secret) and `openssl rand -base64 32 | firebase functions:secrets:set GOOGLE_TOKEN_KEY` (the key that encrypts stored tokens; lose it and curators press Keep connected again).
+4. The client id is public: `VITE_GOOGLE_OAUTH_CLIENT_ID` in `apps/web/.env` for the web build, and `GOOGLE_OAUTH_CLIENT_ID` for the functions (`functions/.env`, or answer the prompt on first deploy).
+5. `firebase deploy --only functions,firestore:rules`, then build and deploy hosting as above.
+
+Tokens live in `users/{uid}/private/google` (AES-256-GCM, uid bound in as authenticated data); `users/{uid}/googleLink/status` (email, since) is what the owner may read; `googleSyncQueue/{uid}` holds edits waiting to be written. All three are closed to clients except that status read. An edit waits for 45 s of quiet (5 min at most), more than 25 comics at once is left for the reviewed "Sync all", failures back off from 2 min to 1 h and stop after 5.
