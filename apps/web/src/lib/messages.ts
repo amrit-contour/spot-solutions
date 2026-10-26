@@ -2,6 +2,7 @@
 // (nothing is kept). The demo has no WhatsApp, so its conversations are built right here from the demo sandbox's own
 // requests and lineups, and the page says so. Nothing in this file is ever used for a real account's data.
 import {
+  matchGroupThreads,
   matchThreads,
   type Comic,
   type GetThreadResult,
@@ -27,6 +28,8 @@ export interface ChatSource {
   demo: boolean;
   list: () => Promise<ListThreadsResult>;
   thread: (comicId: string, before?: number) => Promise<GetThreadResult>;
+  /** A show's group (linked groups only). */
+  groupThread: (groupId: string, before?: number) => Promise<GetThreadResult>;
   summarize: (comicId: string, weekOf: string) => Promise<SummarizeThreadResult>;
   send: (to: ChatTarget, msg: RichMessage, opts: { voice: boolean; venueId: string | null }) => Promise<{ body: string }>;
 }
@@ -45,6 +48,7 @@ export function liveSource(uid: string): ChatSource {
     demo: false,
     list: () => runCommand<ListThreadsResult>(uid, "list_threads", {}, 90_000, { ephemeral: true }),
     thread: (comicId, before) => runCommand<GetThreadResult>(uid, "get_thread", { comicId, ...(before ? { before } : {}) }, 90_000, { ephemeral: true }),
+    groupThread: (groupId, before) => runCommand<GetThreadResult>(uid, "get_thread", { groupId, ...(before ? { before } : {}) }, 90_000, { ephemeral: true }),
     summarize: (comicId, weekOf) => runCommand<SummarizeThreadResult>(uid, "summarize_thread", { comicId, weekOf }, 240_000, { ephemeral: true }),
     send: async (to, msg, opts) => {
       const r = await runCommand<{ body?: string } | null>(uid, "send_message", sendPayload(to, msg, opts), 180_000);
@@ -83,6 +87,20 @@ export function demoConversations({ comics, requests, lineups, shows, now }: Dem
   return out;
 }
 
+/** A demo group: the latest lineup posted by you and a reply from someone on it. */
+function demoGroup({ shows, lineups, comics, now }: DemoData, groupId: string): ThreadMessage[] {
+  const show = shows.find((s) => s.groupId === groupId);
+  const lineup = lineups.find((l) => l.showId === show?.id && l.slots.length);
+  if (!show) return [];
+  const names = (lineup?.slots ?? []).map((s, i) => `${i + 1}. ${comics.find((c) => c.id === s.comicId)?.name ?? "TBA"}`);
+  const at = now - 3 * 3600_000;
+  const first = comics.find((c) => c.id === lineup?.slots[0]?.comicId)?.name.split(/\s+/)[0];
+  return [
+    { id: `${groupId}-1`, at, fromMe: true, kind: "text", text: `*${show.name}: the lineup* 🎤\n\n${names.join("\n") || "Lineup coming soon."}` },
+    ...(first ? [{ id: `${groupId}-2`, at: at + 20 * 60_000, fromMe: false, kind: "text" as const, text: "See you all there 🙌", author: first }] : []),
+  ];
+}
+
 export function demoSource(get: () => DemoData): ChatSource {
   const local = new Map<string, ThreadMessage[]>();
   const all = () => {
@@ -110,11 +128,21 @@ export function demoSource(get: () => DemoData): ChatSource {
           lastMessage: { id: last.id, type: "chat", body: snippet(last), fromMe: last.fromMe, timestamp: Math.floor(last.at / 1000) },
         });
       }
-      return { threads: matchThreads(chats, d.comics), at: Date.now() };
+      // The demo's show groups: a lineup post from you, plus anything sent here.
+      for (const show of d.shows) {
+        if (!show.groupId || chats.some((c) => c.id === show.groupId)) continue;
+        const last = [...demoGroup(d, show.groupId), ...(local.get(show.groupId) ?? [])].pop();
+        if (last) chats.push({ id: show.groupId, isGroup: true, name: `${show.name} comics`, timestamp: Math.floor(last.at / 1000), unreadCount: 0, lastMessage: { id: last.id, type: "chat", body: snippet(last), fromMe: last.fromMe, timestamp: Math.floor(last.at / 1000), authorName: last.author } });
+      }
+      return { threads: matchThreads(chats, d.comics), groups: matchGroupThreads(chats, d.shows, d.comics), at: Date.now() };
     },
     thread: async (comicId, before) => {
       const rows = (all().get(comicId) ?? []).filter((m) => (before ? m.at < before : true));
       return { comicId, chatId: comicId, messages: rows.slice(-50), hasMore: rows.length > 50, at: Date.now() };
+    },
+    groupThread: async (groupId, before) => {
+      const rows = [...demoGroup(get(), groupId), ...(local.get(groupId) ?? [])].filter((m) => (before ? m.at < before : true));
+      return { comicId: groupId, groupId, chatId: groupId, messages: rows.slice(-50), hasMore: rows.length > 50, at: Date.now() };
     },
     summarize: async (comicId) => {
       const d = get();

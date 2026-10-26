@@ -20,12 +20,17 @@ export interface WaMessageLike {
   pollOptions?: string[];
   allowMultipleAnswers?: boolean;
   location?: { latitude?: number | string; longitude?: number | string; name?: string; address?: string; description?: string } | null;
+  /** Groups: who wrote it (their id) and the name they go by on WhatsApp. */
+  author?: string;
+  authorName?: string;
 }
 
 /** The fields of a whatsapp-web.js Chat we use. */
 export interface WaChatLike {
   id: string;
   isGroup: boolean;
+  /** Groups: the group's name. */
+  name?: string;
   /** Seconds. */
   timestamp: number;
   unreadCount: number;
@@ -44,6 +49,8 @@ export interface ThreadMessage {
   text: string;
   poll?: { question: string; options: string[]; multi: boolean };
   pin?: { name: string; detail?: string };
+  /** Groups: who wrote it, as you'd recognise them (your Comics name first). Missing for your own messages. */
+  author?: string;
 }
 
 export interface ThreadItem {
@@ -72,15 +79,29 @@ const MEDIA_LABEL: Record<string, string> = {
   groups_v4_invite: "[group invite]",
 };
 
+/** A show's WhatsApp group in the chat list. Only groups linked to one of your shows are ever listed or opened. */
+export interface GroupThreadItem {
+  groupId: string;
+  name: string;
+  /** The shows that use this group. */
+  showIds: string[];
+  at: number;
+  snippet: string;
+  fromMe: boolean;
+  /** Who wrote the newest message, when it wasn't you. */
+  author?: string;
+  unread: number;
+}
+
 /** System rows WhatsApp stores in a chat that are not messages anyone wrote. */
 const NOT_A_MESSAGE = new Set(["e2e_notification", "notification", "notification_template", "gp2", "group_notification", "protocol", "reaction", "call_log", "ciphertext", "debug", "broadcast_notification"]);
 
 const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
 
 /** One message as the thread shows it, or null for rows that aren't messages. */
-export function toThreadMessage(m: WaMessageLike): ThreadMessage | null {
+export function toThreadMessage(m: WaMessageLike, names?: Map<string, string>): ThreadMessage | null {
   if (NOT_A_MESSAGE.has(m.type)) return null;
-  const base = { id: m.id, at: m.timestamp * 1000, fromMe: m.fromMe };
+  const base = { id: m.id, at: m.timestamp * 1000, fromMe: m.fromMe, ...(names && !m.fromMe && m.author && { author: authorOf(m, names) }) };
   if (m.type === "chat") return m.body?.trim() ? { ...base, kind: "text", text: m.body } : null;
   if (m.type === "revoked") return { ...base, kind: "deleted", text: "[deleted message]" };
   if (m.type === "poll_creation") {
@@ -146,6 +167,44 @@ export function matchThreads(chats: WaChatLike[], comics: Pick<Comic, "id" | "ch
   return [...best.values()].sort((a, b) => b.at - a.at);
 }
 
+/** The show groups as chats: linked groups only, newest first. A group used by two shows is listed once. */
+export function matchGroupThreads(chats: WaChatLike[], shows: { id: string; name: string; groupId?: string | null }[], comics: Pick<Comic, "id" | "chatId" | "phone" | "name">[] = []): GroupThreadItem[] {
+  const linked = new Map<string, string[]>();
+  for (const s of shows) if (s.groupId) linked.set(s.groupId, [...(linked.get(s.groupId) ?? []), s.id]);
+  const names = authorNames(comics);
+  const out: GroupThreadItem[] = [];
+  for (const chat of chats) {
+    const showIds = linked.get(chat.id);
+    if (!chat.isGroup || !showIds) continue;
+    const last = chat.lastMessage ?? null;
+    const lastRow = last ? toThreadMessage(last) : null;
+    out.push({
+      groupId: chat.id,
+      name: chat.name || shows.find((s) => s.id === showIds[0])?.name || "Show group",
+      showIds,
+      at: (lastRow?.at ?? chat.timestamp * 1000) || 0,
+      snippet: snippetOf(last),
+      fromMe: Boolean(last?.fromMe),
+      ...(last && !last.fromMe && { author: authorOf(last, names) }),
+      unread: Math.max(0, chat.unreadCount || 0),
+    });
+  }
+  return out.sort((a, b) => b.at - a.at);
+}
+
+/** Roster names by every id WhatsApp might use for a person. */
+export function authorNames(comics: Pick<Comic, "id" | "chatId" | "phone" | "name">[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const c of comics) for (const k of comicChatKeys(c)) m.set(k, c.name);
+  return m;
+}
+
+/** A group message's writer: your Comics name, else their WhatsApp name, else their number. */
+export function authorOf(m: Pick<WaMessageLike, "author" | "authorName">, names: Map<string, string>): string {
+  const id = m.author ?? "";
+  return names.get(id) || m.authorName?.trim() || (id.endsWith("@c.us") ? `+${id.split("@")[0]}` : "Someone");
+}
+
 /** Free-text search over the list: name, the number inside the chat id, or the preview. */
 export function filterThreads<T extends Pick<ThreadItem, "name" | "chatId" | "comicId" | "snippet">>(items: T[], q: string): T[] {
   const needle = q.trim().toLowerCase();
@@ -160,9 +219,9 @@ export function filterThreads<T extends Pick<ThreadItem, "name" | "chatId" | "co
  * One page of a chat. WhatsApp can't fetch "before X", so the worker fetches the newest `limit` messages and this keeps the
  * `size` just before `before` (epoch ms), oldest first. `hasMore` is true when something older is known to exist.
  */
-export function pageMessages(all: WaMessageLike[], before: number | null | undefined, size = THREAD_PAGE, fetchedLimit = THREAD_FETCH_MAX): { messages: ThreadMessage[]; hasMore: boolean } {
+export function pageMessages(all: WaMessageLike[], before: number | null | undefined, size = THREAD_PAGE, fetchedLimit = THREAD_FETCH_MAX, names?: Map<string, string>): { messages: ThreadMessage[]; hasMore: boolean } {
   const rows = all
-    .map(toThreadMessage)
+    .map((m) => toThreadMessage(m, names))
     .filter((m): m is ThreadMessage => m !== null)
     .filter((m) => before == null || m.at < before)
     .sort((a, b) => a.at - b.at);
@@ -201,11 +260,15 @@ export function groupByDay(messages: ThreadMessage[], now: number, timezone: str
 
 export interface ListThreadsResult {
   threads: ThreadItem[];
+  /** Your show groups. Missing from older servers. */
+  groups?: GroupThreadItem[];
   at: number;
 }
 
 export interface GetThreadResult {
+  /** A comic's chat: their id. A group: the group id. */
   comicId: string;
+  groupId?: string;
   chatId: string;
   messages: ThreadMessage[];
   hasMore: boolean;

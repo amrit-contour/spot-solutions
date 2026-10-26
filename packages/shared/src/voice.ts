@@ -3,6 +3,7 @@
 // a few real examples, and every outgoing message is then drafted from the facts + that profile, with the
 // curator's template as the guide. A draft that drops or changes a fact is thrown away and the template goes out.
 import type { MessageKey } from "./messages.ts";
+import type { GroupPostKey } from "./groupPosts.ts";
 
 export interface VoiceProfile {
   /** A few sentences on how they write, editable in Settings. */
@@ -35,7 +36,7 @@ export interface VoiceSources {
 }
 
 /** Messages that can be written in the curator's voice. Group invite notes stay as typed. */
-export type VoiceKind = "ack" | "confirm" | "cancelSpot" | "reject" | "reply" | Exclude<MessageKey, "groupWelcome">;
+export type VoiceKind = "ack" | "confirm" | "cancelSpot" | "reject" | "reply" | Exclude<MessageKey, "groupWelcome" | GroupPostKey>;
 
 export const VOICE_SAMPLE_CAP = 300;
 export const VOICE_EXAMPLE_CAP = 15;

@@ -13,6 +13,7 @@ import {
   clampScanDays,
   SCAN_DAYS_MAX,
   SCAN_DAYS_MIN,
+  GROUP_POST_KEYS,
   MESSAGE_GROUPS,
   MESSAGE_TYPES,
   messageRich,
@@ -117,6 +118,8 @@ const EXTRA_VARIABLES = [
   { key: "lastShow", label: "Last show they did" },
   { key: "lastDate", label: "Date of their last show" },
   { key: "opens", label: "When requests open" },
+  { key: "lineup", label: "Running order" },
+  { key: "count", label: "Number of comics" },
 ];
 const ALL_VARIABLES: { key: string; label: string }[] = [...TEMPLATE_VARIABLES, ...EXTRA_VARIABLES];
 
@@ -511,6 +514,7 @@ function MessageSection({ type }: { type: MessageKey }) {
         <>
           {m.when}
           {held && " Banned, ignored and host comics never get a reply."}
+          {m.toGroup && " Pick when it goes out for each show in Messages → Groups, or in the show's settings."}
           {m.group === "replies" && " Drafted under Updates → Needs a reply; nothing goes out until you send it, unless “Send without asking me” is on."}
         </>
       }
@@ -518,8 +522,8 @@ function MessageSection({ type }: { type: MessageKey }) {
     >
       <TemplateEditor
         value={messageRich(settings, type)}
-        fallback={{ kind: m.defaultKind ?? "text", body: m.default, ...(m.defaultPoll && { poll: m.defaultPoll }) }}
-        keys={["name", ...m.vars]}
+        fallback={{ kind: m.defaultKind ?? "text", body: m.default, ...(m.defaultPoll && { poll: m.defaultPoll }), ...(m.defaultAttachLocation && { attachLocation: true }) }}
+        keys={m.toGroup ? [...m.vars] : ["name", ...m.vars]}
         extraVars={m.sample}
         disabled={off}
         kinds={type === "groupWelcome" ? ["text"] : type === "offer" ? ["text", "poll"] : ["text", "poll", "location"]}
@@ -609,7 +613,7 @@ function SnippetEditor({ snippet, onSave, onDelete }: { snippet: Snippet; onSave
 }
 
 const voiceKindOf = (m: MessageChoice): VoiceKind | null =>
-  m === "snippets" || m === "groupWelcome" ? null : m === "cancel" ? "cancelSpot" : (m as VoiceKind);
+  m === "snippets" || m === "groupWelcome" || (GROUP_POST_KEYS as readonly string[]).includes(m) ? null : m === "cancel" ? "cancelSpot" : (m as VoiceKind);
 
 /** Your voice: learn how you write from your own sent messages, then send every message that way. */
 function VoiceSection({ kind }: { kind: VoiceKind | null }) {

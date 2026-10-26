@@ -1,5 +1,22 @@
 # Changelog
 
+## 26 October 2026 (show groups)
+
+### Messages
+- **Show groups.** A Groups tab lists the WhatsApp groups linked to your shows (no other groups are ever read). Open one to read it with who said what, and post text, polls or the venue pin. Shows has a Group chat button on each card and in the show editor.
+- **Templates in every chat.** The Templates menu now has your messages from Settings (confirmation, "Am I up?", where and when, and more) filled in for that comic, next to your saved templates. Groups get the group templates.
+
+### Scheduled group posts
+- Schedule posts per show: the lineup, the venue and pin, a reminder, or your own message (start from a saved template), on the show day or up to 6 days before, at a time you pick. Optional "Write it in my voice". Edit them from the group chat or the show's settings.
+- New templates in Settings → Messages → Show groups: Lineup post, Venue and location, Show reminder. The show-day lineup post uses the Lineup post template too.
+- Your server sends them from its own scheduler (no cloud scheduler). Each goes once per show date; a lineup post waits for a confirmed lineup and tells you if it couldn't go; a cancelled show posts nothing.
+
+### Google Contacts
+- No more polling: an edit schedules one Cloud Task that writes the batch after a quiet minute, and re-arms only if work is left. The every-2-minutes `syncGoogleContacts` is now a 6-hourly safety sweep. New function `flushGoogleContacts`; run `deploy/setup-functions-iam.sh` once for the Cloud Tasks role.
+
+### Fixes
+- Requests: the card's bottom buttons fit on phones.
+
 ## 26 October 2026 (Google Contacts)
 
 ### Google Contacts

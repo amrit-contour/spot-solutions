@@ -17,7 +17,10 @@ export type MessageKey =
   | "lastSpot"
   | "heldWindow"
   | "heldLastWeek"
-  | "groupWelcome";
+  | "groupWelcome"
+  | "groupLineup"
+  | "groupVenue"
+  | "groupReminder";
 
 export type MessageGroup = "replies" | "offers" | "held" | "group";
 
@@ -35,12 +38,17 @@ export interface MessageType {
   /** What this message is when the curator hasn't changed it. Missing: text. */
   defaultKind?: MessageKind;
   defaultPoll?: PollSpec;
+  /** Sends the venue pin after the text unless the curator turns it off. */
+  defaultAttachLocation?: boolean;
+  /** Goes to a group, so there is no {{name}}. */
+  toGroup?: boolean;
 }
 
 /** An offer poll: the first option books the spot, the second passes. */
 export const OFFER_POLL_OPTIONS = ["Yes, I'll take it", "Pass"] as const;
 
 const SHOW_VARS = ["show", "venue", "day", "date", "time"] as const;
+const GROUP_VARS = [...SHOW_VARS, "mapsLink"] as const;
 
 export const MESSAGE_TYPES: readonly MessageType[] = [
   {
@@ -154,6 +162,35 @@ export const MESSAGE_TYPES: readonly MessageType[] = [
     default: "You're on for {{show}}!",
     vars: ["show"],
   },
+  {
+    key: "groupLineup",
+    group: "group",
+    label: "Lineup post",
+    when: "Posted in the show's group at the time you schedule. Waits for a confirmed lineup.",
+    default: "*{{show}}: the lineup* 🎤\n{{day}} {{date}}, {{time}} at {{venue}}\n\n{{lineup}}\n\nPlease reach 30 minutes early.",
+    vars: [...GROUP_VARS, "lineup", "count"],
+    sample: { lineup: "1. Rohan\n2. Priya\n3. Karthik", count: 3 },
+    toGroup: true,
+  },
+  {
+    key: "groupVenue",
+    group: "group",
+    label: "Venue and location",
+    when: "Posted in the show's group at the time you schedule, with the venue's map pin.",
+    default: "📍 See you at *{{venue}}* {{#mapsLink}}\n{{mapsLink}}{{/mapsLink}}\nShow starts {{time}}.",
+    vars: GROUP_VARS,
+    defaultAttachLocation: true,
+    toGroup: true,
+  },
+  {
+    key: "groupReminder",
+    group: "group",
+    label: "Show reminder",
+    when: "Posted in the show's group at the time you schedule, usually the day before.",
+    default: "Reminder: *{{show}}* is on {{day}} {{date}} at {{time}}, {{venue}}. Can't make it? Tell me today so someone else gets the spot 🙏",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
 ];
 
 export const MESSAGE_GROUPS: { id: MessageGroup; label: string }[] = [
@@ -232,7 +269,7 @@ export function storeMessage(m: RichMessage): MessageOverride {
 /** The curator's version of a message (or the default) in full. */
 export function messageRich(settings: Pick<Settings, "messages">, key: MessageKey): RichMessage {
   const t = messageType(key);
-  const fallback: RichMessage = { kind: t.defaultKind ?? "text", body: t.default, ...(t.defaultPoll && { poll: t.defaultPoll }) };
+  const fallback: RichMessage = { kind: t.defaultKind ?? "text", body: t.default, ...(t.defaultPoll && { poll: t.defaultPoll }), ...(t.defaultAttachLocation && { attachLocation: true }) };
   return normalizeMessage(settings.messages?.[key], fallback);
 }
 

@@ -1,4 +1,5 @@
 // Firestore document shapes. Everything lives under users/{uid}/...
+import type { GroupPost } from "./groupPosts.ts";
 
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
 export type Tier = "open" | "regular" | "featured";
@@ -215,6 +216,10 @@ export interface Show {
   groupMode?: GroupMode;
   showDaySyncTime?: string; // "12:00"
   postLineupToGroup?: boolean;
+  /** Messages sent to the group on a schedule (lineup, venue pin, reminders). See groupPosts.ts. */
+  groupPosts?: GroupPost[];
+  /** Post id → the show date it last went out for, so each goes once per show. Written by the worker. */
+  groupPostsSent?: Record<string, string> | null;
   /** Last members read from the group, so the lineup page can show them instantly. Written by the worker. */
   groupMembers?: GroupMembersCache | null;
 }

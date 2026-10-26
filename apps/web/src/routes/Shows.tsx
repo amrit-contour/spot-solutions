@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { GroupPostsEditor } from "../components/GroupPosts";
 import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -10,7 +11,7 @@ import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
 import { PageHeader } from "../components/Shell";
 import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "../components/ui";
-import { IconAdd, IconBuilding, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconWarn } from "../components/icons";
+import { IconAdd, IconBuilding, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconWarn } from "../components/icons";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
@@ -83,13 +84,13 @@ export function Shows() {
                 </div>
                 <motion.ul className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
                   {vs.map((s) => (
-                    <motion.li key={s.id} variants={{ hidden: { opacity: 0, transform: "translateY(6px)" }, show: { opacity: 1, transform: "translateY(0px)" } }}>
+                    <motion.li key={s.id} className="relative" variants={{ hidden: { opacity: 0, transform: "translateY(6px)" }, show: { opacity: 1, transform: "translateY(0px)" } }}>
                       <button onClick={() => setEditingShow(s)} className={cx("state-layer pressable flex w-full items-start gap-4 rounded-lg bg-surface-low p-4 text-left", !s.active && "opacity-60")}>
                         <span className="grid size-14 flex-none place-items-center rounded-md bg-primary-container text-on-primary-container">
                           <span className="type-title-m">{DAY_SHORT[s.weekday]}</span>
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate type-title-m">{s.name}</span>
+                          <span className={cx("block truncate type-title-m", s.groupId && "pr-10")}>{s.name}</span>
                           <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 type-body-m text-on-surface-variant">
                             <span className="inline-flex items-center gap-1"><IconClock className="icon size-4" />{formatTime(s.startTime)}</span>
                             <span className="tabular">{s.slotCount} slots{s.includeSlotTime && s.defaultMinutes ? ` · ${s.defaultMinutes} min` : ""}</span>
@@ -97,11 +98,17 @@ export function Shows() {
                           <span className="mt-2 flex flex-wrap gap-1.5">
                             {s.groupId ? <Chip icon={IconGroup}>Group linked</Chip> : <Chip className="border-dashed">No group</Chip>}
                             {s.groupId && <Chip icon={IconClock}>{GROUP_MODE_LABEL[groupModeOf(s)]}</Chip>}
+                            {s.groupPosts?.some((p) => p.enabled) && <Chip icon={IconClock}>{s.groupPosts.filter((p) => p.enabled).length} scheduled</Chip>}
                             {s.regulars?.length ? <Chip tone="tertiary" icon={IconStar}>{s.regulars.length} regular{s.regulars.length > 1 ? "s" : ""}</Chip> : null}
                             {!s.active && <Chip>Paused</Chip>}
                           </span>
                         </span>
                       </button>
+                      {s.groupId && (
+                        <Link to={`/messages?g=${encodeURIComponent(s.groupId)}`} aria-label={`Open the ${s.name} group chat`} title="Group chat" className="state-layer absolute top-3 right-3 grid size-10 place-items-center rounded-full text-primary">
+                          <IconChat className="icon size-5" />
+                        </Link>
+                      )}
                     </motion.li>
                   ))}
                   <li>
@@ -170,7 +177,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
   const save = async () => {
     if (!draft.name?.trim()) return toast.error("Give the show a name");
     // groupMembers is the worker's cache of the group: never written back from a possibly stale draft.
-    const { id, groupMembers: _cache, ...rest } = draft as Show;
+    const { id, groupMembers: _cache, groupPostsSent: _sent, ...rest } = draft as Show;
     const data = { ...rest, groupMode: mode };
     // Merge, so a member refresh that landed while this was open isn't wiped. A different group means a different list.
     if (id) await setDoc(userDoc(uid, "shows", id), { ...data, ...(data.groupId !== value?.groupId ? { groupMembers: deleteField() } : {}) }, { merge: true });
@@ -312,6 +319,17 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                   </div>
                 </div>
               )}
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex-1 type-title-s">Scheduled posts</span>
+                  {draft.id && value?.groupId === draft.groupId && (
+                    <Link to={`/messages?g=${encodeURIComponent(draft.groupId)}`} className="state-layer inline-flex h-9 items-center gap-1 rounded-full px-3 type-label-l text-primary">
+                      <IconChat className="icon size-4" /> Open group chat
+                    </Link>
+                  )}
+                </div>
+                <GroupPostsEditor show={{ name: draft.name ?? "", weekday: draft.weekday ?? 1, startTime: draft.startTime ?? "20:00", venueId: draft.venueId ?? "", groupPostsSent: value?.groupPostsSent }} posts={draft.groupPosts ?? []} onChange={(v) => set("groupPosts", v)} />
+              </div>
               <PeoplePicker label="Regulars (always stay in the group)" icon={IconStar} selected={draft.regulars ?? []} onToggle={(id) => toggleIn("regulars", id)} people={comics} members={memberIds} />
               <PeoplePicker label="Protected (co-hosts, staff)" icon={IconMap} selected={draft.protected ?? []} onToggle={(id) => toggleIn("protected", id)} people={comics} members={memberIds} />
             </div>

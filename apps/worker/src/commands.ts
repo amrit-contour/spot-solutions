@@ -16,6 +16,8 @@ import {
   localNow,
   confirmSkipReason,
   renderMessage,
+  groupPostVars,
+  messageRich,
   renderTemplate,
   normalizeMessage,
   pollProblem,
@@ -608,8 +610,10 @@ export async function runShowDaySync(uid: string, id: string) {
   if (failed.length) await notice(uid, "warn", `${show.name}: couldn't update ${failed.join(", ")} in the group. Add them by hand.`);
 
   if (show.postLineupToGroup && show.groupId && lineup.slots.length) {
-    const names = lineup.slots.map((s, i) => `${i + 1}. ${comics.get(s.comicId)?.name ?? "TBA"}`).join("\n");
-    await sendQueued(client, show.groupId, `*${show.name}: tonight's lineup* (${formatTime(show.startTime)})\n\n${names}`);
+    const names = lineup.slots.map((s) => comics.get(s.comicId)?.name ?? "TBA");
+    const venue = watchUser(uid).venues.find((v) => v.id === show.venueId);
+    const vars = groupPostVars(show, venue, dateInWeek(lineup.weekOf, show.weekday), names);
+    await sendRich(client, show.groupId, messageRich(watchUser(uid).settings, "groupLineup"), vars, venue);
   }
   console.log(`[show-day] ${uid} ${show.name}: +${plan.toAdd.length} −${plan.toRemove.length}`);
 }

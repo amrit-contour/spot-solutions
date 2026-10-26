@@ -1,4 +1,5 @@
-// Once a minute or two, run the show-day group update for any confirmed show happening today.
+// Every two minutes, on the curator's own server: the show-day group update, scheduled group posts, offers, mic checks.
+// Everything time-based lives here rather than in a cloud scheduler, so it costs nothing to run.
 import { localNow, type Lineup } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { notice, runShowDaySync } from "./commands.ts";
@@ -8,6 +9,7 @@ import { agentTick } from "./agent.ts";
 import { watchUser } from "./userData.ts";
 import { expireOffers, sendMicChecks } from "./replies.ts";
 import { maybeCheckFollowUps } from "./followUp.ts";
+import { sendGroupPosts } from "./groupPosts.ts";
 
 const TICK_MS = 2 * 60_000;
 const running = new Set<string>();
@@ -47,6 +49,7 @@ export function startScheduler(uids: () => Iterable<string>) {
       void expireOffers(uid).catch((e) => console.error("[offers]", e));
       void sendMicChecks(uid, client).catch((e) => console.error("[mic-check]", e));
       void maybeCheckFollowUps(uid, client).catch((e) => console.error("[follow-up]", e));
+      void sendGroupPosts(uid, client).catch((e) => console.error("[group-post]", e));
     }
   }, TICK_MS).unref();
 }

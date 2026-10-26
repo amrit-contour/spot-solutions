@@ -1,23 +1,32 @@
 // Messages: chat with the comics on your list without leaving the app. Chats are read live from your own WhatsApp
 // (through your server) when you open the page, and are never saved: the command results that carry them are deleted as soon
 // as they are read (docs/architecture.md "Messages"). Only people in Comics are listed.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { updateDoc, where } from "firebase/firestore";
 import { toast } from "sonner";
 import {
+  DAY_NAMES,
   DAY_SHORT,
+  dateInWeek,
   daysBetween,
   dayLabel,
   filterThreads,
   formatDate,
   formatTime,
   groupByDay,
+  groupPostMessage,
+  groupPostVars,
+  messageType,
+  nextShowDate,
+  whenLabel,
   hasPin,
   lastSpot,
   localNow,
   pollProblem,
   type GetThreadResult,
+  type GroupPost,
+  type GroupThreadItem,
   type Lineup,
   type ListThreadsResult,
   type RichMessage,
@@ -35,12 +44,13 @@ import { demoSource, liveSource, type ChatSource } from "../lib/messages";
 import { placeAsTold, placeComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { Menu, MenuItem } from "../components/Menu";
-import { SnippetMenu } from "../components/SnippetMenu";
+import { COMIC_MESSAGE_KEYS, SnippetMenu } from "../components/SnippetMenu";
+import { GroupPostsEditor } from "../components/GroupPosts";
 import { RequestPills, requestPills } from "../components/RequestTags";
-import { MessageComposer, withKind } from "../components/rich/MessageComposer";
+import { MessageComposer, messageSummary, withKind } from "../components/rich/MessageComposer";
 import { PinCard, PollCard, WaText } from "../components/rich/WaText";
-import { Avatar, Button, Chip, Empty, IconButton, Segmented, Select, Spinner, Switch, cx } from "../components/ui";
-import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClose, IconMic, IconRefresh, IconSearch, IconSend, IconServer, IconSkip, IconSparkle } from "../components/icons";
+import { Avatar, Button, Chip, Empty, IconButton, Segmented, Select, Sheet, Spinner, Switch, cx } from "../components/ui";
+import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconGroup, IconMic, IconRefresh, IconSearch, IconSend, IconServer, IconSkip, IconSparkle } from "../components/icons";
 
 const emptyText = (): RichMessage => ({ kind: "text", body: "" });
 const OPEN = ["new", "acked"];
@@ -99,8 +109,10 @@ export function Messages() {
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const [params, setParams] = useSearchParams();
   const selected = params.get("c");
+  const selectedGroup = params.get("g");
   const [q, setQ] = useState("");
-  const [needsReply, setNeedsReply] = useState(false);
+  const [filter, setFilter] = useState<"all" | "needs" | "groups">(() => (selectedGroup ? "groups" : "all"));
+  const needsReply = filter === "needs";
   const now = useNow(30_000);
 
   const demoData = useRef({ comics, requests: requests.data, lineups: lineups.data, shows, now });
@@ -113,25 +125,34 @@ export function Messages() {
   const threads = useMemo(() => list.data?.threads ?? [], [list.data]);
   const shown = useMemo(() => filterThreads(threads, q).filter((t) => !needsReply || t.awaitingYou), [threads, q, needsReply]);
   const waiting = threads.filter((t) => t.awaitingYou).length;
+  const groups = useMemo(() => list.data?.groups ?? [], [list.data]);
+  const shownGroups = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return needle ? groups.filter((g) => g.name.toLowerCase().includes(needle) || g.snippet.toLowerCase().includes(needle)) : groups;
+  }, [groups, q]);
+  const linkedGroups = new Set(shows.map((s) => s.groupId).filter(Boolean)).size;
   const tz = settings.timezone;
 
   const open = (id: string) => setParams({ c: id });
+  const openGroup = (id: string) => setParams({ g: id });
+  const group = selectedGroup ? (groups.find((g) => g.groupId === selectedGroup) ?? groupStub(selectedGroup, shows)) : undefined;
+  const anyOpen = Boolean(selected || selectedGroup);
   const close = () => setParams({}, { replace: true });
   const comic = selected ? comicsById.get(selected) : undefined;
 
   return (
     <div className="w-full">
       {/* On phones an open chat takes the whole screen, so the page title steps aside. `contents` keeps the header sticky. */}
-      <div className={selected ? "hidden lg:contents" : "contents"}>
+      <div className={anyOpen ? "hidden lg:contents" : "contents"}>
         <PageHeader
           title="Messages"
-          subtitle="Chats with the comics on your list. Read live from your WhatsApp, never saved."
+          subtitle="Chats with the comics on your list and your show groups. Read live from your WhatsApp, never saved."
           actions={ready && <IconButton icon={IconRefresh} label="Refresh chats" onClick={() => void list.refresh()} disabled={list.loading} className={cx("size-9", list.loading && "[&_svg]:animate-spin")} />}
         />
       </div>
 
       <div className="px-4 pb-6 sm:px-8 lg:grid lg:h-[calc(100dvh-var(--page-header-h,0px)-1.5rem)] lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] lg:gap-6">
-        <section aria-label="Chats" className={cx("min-h-0 flex-col lg:flex", selected ? "hidden" : "flex")}>
+        <section aria-label="Chats" className={cx("min-h-0 flex-col lg:flex", anyOpen ? "hidden" : "flex")}>
           {!ready ? (
             <Unavailable offline={!workerOnline} />
           ) : (
@@ -153,16 +174,35 @@ export function Messages() {
                 <Segmented
                   full
                   size="sm"
-                  value={needsReply ? "needs" : "all"}
-                  onChange={(v) => setNeedsReply(v === "needs")}
+                  value={filter}
+                  onChange={setFilter}
                   options={[
                     { value: "all", label: "All" },
                     { value: "needs", label: `Needs reply${waiting ? ` · ${waiting}` : ""}` },
+                    { value: "groups", label: "Groups" },
                   ]}
                 />
               </div>
               <div className="min-h-0 flex-1 lg:overflow-y-auto lg:overscroll-contain">
-                {list.loading && !list.data ? (
+                {filter === "groups" ? (
+                  list.loading && !list.data ? (
+                    <ListSkeleton />
+                  ) : list.error && !list.data ? (
+                    <ErrorNote message={list.error} onRetry={() => void list.refresh()} />
+                  ) : !groups.length ? (
+                    <Empty icon={IconGroup} title={linkedGroups ? "Your show groups will show up here" : "No show groups linked yet"} action={<Link to="/shows" className="state-layer inline-flex h-10 items-center rounded-full bg-secondary-container px-5 type-label-l text-on-secondary-container">Open Shows</Link>}>
+                      {linkedGroups ? "Refresh in a moment. If a group still doesn't show, update your server." : "Link a WhatsApp group to a show under Shows, and you can chat in it and schedule posts from here."}
+                    </Empty>
+                  ) : !shownGroups.length ? (
+                    <p className="px-2 py-8 text-center type-body-m text-on-surface-variant">No groups match “{q.trim()}”.</p>
+                  ) : (
+                    <ul className="flex flex-col pt-1" aria-live="polite">
+                      {shownGroups.map((g) => (
+                        <GroupRow key={g.groupId} g={g} active={g.groupId === selectedGroup} now={now} tz={tz} onOpen={() => openGroup(g.groupId)} />
+                      ))}
+                    </ul>
+                  )
+                ) : list.loading && !list.data ? (
                   <ListSkeleton />
                 ) : list.error && !list.data ? (
                   <ErrorNote message={list.error} onRetry={() => void list.refresh()} />
@@ -185,8 +225,10 @@ export function Messages() {
           )}
         </section>
 
-        <section aria-label="Conversation" className={cx("min-h-0 min-w-0 flex-col lg:flex", selected ? "flex" : "hidden")}>
-          {selected && ready ? (
+        <section aria-label="Conversation" className={cx("min-h-0 min-w-0 flex-col lg:flex", anyOpen ? "flex" : "hidden")}>
+          {group && ready ? (
+            <GroupView key={group.groupId} source={source} group={group} lineups={lineups.data} onBack={close} onChanged={() => void list.refresh()} />
+          ) : selected && ready ? (
             comic ? (
               <ThreadView
                 key={selected}
@@ -253,6 +295,50 @@ function ErrorNote({ message, onRetry }: { message: string; onRetry: () => void 
   );
 }
 
+/** A linked group that isn't in the list yet (opened from Shows before the list loads). */
+function groupStub(groupId: string, shows: Show[]): GroupThreadItem | undefined {
+  const linked = shows.filter((s) => s.groupId === groupId);
+  if (!linked.length) return undefined;
+  return { groupId, name: `${linked[0].name} group`, showIds: linked.map((s) => s.id), at: 0, snippet: "", fromMe: false, unread: 0 };
+}
+
+function GroupRow({ g, active, now, tz, onOpen }: { g: GroupThreadItem; active: boolean; now: number; tz: string; onOpen: () => void }) {
+  const { shows } = useApp();
+  const scheduled = shows.filter((s) => g.showIds.includes(s.id)).flatMap((s) => s.groupPosts ?? []).filter((p) => p.enabled).length;
+  return (
+    <li>
+      <button onClick={onOpen} aria-current={active ? "true" : undefined} className={cx("state-layer flex min-h-[4.5rem] w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left", active && "bg-secondary-container")}>
+        <span className="grid size-11 flex-none place-items-center rounded-full bg-tertiary-container text-on-tertiary-container">
+          <IconGroup className="icon size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate type-title-m font-medium">{g.name}</span>
+            {g.at > 0 && <span className={cx("flex-none type-label-m tabular", g.unread ? "text-primary" : "text-on-surface-variant")}>{listTime(g.at, now, tz)}</span>}
+          </span>
+          <span className="mt-0.5 flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate type-body-m text-on-surface-variant">
+              {g.fromMe ? <span>You: </span> : g.author ? <span>{g.author}: </span> : null}
+              {g.snippet || "No messages yet"}
+            </span>
+            {g.unread > 0 && (
+              <span className="grid min-w-5 flex-none place-items-center rounded-full bg-primary px-1.5 type-label-s leading-5 text-on-primary tabular">
+                {g.unread}
+                <span className="sr-only"> unread</span>
+              </span>
+            )}
+          </span>
+          {scheduled > 0 && (
+            <span className="mt-1 inline-flex items-center gap-1 type-label-s text-on-surface-variant">
+              <IconClock className="icon size-3.5" /> {scheduled} scheduled post{scheduled > 1 ? "s" : ""}
+            </span>
+          )}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 function ThreadRow({ t, active, now, tz, onOpen }: { t: ThreadItem; active: boolean; now: number; tz: string; onOpen: () => void }) {
   return (
     <li>
@@ -301,17 +387,181 @@ function mergeNewest(prev: ThreadMessage[], page: ThreadMessage[]) {
   return [...prev.filter((m) => m.at < page[0].at && !page.some((p) => p.id === m.id)), ...page];
 }
 
-function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { source: ChatSource; comic: NonNullable<ReturnType<typeof useApp>["comicsById"] extends Map<string, infer C> ? C : never>; request?: SpotRequest; lineups: Lineup[]; onBack: () => void; onChanged: () => void }) {
+type ComicOf = NonNullable<ReturnType<typeof useApp>["comicsById"] extends Map<string, infer C> ? C : never>;
+
+function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { source: ChatSource; comic: ComicOf; request?: SpotRequest; lineups: Lineup[]; onBack: () => void; onChanged: () => void }) {
   const { week, shows, venues, settings } = useApp();
+  const first = comic.name.split(/\s+/)[0] || comic.name;
+  const placed = lineups.find((l) => l.status !== "cancelled" && l.status !== "canned" && l.slots.some((s) => s.comicId === comic.id));
+  const placedShow = shows.find((s) => s.id === placed?.showId);
+  const placedVenue = venues.find((v) => v.id === placedShow?.venueId);
+  const prev = lastSpot(comic.history, localNow(new Date(), settings.timezone).date);
+  // What the Templates menu fills in: their show this week (if any) and their last spot.
+  const vars = {
+    ...(placedShow && { show: placedShow.name, venue: placedVenue?.name, mapsLink: placedVenue?.mapsLink, day: DAY_NAMES[placedShow.weekday], date: formatDate(dateInWeek(week, placedShow.weekday)), time: formatTime(placedShow.startTime) }),
+    ...(prev && { lastShow: prev.showName, lastDate: formatDate(prev.date) }),
+  };
+  const [draft, setDraft] = useState<RichMessage | null>(null);
+  const defaultVenue = placedShow?.venueId ?? request?.intent.venueId ?? undefined;
+  return (
+    <Conversation
+      threadKey={comic.id}
+      load={(before) => source.thread(comic.id, before)}
+      send={(msg, opts) => source.send({ id: comic.id, chatId: comic.chatId, name: comic.name }, msg, opts)}
+      onBack={onBack}
+      onSent={onChanged}
+      ariaLabel={`Chat with ${comic.name}`}
+      labelFor={() => first}
+      defaultVenueId={defaultVenue}
+      voiceAllowed
+      draft={draft}
+      onDraftUsed={() => setDraft(null)}
+      header={
+        <>
+          <Avatar name={comic.name} size={40} />
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate type-title-m">{comic.name}</h2>
+            {comic.phone && <p className="truncate type-body-s text-on-surface-variant tabular">+{comic.phone}</p>}
+          </div>
+          <AssistButton source={source} comic={comic} />
+        </>
+      }
+      context={<ThreadContext comic={comic} request={request} lineups={lineups} placedShow={placedShow} />}
+      aboveComposer={<AssistCard source={source} comic={comic} request={request} lineups={lineups} onUseReply={(t) => setDraft({ kind: "text", body: t })} week={week} />}
+      templates={(pick) => <SnippetMenu name={comic.name} vars={vars} builtins={["confirm", "ack", "reject", "cancelSpot"]} messages={COMIC_MESSAGE_KEYS} onPick={pick} />}
+    />
+  );
+}
+
+function GroupView({ source, group, lineups, onBack, onChanged }: { source: ChatSource; group: GroupThreadItem; lineups: Lineup[]; onBack: () => void; onChanged: () => void }) {
+  const { uid, shows, venues, comicsById, settings } = useApp();
+  const groupShows = shows.filter((s) => s.groupId === group.groupId);
+  const [showId, setShowId] = useState(groupShows[0]?.id ?? "");
+  const show = groupShows.find((s) => s.id === showId) ?? groupShows[0];
+  const venue = venues.find((v) => v.id === show?.venueId);
+  const lineup = lineups.find((l) => l.showId === show?.id && l.status === "confirmed");
+  const names = lineup?.slots.map((s) => comicsById.get(s.comicId)?.name ?? "TBA") ?? null;
+  const today = localNow(new Date(), settings.timezone).date;
+  const showDate = lineup?.date ?? (show ? nextShowDate(show, today) : today);
+  const vars = show ? groupPostVars(show, venue, showDate, names) : {};
+  const posts = show?.groupPosts ?? [];
+  const live = posts.filter((p) => p.enabled).length;
+  // Edited as a draft while the sheet is open (no write per keystroke), saved when it closes.
+  const [draftPosts, setDraftPosts] = useState<GroupPost[] | null>(null);
+  const openSchedule = () => setDraftPosts(posts);
+  const closeSchedule = () => {
+    if (show && draftPosts && JSON.stringify(draftPosts) !== JSON.stringify(posts)) {
+      void updateDoc(userDoc(uid, "shows", show.id), { groupPosts: draftPosts })
+        .then(() => toast.success("Schedule saved"))
+        .catch((e) => toast.error((e as Error).message));
+    }
+    setDraftPosts(null);
+  };
+  const scheduleOpen = draftPosts !== null;
+  const members = show?.groupMembers?.groupId === group.groupId ? show.groupMembers.members.length : null;
+  return (
+    <Conversation
+      threadKey={group.groupId}
+      load={(before) => source.groupThread(group.groupId, before)}
+      send={(msg, opts) => source.send({ id: group.groupId, chatId: group.groupId, name: "everyone" }, msg, opts)}
+      onBack={onBack}
+      onSent={onChanged}
+      ariaLabel={`${group.name} group`}
+      labelFor={(m) => m.author ?? "Someone"}
+      defaultVenueId={show?.venueId}
+      voiceAllowed
+      header={
+        <>
+          <span className="grid size-10 flex-none place-items-center rounded-full bg-tertiary-container text-on-tertiary-container">
+            <IconGroup className="icon size-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate type-title-m">{group.name}</h2>
+            <p className="truncate type-body-s text-on-surface-variant">
+              {groupShows.map((s) => s.name).join(", ") || "Show group"}
+              {members !== null && ` · ${members} members`}
+            </p>
+          </div>
+          <IconButton icon={IconClock} label="Scheduled posts" onClick={openSchedule} disabled={!show} />
+        </>
+      }
+      context={
+        show && (
+          <section aria-label="Scheduled posts" className="my-3 rounded-lg bg-surface-low px-4 py-3 lg:bg-surface-container">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 type-label-m text-on-surface-variant">Scheduled</span>
+              <Chip icon={IconClock}>{live ? `${live} post${live > 1 ? "s" : ""} on` : "Nothing scheduled"}</Chip>
+              {groupShows.length > 1 && <Select value={show.id} onChange={setShowId} options={groupShows.map((s) => ({ value: s.id, label: s.name }))} />}
+              <Button size="sm" variant="text" className="ml-auto" onClick={openSchedule}>
+                {posts.length ? "Edit" : "Schedule"}
+              </Button>
+            </div>
+            {posts.filter((p) => p.enabled).length > 0 && (
+              <ul className="mt-2 flex flex-col gap-0.5 type-body-s text-on-surface-variant">
+                {[...posts].filter((p) => p.enabled).sort((a, b) => b.daysBefore - a.daysBefore || a.time.localeCompare(b.time)).map((p) => (
+                  <li key={p.id} className="truncate">
+                    {whenLabel(p.daysBefore)}, {formatTime(p.time)} · {p.template === "custom" ? messageSummary(groupPostMessage(settings, p)) : messageType(p.template).label}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Sheet open={scheduleOpen} onClose={closeSchedule} title={`Scheduled posts · ${show.name}`} footer={<Button onClick={closeSchedule}>Done</Button>}>
+              <p className="mb-4 type-body-m text-on-surface-variant">Your server posts these in {group.name} at the times you pick.</p>
+              <GroupPostsEditor show={show} posts={draftPosts ?? posts} onChange={setDraftPosts} />
+            </Sheet>
+          </section>
+        )
+      }
+      templates={(pick) => <SnippetMenu vars={vars} messages={["groupLineup", "groupVenue", "groupReminder"]} onPick={pick} />}
+    />
+  );
+}
+
+/** One chat, a comic's or a group's: messages read live, older pages on demand, and the composer. */
+function Conversation({
+  threadKey,
+  load,
+  send: sendMsg,
+  onBack,
+  onSent,
+  header,
+  context,
+  aboveComposer,
+  templates,
+  labelFor,
+  defaultVenueId,
+  voiceAllowed,
+  ariaLabel,
+  draft,
+  onDraftUsed,
+}: {
+  threadKey: string;
+  load: (before?: number) => Promise<GetThreadResult>;
+  send: (msg: RichMessage, opts: { voice: boolean; venueId: string | null }) => Promise<unknown>;
+  onBack: () => void;
+  onSent: () => void;
+  header: ReactNode;
+  context?: ReactNode;
+  aboveComposer?: ReactNode;
+  templates: (pick: (m: RichMessage) => void) => ReactNode;
+  /** The label over a run of their messages. */
+  labelFor: (m: ThreadMessage) => string;
+  defaultVenueId?: string;
+  voiceAllowed: boolean;
+  ariaLabel: string;
+  /** A suggested reply to put in the box (from the AI assist). */
+  draft?: RichMessage | null;
+  onDraftUsed?: () => void;
+}) {
+  const { venues, settings } = useApp();
   const now = useNow(30_000);
   const tz = settings.timezone;
-  const first = comic.name.split(/\s+/)[0] || comic.name;
 
   // Messages: the newest page, refreshed while visible, with older pages added on demand.
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [olderBusy, setOlderBusy] = useState(false);
-  const newest = useLive<GetThreadResult>(() => source.thread(comic.id), comic.id, true, 30_000);
+  const newest = useLive<GetThreadResult>(() => load(), threadKey, true, 30_000);
   const firstLoad = useRef(true);
   useEffect(() => {
     if (!newest.data) return;
@@ -322,7 +572,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
     if (!messages.length) return;
     setOlderBusy(true);
     try {
-      const r = await source.thread(comic.id, messages[0].at);
+      const r = await load(messages[0].at);
       firstLoad.current = false;
       setMessages((prev) => [...r.messages.filter((m) => !prev.some((p) => p.id === m.id)), ...prev]);
       setHasMore(r.hasMore);
@@ -336,22 +586,25 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
   // Messages you've just sent show at once, then give way to the real ones.
   const [pending, setPending] = useState<Pending[]>([]);
   const [msg, setMsg] = useState<RichMessage>(emptyText);
+  useEffect(() => {
+    if (!draft) return;
+    setMsg(draft);
+    onDraftUsed?.();
+  }, [draft, onDraftUsed]);
   const [voice, setVoice] = useState(false);
-  const placed = lineups.find((l) => l.status !== "cancelled" && l.status !== "canned" && l.slots.some((s) => s.comicId === comic.id));
-  const placedShow = shows.find((s) => s.id === placed?.showId);
   const pinVenues = venues.filter((v) => hasPin(v));
-  const [venueId, setVenueId] = useState<string>(() => (placedShow && hasPin(venues.find((v) => v.id === placedShow.venueId)) ? placedShow.venueId : (request?.intent.venueId && hasPin(venues.find((v) => v.id === request.intent.venueId)) ? request.intent.venueId : (pinVenues[0]?.id ?? ""))) ?? "");
+  const [venueId, setVenueId] = useState<string>(() => (defaultVenueId && hasPin(venues.find((v) => v.id === defaultVenueId)) ? defaultVenueId : (pinVenues[0]?.id ?? "")));
   const venue = venues.find((v) => v.id === venueId);
-  const voiceReady = Boolean(settings.voice?.enabled && settings.voice.profile?.summary);
+  const voiceReady = voiceAllowed && Boolean(settings.voice?.enabled && settings.voice.profile?.summary);
   const ready = msg.kind === "poll" ? !pollProblem(msg.poll) : msg.kind === "location" ? hasPin(venue) : Boolean(msg.body.trim());
 
   const deliver = async (p: Pending) => {
     setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "sending", error: undefined } : y)));
     try {
-      await source.send({ id: comic.id, chatId: comic.chatId, name: comic.name }, p.msg, { voice: voice && p.msg.kind === "text", venueId: p.msg.kind === "location" ? venueId : null });
+      await sendMsg(p.msg, { voice: voice && p.msg.kind === "text", venueId: p.msg.kind === "location" || p.msg.attachLocation ? venueId : null });
       await newest.refresh();
       setPending((x) => x.filter((y) => y.id !== p.id));
-      onChanged();
+      onSent();
     } catch (e) {
       setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "failed", error: (e as Error).message } : y)));
     }
@@ -391,22 +644,18 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
   }, [lastKey, pending.length]);
 
   const rows = useMemo(() => groupByDay(messages, now, tz), [messages, now, tz]);
+  const who = (m: ThreadMessage) => (m.fromMe ? "me" : (m.author ?? "them"));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:overflow-hidden lg:rounded-lg lg:border lg:border-outline-variant">
       <header className="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 flex flex-none items-center gap-2 border-b border-outline-variant bg-surface/95 px-2 py-2 backdrop-blur sm:-mx-8 sm:px-6 lg:static lg:mx-0 lg:bg-surface-low lg:px-3">
         <IconButton icon={IconArrowLeft} label="Back to chats" onClick={onBack} className="lg:hidden" />
-        <Avatar name={comic.name} size={40} />
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate type-title-m">{comic.name}</h2>
-          {comic.phone && <p className="truncate type-body-s text-on-surface-variant tabular">+{comic.phone}</p>}
-        </div>
-        <AssistButton source={source} comic={comic} />
+        {header}
         <IconButton icon={IconRefresh} label="Refresh this chat" onClick={() => void newest.refresh()} disabled={newest.loading} className={cx(newest.loading && "[&_svg]:animate-spin")} />
       </header>
 
       <div ref={scroller} className="min-h-0 flex-1 lg:overflow-y-auto lg:overscroll-contain lg:bg-surface-lowest lg:px-4">
-        <ThreadContext comic={comic} request={request} lineups={lineups} placedShow={placedShow} />
+        {context}
 
         {hasMore && (
           <div className="flex justify-center py-2">
@@ -422,7 +671,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
         ) : !messages.length && !pending.length ? (
           <p className="py-12 text-center type-body-m text-on-surface-variant">No messages yet. Say hello below.</p>
         ) : (
-          <ol className="flex flex-col gap-1 pt-2 pb-3" aria-label={`Chat with ${comic.name}`}>
+          <ol className="flex flex-col gap-1 pt-2 pb-3" aria-label={ariaLabel}>
             {rows.map((r, i) => {
               if (r.row === "day") {
                 return (
@@ -432,10 +681,10 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
                 );
               }
               const prev = rows[i - 1];
-              const firstOfRun = !prev || prev.row === "day" || prev.m.fromMe !== r.m.fromMe;
+              const firstOfRun = !prev || prev.row === "day" || who(prev.m) !== who(r.m);
               return (
                 <li key={r.m.id}>
-                  <Bubble m={r.m} label={firstOfRun ? (r.m.fromMe ? "You" : first) : undefined} tz={tz} />
+                  <Bubble m={r.m} label={firstOfRun ? (r.m.fromMe ? "You" : labelFor(r.m)) : undefined} tz={tz} />
                 </li>
               );
             })}
@@ -450,7 +699,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
       </div>
 
       <div className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 -mx-4 flex flex-none flex-col gap-2 border-t border-outline-variant bg-surface px-4 pt-3 pb-3 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:bg-surface-low lg:px-4">
-        <AssistCard source={source} comic={comic} request={request} lineups={lineups} onUseReply={(t) => setMsg({ kind: "text", body: t })} week={week} />
+        {aboveComposer}
         <div
           className="flex flex-col gap-2"
           onKeyDown={(e) => {
@@ -471,12 +720,10 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
                 { value: "location", label: "Pin" },
               ]}
             />
-            <div className="ml-auto">
-              <SnippetMenu name={comic.name} onPick={setMsg} />
-            </div>
+            <div className="ml-auto">{templates(setMsg)}</div>
           </div>
-          <MessageComposer value={msg} onChange={setMsg} compact preview={false} attach={false} idPrefix="chat" />
-          {msg.kind === "location" && (
+          <MessageComposer value={msg} onChange={setMsg} compact preview={false} idPrefix={`chat-${threadKey}`} attachLabel="Also send the venue pin" />
+          {(msg.kind === "location" || msg.attachLocation) && (
             <div className="flex flex-col gap-1.5">
               {pinVenues.length ? (
                 <Select value={venueId} onChange={setVenueId} label="Venue to pin" options={pinVenues.map((v) => ({ value: v.id, label: v.name }))} />
