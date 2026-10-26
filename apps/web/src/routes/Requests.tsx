@@ -390,13 +390,13 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
         )}
       </AnimatePresence>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-outline-variant/40 py-2 pr-3 pl-2 sm:pr-4 sm:pl-3">
+      <div className="mt-3 flex min-w-0 items-center gap-1 border-t sm:gap-2 border-outline-variant/40 py-2 pr-3 pl-2 sm:pr-4 sm:pl-3">
         <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="state-layer inline-flex h-10 flex-none whitespace-nowrap items-center gap-1.5 rounded-full px-3 type-label-l text-on-surface-variant">
           {r.messages.length} message{r.messages.length > 1 ? "s" : ""}
           <IconArrowDown className={cx("icon size-4 transition-transform duration-200", open && "rotate-180")} />
         </button>
         <Confidence value={r.intent.confidence} />
-        <div className="flex-1" />
+        <div className="min-w-0 flex-1" />
         <Link to={`/messages?c=${encodeURIComponent(r.comicId)}`} className="state-layer pressable inline-flex h-10 flex-none items-center gap-1.5 rounded-full px-3 type-label-l whitespace-nowrap text-on-surface-variant" title={`Open the chat with ${r.comicName}`}>
           <IconChat className="icon size-4" />
           <span className="max-xl:sr-only">Open chat</span>
@@ -423,8 +423,10 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
           <>
             {!placedIn && <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} />}
             {placedShow ? (
-              <Chip tone="success" icon={r.status === "confirmed" ? IconCheck : IconMic}>
-                {r.status === "confirmed" ? "Confirmed" : "In"} · {placedShow.name}
+              <Chip tone="success" icon={r.status === "confirmed" ? IconCheck : IconMic} className="min-w-0" title={placedShow.name}>
+                <span className="truncate">
+                  {r.status === "confirmed" ? "Confirmed" : "In"} · {placedShow.name}
+                </span>
               </Chip>
             ) : (
               <Menu
@@ -471,7 +473,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
 function Confidence({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   return (
-    <span className="hidden items-center gap-2 type-label-s text-on-surface-variant min-[420px]:inline-flex" title={`Gemma is ${pct}% sure this is a spot request`}>
+    <span className="hidden items-center gap-2 type-label-s text-on-surface-variant sm:inline-flex" title={`Gemma is ${pct}% sure this is a spot request`}>
       <span className="relative h-1 w-12 overflow-hidden rounded-full bg-surface-highest">
         <motion.span className="absolute inset-y-0 left-0 rounded-full bg-primary" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }} />
       </span>

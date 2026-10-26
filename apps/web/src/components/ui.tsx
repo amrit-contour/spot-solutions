@@ -115,8 +115,10 @@ export function Chip({
   onClick,
   tone = "neutral",
   className,
+  title,
 }: {
   children: ReactNode;
+  title?: string;
   icon?: Icon;
   selected?: boolean;
   onClick?: () => void;
@@ -137,6 +139,7 @@ export function Chip({
   return (
     <Tag
       onClick={onClick}
+      title={title}
       aria-pressed={onClick ? Boolean(selected) : undefined}
       className={cx(
         "inline-flex h-7 items-center gap-1 rounded-sm px-2.5 type-label-m whitespace-nowrap",
@@ -145,7 +148,7 @@ export function Chip({
         className,
       )}
     >
-      {I && <I className="icon -ml-0.5 size-4" />}
+      {I && <I className="icon -ml-0.5 size-4 flex-none" />}
       {children}
     </Tag>
   );
