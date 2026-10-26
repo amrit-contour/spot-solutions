@@ -36,6 +36,10 @@ export function firestoreGcStore(db = getFirestore()): GcStore {
       const [s, u] = await db.getAll(statusDoc(uid), db.doc(`users/${uid}`));
       return s?.data()?.state === "connected" && u?.data()?.settings?.googleContacts?.enabled === true;
     },
+    async ownPhones(uid) {
+      const snaps = await db.getAll(db.doc(`users/${uid}/session/state`), db.doc(`users/${uid}/session/agent`));
+      return snaps.map((x) => String(x.data()?.phone ?? "")).filter(Boolean);
+    },
     async getComics(uid, ids) {
       const col = db.collection(`users/${uid}/comics`);
       const snaps = ids ? (ids.length ? await db.getAll(...ids.map((i) => col.doc(i))) : []) : (await col.limit(5000).get()).docs;

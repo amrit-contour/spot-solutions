@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AppError } from "./core";
 import { decryptToken, encryptToken } from "./gcrypto";
 import type { Fetch } from "./googleApi";
-import { connect, disconnect, onComicWritten, processDue, processUser, runContacts, type Caller, type GcDeps, type GcStore, type LinkRecord } from "./googleContacts";
+import { connect, disconnect, onComicWritten, planContacts, processDue, processUser, runContacts, type Caller, type GcDeps, type GcStore, type LinkRecord } from "./googleContacts";
 import { enqueue, nextTaskAt, type QueueDoc } from "./googleLogic";
 
 const key = randomBytes(32);
@@ -19,12 +19,14 @@ function fakeStore(over: Partial<GcStore> = {}) {
     comics: [{ id: "a@c.us", name: "Asha", phone: "919876543210" }],
     removed: [] as string[],
     on: true,
+    own: [] as string[],
   };
   const store: GcStore = {
     getLink: async () => s.link,
     putLink: async (_u, r) => void (s.link = r),
     removeLink: async (_u, why) => void (s.removed.push(why), (s.link = null), (s.queue = null)),
     autoSyncOn: async () => s.on && !!s.link,
+    ownPhones: async () => s.own,
     getComics: async (_u, ids) => s.comics.filter((c) => !ids || ids.includes(c.id)),
     notice: async (_u, _l, t) => void s.notices.push(t),
     enqueue: async (_u, id, now) => void (s.queue = enqueue(s.queue ?? undefined, id, now)),
@@ -183,6 +185,24 @@ describe("trigger and scheduled worker", () => {
     s.queue = enqueue(undefined, "a@c.us", 0);
     await processDue(deps(store, async (url) => (url.includes("oauth2.googleapis.com/token") ? res(500, {}) : res(200, {}))));
     expect(s.notices).toEqual([]);
+  });
+});
+
+describe("own numbers", () => {
+  it("never writes the curator's own number to Google, even with a different name there", async () => {
+    const { s, store } = fakeStore();
+    s.link = { enc: encryptToken(key, "u1", "1//rt"), email: "amrit@gmail.com", since: 1 };
+    s.comics = [{ id: "919876543210@c.us", name: "Amrit Dash", phone: "919876543210" }];
+    s.own = ["919876543210"];
+    const f = vi.fn<Fetch>(async (url) => {
+      if (url.includes("oauth2.googleapis.com/token")) return res(200, { access_token: "at" });
+      if (url.includes("/connections")) return res(200, { connections: [{ resourceName: "people/c1", etag: "e", names: [{ displayName: "Me (work)" }], phoneNumbers: [{ canonicalForm: "+919876543210" }] }] });
+      return res(500, {});
+    });
+    const plan = await planContacts(deps(store, f), me, {});
+    expect(plan.update).toEqual([]);
+    expect(plan.create).toEqual([]);
+    expect(plan.skipped).toMatchObject([{ reason: "yours" }]);
   });
 });
 

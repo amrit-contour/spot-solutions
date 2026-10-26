@@ -164,8 +164,8 @@ type SyncComic = Pick<Comic, "id" | "name" | "phone">;
 export type UpsertResult = "created" | "updated" | "unchanged" | "skipped";
 
 /** Add or rename one comic's contact. Never deletes, never touches other numbers or fields. */
-export async function upsertGoogleContact(comic: SyncComic): Promise<UpsertResult> {
-  const plan = planContactSync([comic], await loadGoogleIndex());
+export async function upsertGoogleContact(comic: SyncComic, own: string[] = []): Promise<UpsertResult> {
+  const plan = planContactSync([comic], await loadGoogleIndex(), own);
   const [c] = plan.create;
   if (c) return (await createOne(c), "created");
   const [u] = plan.update;
@@ -178,8 +178,8 @@ export async function upsertGoogleContact(comic: SyncComic): Promise<UpsertResul
 }
 
 /** Plan a sync against a fresh read of Google Contacts. */
-export async function planGoogleSync(comics: SyncComic[]): Promise<ContactPlan> {
-  return planContactSync(comics, await loadGoogleIndex(true));
+export async function planGoogleSync(comics: SyncComic[], own: string[] = []): Promise<ContactPlan> {
+  return planContactSync(comics, await loadGoogleIndex(true), own);
 }
 
 export interface SyncResult {
@@ -251,9 +251,10 @@ export function reportGoogleError(e: unknown, what = "Couldn't save to Google Co
  * Not connected yet (a reload forgets the token) means the Reconnect toast, not a popup.
  * When the curator chose "Keep connected", the server saves it (a Cloud Function watches comic edits), so this stays out.
  */
-export function saveComicToGoogle(comic: SyncComic, enabled: boolean) {
+/** `own`: the curator's own WhatsApp number. Their own contact card is never changed. */
+export function saveComicToGoogle(comic: SyncComic, enabled: boolean, own: string[] = []) {
   if (!enabled || isDemoUser() || !comic.phone || !normalizePhone(comic.phone)) return;
   void serverLinkActive()
-    .then((server) => (server ? undefined : upsertGoogleContact(comic)))
+    .then((server) => (server ? undefined : upsertGoogleContact(comic, own)))
     .catch((e) => reportGoogleError(e));
 }

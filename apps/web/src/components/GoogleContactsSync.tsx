@@ -5,6 +5,7 @@ import type { Comic, ContactPlan } from "@spot/shared";
 import { connectGoogleContacts, hasGoogleToken, planGoogleSync, reportGoogleError, runGoogleSync } from "../lib/googleContacts";
 import { callableMessage, planGoogleServer, runGoogleServer, useServerLink } from "../lib/googleServer";
 import { ConfirmDialog } from "@spot/ui";
+import { useApp } from "../lib/app";
 
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
@@ -17,6 +18,7 @@ export function planSentence(p: ContactPlan) {
 
 /** `start(comics)` must be called from a click: it may open Google's popup. `dialog` goes anywhere in the tree. */
 export function useGoogleSync() {
+  const { session } = useApp();
   const [plan, setPlan] = useState<ContactPlan | null>(null);
   const [open, setOpen] = useState(false);
   const [planning, setPlanning] = useState(false);
@@ -30,7 +32,7 @@ export function useGoogleSync() {
     try {
       // Kept connected: the server reads Google Contacts, so no popup and no token in this browser.
       if (!server && !hasGoogleToken()) await connectGoogleContacts();
-      const p = server ? await planGoogleServer(comics.map((c) => c.id)) : await planGoogleSync(comics);
+      const p = server ? await planGoogleServer(comics.map((c) => c.id)) : await planGoogleSync(comics, session?.phone ? [session.phone] : []);
       if (!p.create.length && !p.update.length) {
         toast.success(p.unchanged.length ? "Google Contacts already has all these names" : "Nothing to save to Google Contacts");
         return;
@@ -103,7 +105,8 @@ export function useGoogleSync() {
             </div>
           )}
           <p className="type-body-s">Already in your phone but listed as new? That contact is probably saved on the phone or SIM only, not in your Google account, so Google can't see it.</p>
-          {plan.skipped.length > 0 && <p>{n(plan.skipped.length, "comic")} skipped: no phone number WhatsApp will tell us.</p>}
+          {plan.skipped.some((x) => x.reason === "yours") && <p>Your own number is left alone, so your own contact card keeps its name.</p>}
+          {plan.skipped.some((x) => x.reason !== "yours") && <p>{n(plan.skipped.filter((x) => x.reason !== "yours").length, "comic")} skipped: no phone number WhatsApp will tell us.</p>}
           {progress && (
             <div role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} className="flex flex-col gap-1.5">
               <div className="h-2 overflow-hidden rounded-full bg-surface-highest">

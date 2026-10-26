@@ -126,8 +126,9 @@ export class People {
     return map;
   }
 
-  async plan(comics: SyncComic[]): Promise<ContactPlan> {
-    return planContactSync(comics, await this.loadIndex());
+  /** `own`: the curator's own numbers, never touched (see planContactSync). */
+  async plan(comics: SyncComic[], own: string[] = []): Promise<ContactPlan> {
+    return planContactSync(comics, await this.loadIndex(), own);
   }
 
   /** Names only. A stale etag (400) is refetched once. */

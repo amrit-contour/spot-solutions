@@ -76,7 +76,8 @@ export interface ContactUpdate extends ContactCreate {
 export interface ContactSkip {
   comicId: string;
   name: string;
-  reason: "no-phone" | "hidden-number" | "bad-phone" | "no-name";
+  /** yours: your own WhatsApp number (or your agent number). Your own contact card is never touched. */
+  reason: "no-phone" | "hidden-number" | "bad-phone" | "no-name" | "yours";
 }
 export interface ContactPlan {
   create: ContactCreate[];
@@ -85,8 +86,13 @@ export interface ContactPlan {
   skipped: ContactSkip[];
 }
 
-/** Decide, per comic, whether Google needs a new contact, a new name, or nothing. Matches by phone only. */
-export function planContactSync(comics: SyncComic[], google: GoogleIndex): ContactPlan {
+/**
+ * Decide, per comic, whether Google needs a new contact, a new name, or nothing. Matches by phone only.
+ * `own`: the curator's own numbers (their WhatsApp and agent number). Those are always skipped, so the name you keep for
+ * yourself in Google Contacts is never changed.
+ */
+export function planContactSync(comics: SyncComic[], google: GoogleIndex, own: string[] = []): ContactPlan {
+  const mine = new Set(own.flatMap((n) => phoneKeys(n)));
   const plan: ContactPlan = { create: [], update: [], unchanged: [], skipped: [] };
   const seen = new Set<string>(); // two comics with one number must not create two contacts
   for (const c of comics) {
@@ -98,6 +104,10 @@ export function planContactSync(comics: SyncComic[], google: GoogleIndex): Conta
     const keys = phoneKeys(c.phone);
     if (!keys.length) {
       skip("bad-phone");
+      continue;
+    }
+    if (keys.some((k) => mine.has(k))) {
+      skip("yours");
       continue;
     }
     if (!squash(c.name ?? "")) {

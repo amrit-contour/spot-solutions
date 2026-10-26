@@ -200,7 +200,7 @@ export function Comics() {
 }
 
 function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose: () => void }) {
-  const { uid, shows, settings } = useApp();
+  const { uid, shows, settings, session } = useApp();
   const today = localNow(new Date(), settings.timezone).date;
   const [d, setD] = useState<Partial<Comic>>({});
   const [last, setLast] = useState<Partial<Comic> | null>(null);
@@ -230,7 +230,7 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
       }),
     );
     // New comic, or a changed name or number: write it to Google Contacts if that's on.
-    if (isNew || value?.name !== d.name) saveComicToGoogle({ id, name: d.name.trim(), phone: full }, settings.googleContacts.enabled);
+    if (isNew || value?.name !== d.name) saveComicToGoogle({ id, name: d.name.trim(), phone: full }, settings.googleContacts.enabled, session?.phone ? [session.phone] : []);
     onClose();
   };
   const remove = async () => {

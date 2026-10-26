@@ -22,6 +22,8 @@ export interface GcStore {
   removeLink(uid: string, why: "user" | "revoked"): Promise<void>;
   /** The link exists and the curator's switch is on. */
   autoSyncOn(uid: string): Promise<boolean>;
+  /** The curator's own WhatsApp and agent numbers: their own contact card is never synced. */
+  ownPhones(uid: string): Promise<string[]>;
   /** All comics (ids undefined) or just these. Missing ones are left out. */
   getComics(uid: string, ids?: string[]): Promise<SyncComic[]>;
   notice(uid: string, level: "info" | "warn", text: string): Promise<void>;
@@ -155,7 +157,8 @@ export async function planContacts(d: GcDeps, caller: Caller, data: { ids?: unkn
   const uid = who(caller);
   const comics = await d.store.getComics(uid, idList(data.ids));
   try {
-    return await withPeople(d, uid, (p) => p.plan(comics));
+    const own = await d.store.ownPhones(uid);
+    return await withPeople(d, uid, (p) => p.plan(comics, own));
   } catch (e) {
     throw googleMessage(e);
   }
@@ -166,7 +169,7 @@ export async function runContacts(d: GcDeps, caller: Caller, data: { ids?: unkno
   const uid = who(caller);
   const comics = await d.store.getComics(uid, idList(data.ids));
   try {
-    return await withPeople(d, uid, async (p) => p.apply(await p.plan(comics)));
+    return await withPeople(d, uid, async (p) => p.apply(await p.plan(comics, await d.store.ownPhones(uid))));
   } catch (e) {
     throw googleMessage(e);
   }
@@ -196,7 +199,7 @@ async function runOne(d: GcDeps, uid: string, q: QueueDoc): Promise<number> {
     const comics = await d.store.getComics(uid, q.ids);
     let saved = 0;
     if (comics.length) {
-      const r = await withPeople(d, uid, async (p) => p.apply(await p.plan(comics)));
+      const r = await withPeople(d, uid, async (p) => p.apply(await p.plan(comics, await d.store.ownPhones(uid))));
       saved = r.created + r.updated;
       if (r.failed) d.log(`${uid}: ${r.failed} contacts failed`);
     }
