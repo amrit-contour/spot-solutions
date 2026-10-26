@@ -144,11 +144,8 @@ class AgentSessionManager {
       this.ready.delete(uid);
       await setState(uid, { status: "disconnected", error: String(reason) });
       await this.stop(uid);
-      if (reason === "LOGOUT") {
-        await wipeLogin(vid, SERVER_ID).catch((e) => console.error("[agent] wipeLogin failed; the local login was kept", e.message));
-        await userRef(uid).set({ agentEnabled: false }, { merge: true });
-        await setState(uid, { status: "idle", qr: null, phone: null, pushName: null, error: null });
-      } else this.scheduleRestart(uid);
+      // Same as the main login: a LOGOUT can be local breakage, so keep the backups and retry; only an unlink wipes.
+      this.scheduleRestart(uid);
     });
 
     try {

@@ -278,9 +278,11 @@ class SessionManager {
       await setState(uid, { status: "disconnected", error: String(reason) });
       await this.stop(uid);
       if (reason === "LOGOUT") {
-        await this.wipe(uid);
-        await userRef(uid).set({ waEnabled: false }, { merge: true });
-        this.hooks.onLogout?.(uid);
+        // WhatsApp Web also reports LOGOUT when its local state broke (a full disk, a killed browser), not only when
+        // you removed the device on your phone. Keep every backup and try again: the restart restores the last good
+        // copy, and if WhatsApp really dropped the link it shows a QR and says so. Only an unlink you chose wipes.
+        console.warn(`[session] ${uid} WhatsApp reported LOGOUT; keeping the backups and trying to restore`);
+        this.scheduleRestart(uid, 5_000);
       } else {
         this.scheduleRestart(uid);
       }

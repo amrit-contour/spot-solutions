@@ -4,7 +4,7 @@
 // in DATA/update.json, which the page shows.
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statfsSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -97,6 +97,17 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
   async function start({ by = "console", task = "update" } = {}) {
     if (running()) return { ok: true, already: true };
     if (task === "update" && (version === "dev" || version === "none")) throw new Error("This is a development copy. Update it with git.");
+    // An update unpacks a new copy and may reinstall packages; on a nearly full disk that can leave WhatsApp
+    // unable to save its login. Refuse below 2 GB free and say why.
+    if (task === "update") {
+      try {
+        const st = statfsSync(data);
+        const free = Number(st.bavail) * Number(st.bsize);
+        if (free < 2 * 1024 ** 3) throw Object.assign(new Error(`Not enough free disk space to update safely (${(free / 1024 ** 3).toFixed(1)} GB free, needs 2 GB). Free up space, then try again.`), { lowDisk: true });
+      } catch (e) {
+        if (e && e.lowDisk) throw e;
+      }
+    }
     starting = true;
     try {
       mkdirSync(data, { recursive: true });

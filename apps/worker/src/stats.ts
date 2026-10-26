@@ -146,6 +146,21 @@ function consoleInfo(): ServerStatus["console"] {
   return { port, ips, host, token };
 }
 
+/** Below this, WhatsApp Web can't keep its login and the update can't unpack: warn everyone on this server. */
+export const LOW_DISK_BYTES = 2 * 1024 ** 3;
+const LOW_DISK_EVERY_MS = 6 * 3600_000;
+let lowDiskWarnedAt = 0;
+function warnLowDisk(d: ServerStatus["disk"], sessions: ServerStatus["sessions"]) {
+  if (!d || d.free >= LOW_DISK_BYTES || Date.now() - lowDiskWarnedAt < LOW_DISK_EVERY_MS) return;
+  lowDiskWarnedAt = Date.now();
+  const gb = (d.free / 1024 ** 3).toFixed(1);
+  console.warn(`[disk] only ${gb} GB free`);
+  const text = `${os.hostname()} is almost out of disk space (${gb} GB free). WhatsApp can lose its login when the disk is full. Free up space on that computer.`;
+  for (const s of sessions ?? []) {
+    void db.collection("users").doc(s.uid).collection("notices").add({ level: "warn", kind: "server", text, createdAt: Date.now(), read: false, expireAt: new Date(Date.now() + 30 * 86_400_000) }).catch(() => undefined);
+  }
+}
+
 export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "sessions" | "geminiServerKey">) {
   live.setDirectory(extra.sessions);
   const cpus = os.cpus();
@@ -169,6 +184,7 @@ export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "se
     ...extra,
     ...(fleetCapacity ? { fleet: fleetCapacity() } : {}),
   };
+  warnLowDisk(status.disk, extra.sessions);
   watchLogsWanted();
   const logs = recentLogs.slice(-120);
   const logsPart: Record<string, unknown> = {};
