@@ -21,6 +21,8 @@ export interface ChatTarget {
   id: string;
   chatId?: string;
   name: string;
+  /** Groups: "@Name" tags in the text that should become real WhatsApp tags. */
+  tags?: { label: string; comicId: string }[];
 }
 
 export interface ChatSource {
@@ -40,6 +42,7 @@ export const sendPayload = (to: ChatTarget, msg: RichMessage, opts: { voice: boo
   body: msg.body,
   name: to.name.split(/\s+/)[0],
   voice: opts.voice && msg.kind === "text",
+  ...(to.tags?.length && msg.kind === "text" && { tags: to.tags.filter((t) => msg.body.includes(t.label)) }),
   rich: { kind: msg.kind, ...(msg.poll && msg.kind === "poll" && { poll: msg.poll }), attachLocation: Boolean(msg.attachLocation), venueId: opts.venueId },
 });
 

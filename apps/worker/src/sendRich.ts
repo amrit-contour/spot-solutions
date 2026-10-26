@@ -9,6 +9,8 @@ export interface SendRichOpts {
   rewrite?: (text: string) => Promise<string>;
   /** The text and poll are already filled in (a draft the curator edited): don't run the template renderer over them. */
   prerendered?: boolean;
+  /** Group messages: people tagged in the text ("@<number>" in the text, their ids here). */
+  mentions?: string[];
 }
 
 type VenuePin = Pick<Venue, "name" | "area" | "lat" | "lng">;
@@ -32,7 +34,7 @@ export async function sendRich(client: WAWebJS.Client, to: string, msg: RichMess
   let main: WAWebJS.Message | undefined;
   if (r.body.trim()) {
     const text = opts.rewrite ? await opts.rewrite(r.body) : r.body;
-    main = await sendContent(client, to, text, text.length);
+    main = await sendContent(client, to, text, text.length, opts.mentions?.length ? { mentions: opts.mentions } : undefined);
   }
   if (r.attachLocation && hasPin(venue)) {
     const pin = await sendContent(client, to, venuePin({ ...venue, name: venue.name, area: venue.area }));

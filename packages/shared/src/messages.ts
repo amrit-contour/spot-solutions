@@ -20,7 +20,12 @@ export type MessageKey =
   | "groupWelcome"
   | "groupLineup"
   | "groupVenue"
-  | "groupReminder";
+  | "groupReminder"
+  | "groupPocs"
+  | "groupReachEarly"
+  | "groupPoster"
+  | "groupBusking"
+  | "groupCleanup";
 
 export type MessageGroup = "replies" | "offers" | "held" | "group";
 
@@ -188,6 +193,52 @@ export const MESSAGE_TYPES: readonly MessageType[] = [
     label: "Show reminder",
     when: "Posted in the show's group at the time you schedule, usually the day before.",
     default: "Reminder: *{{show}}* is on {{day}} {{date}} at {{time}}, {{venue}}. Can't make it? Tell me today so someone else gets the spot 🙏",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
+  {
+    key: "groupPocs",
+    group: "group",
+    label: "Who the POCs are",
+    when: "Posted in the show's group at the time you schedule. {{pocs}} tags each POC so they get notified.",
+    default: "For *{{show}}* on {{day}}, your POCs are {{pocs}}. Reach out to them for anything about the night 🙌",
+    vars: [...GROUP_VARS, "pocs"],
+    sample: { pocs: "@Amrit, @Kashni" },
+    toGroup: true,
+  },
+  {
+    key: "groupReachEarly",
+    group: "group",
+    label: "Reach on time",
+    when: "Posted in the show's group at the time you schedule, usually on the show day.",
+    default: "Hey everyone! *{{show}}* starts at {{time}} today. Please reach {{venue}} 30 minutes early so we can start on time ⏰",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
+  {
+    key: "groupPoster",
+    group: "group",
+    label: "Share the poster",
+    when: "Posted in the show's group at the time you schedule, once the poster is out.",
+    default: "The poster for *{{show}}* ({{day}} {{date}}) is out! Please share it on your Instagram stories and tag the venue 🙏",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
+  {
+    key: "groupBusking",
+    group: "group",
+    label: "Busking notice",
+    when: "Posted in the show's group at the time you schedule, before the show.",
+    default: "Busking today before *{{show}}*! Please reach {{venue}} early and help bring the crowd in. Show starts {{time}} 📣",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
+  {
+    key: "groupCleanup",
+    group: "group",
+    label: "After the show",
+    when: "Sent in the group the day after the show, right before the group is cleared for next week (if cleanup is on).",
+    default: "Thank you all for *{{show}}* yesterday! 🙏 Clearing the group for next week's lineup. See you at the next one.",
     vars: GROUP_VARS,
     toGroup: true,
   },

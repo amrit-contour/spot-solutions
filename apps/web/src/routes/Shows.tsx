@@ -5,13 +5,13 @@ import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { VenuePin } from "../components/rich/VenuePin";
-import { DAY_SHORT, formatTime, groupModeOf, type GroupInfo, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
+import { DAY_SHORT, DEFAULT_CLEANUP, formatTime, groupModeOf, type GroupInfo, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
 import { PageHeader } from "../components/Shell";
 import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "../components/ui";
-import { IconAdd, IconBuilding, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconWarn } from "../components/icons";
+import { IconAdd, IconBuilding, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "../components/icons";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
@@ -190,7 +190,8 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
       onClose();
     }
   };
-  const toggleIn = (k: "regulars" | "protected", id: string) => {
+  const cleanup = draft.cleanup ?? DEFAULT_CLEANUP;
+  const toggleIn = (k: "regulars" | "protected" | "pocs", id: string) => {
     const cur = new Set(draft[k] ?? []);
     if (cur.has(id)) cur.delete(id);
     else cur.add(id);
@@ -284,7 +285,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
           )}
 
           {draft.groupId && (
-            <div className="mt-5 grid gap-5">
+            <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-5">
               <Field
                 label="Update the group"
                 hint={
@@ -296,6 +297,8 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                 }
               >
                 <Segmented
+                  full
+                  compact
                   value={mode}
                   onChange={(v) => set("groupMode", v)}
                   options={[
@@ -328,7 +331,35 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                     </Link>
                   )}
                 </div>
-                <GroupPostsEditor show={{ name: draft.name ?? "", weekday: draft.weekday ?? 1, startTime: draft.startTime ?? "20:00", venueId: draft.venueId ?? "", groupPostsSent: value?.groupPostsSent }} posts={draft.groupPosts ?? []} onChange={(v) => set("groupPosts", v)} />
+                <GroupPostsEditor show={{ name: draft.name ?? "", weekday: draft.weekday ?? 1, startTime: draft.startTime ?? "20:00", venueId: draft.venueId ?? "", groupPostsSent: value?.groupPostsSent, pocs: draft.pocs }} posts={draft.groupPosts ?? []} onChange={(v) => set("groupPosts", v)} />
+              </div>
+              <PeoplePicker label="POCs (run the mic; always stay; tagged with {{pocs}})" icon={IconUserCheck} selected={draft.pocs ?? []} onToggle={(id) => toggleIn("pocs", id)} people={comics} members={memberIds} />
+              <div className="flex flex-col gap-3 rounded-lg bg-surface-container p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="type-title-s">Clear the group after the show</div>
+                    <div className="type-body-s text-on-surface-variant">The day after, your after-show message goes out and everyone leaves except POCs, regulars, co-hosts, admins and anyone already on next week's lineup.</div>
+                  </div>
+                  <Switch checked={Boolean(cleanup.enabled)} onChange={(v) => set("cleanup", { ...cleanup, enabled: v })} label="Clear the group after the show" />
+                </div>
+                {cleanup.enabled && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="When">
+                      <TimePicker value={cleanup.time} onChange={(v) => set("cleanup", { ...cleanup, time: v })} label="Cleanup time" />
+                    </Field>
+                    <Field label="If the mic happened" hint={cleanup.mode === "auto" ? "Clears it on its own. If the mic didn't happen, you're asked first." : "You're asked every time, in Updates and on your agent number."}>
+                      <Segmented
+                        size="sm"
+                        value={cleanup.mode}
+                        onChange={(v) => set("cleanup", { ...cleanup, mode: v })}
+                        options={[
+                          { value: "auto", label: "Clear it" },
+                          { value: "ask", label: "Ask me" },
+                        ]}
+                      />
+                    </Field>
+                  </div>
+                )}
               </div>
               <PeoplePicker label="Regulars (always stay in the group)" icon={IconStar} selected={draft.regulars ?? []} onToggle={(id) => toggleIn("regulars", id)} people={comics} members={memberIds} />
               <PeoplePicker label="Protected (co-hosts, staff)" icon={IconMap} selected={draft.protected ?? []} onToggle={(id) => toggleIn("protected", id)} people={comics} members={memberIds} />

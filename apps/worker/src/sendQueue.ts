@@ -41,7 +41,7 @@ export async function deliverableId(client: WAWebJS.Client, to: string) {
 export type Sendable = string | WAWebJS.Poll | WAWebJS.Location;
 
 /** Send one message (text, poll or pin) through the queue: typing pause, id fallbacks, counters. */
-export function sendContent(client: WAWebJS.Client, to: string, content: Sendable, typeMs = 0) {
+export function sendContent(client: WAWebJS.Client, to: string, content: Sendable, typeMs = 0, options?: WAWebJS.MessageSendOptions) {
   return enqueueTask(client, async () => {
     const target = await deliverableId(client, to);
     if (typeMs > 0) {
@@ -54,7 +54,7 @@ export function sendContent(client: WAWebJS.Client, to: string, content: Sendabl
     let last: unknown;
     for (const id of candidates) {
       try {
-        const m = await client.sendMessage(id, content);
+        const m = await client.sendMessage(id, content, options);
         counters.sent++;
         live.noteSent(client);
         return m;

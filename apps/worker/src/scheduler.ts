@@ -10,6 +10,7 @@ import { watchUser } from "./userData.ts";
 import { expireOffers, sendMicChecks } from "./replies.ts";
 import { maybeCheckFollowUps } from "./followUp.ts";
 import { sendGroupPosts } from "./groupPosts.ts";
+import { runCleanups } from "./groupCleanup.ts";
 
 const TICK_MS = 2 * 60_000;
 const running = new Set<string>();
@@ -50,6 +51,7 @@ export function startScheduler(uids: () => Iterable<string>) {
       void sendMicChecks(uid, client).catch((e) => console.error("[mic-check]", e));
       void maybeCheckFollowUps(uid, client).catch((e) => console.error("[follow-up]", e));
       void sendGroupPosts(uid, client).catch((e) => console.error("[group-post]", e));
+      void runCleanups(uid, client).catch((e) => console.error("[cleanup]", e));
     }
   }, TICK_MS).unref();
 }

@@ -20,3 +20,4 @@ export * from "./richText.ts";
 export * from "./geo.ts";
 export * from "./threads.ts";
 export * from "./groupPosts.ts";
+export * from "./groupCleanup.ts";

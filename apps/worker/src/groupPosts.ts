@@ -2,19 +2,20 @@
 // so there's no cloud scheduler to pay for. Each post goes out at most once per show date: the marker is written before
 // sending, so a crash mid-send can't post twice into a group of fifty people.
 import type WAWebJS from "whatsapp-web.js";
-import { addDays, duePosts, groupPostMessage, groupPostVars, localNow, needsLineup, renderRich, whenLabel, type GroupPost, type Lineup, type Show } from "@spot/shared";
+import { addDays, duePosts, groupPostMessage, groupPostVars, localNow, needsLineup, renderRich, usesVar, whenLabel, type GroupPost, type Lineup, type Show } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { loadComics, notice } from "./commands.ts";
 import { sendRich } from "./sendRich.ts";
 import { watchUser } from "./userData.ts";
 import { inVoice } from "./voice.ts";
+import { pocTags } from "./groupCleanup.ts";
 
 const running = new Set<string>();
 
 /** The lineup doc for a show date: keyed by that week's Monday. */
 const lineupIdFor = (show: Pick<Show, "id" | "weekday">, showDate: string) => `${addDays(showDate, -((show.weekday + 6) % 7))}_${show.id}`;
 
-const POST_LABEL: Record<GroupPost["template"], string> = { groupLineup: "lineup post", groupVenue: "venue post", groupReminder: "reminder", custom: "scheduled post" };
+const POST_LABEL: Record<GroupPost["template"], string> = { groupLineup: "lineup post", groupVenue: "venue post", groupReminder: "reminder", groupPocs: "POC post", groupReachEarly: "reach-on-time post", groupPoster: "poster post", groupBusking: "busking notice", groupCleanup: "after-show message", custom: "scheduled post" };
 
 export async function sendGroupPosts(uid: string, client: WAWebJS.Client) {
   const { settings, shows, venues } = watchUser(uid);
@@ -59,10 +60,11 @@ async function sendOne(uid: string, client: WAWebJS.Client, show: Show, post: Gr
     const comics = await loadComics(uid, lineup.slots.map((s) => s.comicId));
     names = lineup.slots.map((s) => comics.get(s.comicId)?.name ?? "TBA");
   }
-  const vars = groupPostVars(show, venue, showDate, names);
+  const tags = usesVar(msg, "pocs") ? await pocTags(uid, client, show) : { text: "", mentions: [] };
+  const vars = groupPostVars(show, venue, showDate, names, tags.text);
   const rendered = renderRich(msg, vars);
   if (rendered.kind === "text" && !rendered.body.trim() && !rendered.attachLocation) return;
   const voiced = post.voice && rendered.kind === "text" && rendered.body.trim() ? { ...rendered, body: await inVoice(uid, "reply", rendered.body, { ...vars, name: "everyone" } as unknown as Record<string, string>) } : rendered;
-  await sendRich(client, show.groupId!, voiced, {}, venue, { prerendered: true });
+  await sendRich(client, show.groupId!, voiced, {}, venue, { prerendered: true, mentions: tags.mentions });
   console.log(`[group-post] ${uid} ${show.name}: ${POST_LABEL[post.template]} for ${showDate} sent`);
 }

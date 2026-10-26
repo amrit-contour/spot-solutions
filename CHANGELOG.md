@@ -1,5 +1,18 @@
 # Changelog
 
+## 27 October 2026 (group ops)
+
+### Show groups
+- **POCs.** Pick the people who run each mic in the show's settings. They always stay in the group, show in the group chat header, and `{{pocs}}` tags them for real (they get notified) in scheduled posts and in messages you send from the group chat.
+- **More group templates:** Who the POCs are, Reach on time, Busking notice, Share the poster, After the show. All schedulable like the lineup and reminder.
+- **Clear the group after the show.** The day after (at a time you pick), the after-show message goes out and everyone leaves except POCs, regulars, co-hosts, admins and anyone already on next week's lineup. If the mic happened it clears on its own (or asks, if you prefer). If it didn't happen, it asks first, in Updates and on your agent number: yes clears it, no keeps everyone for a repeat week, and your scheduled posts carry on. Runs on your server; gives up after 3 days.
+
+### Server console
+- Typing a folder path no longer loses focus after each key (Windows and everywhere). Drive bars are gone; free space shows as text. A new folder in the path is created when you move, with a plain message if it can't be.
+
+### Fixes
+- Shows: the group settings fit on phones.
+
 ## 26 October 2026 (show groups)
 
 ### Messages

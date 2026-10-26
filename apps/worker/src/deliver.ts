@@ -18,7 +18,7 @@ export async function composeDraft(uid: string, key: Exclude<MessageKey, "groupW
 }
 
 /** Send a draft as the curator left it: its text, plus the poll or pin it carries. */
-export function deliverDraft(uid: string, client: WAWebJS.Client, to: string, body: string, rich?: ComicAction["rich"] | null) {
+export function deliverDraft(uid: string, client: WAWebJS.Client, to: string, body: string, rich?: ComicAction["rich"] | null, mentions?: string[]) {
   const venue = rich?.venueId ? watchUser(uid).venues.find((v) => v.id === rich.venueId) : null;
-  return sendRich(client, to, { kind: rich?.kind ?? "text", body, poll: rich?.poll, attachLocation: rich?.attachLocation }, {}, venue, { prerendered: true });
+  return sendRich(client, to, { kind: rich?.kind ?? "text", body, poll: rich?.poll, attachLocation: rich?.attachLocation }, {}, venue, { prerendered: true, mentions });
 }

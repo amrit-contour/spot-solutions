@@ -47,7 +47,7 @@ import { curatorPhone, forgetSettings, sendToCurator } from "./agentOutbox.ts";
 import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
 import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
-import { enqueueTask, sendQueued } from "./sendQueue.ts";
+import { deliverableId, enqueueTask, sendQueued } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
 import { deliverDraft } from "./deliver.ts";
 import { greetFor } from "./greet.ts";
@@ -58,6 +58,7 @@ import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
 import { getThread, listThreads, summarizeThread } from "./chats.ts";
+import { clearGroup, keepGroup } from "./groupCleanup.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
@@ -220,7 +221,7 @@ const handlers: Record<Command["type"], Handler> = {
       participants: resolved,
       confirmed: lineup.slots.map((s) => s.comicId),
       regulars: show.regulars ?? [],
-      protected: show.protected ?? [],
+      protected: [...(show.protected ?? []), ...(show.pocs ?? [])],
       self: `${client.info.wid.user}@c.us`,
       forceRemove: lineup.groupLeaving ?? [],
     });
@@ -484,12 +485,36 @@ const handlers: Record<Command["type"], Handler> = {
    * A message to one chat. `voice` (Messages page): write the text in the curator's voice first. The rewrite is checked against
    * the typed text and falls back to it, so it can only change the wording. Returns what actually went out.
    */
-  async send_message(uid, { to, body, rich, voice, name }) {
+  async send_message(uid, { to, body, rich, voice, name, tags }) {
     const r = rich as ComicAction["rich"] | undefined;
+    const client = sessions.require(uid);
     let text = String(body ?? "");
     if (voice && text.trim() && (r?.kind ?? "text") === "text") text = await inVoice(uid, "reply", text, { name: String(name ?? "there") });
-    await deliverDraft(uid, sessions.require(uid), String(to), text, r);
+    // "@Amrit" typed in a group becomes a real tag: WhatsApp needs "@<their id>" in the text and the id in mentions.
+    const mentions: string[] = [];
+    if (String(to).endsWith("@g.us") && Array.isArray(tags)) {
+      const comics = await loadComics(uid, (tags as { comicId: string }[]).map((t) => String(t.comicId)));
+      for (const t of tags as { label: string; comicId: string }[]) {
+        if (!text.includes(t.label)) continue;
+        const id = await deliverableId(client, comics.get(t.comicId)?.chatId ?? t.comicId);
+        text = text.split(t.label).join(`@${id.split("@")[0]}`);
+        mentions.push(id);
+      }
+    }
+    await deliverDraft(uid, client, String(to), text, r, mentions);
     return { body: text };
+  },
+
+  /** The curator's answer to "clear the group?" (Updates), or a clear-now. keep: leave everyone in. */
+  async cleanup_group(uid, { lineupId, keep }) {
+    const ref = col(uid, "lineups").doc(String(lineupId));
+    const lineup = (await ref.get()).data() as Lineup | undefined;
+    if (!lineup) throw new Error("That lineup isn't there any more.");
+    if (lineup.cleanup?.status === "done") return { already: true };
+    if (keep) return void (await keepGroup(uid, String(lineupId)));
+    const show = watchUser(uid).shows.find((s) => s.id === lineup.showId);
+    if (!show?.groupId) throw new Error("This show has no WhatsApp group linked.");
+    return clearGroup(uid, sessions.require(uid), show, { ...lineup, id: String(lineupId) });
   },
 
   // Messages page: read live from WhatsApp, returned as the (short-lived) command result, never stored elsewhere.
@@ -627,7 +652,7 @@ export async function loadComics(uid: string, ids: string[]) {
 }
 
 /** Group members as phone-based ids. Newer WhatsApp groups expose @lid ids; map them back. */
-async function normaliseParticipants(client: WAWebJS.Client, group: WAWebJS.GroupChat) {
+export async function normaliseParticipants(client: WAWebJS.Client, group: WAWebJS.GroupChat) {
   const lids = group.participants.filter((p) => p.id.server === "lid").map((p) => p.id._serialized);
   const map = new Map<string, string>();
   if (lids.length) {

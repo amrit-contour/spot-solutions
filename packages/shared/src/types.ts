@@ -1,5 +1,6 @@
 // Firestore document shapes. Everything lives under users/{uid}/...
 import type { GroupPost } from "./groupPosts.ts";
+import type { GroupCleanup, LineupCleanup } from "./groupCleanup.ts";
 
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
 export type Tier = "open" | "regular" | "featured";
@@ -220,6 +221,10 @@ export interface Show {
   groupPosts?: GroupPost[];
   /** Post id → the show date it last went out for, so each goes once per show. Written by the worker. */
   groupPostsSent?: Record<string, string> | null;
+  /** Points of contact who run the mic. They always stay in the group and can be tagged with {{pocs}}. Comic ids. */
+  pocs?: string[];
+  /** The day-after cleanup of the group. See groupCleanup.ts. */
+  cleanup?: GroupCleanup;
   /** Last members read from the group, so the lineup page can show them instantly. Written by the worker. */
   groupMembers?: GroupMembersCache | null;
 }
@@ -356,6 +361,8 @@ export interface Lineup {
   showDaySyncedOn?: string | null;
   /** Answer to the morning-after check. */
   outcome?: "happened" | "canned" | null;
+  /** The day-after group cleanup for this show date. */
+  cleanup?: LineupCleanup | null;
   /** Regulars, co-hosts and group admins were put on this lineup when it was first opened. Not redone after you remove someone. */
   defaultsSeeded?: boolean;
   micCheckSentOn?: string | null;
@@ -403,7 +410,8 @@ export type CommandType =
   | "list_threads"
   | "get_thread"
   | "summarize_thread"
-  | "list_voice_sources";
+  | "list_voice_sources"
+  | "cleanup_group";
 
 export interface Command {
   type: CommandType;

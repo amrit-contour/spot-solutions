@@ -6,12 +6,13 @@ import type { Lineup } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { clearAll, dismissNotices, useUpdates } from "../lib/updates";
 import { Button, cx, type Icon } from "./ui";
-import { IconArrowDown, IconChat, IconChatCheck, IconCheck, IconMic, IconServer, IconUserCheck, IconUserPlus } from "./icons";
+import { IconArrowDown, IconChat, IconChatCheck, IconCheck, IconGroup, IconMic, IconServer, IconUserCheck, IconUserPlus } from "./icons";
 import { Count } from "./updates/shared";
 import { ReplyCard } from "./updates/ReplyCard";
 import { FollowUpCard } from "./updates/FollowUpCard";
 import { IntroCard, OnboardCard } from "./updates/FaceCard";
 import { MicCard } from "./updates/MicCard";
+import { CleanupCard } from "./updates/CleanupCard";
 import { ServerCard } from "./updates/ServerCard";
 
 export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
@@ -98,6 +99,14 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
             {u.micChecks.map((l) => {
               const show = shows.find((s) => s.id === l.showId);
               return show ? <MicCard key={l.id} lineup={l} show={show} /> : null;
+            })}
+          </Section>
+        )}
+        {u.cleanups.length > 0 && (
+          <Section key="cleanup" icon={IconGroup} title="Clear the group?" count={u.cleanups.length} onExitComplete={restoreFocus}>
+            {u.cleanups.map((l) => {
+              const show = shows.find((s) => s.id === l.showId);
+              return show ? <CleanupCard key={l.id} lineup={l} show={show} /> : null;
             })}
           </Section>
         )}

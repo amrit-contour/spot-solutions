@@ -18,6 +18,7 @@ import { generateJson } from "./llm.ts";
 import { loadComics, runHandler } from "./commands.ts";
 import { removeFromLineup, placeOnLineup } from "./lineupOps.ts";
 import { recordOutcome } from "./replies.ts";
+import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { sessions } from "./sessions.ts";
 import { sendQueued } from "./sendQueue.ts";
 
@@ -79,7 +80,14 @@ async function converse(uid: string, text: string) {
     return void (await runPlan(uid, step.plan));
   }
   if (step.type === "chosen") return void (await say(uid, askText(step.pending)));
-  if (step.type === "cancel") return void (await say(uid, "Okay, nothing was changed."));
+  if (step.type === "cancel") {
+    // "no" to "clear the group?" means keep everyone for next week.
+    if (mem.pending?.stage === "confirm" && mem.pending.plan.type === "cleanup") {
+      await keepGroup(uid, mem.pending.plan.lineupId);
+      return void (await say(uid, "Okay, I left the group as it is. Your scheduled group posts go out for next week's show as usual."));
+    }
+    return void (await say(uid, "Okay, nothing was changed."));
+  }
   if (step.type === "reprompt") {
     await writeMemory(uid, { pending: mem.pending });
     return void (await say(uid, step.text));
@@ -247,6 +255,15 @@ async function runPlan(uid: string, p: ActionPlan) {
       case "outcome": {
         await recordOutcome(uid, p.lineupId, p.outcome);
         return void (await say(uid, `Done: ${show.name} marked as ${p.outcome === "happened" ? "happened" : "didn't happen"}.`));
+      }
+      case "cleanup": {
+        const l = (await col(uid, "lineups").doc(p.lineupId).get()).data() as Lineup | undefined;
+        if (!l || l.cleanup?.status === "done") return void (await say(uid, `The ${show.name} group was already cleared.`));
+        const client = sessions.get(uid);
+        if (!client) return void (await say(uid, "Your own WhatsApp isn't connected right now, so I couldn't clear the group."));
+        await say(uid, `Clearing the ${show.name} group. It's spaced out, so it takes a minute or two.`);
+        const r = await clearGroup(uid, client, show, { ...l, id: p.lineupId });
+        return void (await say(uid, `Done: ${r.removed} removed from the ${show.name} group${r.failed ? `, ${r.failed} couldn't be removed (check by hand)` : ""}.`));
       }
       case "retime": {
         await col(uid, "shows").doc(show.id).update({ startTime: p.startTime });

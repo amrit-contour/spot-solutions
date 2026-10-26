@@ -4,7 +4,9 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   DAY_SHORT,
+  GROUP_POST_KEYS,
   GROUP_POST_MAX_DAYS,
+  usesVar,
   formatDate,
   formatTime,
   groupPostMessage,
@@ -33,6 +35,11 @@ const TEMPLATE_OPTIONS: { value: GroupPost["template"]; label: string }[] = [
   { value: "groupLineup", label: messageType("groupLineup").label },
   { value: "groupVenue", label: messageType("groupVenue").label },
   { value: "groupReminder", label: messageType("groupReminder").label },
+  { value: "groupReachEarly", label: messageType("groupReachEarly").label },
+  { value: "groupBusking", label: messageType("groupBusking").label },
+  { value: "groupPoster", label: messageType("groupPoster").label },
+  { value: "groupPocs", label: messageType("groupPocs").label },
+  { value: "groupCleanup", label: messageType("groupCleanup").label },
   { value: "custom", label: "My own message" },
 ];
 const labelOf = (t: GroupPost["template"]) => TEMPLATE_OPTIONS.find((o) => o.value === t)?.label ?? "Post";
@@ -46,11 +53,14 @@ const VARIABLES = [
   { key: "mapsLink", label: "Maps link" },
   { key: "lineup", label: "Running order" },
   { key: "count", label: "Number of comics" },
+  { key: "pocs", label: "POCs (tagged)" },
 ];
 
 const DAY_OPTIONS = Array.from({ length: GROUP_POST_MAX_DAYS + 1 }, (_, d) => ({ value: String(d), label: whenLabel(d) }));
 
-export function GroupPostsEditor({ show, posts, onChange, compact }: { show: Pick<Show, "name" | "weekday" | "startTime" | "venueId" | "groupPostsSent">; posts: GroupPost[]; onChange: (posts: GroupPost[]) => void; compact?: boolean }) {
+type PostShow = Pick<Show, "name" | "weekday" | "startTime" | "venueId" | "groupPostsSent" | "pocs">;
+
+export function GroupPostsEditor({ show, posts, onChange, compact }: { show: PostShow; posts: GroupPost[]; onChange: (posts: GroupPost[]) => void; compact?: boolean }) {
   const { settings } = useApp();
   const [open, setOpen] = useState<string | null>(null);
   const add = (t: GroupPost["template"]) => {
@@ -99,9 +109,11 @@ export function GroupPostsEditor({ show, posts, onChange, compact }: { show: Pic
   );
 }
 
-function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pick<Show, "name" | "weekday" | "startTime" | "venueId" | "groupPostsSent">; post: GroupPost; open: boolean; onToggle: () => void; onChange: (p: Partial<GroupPost>) => void; onRemove: () => void }) {
-  const { settings, venues } = useApp();
+function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: PostShow; post: GroupPost; open: boolean; onToggle: () => void; onChange: (p: Partial<GroupPost>) => void; onRemove: () => void }) {
+  const { settings, venues, comicsById } = useApp();
   const now = useNow(60_000);
+  // In the preview, POCs show as names; WhatsApp shows each tag as the person's name too.
+  const pocNames = (show.pocs ?? []).map((id) => `@${comicsById.get(id)?.name.split(/\s+/)[0] ?? "POC"}`).join(", ");
   const today = localNow(new Date(now), settings.timezone).date;
   const venue = venues.find((v) => v.id === show.venueId);
   const msg = groupPostMessage(settings, post);
@@ -150,15 +162,16 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pic
           {own ? (
             <div className="flex flex-col gap-2">
               <div className="flex justify-end">
-                <SnippetMenu vars={groupPostVars(show, venue, showDate, null)} messages={["groupLineup", "groupVenue", "groupReminder"]} onPick={(m) => setMessage(m)} />
+                <SnippetMenu vars={groupPostVars(show, venue, showDate, null, pocNames)} messages={[...GROUP_POST_KEYS]} onPick={(m) => setMessage(m)} />
               </div>
-              <MessageComposer value={normalizeMessage(post.message, msg)} onChange={setMessage} variables={VARIABLES} extraVars={groupPostVars(show, venue, showDate, ["Rohan", "Priya", "Karthik"])} idPrefix={`post-${post.id}`} attachLabel="Also send the venue pin" />
+              <MessageComposer value={normalizeMessage(post.message, msg)} onChange={setMessage} variables={VARIABLES} extraVars={groupPostVars(show, venue, showDate, ["Rohan", "Priya", "Karthik"], pocNames || "@POC")} idPrefix={`post-${post.id}`} attachLabel="Also send the venue pin" />
             </div>
           ) : (
             <div className="rounded-md bg-surface-container p-3">
-              <MessagePreview value={msg} vars={{ ...groupPostVars(show, venue, showDate, ["Rohan", "Priya", "Karthik"]) }} />
+              <MessagePreview value={msg} vars={{ ...groupPostVars(show, venue, showDate, ["Rohan", "Priya", "Karthik"], pocNames || "@POC") }} />
             </div>
           )}
+          {usesVar(msg, "pocs") && !show.pocs?.length && <p className="type-body-s text-error">This tags the POCs, but none are set for this show yet. Add them in the show's settings.</p>}
           {needsLineup(msg) && <p className="type-body-s text-on-surface-variant">Uses the running order, so it waits for a confirmed lineup. If the lineup isn't confirmed by then, you get a notice instead.</p>}
 
           {msg.kind === "text" && (

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   DAY_NAMES,
   DAY_SHORT,
+  GROUP_POST_KEYS,
   dateInWeek,
   daysBetween,
   dayLabel,
@@ -443,7 +444,9 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
   const names = lineup?.slots.map((s) => comicsById.get(s.comicId)?.name ?? "TBA") ?? null;
   const today = localNow(new Date(), settings.timezone).date;
   const showDate = lineup?.date ?? (show ? nextShowDate(show, today) : today);
-  const vars = show ? groupPostVars(show, venue, showDate, names) : {};
+  // POCs as "@First" in the box; sending turns them into real tags.
+  const pocTags = (show?.pocs ?? []).map((id) => ({ label: `@${comicsById.get(id)?.name.split(/\s+/)[0] ?? "POC"}`, comicId: id }));
+  const vars = show ? groupPostVars(show, venue, showDate, names, pocTags.map((t) => t.label).join(", ")) : {};
   const posts = show?.groupPosts ?? [];
   const live = posts.filter((p) => p.enabled).length;
   // Edited as a draft while the sheet is open (no write per keystroke), saved when it closes.
@@ -463,7 +466,7 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
     <Conversation
       threadKey={group.groupId}
       load={(before) => source.groupThread(group.groupId, before)}
-      send={(msg, opts) => source.send({ id: group.groupId, chatId: group.groupId, name: "everyone" }, msg, opts)}
+      send={(msg, opts) => source.send({ id: group.groupId, chatId: group.groupId, name: "everyone", tags: pocTags }, msg, opts)}
       onBack={onBack}
       onSent={onChanged}
       ariaLabel={`${group.name} group`}
@@ -480,6 +483,7 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
             <p className="truncate type-body-s text-on-surface-variant">
               {groupShows.map((s) => s.name).join(", ") || "Show group"}
               {members !== null && ` · ${members} members`}
+              {pocTags.length > 0 && ` · POC ${pocTags.map((t) => t.label.slice(1)).join(", ")}`}
             </p>
           </div>
           <IconButton icon={IconClock} label="Scheduled posts" onClick={openSchedule} disabled={!show} />
@@ -512,7 +516,7 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
           </section>
         )
       }
-      templates={(pick) => <SnippetMenu vars={vars} messages={["groupLineup", "groupVenue", "groupReminder"]} onPick={pick} />}
+      templates={(pick) => <SnippetMenu vars={vars} messages={[...GROUP_POST_KEYS]} onPick={pick} />}
     />
   );
 }

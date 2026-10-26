@@ -333,7 +333,9 @@ export type ActionPlan =
   | { type: "remove"; showId: string; comicId: string; comicName: string; phone: string }
   | { type: "confirm"; showId: string; lineupId: string }
   | { type: "outcome"; showId: string; lineupId: string; outcome: "happened" | "canned" }
-  | { type: "retime"; showId: string; startTime: string };
+  | { type: "retime"; showId: string; startTime: string }
+  /** Asked by the day-after cleanup: yes clears the group, no keeps everyone for next week. */
+  | { type: "cleanup"; showId: string; lineupId: string };
 
 export type PendingAction =
   | { stage: "confirm"; plan: ActionPlan; summary: string; createdAt: number; expiresAt: number }
@@ -574,6 +576,8 @@ export function describePlan(plan: ActionPlan, c: { show: Pick<Show, "name" | "w
       return `Send confirmations for ${when} to ${c.filled ?? 0} ${c.filled === 1 ? "person" : "people"}${c.told ? ` (${c.told} already told, skipped)` : ""} from your own WhatsApp?`;
     case "outcome":
       return plan.outcome === "happened" ? `Mark ${when} as happened?` : `Mark ${when} as didn't happen? Everyone on it loses that spot from their history.`;
+    case "cleanup":
+      return `Clear the ${c.show.name} group for next week? POCs, regulars, co-hosts and admins stay.`;
     case "retime":
       return `Change ${c.show.name} (${DAY_NAMES[c.show.weekday]}) from ${c.oldTime ? formatTime(c.oldTime) : formatTime(c.show.startTime)} to ${formatTime(plan.startTime)}? Comics already confirmed won't be told automatically.`;
   }

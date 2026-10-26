@@ -6,7 +6,7 @@ import { messageRich, normalizeMessage, renderRich, type MessageKey, type Messag
 import type { Settings, Show, Venue } from "./types.ts";
 
 /** The message types written for a show's group. */
-export const GROUP_POST_KEYS = ["groupLineup", "groupVenue", "groupReminder"] as const satisfies readonly MessageKey[];
+export const GROUP_POST_KEYS = ["groupLineup", "groupVenue", "groupReminder", "groupPocs", "groupReachEarly", "groupPoster", "groupBusking", "groupCleanup"] as const satisfies readonly MessageKey[];
 export type GroupPostKey = (typeof GROUP_POST_KEYS)[number];
 
 export interface GroupPost {
@@ -33,6 +33,11 @@ export function newGroupPost(template: GroupPost["template"], show: Pick<Show, "
   if (template === "groupLineup") return { id, template, daysBefore: 0, time: shiftTime(show.startTime, -180), enabled: true };
   if (template === "groupVenue") return { id, template, daysBefore: 0, time: twoHoursBefore, enabled: true };
   if (template === "groupReminder") return { id, template, daysBefore: 1, time: "18:00", enabled: true };
+  if (template === "groupPocs") return { id, template, daysBefore: 1, time: "12:00", enabled: true };
+  if (template === "groupReachEarly") return { id, template, daysBefore: 0, time: shiftTime(show.startTime, -240), enabled: true };
+  if (template === "groupPoster") return { id, template, daysBefore: 2, time: "12:00", enabled: true };
+  if (template === "groupBusking") return { id, template, daysBefore: 0, time: shiftTime(show.startTime, -300), enabled: true };
+  if (template === "groupCleanup") return { id, template, daysBefore: 0, time: "23:00", enabled: true };
   return { id, template, daysBefore: 0, time: twoHoursBefore, enabled: true, message: "" };
 }
 
@@ -66,11 +71,18 @@ export function groupPostMessage(settings: Pick<Settings, "messages">, post: Gro
 }
 
 /** Does this message need the running order? Then it waits for a confirmed lineup. */
-export const needsLineup = (m: RichMessage) => /\{\{\s*[#^]?\s*(lineup|count)\s*\}\}/.test([m.body, m.poll?.question, ...(m.poll?.options ?? [])].join(" "));
+export const needsLineup = (m: RichMessage) => usesVar(m, "lineup|count");
 
-/** Variables a group message can use. `names` is the running order; missing means the lineup isn't out yet. */
-export function groupPostVars(show: Pick<Show, "name" | "startTime">, venue: Pick<Venue, "name" | "mapsLink"> | undefined, showDate: string, names?: string[] | null) {
+/** Does this message use one of these variables (a "|" list)? */
+export const usesVar = (m: RichMessage, names: string) => new RegExp(`\\{\\{\\s*[#^]?\\s*(${names})\\s*\\}\\}`).test([m.body, m.poll?.question, ...(m.poll?.options ?? [])].join(" "));
+
+/**
+ * Variables a group message can use. `names` is the running order; missing means the lineup isn't out yet.
+ * `pocs` is already written as tags ("@919876543210, @9198..." for WhatsApp, "@Amrit" for a preview).
+ */
+export function groupPostVars(show: Pick<Show, "name" | "startTime">, venue: Pick<Venue, "name" | "mapsLink"> | undefined, showDate: string, names?: string[] | null, pocs?: string | null) {
   return {
+    pocs: pocs || null,
     show: show.name,
     venue: venue?.name,
     mapsLink: venue?.mapsLink,
