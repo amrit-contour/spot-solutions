@@ -45,8 +45,9 @@ function Ok($msg) { Write-Host "  $msg" -ForegroundColor Green }
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw "Run this as Administrator (double-click 'Install Spot Solutions.cmd')." }
 
+# Our own Node stays first: an older system Node (e.g. v18) must never run pnpm or the worker.
 function Refresh-Path {
-  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+  $env:Path = "$Root\node;" + [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 }
 
 # A fresh install isn't on this window's PATH yet, so look in the usual places too.
@@ -141,6 +142,7 @@ Invoke-WebRequest $SrcUrl -OutFile $tgz
 if ($LASTEXITCODE -ne 0) { throw "Unpacking the code failed." }
 Push-Location $AppDir
 # Run the exact pnpm the repo pins, through npx (no corepack needed).
+$env:Path = "$NodeDir;$env:Path"   # again: steps above may have refreshed PATH
 & "$NodeDir\npx.cmd" -y pnpm@9.15.4 install --frozen-lockfile --filter "@spot/worker..."
 $code = $LASTEXITCODE
 Pop-Location
