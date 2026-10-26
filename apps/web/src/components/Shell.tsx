@@ -126,7 +126,6 @@ function ShellFrame({ children }: { children: ReactNode }) {
 export function PageHeader({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
   const conn = useConnection();
   const ref = useRef<HTMLElement>(null);
-  const sentinel = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(false);
   useEffect(() => {
     const el = ref.current;
@@ -139,17 +138,25 @@ export function PageHeader({ title, subtitle, actions, children }: { title: Reac
       root.style.removeProperty("--page-header-h");
     };
   }, []);
+  // Compact once you've scrolled a bit; expand only back near the top. The gap between the two thresholds stops
+  // the loop where shrinking the header scrolls the page back above the line and it grows again (flicker).
   useEffect(() => {
-    const s = sentinel.current;
-    if (!s || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), { threshold: 0 });
-    io.observe(s);
-    return () => io.disconnect();
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      const y = window.scrollY;
+      setStuck((was) => (was ? y > 4 : y > 56));
+    };
+    const onScroll = () => (frame ||= requestAnimationFrame(read));
+    read();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, []);
   return (
     <>
-    {/* Scrolling past this 1px line is what "pinned" means. */}
-    <div ref={sentinel} aria-hidden className="h-px" />
     <header
       ref={ref}
       data-stuck={stuck || undefined}
