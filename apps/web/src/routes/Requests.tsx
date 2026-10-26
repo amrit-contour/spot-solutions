@@ -423,8 +423,11 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
           <>
             {!placedIn && <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} />}
             {placedShow ? (
-              <Chip tone="success" icon={r.status === "confirmed" ? IconCheck : IconMic} className="min-w-0" title={placedShow.name}>
-                <span className="truncate">
+              <Chip tone="success" icon={r.status === "confirmed" ? IconCheck : IconMic} className="min-w-0" title={`${r.status === "confirmed" ? "Confirmed" : "In"} · ${placedShow.name}`}>
+                {/* Phones: the icon says confirmed or pencilled in, the day says which show. */}
+                <span className="sm:hidden">{DAY_SHORT[placedShow.weekday]}</span>
+                <span className="sr-only sm:hidden">{r.status === "confirmed" ? "Confirmed" : "In"} · {placedShow.name}</span>
+                <span className="hidden truncate sm:inline">
                   {r.status === "confirmed" ? "Confirmed" : "In"} · {placedShow.name}
                 </span>
               </Chip>
