@@ -1,6 +1,6 @@
 // Reads only: pull a show group's members, or list the curator's saved contacts. Nothing is sent.
 import type WAWebJS from "whatsapp-web.js";
-import { comicIdForPhone, normalizePhone, shouldUpdateName, type Comic, type GroupMembersResult, type WaContact } from "@spot/shared";
+import { comicIdForPhone, normalizePhone, shouldUpdateName, type Comic, type GroupMember, type GroupMembersResult, type Show, type WaContact } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 
@@ -45,6 +45,46 @@ function contactName(c: WAWebJS.Contact | null, phone: string) {
   const name = saved || profile || (phone ? `+${phone}` : "Unknown");
   const nameSource = (saved ? "contact" : profile ? "whatsapp" : "number") as NonNullable<Comic["nameSource"]>;
   return { name, nameSource };
+}
+
+/**
+ * Read a show's group and cache who is in it on the show doc (names from the roster first, then WhatsApp contacts).
+ * Changes nothing in WhatsApp and doesn't touch the roster, so it's cheap to run from the lineup page.
+ */
+export async function listGroupMembers(uid: string, { showId }: Record<string, unknown>): Promise<{ count: number; at: number }> {
+  const client = sessions.require(uid);
+  const showRef = col(uid, "shows").doc(String(showId));
+  const show = (await showRef.get()).data() as Show | undefined;
+  if (!show?.groupId) throw new Error("No WhatsApp group linked to this show");
+  const chat = await client.getChatById(show.groupId);
+  if (!chat.isGroup) throw new Error("That isn't a WhatsApp group");
+  const group = chat as WAWebJS.GroupChat;
+  const self = client.info.wid;
+  const people = group.participants.filter((p) => p.id.user !== self.user && p.id._serialized !== self._serialized);
+  const lids = await lidToPhone(client, people.map((p) => p.id._serialized));
+
+  const found = people.map((p) => {
+    const raw = p.id._serialized;
+    const phone = p.id.server === "lid" ? (lids.get(raw) ?? "") : p.id.user;
+    return { raw, phone, id: phone ? comicIdForPhone(phone) : raw, isAdmin: Boolean(p.isAdmin || p.isSuperAdmin) };
+  });
+  // The curator's own @lid only shows its phone once resolved.
+  const others = found.filter((m) => m.phone !== self.user);
+  const roster = new Map<string, Comic>();
+  await inChunks([...new Set(others.map((m) => m.id))], 300, async (chunk) => {
+    for (const s of await db.getAll(...chunk.map((id) => col(uid, "comics").doc(id)))) if (s.exists) roster.set(s.id, s.data() as Comic);
+  });
+  const members = await mapLimit(others, CONCURRENCY, async (m): Promise<GroupMember> => {
+    const known = roster.get(m.id)?.name;
+    if (known) return { id: m.id, name: known, isAdmin: m.isAdmin };
+    const contact = await client.getContactById(m.raw).catch(() => null);
+    return { id: m.id, name: contactName(contact, m.phone).name, isAdmin: m.isAdmin };
+  });
+  // The same person can show up twice (@lid and @c.us); keep one entry.
+  const unique = [...new Map(members.map((m) => [m.id, m])).values()];
+  const at = Date.now();
+  await showRef.set({ groupMembers: { groupId: show.groupId, at, members: unique } }, { merge: true });
+  return { count: unique.length, at };
 }
 
 /** Upsert group members as comics. Manual names are never touched; new names follow the intake precedence rules. */

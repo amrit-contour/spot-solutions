@@ -1,7 +1,7 @@
 // Seeds a demo curator with realistic data and prints a dev sign-in link.
 //   pnpm --filter @spot/worker exec tsx --env-file=.env scripts/seed-demo.ts
 import { getAuth } from "firebase-admin/auth";
-import { DEFAULT_SETTINGS, lineupId, shiftWeek, weekOf, type Comic, type Show, type SpotRequest, type Venue } from "@spot/shared";
+import { DEFAULT_SETTINGS, dateInWeek, lineupId, sentSnapshot, shiftWeek, weekOf, type Comic, type GroupMember, type Show, type SpotRequest, type Venue } from "@spot/shared";
 import { col, db, sessionRef, userRef } from "../src/firebase.ts";
 
 const uid = process.argv[2] ?? "demo-curator";
@@ -11,8 +11,23 @@ const now = Date.now();
 const H = 3600_000;
 
 const venues: Venue[] = [{ id: "v1", name: "The Courtyard Club", area: "Indiranagar", mapsLink: "https://maps.app.goo.gl/demo" }];
+// A cached member list for Monday's group, so the group panel is visible in the demo without a linked WhatsApp.
+const groupMembers: GroupMember[] = [
+  { id: "919800000010@c.us", name: "Neha Kapoor", isAdmin: true },
+  { id: "919800000009@c.us", name: "Devansh Gupta", isAdmin: false },
+  { id: "919800000004@c.us", name: "Ananya Kulkarni", isAdmin: false },
+  { id: "919800000001@c.us", name: "Rohan Mehta", isAdmin: false },
+  { id: "919800000002@c.us", name: "Ishita Rao", isAdmin: false },
+  { id: "919800000005@c.us", name: "Vikram Nair", isAdmin: false },
+  { id: "919800000011@c.us", name: "Pooja Menon", isAdmin: false },
+  { id: "919800000012@c.us", name: "Arjun Pillai", isAdmin: false },
+  { id: "919800000013@c.us", name: "Tanvi Shah", isAdmin: false },
+  { id: "919800000014@c.us", name: "Kabir Anand", isAdmin: false },
+  { id: "919800000015@c.us", name: "Riya Das", isAdmin: false },
+  { id: "919800000016@c.us", name: "Nikhil Verma", isAdmin: false },
+];
 const shows: Show[] = [
-  { id: "mon", name: "Monday Mic", venueId: "v1", weekday: 1, startTime: "20:00", slotCount: 8, includeSlotTime: true, defaultMinutes: 5, active: true, groupId: null, regulars: ["919800000009@c.us"], protected: [] },
+  { id: "mon", name: "Monday Mic", venueId: "v1", weekday: 1, startTime: "20:00", slotCount: 8, includeSlotTime: true, defaultMinutes: 5, active: true, groupId: "demo-monday-group@g.us", groupMode: "manual", regulars: ["919800000009@c.us"], protected: ["919800000010@c.us"], groupMembers: { groupId: "demo-monday-group@g.us", at: now - 5 * 60_000, members: groupMembers } },
   { id: "tue", name: "Tuesday Trial", venueId: "v1", weekday: 2, startTime: "20:30", slotCount: 6, includeSlotTime: false, defaultMinutes: 5, active: true, groupId: null, regulars: [], protected: [] },
 ];
 const people: [string, string, Comic["tier"], string | null][] = [
@@ -25,6 +40,7 @@ const people: [string, string, Comic["tier"], string | null][] = [
   ["Aditya Bose", "919800000007", "regular", null],
   ["Meera Iyer", "919800000008", "open", null],
   ["Devansh Gupta", "919800000009", "regular", last],
+  ["Neha Kapoor", "919800000010", "regular", null],
 ];
 const msgs: Record<string, [string[], number[], number, string]> = {
   "919800000001": [["hey bro", "monday ka spot milega? got a new 5"], [1], 0.95, "Wants Monday, trying a new 5"],
@@ -65,6 +81,10 @@ batch.set(col(uid, "actions").doc("demo-cancel"), { kind: "cancel_spot", comicId
 batch.set(col(uid, "notices").doc("demo-notice"), { level: "info", text: "Karthik S introduced themselves: from Pune, 2 yrs in comedy, travelling.", createdAt: now - 2 * H, read: false });
 batch.set(db.collection("access").doc(uid), { uid, email: "demo@spot.solutions", name: "Demo Curator", photo: null, status: "approved", requestedAt: now, decidedAt: now, decidedBy: "demo" });
 batch.set(col(uid, "session").doc("state"), { aliveAt: now }, { merge: true });
+// Tuesday is already confirmed (and sent), so the demo can show editing a lineup after confirming and the Send updates review.
+const tue = [{ comicId: "919800000007@c.us" }, { comicId: "919800000003@c.us" }];
+batch.set(col(uid, "lineups").doc(lineupId(week, "tue")), { id: lineupId(week, "tue"), weekOf: week, showId: "tue", date: dateInWeek(week, 2), slots: tue, status: "confirmed", sentAt: now - 3 * H, sent: sentSnapshot(tue, shows[1], now - 3 * H), groupSync: null });
+for (const t of tue) batch.set(col(uid, "requests").doc(`${week}_${t.comicId}`), { status: "confirmed" }, { merge: true });
 batch.set(col(uid, "lineups").doc(lineupId(last, "tue")), { id: lineupId(last, "tue"), weekOf: last, showId: "tue", date: last, slots: [{ comicId: "919800000002@c.us" }, { comicId: "919800000005@c.us" }, { comicId: "919800000009@c.us" }], status: "confirmed", sentAt: now - 7 * 24 * H, groupSync: null });
 await batch.commit();
 

@@ -1,11 +1,13 @@
 // Runs the intent prompt against local Gemma on a fixture set. Run: pnpm --filter @spot/worker exec tsx scripts/eval-intent.ts gemma3:4b
 import { classify } from "../src/gemma.ts";
-import { DEFAULT_SETTINGS, type Show } from "@spot/shared";
+import { type Show, type Venue } from "@spot/shared";
 
+const venues: Venue[] = [{ id: "v1", name: "Bloom Indiranagar", area: "Indiranagar" }];
 const shows = [
-  { name: "Monday Mic", weekday: 1, startTime: "20:00" },
-  { name: "Tuesday Trial", weekday: 2, startTime: "20:30" },
+  { name: "Open Mic - Monday", weekday: 1, startTime: "20:30", venueId: "v1" },
+  { name: "Open Mic - Tuesday", weekday: 2, startTime: "20:30", venueId: "v1" },
 ] as Show[];
+const ctx = { venues };
 
 const cases: [string[], boolean, number[]][] = [
   [["hey bro", "any spot this monday?"], true, [1]],
@@ -41,15 +43,15 @@ const model = { primary: { provider: (process.argv[3] ?? "ollama") as "ollama" |
 let ok = 0;
 for (const [msgs, want, days] of cases) {
   const t = Date.now();
-  const r = await classify(null, msgs, shows, model);
+  const r = await classify(null, msgs, shows, model, ctx);
   const pass = r.isSpotRequest === want && (!want || days.every((d) => r.preferredDays.includes(d as never)));
   ok += pass ? 1 : 0;
-  console.log(`${pass ? "PASS" : "FAIL"} ${Date.now() - t}ms conf=${r.confidence} days=${r.preferredDays} | ${msgs.join(" / ")} | ${r.note}`);
+  console.log(`${pass ? "PASS" : "FAIL"} ${Date.now() - t}ms conf=${r.confidence} days=${r.preferredDays} | ${msgs.join(" / ")} | ${r.note} | venue=${r.venueId} tags=${r.tags}`);
 }
 console.log(`\n${ok}/${cases.length} correct with ${model.primary.model}`);
 let kOk = 0;
 for (const [msgs, want] of kindCases) {
-  const r = await classify(null, msgs, shows, model);
+  const r = await classify(null, msgs, shows, model, ctx);
   kOk += r.kind === want ? 1 : 0;
   console.log(`${r.kind === want ? "PASS" : "FAIL"} kind=${r.kind} (want ${want}) | ${msgs.join(" / ")}`);
 }

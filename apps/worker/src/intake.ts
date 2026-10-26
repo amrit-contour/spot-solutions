@@ -24,6 +24,7 @@ import {
 } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 import { classify } from "./gemma.ts";
+import { classifyContext, countPriorRequests } from "./classifyContext.ts";
 import { watchUser } from "./userData.ts";
 import { sendQueued } from "./sendQueue.ts";
 import { counters } from "./stats.ts";
@@ -116,13 +117,16 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   // Answers to things you started (a spot offer, the "who are you?" question) come first.
   if (await handleOfferReply(uid, client, p.contact.id, burst)) return;
   if (await handleOnboardingReply(uid, p.contact.id, burst)) return;
-  const first = await classify(uid, burst, activeShows, settings.ai);
+  const known = (await col(uid, "comics").doc(p.contact.id).get()).data() as Comic | undefined;
+  const priorRequests = known ? await countPriorRequests(uid, p.contact.id, week) : 0;
+  const ctx = classifyContext(uid, known, week, priorRequests);
+  const first = await classify(uid, burst, activeShows, settings.ai, ctx);
   if (first.kind && ["cancel_spot", "status_query", "last_spot_query", "show_info"].includes(first.kind)) {
     console.log(`[intake] ${p.contact.name}: ${first.kind} — ${first.note}`);
     if (settings.selfService.enabled) await draftAction(uid, client, p, first, week);
     return;
   }
-  const intent = existing ? await classify(uid, messages.map((m) => m.body), activeShows, settings.ai) : first;
+  const intent = existing ? await classify(uid, messages.map((m) => m.body), activeShows, settings.ai, ctx) : first;
   console.log(`[intake] ${p.contact.name}: spot=${intent.isSpotRequest} conf=${intent.confidence} (${intent.model}) — ${intent.note}`);
 
   // Privacy: chats that aren't spot requests are never stored.
@@ -130,7 +134,6 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
 
   const now = Date.now();
   const locked = existing && ["confirmed", "dismissed", "assigned", "rejected"].includes(existing.status);
-  const known = (await col(uid, "comics").doc(p.contact.id).get()).data() as Comic | undefined;
   const newest = Math.max(...p.messages.map((m) => m.at));
   // V1 rules: banned/ignored/host lists, the weekly request window, and last week's performers.
   const hold = existing?.holdOverridden || locked ? (existing?.hold ?? null) : holdFor({ comic: known, week, at: new Date(newest), rules: settings.rules, timeZone: settings.timezone });
@@ -141,11 +144,14 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     weekOf: week,
     messages,
     // A follow-up like "thanks" shouldn't downgrade an earlier clear request.
-    intent: existing && existing.intent.confidence > intent.confidence ? { ...existing.intent, note: intent.note ?? existing.intent.note } : intent,
+    intent: existing && existing.intent.confidence > intent.confidence ? { ...existing.intent, note: intent.note ?? existing.intent.note, ...(intent.isSpotRequest && { tags: intent.tags, venueId: intent.venueId }) } : intent,
     status: locked ? existing.status : (existing?.status ?? "new"),
     ackedAt: existing?.ackedAt ?? null,
     hold,
     holdOverridden: existing?.holdOverridden ?? false,
+    // Stamped once, when the request is first created.
+    firstContact: existing ? (existing.firstContact ?? false) : !known,
+    priorRequests: existing ? (existing.priorRequests ?? priorRequests) : priorRequests,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };

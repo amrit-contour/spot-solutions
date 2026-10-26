@@ -5,6 +5,7 @@ import {
   formatDate,
   localNow,
   parseYesNo,
+  sentWith,
   withHistory,
   type Comic,
   type HostPoll,
@@ -67,6 +68,11 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
   await doc.ref.update({ status: "accepted", reply });
   const comic = (await comicRef.get()).data() as Comic;
   await sendQueued(client, comic.chatId ?? comicId, confirmBody(uid, show, comic, booked.weekOf));
+  // On a confirmed lineup this counts as told, so "Send updates" doesn't confirm them a second time.
+  if (booked.status === "confirmed") {
+    const fresh = (await lineupRef.get()).data() as Lineup;
+    await lineupRef.update({ sent: sentWith(fresh.sent, fresh.slots, show, comicId, Date.now()) });
+  }
   // Show is today and its group is managed: add them now.
   if (show.groupId && localNow(new Date(), settings.timezone).date === dateInWeek(booked.weekOf, show.weekday)) {
     const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;

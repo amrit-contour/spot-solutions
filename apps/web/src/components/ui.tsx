@@ -105,7 +105,7 @@ export function Chip({
   icon?: Icon;
   selected?: boolean;
   onClick?: () => void;
-  tone?: "neutral" | "primary" | "tertiary" | "error" | "success";
+  tone?: "neutral" | "primary" | "tertiary" | "error" | "success" | "fact" | "reading";
   className?: string;
 }) {
   const tones = {
@@ -114,6 +114,9 @@ export function Chip({
     tertiary: "bg-tertiary-container text-on-tertiary-container",
     error: "bg-error-container text-on-error-container",
     success: "bg-secondary-container text-on-secondary-container",
+    // Something the app knows for sure, versus something Gemma read from the message (dashed, quieter).
+    fact: "bg-surface-high text-on-surface",
+    reading: "border border-dashed border-outline-variant text-on-surface-variant",
   };
   const Tag = onClick ? "button" : "span";
   return (

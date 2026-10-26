@@ -1,5 +1,5 @@
-import { getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
-import { dateInWeek, lineupId, shiftWeek, withHistory, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
+import { arrayRemove, arrayUnion, getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
+import { dateInWeek, lineupId, sentSnapshot, shiftWeek, withHistory, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
 import { db } from "./firebase";
 import { userDoc } from "./data";
 
@@ -19,20 +19,28 @@ async function markRequest(uid: string, week: string, comicId: string, placed: b
   await updateDoc(ref, { status: placed ? "assigned" : r.ackedAt ? "acked" : "new", updatedAt: Date.now() });
 }
 
-/** Write a show's full slot list for the week. Moves between shows call this twice. */
+/**
+ * Write a show's full slot list for the week. Moves between shows call this twice.
+ * A confirmed lineup can be edited: the first edit records what was sent (lineups confirmed before that was tracked
+ * have no record), so "Changed since confirmed" and Send updates always compare against what the comics were told.
+ */
 export async function setSlots(uid: string, week: string, show: Show, slots: Slot[]) {
   const ref = lineupRef(uid, week, show.id);
   await runTransaction(db, async (tx) => {
     const cur = (await tx.get(ref)).data() as Lineup | undefined;
-    tx.set(ref, { ...(cur ?? blank(week, show)), slots });
+    const record = cur?.status === "confirmed" && !cur.sent ? { sent: sentSnapshot(cur.slots, show, cur.sentAt ?? Date.now()) } : {};
+    tx.set(ref, { ...(cur ?? blank(week, show)), ...record, slots });
   });
 }
 
-export async function placeComic(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[]) {
+export async function placeComic(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], shows: Show[] = []) {
   // A comic sits in at most one show per week.
   for (const l of lineups) {
-    if (l.showId !== show.id && l.slots.some((s) => s.comicId === comicId) && l.status !== "confirmed") {
-      await updateDoc(lineupRef(uid, week, l.showId), { slots: l.slots.filter((s) => s.comicId !== comicId) });
+    if (l.showId !== show.id && l.slots.some((s) => s.comicId === comicId) && l.status !== "cancelled" && l.status !== "canned") {
+      const other = shows.find((s) => s.id === l.showId);
+      const rest = l.slots.filter((s) => s.comicId !== comicId);
+      if (other) await setSlots(uid, week, other, rest);
+      else await updateDoc(lineupRef(uid, week, l.showId), { slots: rest });
     }
   }
   const cur = lineups.find((l) => l.showId === show.id);
@@ -48,6 +56,26 @@ export async function unplaceComic(uid: string, week: string, show: Show, comicI
 }
 
 export { markRequest };
+
+/** Change one comic's set length on a show's lineup. */
+export function setMinutes(uid: string, week: string, show: Show, lineup: Lineup, comicId: string, minutes: number) {
+  return setSlots(uid, week, show, lineup.slots.map((s) => (s.comicId === comicId ? { ...s, minutes } : s)));
+}
+
+/** Members marked to leave the group on the next sync, for this week's lineup. */
+export async function setGroupLeaving(uid: string, week: string, show: Show, ids: string[]) {
+  const ref = lineupRef(uid, week, show.id);
+  const cur = (await getDoc(ref)).data() as Lineup | undefined;
+  await setDoc(ref, { ...(cur ?? blank(week, show)), groupLeaving: ids });
+}
+
+/** Regular / Co-host tags live on the show. Taking someone out of the group drops both (`off`). */
+export function tagMember(uid: string, show: Show, comicId: string, tag: "regulars" | "protected", on: boolean) {
+  return updateDoc(userDoc(uid, "shows", show.id), { [tag]: on ? arrayUnion(comicId) : arrayRemove(comicId) });
+}
+export function untagMember(uid: string, show: Show, comicId: string) {
+  return updateDoc(userDoc(uid, "shows", show.id), { regulars: arrayRemove(comicId), protected: arrayRemove(comicId) });
+}
 
 /** Mic got cancelled last week? Bring the same lineup back. */
 export async function repeatLastWeek(uid: string, week: string, show: Show) {

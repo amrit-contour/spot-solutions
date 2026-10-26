@@ -19,7 +19,7 @@ import {
   type SpotRequest,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { timeAgo, useCollection, useNow, userDoc } from "../lib/data";
+import { runCommand, timeAgo, useCollection, useNow, userDoc } from "../lib/data";
 import { placeComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
@@ -28,7 +28,8 @@ import { Avatar, Bubble, Button, Chip, Empty, IconButton, cx } from "../componen
 import { ConnectCard } from "../components/ConnectCard";
 import { ClearOldRequests } from "../components/ClearOldRequests";
 import { ActionInbox, MicCheck, Notices } from "../components/Inbox";
-import { IconArrowDown, IconChatCheck, IconCheck, IconHistory, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
+import { RequestPills, requestPills } from "../components/RequestTags";
+import { IconArrowDown, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
 type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
 const LANES: { id: Lane; label: string }[] = [
@@ -56,6 +57,7 @@ export function Requests() {
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const [lane, setLane] = useState<Lane>("asked");
   const [clearOpen, setClearOpen] = useState(false);
+  const [rereading, setRereading] = useState(false);
   const lastWeek = shiftWeek(week, -1);
 
   const grouped = useMemo(() => {
@@ -73,6 +75,21 @@ export function Requests() {
 
   const activeShows = shows.filter((s) => s.active);
   const linked = session?.status === "ready";
+  // With one venue it's implied, so the card hides the venue pill.
+  const manyVenues = new Set(activeShows.map((s) => s.venueId)).size > 1;
+
+  const reread = async () => {
+    setRereading(true);
+    try {
+      const res = await runCommand<{ updated: number; skipped: number; failed: number }>(uid, "reclassify_requests", { weekOf: week });
+      toast.success(res.updated ? `Re-read ${res.updated} request${res.updated > 1 ? "s" : ""}` : "Nothing to update");
+      if (res.failed) toast.error(`${res.failed} could not be read`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setRereading(false);
+    }
+  };
 
   return (
     <div className="w-full">
@@ -83,7 +100,15 @@ export function Requests() {
           <>
             <WeekSwitcher />
             <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="More" onClick={t} className="size-9" />}>
-              {(close) => <MenuItem onClick={() => (close(), setClearOpen(true))}>Clear old requests…</MenuItem>}
+              {(close) => (
+                <>
+                  <MenuItem disabled={rereading || !requests.data.length} onClick={() => (close(), void reread())}>
+                    Re-read this week's requests
+                    <span className="block type-body-s text-on-surface-variant">Updates tags and notes only</span>
+                  </MenuItem>
+                  <MenuItem onClick={() => (close(), setClearOpen(true))}>Clear old requests…</MenuItem>
+                </>
+              )}
             </Menu>
           </>
         }
@@ -112,7 +137,7 @@ export function Requests() {
           <motion.ul className="grid items-start gap-3 xl:grid-cols-2" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
             <AnimatePresence initial={false}>
               {grouped[lane].map((r) => (
-                <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={comicsById.get(r.comicId)?.lastPerformedWeek === lastWeek} tier={comicsById.get(r.comicId)?.tier} />
+                <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={comicsById.get(r.comicId)?.lastPerformedWeek === lastWeek} tier={comicsById.get(r.comicId)?.tier} showVenue={manyVenues} />
               ))}
             </AnimatePresence>
           </motion.ul>
@@ -142,8 +167,8 @@ function LaneEmpty({ lane }: { lane: Lane }) {
   );
 }
 
-function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRequest; shows: Show[]; lineups: Lineup[]; performedLastWeek: boolean; tier?: string }) {
-  const { uid, week, comicsById, settings } = useApp();
+function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: { r: SpotRequest; shows: Show[]; lineups: Lineup[]; performedLastWeek: boolean; tier?: string; showVenue: boolean }) {
+  const { uid, week, comicsById, settings, shows: allShows, venues } = useApp();
   const now = useNow(30_000);
   const [open, setOpen] = useState(false);
   const comic = comicsById.get(r.comicId);
@@ -156,6 +181,8 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
   const preferred = new Set(r.intent.preferredDays);
   const sortedShows = [...shows].sort((a, b) => Number(preferred.has(b.weekday)) - Number(preferred.has(a.weekday)));
   const last = r.messages[r.messages.length - 1];
+  const venueName = showVenue ? venues.find((v) => v.id === r.intent.venueId)?.name : undefined;
+  const pills = requestPills({ r, comic, shows: allShows, today, venueName });
 
   const assign = async (show: Show) => {
     await placeComic(uid, week, show, r.comicId, lineups);
@@ -178,12 +205,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
             <h3 className="min-w-0 flex-1 truncate type-title-m">{r.comicName}</h3>
             <span className="flex-none type-label-m text-on-surface-variant tabular">{timeAgo(r.updatedAt, now)}</span>
           </div>
-          <p className="mt-0.5 type-body-m text-on-surface-variant sm:type-body-l">{r.intent.note || `“${last?.body}”`}</p>
-          <p className="mt-1 type-body-s text-on-surface-variant">
-            {prev ? `Last spot ${daysBetween(prev.date, today)} days ago (${prev.showName})` : "No spot on record"}
-            {cancels > 0 && <span className="text-error"> · {cancels} cancellation{cancels > 1 ? "s" : ""}</span>}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {r.hold && (
               <Chip tone={held ? "error" : "neutral"} icon={IconShield} className={cx(!held && "line-through")}>
                 {HOLD_LABEL[r.hold]}
@@ -198,22 +220,27 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier }: { r: SpotRe
             ) : (
               <Chip>Any day</Chip>
             )}
-            {tier && tier !== "open" && (
+            {tier === "featured" && (
               <Chip tone="tertiary" icon={IconStar}>
                 {tier}
               </Chip>
             )}
-            {performedLastWeek && (
-              <Chip icon={IconHistory} className="border-dashed">
-                Last week
-              </Chip>
-            )}
+            <RequestPills pills={pills} />
             {r.ackedAt && (
               <span className="inline-flex items-center gap-1 px-1 type-label-m text-on-surface-variant">
                 <IconChatCheck className="icon size-4" /> Acked
               </span>
             )}
           </div>
+          <p className="mt-2 truncate type-body-m text-on-surface-variant" title={r.intent.note || last?.body}>
+            {r.intent.note || `“${last?.body}”`}
+          </p>
+          {(prev || cancels > 0) && (
+            <p className="mt-0.5 type-body-s text-on-surface-variant">
+              {prev && `Last spot ${daysBetween(prev.date, today)} days ago (${prev.showName})`}
+              {cancels > 0 && <span className="text-error">{prev && " · "}{cancels} cancellation{cancels > 1 ? "s" : ""}</span>}
+            </p>
+          )}
         </div>
       </div>
 

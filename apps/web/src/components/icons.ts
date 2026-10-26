@@ -48,3 +48,6 @@ export { default as IconDrag } from "~icons/solar/hamburger-menu-bold-duotone";
 export { default as IconLightbulb } from "~icons/solar/lightbulb-bolt-bold-duotone";
 export { default as IconMenuDots } from "~icons/solar/menu-dots-bold-duotone";
 export { default as IconImport } from "~icons/solar/import-bold-duotone";
+export { default as IconSuitcase } from "~icons/solar/suitcase-bold-duotone";
+export { default as IconStopwatch } from "~icons/solar/stopwatch-bold-duotone";
+export { default as IconFlag } from "~icons/solar/flag-bold-duotone";

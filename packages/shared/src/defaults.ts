@@ -1,10 +1,11 @@
 import type { Settings } from "./types.ts";
-import { DEFAULT_ACK_TEMPLATE, DEFAULT_CONFIRM_TEMPLATE, DEFAULT_REJECT_TEMPLATE } from "./template.ts";
+import { DEFAULT_ACK_TEMPLATE, DEFAULT_CANCEL_SPOT_TEMPLATE, DEFAULT_CONFIRM_TEMPLATE, DEFAULT_REJECT_TEMPLATE } from "./template.ts";
 
 export const DEFAULT_SETTINGS: Settings = {
   // Off until the curator opts in. Nothing leaves their WhatsApp without them choosing it.
   ack: { enabled: false, template: DEFAULT_ACK_TEMPLATE },
   confirm: { template: DEFAULT_CONFIRM_TEMPLATE },
+  cancelSpot: { template: DEFAULT_CANCEL_SPOT_TEMPLATE },
   reject: { enabled: true, template: DEFAULT_REJECT_TEMPLATE },
   ai: { primary: { provider: "ollama", model: "gemma3:4b" }, fallback: null },
   ignoreGroups: true,

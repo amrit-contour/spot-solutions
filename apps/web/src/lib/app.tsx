@@ -101,6 +101,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       ...s,
       ack: { ...DEFAULT_SETTINGS.ack, ...s.ack },
       confirm: { ...DEFAULT_SETTINGS.confirm, ...s.confirm },
+      cancelSpot: { ...DEFAULT_SETTINGS.cancelSpot, ...s.cancelSpot },
       reject: { ...DEFAULT_SETTINGS.reject, ...s.reject },
       rules: { ...DEFAULT_SETTINGS.rules, ...s.rules, window: { ...DEFAULT_SETTINGS.rules.window, ...s.rules?.window } },
       selfService: { ...DEFAULT_SETTINGS.selfService, ...s.selfService },

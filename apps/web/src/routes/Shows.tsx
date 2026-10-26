@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { addDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { DAY_SHORT, formatTime, type GroupInfo, type GroupMembersResult, type Show, type Venue, type Weekday } from "@spot/shared";
+import { DAY_SHORT, formatTime, groupModeOf, type GroupInfo, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
@@ -24,12 +25,24 @@ const newShow = (venueId: string): Omit<Show, "id"> => ({
   groupId: null,
   regulars: [],
   protected: [],
+  groupMode: "manual",
 });
+
+const GROUP_MODE_LABEL: Record<GroupMode, string> = { manual: "Sync: when I sync", confirm: "Sync: on confirm", show_day: "Sync: show day" };
 
 export function Shows() {
   const { shows, venues } = useApp();
   const [editingShow, setEditingShow] = useState<Partial<Show> | null>(null);
   const [editingVenue, setEditingVenue] = useState<Partial<Venue> | null>(null);
+  // The lineup page links here (?edit=showId) to link a group.
+  const [params, setParams] = useSearchParams();
+  const editId = params.get("edit");
+  useEffect(() => {
+    const s = editId ? shows.find((x) => x.id === editId) : null;
+    if (!s) return;
+    setEditingShow(s);
+    setParams({}, { replace: true });
+  }, [editId, shows, setParams]);
 
   return (
     <div className="w-full">
@@ -82,6 +95,7 @@ export function Shows() {
                           </span>
                           <span className="mt-2 flex flex-wrap gap-1.5">
                             {s.groupId ? <Chip icon={IconGroup}>Group linked</Chip> : <Chip className="border-dashed">No group</Chip>}
+                            {s.groupId && <Chip icon={IconClock}>{GROUP_MODE_LABEL[groupModeOf(s)]}</Chip>}
                             {s.regulars?.length ? <Chip tone="tertiary" icon={IconStar}>{s.regulars.length} regular{s.regulars.length > 1 ? "s" : ""}</Chip> : null}
                             {!s.active && <Chip>Paused</Chip>}
                           </span>
@@ -121,6 +135,8 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
   }
   const set = <K extends keyof Show>(k: K, v: Show[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const group = groups.data.find((g) => g.id === draft.groupId);
+  // Shows saved before the choice existed keep updating on confirm; saving writes the choice down.
+  const mode = draft.groupMode ?? groupModeOf({ groupId: value?.groupId });
 
   const refreshGroups = async () => {
     setLoadingGroups(true);
@@ -152,8 +168,11 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
 
   const save = async () => {
     if (!draft.name?.trim()) return toast.error("Give the show a name");
-    const { id, ...data } = draft as Show;
-    if (id) await setDoc(userDoc(uid, "shows", id), data);
+    // groupMembers is the worker's cache of the group: never written back from a possibly stale draft.
+    const { id, groupMembers: _cache, ...rest } = draft as Show;
+    const data = { ...rest, groupMode: mode };
+    // Merge, so a member refresh that landed while this was open isn't wiped. A different group means a different list.
+    if (id) await setDoc(userDoc(uid, "shows", id), { ...data, ...(data.groupId !== value?.groupId ? { groupMembers: deleteField() } : {}) }, { merge: true });
     else await addDoc(userCol(uid, "shows"), data);
     onClose();
   };
@@ -258,17 +277,27 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
 
           {draft.groupId && (
             <div className="mt-5 grid gap-5">
-              <Field label="Update the group" hint={draft.groupMode === "show_day" ? "On the show's day, last week's comics are removed and this lineup is added automatically. Admins, regulars and protected members always stay." : "Right after you confirm, you review who gets added and removed."}>
+              <Field
+                label="Update the group"
+                hint={
+                  mode === "manual"
+                    ? "Nothing changes in the group until you tap Sync group on the lineup page and approve it."
+                    : mode === "confirm"
+                      ? "Right after you confirm or send updates, you review who gets added and removed."
+                      : "On the show's day, last week's comics are removed and this lineup is added automatically. Admins, regulars and co-hosts always stay."
+                }
+              >
                 <Segmented
-                  value={draft.groupMode ?? "confirm"}
+                  value={mode}
                   onChange={(v) => set("groupMode", v)}
                   options={[
-                    { value: "confirm", label: "Review on confirm" },
-                    { value: "show_day", label: "Auto on show day" },
+                    { value: "manual", label: "When I sync" },
+                    { value: "confirm", label: "On confirm" },
+                    { value: "show_day", label: "On show day" },
                   ]}
                 />
               </Field>
-              {draft.groupMode === "show_day" && (
+              {mode === "show_day" && (
                 <div className="grid gap-5 rounded-lg bg-surface-container p-4 sm:grid-cols-2">
                   <Field label="Run at">
                     <TextInput type="time" value={draft.showDaySyncTime ?? "12:00"} onChange={(e) => set("showDaySyncTime", e.target.value)} />
@@ -331,9 +360,12 @@ function VenueEditor({ value, onClose }: { value: Partial<Venue> | null; onClose
     setLast(value);
     if (value) setDraft(value);
   }
+  const aliasText = (draft.aliases ?? []).join(",");
   const save = async () => {
     if (!draft.name?.trim()) return toast.error("Venue needs a name");
-    const { id, ...data } = draft as Venue;
+    const { id, ...rest } = draft as Venue;
+    const aliases = (rest.aliases ?? []).map((a) => a.trim()).filter(Boolean);
+    const data = { ...rest, aliases };
     if (id) await setDoc(userDoc(uid, "venues", id), data);
     else await addDoc(userCol(uid, "venues"), data);
     onClose();
@@ -343,6 +375,13 @@ function VenueEditor({ value, onClose }: { value: Partial<Venue> | null; onClose
       <div className="flex flex-col gap-6">
         <Field label="Name"><TextInput value={draft.name ?? ""} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="The Comedy Club" autoFocus /></Field>
         <Field label="Area"><TextInput value={draft.area ?? ""} onChange={(e) => setDraft({ ...draft, area: e.target.value })} placeholder="Indiranagar" /></Field>
+        <Field label="Other names" hint="What comics call this place, separated by commas. Gemma uses them to match messages to the venue.">
+          <TextInput
+            value={aliasText}
+            onChange={(e) => setDraft({ ...draft, aliases: e.target.value.split(",") })}
+            placeholder="bloom, indira nagar"
+          />
+        </Field>
         <Field label="Google Maps link" hint="Shared in confirmations through {{mapsLink}}"><TextInput value={draft.mapsLink ?? ""} onChange={(e) => setDraft({ ...draft, mapsLink: e.target.value })} placeholder="https://maps.app.goo.gl/…" /></Field>
       </div>
     </Sheet>

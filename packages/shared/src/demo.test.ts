@@ -7,7 +7,7 @@ const W = "2026-10-12";
 const LAST = "2026-10-05";
 
 const template = (): DemoData => ({
-  shows: [{ id: "mon", data: { id: "mon", name: "Monday Mic" } }],
+  shows: [{ id: "mon", data: { id: "mon", name: "Monday Mic", groupMembers: { groupId: "g", at: SEEDED - H, members: [] } } }],
   comics: [
     { id: "c1@c.us", data: { id: "c1@c.us", lastPerformedWeek: LAST, history: [{ date: "2026-10-06", showId: "tue", showName: "T", status: "confirmed" }] } },
     { id: "c2@c.us", data: { id: "c2@c.us", lastPerformedWeek: null } },
@@ -19,7 +19,7 @@ const template = (): DemoData => ({
     },
   ],
   lineups: [
-    { id: `${W}_mon`, data: { id: `${W}_mon`, weekOf: W, showId: "mon", date: W, slots: [], status: "draft", sentAt: null, groupSync: null } },
+    { id: `${W}_mon`, data: { id: `${W}_mon`, weekOf: W, showId: "mon", date: W, slots: [], status: "draft", sentAt: null, groupSync: null, sent: { "c1@c.us": { at: SEEDED - 2 * H, minutes: 5, order: 0 } } } },
     { id: `${LAST}_tue`, data: { id: `${LAST}_tue`, weekOf: LAST, showId: "tue", date: "2026-10-06", slots: [], status: "confirmed", sentAt: SEEDED - 7 * 24 * H } },
   ],
   actions: [{ id: "a", data: { weekOf: W, lineupId: `${W}_mon`, createdAt: SEEDED - H, status: "pending" } }],
@@ -67,8 +67,15 @@ describe("shiftDemoData", () => {
     expect(NOW - (one("lineups", "2026-12-28_tue").data.sentAt as number)).toBe(7 * 24 * H);
   });
 
+  it("keeps the group sync time and what was last sent recent", () => {
+    const age = (v: number) => NOW - v;
+    expect(age((one("shows", "mon").data.groupMembers as { at: number }).at)).toBe(H);
+    expect(age((one("lineups", `${TO}_mon`).data.sent as Record<string, { at: number }>)["c1@c.us"].at)).toBe(2 * H);
+  });
+
   it("leaves other docs and null fields alone, and does not mutate the template", () => {
-    expect(out.shows).toEqual(template().shows);
+    expect(out.shows[0].data).toMatchObject({ id: "mon", name: "Monday Mic" });
+    expect(out.comics[1]).toEqual(template().comics[1]);
     expect(one("lineups", `${TO}_mon`).data.sentAt).toBeNull();
     expect(template().requests[0].id).toBe(`${W}_c1@c.us`);
   });

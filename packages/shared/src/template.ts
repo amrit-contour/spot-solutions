@@ -26,6 +26,9 @@ export const DEFAULT_ACK_TEMPLATE =
 export const DEFAULT_REJECT_TEMPLATE =
   "Hey {{name}}, sorry, there are no spots available for you this week. Hope to see you up there next week! 🙏";
 
+export const DEFAULT_CANCEL_SPOT_TEMPLATE =
+  "Hey {{name}}, sorry, I've had to take you off {{show}} on {{day}} {{date}}. Your spot is cancelled. Hope to see you up there soon! 🙏";
+
 export const DEFAULT_CONFIRM_TEMPLATE =
   "Hey {{name}}, you're on! 🎤\n{{show}} · {{day}} {{date}}, {{time}}\n📍 {{venue}}{{#minutes}}\n⏱ {{minutes}} min set{{/minutes}}{{#mapsLink}}\n{{mapsLink}}{{/mapsLink}}";
 

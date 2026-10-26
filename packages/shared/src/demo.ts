@@ -87,8 +87,15 @@ export function shiftDemoData(data: DemoData, { toWeek, now, templateAt }: Shift
         const out = only(d, ["id"], id);
         for (const k of ["weekOf", "date", "showDaySyncedOn", "micCheckSentOn"]) if (k in out) out[k] = date(out[k]);
         if ("sentAt" in out) out.sentAt = ts(out.sentAt);
+        // What each comic was last told: keyed by comic id, each with the time it was sent.
+        if (d.sent && typeof d.sent === "object") out.sent = Object.fromEntries(Object.entries(d.sent as Rec).map(([k, v]) => [k, only(v as Rec, ["at"], ts)]));
         if (Array.isArray(d.dropped)) out.dropped = recs(d.dropped).map((x) => only(x, ["at"], ts));
         return out;
+      }
+      case "shows": {
+        // "Synced 5 min ago" on the group panel should stay recent.
+        const cache = d.groupMembers as Rec | null | undefined;
+        return cache && typeof cache === "object" ? { ...d, groupMembers: only(cache, ["at"], ts) } : d;
       }
       case "actions": {
         const out = only(d, ["weekOf"], date);

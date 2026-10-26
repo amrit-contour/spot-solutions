@@ -5,13 +5,20 @@ import WAWebJS from "whatsapp-web.js";
 import {
   DAY_NAMES,
   dateInWeek,
+  cancelledPatch,
   diffGroup,
+  diffLineup,
   formatDate,
   formatTime,
+  groupModeOf,
   lineupId,
   pendingRejections,
   localNow,
   renderTemplate,
+  resendCandidates,
+  sentSnapshot,
+  settleSent,
+  waitingStatus,
   withHistory,
   type Command,
   type ComicAction,
@@ -27,9 +34,10 @@ import { col, db, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
-import { listContacts, pullGroupMembers } from "./people.ts";
+import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
 import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
+import { reclassifyRequests } from "./reclassify.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>) => Promise<unknown>;
 
@@ -99,11 +107,14 @@ const handlers: Record<Command["type"], Handler> = {
       batch.set(col(uid, "comics").doc(slot.comicId), { lastPerformedWeek: lineup.weekOf, history }, { merge: true });
       batch.set(col(uid, "requests").doc(`${lineup.weekOf}_${slot.comicId}`), { status: "confirmed", updatedAt: Date.now() }, { merge: true });
     }
-    batch.update(lineupRef, { status: "confirmed", sentAt: Date.now() });
+    // Remember what each comic was told, so edits after confirming can be reviewed against it.
+    const sentAt = Date.now();
+    const told = lineup.slots.filter((s) => results[s.comicId]?.startsWith("sent"));
+    batch.update(lineupRef, { status: "confirmed", sentAt, sent: sentSnapshot(told, show, sentAt) });
     await batch.commit();
 
-    // Show-day groups are handled by the scheduler on the day; otherwise review the group now.
-    if (show.groupId && show.groupMode !== "show_day") await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
+    // "Review when I confirm" shows open the group review now; manual and show-day ones wait for the curator or the day.
+    if (show.groupId && groupModeOf(show) === "confirm") await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
     // Last show of the week locked in → everyone still waiting gets a regret.
     if (settings.reject.enabled && (await weekIsFinal(uid, lineup.weekOf, shows))) {
       await handlers.send_rejections(uid, { weekOf: lineup.weekOf });
@@ -157,6 +168,7 @@ const handlers: Record<Command["type"], Handler> = {
       regulars: show.regulars ?? [],
       protected: show.protected ?? [],
       self: `${client.info.wid.user}@c.us`,
+      forceRemove: lineup.groupLeaving ?? [],
     });
     // Anyone we couldn't map to a phone number is kept — never remove what we can't identify.
     const plan: GroupSyncPlan = { status: "pending", toAdd, toRemove, kept: [...kept, ...unresolved] };
@@ -197,8 +209,83 @@ const handlers: Record<Command["type"], Handler> = {
         }
       });
     }
-    await lineupRef.update({ "groupSync.status": "done", "groupSync.results": results });
+    await lineupRef.update({ "groupSync.status": "done", "groupSync.results": results, groupLeaving: null });
+    // The cached member list on the show should match the group again.
+    await listGroupMembers(uid, { showId: show.id }).catch((e) => console.error("[group] member refresh failed", e));
     return results;
+  },
+
+  /**
+   * Send what changed on a confirmed lineup since the comics were last told. The diff is computed here from
+   * lineup.sent, so the lists in `notify` can only narrow it: added get the confirmation, removed get the cancellation,
+   * moved or retimed get the confirmation again if `resend` names them. People not named are settled without a message.
+   */
+  async send_lineup_updates(uid, { lineupId, notify }) {
+    const client = sessions.require(uid);
+    const { shows } = watchUser(uid);
+    const lineupRef = col(uid, "lineups").doc(String(lineupId));
+    const lineup = (await lineupRef.get()).data() as Lineup | undefined;
+    if (!lineup) throw new Error("Lineup not found");
+    if (lineup.status !== "confirmed") throw new Error("This lineup isn't confirmed yet. Confirm it first.");
+    if (!lineup.sent) throw new Error("There's no record of what was sent, so there's nothing to compare. Nothing was sent.");
+    const show = shows.find((s) => s.id === lineup.showId);
+    if (!show) throw new Error("Show not found");
+    const changes = diffLineup(lineup.slots, lineup.sent, show);
+    if (!changes.total) throw new Error("Nothing has changed since the last send");
+    const want = (notify ?? {}) as { add?: string[]; remove?: string[]; resend?: string[] };
+    const only = (ids: string[] | undefined, allowed: string[]) => new Set((ids ?? []).filter((id) => allowed.includes(id)));
+    const toAdd = only(want.add, changes.added);
+    const toRemove = only(want.remove, changes.removed);
+    const toResend = only(want.resend, resendCandidates(changes));
+
+    const comics = await loadComics(uid, [...changes.added, ...changes.removed, ...resendCandidates(changes)]);
+    const date = dateInWeek(lineup.weekOf, show.weekday);
+    const messaged: string[] = [];
+    const failed: string[] = [];
+    const send = async (id: string, body: (c: Comic) => string) => {
+      const comic = comics.get(id);
+      try {
+        if (!comic) throw new Error("Comic not found");
+        await sendQueued(client, comic.chatId ?? comic.id, body(comic));
+        messaged.push(id);
+      } catch (e) {
+        console.error(`[lineup-update] ${id} failed`, e);
+        failed.push(id);
+      }
+    };
+    for (const slot of lineup.slots) {
+      if (toAdd.has(slot.comicId) || toResend.has(slot.comicId)) await send(slot.comicId, (c) => confirmBody(uid, show, c, lineup.weekOf, slot.minutes));
+    }
+    for (const id of changes.removed) if (toRemove.has(id)) await send(id, (c) => cancelBody(uid, show, c, lineup.weekOf));
+
+    // Settle the records: people who were told are done. Failed sends, and adds or removals the curator
+    // unticked, stay pending, so nobody ends up on (or off) a lineup without knowing.
+    const now = Date.now();
+    const unticked = [...changes.added.filter((id) => !toAdd.has(id)), ...changes.removed.filter((id) => !toRemove.has(id))];
+    const bad = new Set([...failed, ...unticked]);
+    const weekLineups = (await col(uid, "lineups").where("weekOf", "==", lineup.weekOf).get()).docs.map((d) => d.data() as Lineup);
+    const elsewhere = (id: string) => weekLineups.some((l) => l.id !== lineup.id && l.status !== "cancelled" && l.status !== "canned" && l.slots.some((s) => s.comicId === id));
+    const batch = db.batch();
+    for (const id of changes.added) {
+      if (bad.has(id)) continue;
+      const history = withHistory(comics.get(id)?.history, { date, showId: show.id, showName: show.name, status: "confirmed" });
+      batch.set(col(uid, "comics").doc(id), { lastPerformedWeek: lineup.weekOf, history }, { merge: true });
+      batch.set(col(uid, "requests").doc(`${lineup.weekOf}_${id}`), { status: "confirmed", updatedAt: now }, { merge: true });
+    }
+    for (const id of changes.removed) {
+      if (bad.has(id)) continue;
+      const other = elsewhere(id);
+      batch.set(col(uid, "comics").doc(id), cancelledPatch(comics.get(id), lineup, show, other), { merge: true });
+      const reqRef = col(uid, "requests").doc(`${lineup.weekOf}_${id}`);
+      const req = (await reqRef.get()).data() as SpotRequest | undefined;
+      // Back to waiting, unless they moved to another show this week (that show's own send settles them).
+      if (req && !other && req.status === "confirmed") batch.set(reqRef, { status: waitingStatus(req), updatedAt: now }, { merge: true });
+    }
+    batch.update(lineupRef, { sent: settleSent(lineup.slots, show, lineup.sent, now, { messaged, failed: [...bad] }) });
+    await batch.commit();
+
+    if (show.groupId && groupModeOf(show) === "confirm") await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
+    return { sent: messaged.length, failed: failed.map((id) => comics.get(id)?.name ?? id) };
   },
 
   /** Curator approved a drafted reply (and for cancellations, the drop-out itself). */
@@ -285,7 +372,9 @@ const handlers: Record<Command["type"], Handler> = {
   },
 
   pull_group_members: pullGroupMembers,
+  list_group_members: listGroupMembers,
   list_contacts: listContacts,
+  reclassify_requests: reclassifyRequests,
 
   async send_message(uid, { to, body }) {
     await sendQueued(sessions.require(uid), String(to), String(body));
@@ -307,6 +396,19 @@ export function confirmBody(uid: string, show: Show, comic: Comic, week: string,
   });
 }
 
+export function cancelBody(uid: string, show: Show, comic: Comic, week: string) {
+  const { settings, venues } = watchUser(uid);
+  const venue = venues.find((v) => v.id === show.venueId);
+  return renderTemplate(settings.cancelSpot.template, {
+    name: comic.name.split(" ")[0],
+    show: show.name,
+    venue: venue?.name,
+    day: DAY_NAMES[show.weekday],
+    date: formatDate(dateInWeek(week, show.weekday)),
+    time: formatTime(show.startTime),
+  });
+}
+
 /** Every active show this week is either sent or cancelled. */
 async function weekIsFinal(uid: string, week: string, shows: Show[]) {
   const active = shows.filter((s) => s.active);
@@ -323,14 +425,16 @@ export async function dropFromLineup(uid: string, client: WAWebJS.Client, comicI
   if (!lineup) return;
   const show = shows.find((s) => s.id === lineup.showId);
   const date = show ? dateInWeek(lineup.weekOf, show.weekday) : lineup.date;
+  // They cancelled themselves: nothing is owed to them, so they leave the "what was sent" record too.
+  const { [comicId]: _told, ...stillTold } = lineup.sent ?? {};
   await lineupRef.update({
     slots: lineup.slots.filter((s) => s.comicId !== comicId),
     dropped: [...(lineup.dropped ?? []), { comicId, at: Date.now() }],
+    ...(lineup.sent ? { sent: stillTold } : {}),
   });
   const comicRef = col(uid, "comics").doc(comicId);
   const comic = (await comicRef.get()).data() as Comic | undefined;
-  const history = withHistory(comic?.history, { date, showId: lineup.showId, showName: show?.name ?? "Show", status: "cancelled" });
-  await comicRef.set({ history, ...(comic?.lastPerformedWeek === lineup.weekOf ? { lastPerformedWeek: null } : {}) }, { merge: true });
+  await comicRef.set(cancelledPatch(comic, lineup, show), { merge: true });
   await col(uid, "requests").doc(`${lineup.weekOf}_${comicId}`).set({ status: "dismissed", updatedAt: Date.now() }, { merge: true });
   if (show?.groupId && localNow(new Date(), settings.timezone).date === date) {
     const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;

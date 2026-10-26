@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   DAY_NAMES,
   DEFAULT_ACK_TEMPLATE,
+  DEFAULT_CANCEL_SPOT_TEMPLATE,
   DEFAULT_CONFIRM_TEMPLATE,
   DEFAULT_REJECT_TEMPLATE,
   SAMPLE_VARS,
@@ -157,7 +158,7 @@ export function SettingsPage() {
   const [withMinutes, setWithMinutes] = useState(true);
 
   const tab = useSettingsTab();
-  const [msg, setMsg] = useState<"ack" | "confirm" | "reject">("ack");
+  const [msg, setMsg] = useState<"ack" | "confirm" | "cancel" | "reject">("ack");
 
   return (
     <div className="w-full">
@@ -182,6 +183,7 @@ export function SettingsPage() {
               options={[
                 { value: "ack", label: "Acknowledge" },
                 { value: "confirm", label: "Confirmation" },
+                { value: "cancel", label: "Cancelled spot" },
                 { value: "reject", label: "Regret" },
               ]}
             />
@@ -218,6 +220,16 @@ export function SettingsPage() {
           }
         >
           <TemplateEditor value={settings.confirm.template} fallback={DEFAULT_CONFIRM_TEMPLATE} extraVars={{ minutes: withMinutes ? 5 : null }} onSave={(t) => saveSettings({ confirm: { template: t } })} />
+        </Section>
+        )}
+
+        {msg === "cancel" && (
+<Section
+          title="Cancelled spot message"
+          icon={IconChatCross}
+          description="Sent when you take someone off a lineup you already confirmed, and you tick them in Send updates. Nothing goes out without that review."
+        >
+          <TemplateEditor value={settings.cancelSpot.template} fallback={DEFAULT_CANCEL_SPOT_TEMPLATE} onSave={(t) => saveSettings({ cancelSpot: { template: t } })} />
         </Section>
         )}
 

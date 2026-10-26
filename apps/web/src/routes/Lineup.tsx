@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { where } from "firebase/firestore";
 import { Link } from "react-router-dom";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -10,9 +10,11 @@ import {
   MouseSensor,
   TouchSensor,
   closestCorners,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -24,6 +26,8 @@ import {
   DAY_SHORT,
   INTENT_THRESHOLD,
   dateInWeek,
+  diffLineup,
+  groupModeOf,
   formatDate,
   formatTime,
   localNow,
@@ -31,6 +35,7 @@ import {
   planLineupReset,
   planWeekReset,
   renderTemplate,
+  sentSnapshot,
   shiftWeek,
   type Comic,
   type Lineup,
@@ -43,16 +48,29 @@ import {
 import { useApp } from "../lib/app";
 import { runCommand, useCollection, useDocument } from "../lib/data";
 import { OfferSheet } from "../components/OfferSheet";
-import { markCanned, markRequest, placeComic, repeatLastWeek, setLineupStatus, setSlots, unplaceComic } from "../lib/lineup";
+import { markCanned, markRequest, placeComic, repeatLastWeek, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
 import { GroupSyncSheet } from "../components/GroupSyncSheet";
+import { GroupPanel } from "../components/GroupPanel";
+import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ResetDialog } from "../components/ResetDialog";
-import { Avatar, Bubble, Button, Chip, Empty, IconButton, Sheet, cx } from "../components/ui";
-import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconMic, IconRepeat, IconSend, IconSofa, IconStar } from "../components/icons";
+import { Avatar, Bubble, Button, Chip, Empty, IconButton, Sheet, Stepper, cx } from "../components/ui";
+import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconMic, IconPen, IconRepeat, IconSend, IconSofa, IconStar } from "../components/icons";
 
 const BENCH = "bench";
+// Droppables inside a show column that aren't lineup lists: the group panel adds to the lineup, the leave zone is for members.
+const GROUP = "group:";
+const LEAVE = "leave:";
+const MEMBER = "gm:";
+
+/** Member drags only count on a leave zone; comic drags ignore leave zones. */
+const collide: CollisionDetection = (args) => {
+  const leave = (c: { id: string | number }) => String(c.id).startsWith(LEAVE);
+  if (String(args.active.id).startsWith(MEMBER)) return pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter(leave) });
+  return closestCorners({ ...args, droppableContainers: args.droppableContainers.filter((c) => !leave(c)) });
+};
 
 type Columns = Record<string, string[]>;
 
@@ -103,12 +121,16 @@ export function LineupBoard() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const addTo = async (cid: string, show: Show) => {
-    await placeComic(uid, week, show, cid, lineups.data);
+    await placeComic(uid, week, show, cid, lineups.data, shows);
     toast.success(`${(comicsById.get(cid)?.name ?? requestByComic.get(cid)?.comicName ?? "Comic").split(" ")[0]} → ${show.name}`);
   };
   const removeFrom = (cid: string, show: Show) => unplaceComic(uid, week, show, cid, lineupByShow.get(show.id));
-  const containerOf = (id: string) => (id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
-  const locked = (showId: string) => lineupByShow.get(showId)?.status === "confirmed";
+  const containerOf = (id: string) => (id.startsWith(GROUP) ? id.slice(GROUP.length) : id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
+  // Confirmed lineups stay editable (changes are reviewed in Send updates); only called-off ones are closed.
+  const closed = (showId: string) => ["cancelled", "canned"].includes(lineupByShow.get(showId)?.status ?? "draft");
+  // A member dragged out of a group panel, waiting for its panel to confirm the removal.
+  const [leaveReq, setLeaveReq] = useState<{ showId: string; id: string } | null>(null);
+  const dragKind = activeId ? (activeId.startsWith(MEMBER) ? "member" : "tile") : null;
 
   const onStart = ({ active }: DragStartEvent) => {
     setActiveId(String(active.id));
@@ -116,10 +138,10 @@ export function LineupBoard() {
   };
 
   const onOver = ({ active, over }: DragOverEvent) => {
-    if (!over) return;
+    if (!over || String(active.id).startsWith(MEMBER)) return;
     const from = containerOf(String(active.id));
     const to = containerOf(String(over.id));
-    if (!from || !to || from === to || (to !== BENCH && locked(to))) return;
+    if (!from || !to || from === to || (to !== BENCH && closed(to))) return;
     setCols((c) => {
       const fromItems = c[from].filter((x) => x !== active.id);
       const overIdx = c[to].indexOf(String(over.id));
@@ -133,7 +155,13 @@ export function LineupBoard() {
     const id = String(active.id);
     const origin = dragFrom.current;
     setActiveId(null);
-    if (!over || !origin) return setCols(remote);
+    if (id.startsWith(MEMBER)) {
+      // gm:{showId}:{comicId}. Only the leave zone of the member's own show does anything.
+      const [showId, ...rest] = id.slice(MEMBER.length).split(":");
+      if (over && String(over.id) === `${LEAVE}${showId}`) setLeaveReq({ showId, id: rest.join(":") });
+      return;
+    }
+    if (!over || !origin || String(over.id).startsWith(LEAVE)) return setCols(remote);
     const to = containerOf(String(over.id));
     if (!to) return setCols(remote);
     let next = cols;
@@ -152,7 +180,7 @@ export function LineupBoard() {
     try {
       for (const sid of touched) {
         const show = activeShows.find((s) => s.id === sid);
-        if (show && !locked(sid)) await setSlots(uid, week, show, keepMinutes(show, next[sid]));
+        if (show && !closed(sid)) await setSlots(uid, week, show, keepMinutes(show, next[sid]));
       }
       if (origin !== to) await markRequest(uid, week, id, to !== BENCH);
     } catch (e) {
@@ -161,7 +189,8 @@ export function LineupBoard() {
     }
   };
 
-  const activeComic = activeId ? comicsById.get(activeId) : undefined;
+  const activeMember = activeId?.startsWith(MEMBER) ? activeId.slice(MEMBER.length).split(":").slice(1).join(":") : null;
+  const activeComic = activeId ? comicsById.get(activeMember ?? activeId) : undefined;
   const placedAll = new Set(lineups.data.flatMap((l) => l.slots.map((x) => x.comicId)));
   const regrets = pendingRejections(requests.data, placedAll);
   const openShows = activeShows.filter((s) => !["confirmed", "cancelled"].includes(lineupByShow.get(s.id)?.status ?? "draft"));
@@ -198,7 +227,8 @@ export function LineupBoard() {
       />
       <ResetDialog open={resetWeekOpen} onClose={() => setResetWeekOpen(false)} plans={weekPlans} shows={shows} scope="week" />
       <RegretBanner count={regrets.length} openShows={openShows.length} />
-      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActiveId(null), setCols(remote))}>
+      <LayoutGroup>
+      <DndContext sensors={sensors} collisionDetection={collide} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActiveId(null), setCols(remote))}>
         <div className="flex flex-col gap-4 px-4 pb-10 sm:px-8 lg:flex-row lg:items-start">
           <Column id={BENCH} className="lg:sticky lg:top-4 lg:w-72 lg:flex-none">
             <div className="mb-3 flex items-center justify-between px-1">
@@ -217,6 +247,7 @@ export function LineupBoard() {
                     comic={comicsById.get(cid)}
                     request={requestByComic.get(cid)}
                     lastWeek={lastWeek}
+                    shared={!activeId}
                     action={
                       <Menu align="right" trigger={(t) => <IconButton icon={IconAdd} label="Add to a show" onClick={t} className="size-9" />}>
                         {(close) =>
@@ -224,7 +255,7 @@ export function LineupBoard() {
                             const l = lineupByShow.get(s.id);
                             const preferred = requestByComic.get(cid)?.intent.preferredDays.includes(s.weekday);
                             return (
-                              <MenuItem key={s.id} highlighted={preferred} hint={`${l?.slots.length ?? 0}/${s.slotCount}`} disabled={l?.status === "confirmed" || l?.status === "cancelled"} onClick={() => (close(), void addTo(cid, s))}>
+                              <MenuItem key={s.id} highlighted={preferred} hint={`${l?.slots.length ?? 0}/${s.slotCount}`} disabled={l?.status === "cancelled" || l?.status === "canned"} onClick={() => (close(), void addTo(cid, s))}>
                                 {s.name}
                                 <span className="block type-body-s text-on-surface-variant">{DAY_SHORT[s.weekday]} · {formatTime(s.startTime)}</span>
                               </MenuItem>
@@ -247,18 +278,26 @@ export function LineupBoard() {
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} offers={offers.data} poll={poll.data} onAdd={(cid) => addTo(cid, show)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} onAdd={(cid) => addTo(cid, show)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
         <DragOverlay dropAnimation={{ duration: 220, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}>
           {activeId ? (
             <motion.div initial={{ transform: "scale(1)" }} animate={{ transform: "scale(1.03)", rotate: -1 }} transition={{ type: "spring", duration: 0.3, bounce: 0.3 }} className="rounded-md shadow-xl">
-              <TileBody comic={activeComic} id={activeId} request={requestByComic.get(activeId)} lastWeek={lastWeek} lifted />
+              {activeMember ? (
+                <div className="flex min-h-12 items-center gap-2.5 rounded-md bg-surface-highest py-1 pl-2 pr-4">
+                  <Avatar name={activeComic?.name ?? activeMember} size={28} tone="secondary" />
+                  <span className="type-label-l">{activeComic?.name ?? `+${activeMember.split("@")[0]}`}</span>
+                </div>
+              ) : (
+                <TileBody comic={activeComic} id={activeId} request={requestByComic.get(activeId)} lastWeek={lastWeek} lifted />
+              )}
             </motion.div>
           ) : null}
         </DragOverlay>
       </DndContext>
+      </LayoutGroup>
     </div>
   );
 }
@@ -272,7 +311,7 @@ function Column({ id, children, className }: { id: string; children: React.React
   );
 }
 
-function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action }: { comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode }) {
+function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action, note, onMinutes }: { comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode; note?: string; onMinutes?: (m: number) => void }) {
   const name = comic?.name ?? request?.comicName ?? `+${id.split("@")[0]}`;
   const performed = comic?.lastPerformedWeek === lastWeek;
   return (
@@ -291,8 +330,26 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action
           )}
           {request?.intent.preferredDays.length ? <span>{request.intent.preferredDays.map((d) => DAY_SHORT[d]).join(" · ")}</span> : !performed && <span>any day</span>}
         </div>
+        {note && <div className="truncate type-label-m text-tertiary">{note}</div>}
       </div>
-      {minutes ? (
+      {minutes && onMinutes ? (
+        // Tap to change the set length. Stops the drag sensors like the other buttons.
+        <span onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <Menu align="right" trigger={(t) => (
+            <button onClick={t} aria-label={`Set length ${minutes} minutes. Change`} className="state-layer pressable inline-flex h-8 items-center gap-1 rounded-full px-2 type-label-m text-on-surface-variant tabular">
+              <IconClock className="icon size-3.5" />
+              {minutes}m
+            </button>
+          )}>
+            {() => (
+              <div className="flex items-center gap-3 px-4 py-3">
+                <span className="type-label-l">Set length</span>
+                <Stepper value={minutes} onChange={onMinutes} min={1} max={30} suffix="min" />
+              </div>
+            )}
+          </Menu>
+        </span>
+      ) : minutes ? (
         <span className="inline-flex items-center gap-1 type-label-m text-on-surface-variant tabular">
           <IconClock className="icon size-3.5" />
           {minutes}m
@@ -308,7 +365,7 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action
   );
 }
 
-function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action }: { id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode }) {
+function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action, note, onMinutes, shared }: { id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode; note?: string; onMinutes?: (m: number) => void; shared?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
   return (
     <li
@@ -318,12 +375,15 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
       {...attributes}
       {...listeners}
     >
-      <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} />
+      {/* Shared layout: the card glides between Waiting and a lineup. Off while dragging, where dnd-kit moves it. */}
+      <motion.div layoutId={shared ? `tile-${id}` : undefined} layout={shared ? "position" : false} transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}>
+        <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} note={note} onMinutes={onMinutes} />
+      </motion.div>
     </li>
   );
 }
 
-function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string) => Promise<void>; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, onAdd, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string) => Promise<void>; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
   const { uid, week, venues, settings } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
@@ -334,6 +394,7 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
   const showDate = dateInWeek(week, show.weekday);
   const past = localNow(new Date(), settings.timezone).date >= showDate;
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
@@ -342,18 +403,54 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
   const hostsFree = Object.entries(poll?.votes ?? {}).filter(([, v]) => v.includes(show.id)).map(([k]) => ({ id: k.replace(/_/g, "."), name: poll?.voterNames[k] ?? k }));
   const fill = Math.min(1, ids.length / Math.max(1, show.slotCount));
   const minutesOf = new Map(lineup?.slots.map((s) => [s.comicId, s.minutes]));
+  const mode = groupModeOf(show);
 
-  // Open the group review the moment the worker finishes computing the diff.
+  // What the comics were last told. Lineups confirmed before that was recorded start from how they stand now.
+  const baseline = confirmed && lineup ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
+  const changes = baseline && lineup ? diffLineup(lineup.slots, baseline, show) : null;
+  const noteFor = (cid: string) => {
+    if (!changes) return undefined;
+    if (changes.added.includes(cid)) return "New · not told yet";
+    const m = changes.moved.find((x) => x.comicId === cid);
+    const t = changes.minutes.find((x) => x.comicId === cid);
+    return [m && `Moved from ${m.from}`, t && `Was ${t.from ?? "?"} min`].filter(Boolean).join(" · ") || undefined;
+  };
+
+  // Open the group review when a plan becomes pending during this visit, after the curator pressed confirm, send or sync.
+  // The ref starts from the first value seen, so a plan left pending from an earlier visit never pops the sheet.
   const syncStatus = lineup?.groupSync?.status;
-  const prevSync = useRef(syncStatus);
+  const armed = useRef(false);
+  const seen = useRef<{ status: string | undefined } | null>(null);
   useEffect(() => {
-    if (prevSync.current !== "pending" && syncStatus === "pending") setSyncOpen(true);
-    prevSync.current = syncStatus;
-  }, [syncStatus]);
+    if (!lineupsLoaded) return;
+    if (!seen.current) {
+      seen.current = { status: syncStatus };
+      return;
+    }
+    const before = seen.current.status;
+    seen.current.status = syncStatus;
+    if (before !== "pending" && syncStatus === "pending" && armed.current) {
+      armed.current = false;
+      setSyncOpen(true);
+    }
+  }, [syncStatus, lineupsLoaded]);
 
   const repeat = async () => {
     const n = await repeatLastWeek(uid, week, show);
     toast(n ? `Brought back last week's ${n} comics` : "Last week's lineup was empty");
+  };
+
+  const syncGroup = async () => {
+    if (!lineup && !ids.length) return void toast("Put someone on the lineup first.");
+    armed.current = true;
+    try {
+      await runCommand(uid, "plan_group_sync", { lineupId: `${week}_${show.id}` }, 120_000);
+      // A plan that finished within one snapshot never shows as a status change, so open it for the curator who asked.
+      setSyncOpen(true);
+    } catch (e) {
+      armed.current = false;
+      toast.error((e as Error).message);
+    }
   };
 
   return (
@@ -419,12 +516,41 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
             {ids.length}/{show.slotCount}
           </span>
         </div>
+        {(show.groupId || (changes && changes.total > 0)) && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {show.groupId && (
+              <Chip icon={IconGroup} className="text-on-surface-variant">
+                {mode === "manual" ? "Group: when I sync" : mode === "confirm" ? "Group: on confirm" : `Group: show day ${formatTime(show.showDaySyncTime ?? "12:00")}${lineup?.showDaySyncedOn ? " · done" : ""}`}
+              </Chip>
+            )}
+            <AnimatePresence>
+              {changes && changes.total > 0 && (
+                <motion.span key="changed" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
+                  <Chip tone="tertiary" icon={IconPen}>Changed since confirmed · {changes.total}</Chip>
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </header>
 
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ol className="flex min-h-32 flex-col gap-2">
           {ids.map((cid, i) => (
-            <ComicTile key={cid} id={cid} index={i} comic={comicsById.get(cid)} request={requestByComic.get(cid)} lastWeek={lastWeek} minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null} disabled={confirmed} action={confirmed || cancelled ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />} />
+            <ComicTile
+              key={cid}
+              id={cid}
+              index={i}
+              shared={shared}
+              comic={comicsById.get(cid)}
+              request={requestByComic.get(cid)}
+              lastWeek={lastWeek}
+              minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null}
+              note={noteFor(cid)}
+              onMinutes={lineup && !cancelled ? (m) => void setMinutes(uid, week, show, lineup, cid, m).catch((e: Error) => toast.error(e.message)) : undefined}
+              disabled={cancelled}
+              action={cancelled ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />}
+            />
           ))}
           {Array.from({ length: Math.max(0, Math.min(3, show.slotCount - ids.length)) }).map((_, i) => (
             <li key={`empty-${i}`} className="grid h-12 place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70">
@@ -434,6 +560,9 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
         </ol>
       </SortableContext>
 
+      {changes && changes.removed.length > 0 && (
+        <p className="mt-2 px-1 type-body-s text-tertiary">Removed, not told yet: {changes.removed.map((d) => (comicsById.get(d)?.name ?? "comic").split(" ")[0]).join(", ")}</p>
+      )}
       {pendingOffers.length > 0 && (
         <p className="mt-2 px-1 type-body-s text-on-surface-variant">Offer out to {pendingOffers.map((o) => o.comicName.split(" ")[0]).join(", ")}, waiting for a reply</p>
       )}
@@ -441,7 +570,7 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
         <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
           <span className="type-label-m text-on-surface-variant">Hosts free:</span>
           {hostsFree.map((h) => (
-            <Chip key={h.id} tone="tertiary" onClick={comicsById.has(h.id) && !confirmed && !cancelled ? () => void onAdd(h.id) : undefined}>
+            <Chip key={h.id} tone="tertiary" onClick={comicsById.has(h.id) && !cancelled ? () => void onAdd(h.id) : undefined}>
               {h.name}
             </Chip>
           ))}
@@ -451,21 +580,26 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
         <p className="mt-2 px-1 type-body-s text-error">Dropped out: {lineup.dropped.map((d) => comicsById.get(d.comicId)?.name ?? "comic").join(", ")}</p>
       ) : null}
 
+      {!cancelled && <GroupPanel show={show} lineup={lineup} ids={ids} dragging={dragKind} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onSync={syncGroup} onReview={() => setSyncOpen(true)} />}
+
       <footer className="mt-3 flex flex-wrap items-center gap-2">
         {canned ? null : cancelled ? (
           <Button size="sm" variant="text" onClick={() => setLineupStatus(uid, week, show, "draft")}>Reopen</Button>
         ) : confirmed ? (
           <>
             <span className="inline-flex flex-1 items-center gap-1.5 type-label-m text-on-surface-variant">
-              <svg viewBox="0 0 24 24" className="draw-check size-4 text-primary" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-              Confirmations sent
-              {show.groupMode === "show_day" && show.groupId && <span className="text-on-surface-variant/80"> · group updates {lineup?.showDaySyncedOn ? "done" : `on the day at ${formatTime(show.showDaySyncTime ?? "12:00")}`}</span>}
+              {changes && changes.total > 0 ? (
+                <>Changes aren't sent yet</>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" className="draw-check size-4 text-primary" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                  Everyone's been told
+                </>
+              )}
             </span>
-            {show.groupId && (
-              <Button size="sm" variant="tonal" icon={IconGroup} onClick={() => setSyncOpen(true)}>
-                Group
-              </Button>
-            )}
+            <Button size="sm" icon={IconSend} disabled={!changes || changes.total === 0} onClick={() => setUpdatesOpen(true)}>
+              Send updates
+            </Button>
           </>
         ) : (
           <>
@@ -482,7 +616,8 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
         )}
       </footer>
 
-      <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
+      <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} onSending={() => (armed.current = mode === "confirm")} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
+      {lineup && baseline && <SendUpdatesSheet open={updatesOpen} onClose={() => setUpdatesOpen(false)} show={show} lineup={lineup} baseline={baseline} onSent={() => void (armed.current = mode === "confirm")} />}
       <ResetDialog open={resetOpen} onClose={() => setResetOpen(false)} plans={resetPlan ? [resetPlan] : []} shows={[show]} scope="show" />
       <OfferSheet open={offerOpen} onClose={() => setOfferOpen(false)} show={show} exclude={ids} />
       {lineup && <GroupSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} show={show} lineup={lineup} />}
@@ -490,7 +625,7 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
   );
 }
 
-function ConfirmSheet({ open, onClose, show, ids, lineup, regretsAfter }: { open: boolean; onClose: () => void; show: Show; ids: string[]; lineup?: Lineup; regretsAfter: number }) {
+function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regretsAfter }: { open: boolean; onClose: () => void; onSending: () => void; show: Show; ids: string[]; lineup?: Lineup; regretsAfter: number }) {
   const { uid, week, settings, venues, comicsById } = useApp();
   const [sending, setSending] = useState(false);
   const venue = venues.find((v) => v.id === show.venueId);
@@ -509,6 +644,7 @@ function ConfirmSheet({ open, onClose, show, ids, lineup, regretsAfter }: { open
 
   const send = async () => {
     setSending(true);
+    onSending();
     const t = toast.loading(`Sending ${ids.length} confirmations, a few seconds apart…`);
     try {
       await runCommand(uid, "send_confirmations", { lineupId: `${week}_${show.id}` }, 15 * 60_000);

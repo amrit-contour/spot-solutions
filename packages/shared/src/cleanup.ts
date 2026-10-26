@@ -77,7 +77,7 @@ export function planLineupReset(lineup: Lineup, requests: Pick<SpotRequest, "id"
     showId: lineup.showId,
     cleared: lineup.slots.length,
     confirmed,
-    lineupPatch: confirmed ? { slots: [], status: "draft", sentAt: null, groupSync: null, dropped: [], showDaySyncedOn: null, micCheckSentOn: null, outcome: null } : { slots: [] },
+    lineupPatch: confirmed ? { slots: [], status: "draft", sentAt: null, sent: null, groupSync: null, groupLeaving: null, dropped: [], showDaySyncedOn: null, micCheckSentOn: null, outcome: null } : { slots: [] },
     requestResets,
     comicPatches: confirmed ? unconfirmComics(lineup, comics) : [],
   };

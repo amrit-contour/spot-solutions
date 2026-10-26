@@ -9,3 +9,5 @@ export * from "./cleanup.ts";
 export * from "./fleet.ts";
 export * from "./demo.ts";
 export * from "./contacts.ts";
+export * from "./lineupUpdates.ts";
+export * from "./requestTags.ts";

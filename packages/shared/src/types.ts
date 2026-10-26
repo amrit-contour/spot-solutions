@@ -18,6 +18,8 @@ export interface SessionState {
 export interface Settings {
   ack: { enabled: boolean; template: string };
   confirm: { template: string };
+  /** Sent to a comic taken off a lineup that was already confirmed. */
+  cancelSpot: { template: string };
   reject: { enabled: boolean; template: string };
   /** @deprecated read `ai`; kept so older docs still load. */
   model?: { provider: "ollama" | "gemini"; name: string; fallback: boolean };
@@ -118,6 +120,8 @@ export interface Venue {
   name: string;
   area?: string;
   mapsLink?: string;
+  /** Other names comics use for this place ("bloom", "indira nagar"). Shown to the model. */
+  aliases?: string[];
 }
 
 export interface Show {
@@ -133,10 +137,32 @@ export interface Show {
   groupId?: string | null;
   regulars: string[]; // comic ids that stay in the group
   protected: string[]; // never removed (co-hosts etc.)
-  /** "confirm": review the group right after confirming. "show_day": update it automatically on the day. */
-  groupMode?: "confirm" | "show_day";
+  /**
+   * When the group gets updated. "manual": only when the curator taps Sync group.
+   * "confirm": review it right after confirming or sending updates. "show_day": automatically on the day.
+   * Missing means "confirm" (what shows did before the choice existed); see groupModeOf.
+   */
+  groupMode?: GroupMode;
   showDaySyncTime?: string; // "12:00"
   postLineupToGroup?: boolean;
+  /** Last members read from the group, so the lineup page can show them instantly. Written by the worker. */
+  groupMembers?: GroupMembersCache | null;
+}
+
+export type GroupMode = "manual" | "confirm" | "show_day";
+
+/** One person in a show's WhatsApp group (the curator excluded). */
+export interface GroupMember {
+  /** Comic id (phone-based) when the number is known, else the raw @lid. */
+  id: string;
+  name: string;
+  isAdmin: boolean;
+}
+
+export interface GroupMembersCache {
+  groupId: string;
+  at: number; // epoch ms
+  members: GroupMember[];
 }
 
 export interface Comic {
@@ -158,7 +184,13 @@ export interface Comic {
 
 export type IntentKind = "spot_request" | "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "other";
 
+/** Fixed labels Gemma may attach to a request (see requestTags.ts). */
+export type IntentTag = "new_material" | "flexible_days" | "specific_time" | "longer_set" | "travelling" | "bringing_audience" | "first_time_here";
+
 export interface Intent {
+  /** Venue the message points at (a venue id), when it names one. */
+  venueId?: string | null;
+  tags?: IntentTag[];
   kind?: IntentKind;
   isSpotRequest: boolean;
   confidence: number; // 0..1
@@ -189,6 +221,10 @@ export interface SpotRequest {
   hold?: HoldReason | null;
   /** Curator chose to let a held request through. */
   holdOverridden?: boolean;
+  /** Stamped once by the worker: this request created the comic, so they weren't on the roster before. */
+  firstContact?: boolean;
+  /** Stamped once by the worker: requests this comic made in earlier weeks. */
+  priorRequests?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -207,6 +243,16 @@ export interface GroupSyncPlan {
   error?: string | null;
 }
 
+/** What a comic was last told about their spot. Keyed by comic id; written by the worker when it sends. */
+export interface SentSpot {
+  at: number;
+  /** Set length they were told, or null when it wasn't mentioned. */
+  minutes: number | null;
+  /** Position (0-based) on the lineup when they were told. */
+  order: number;
+}
+export type SentMap = Record<string, SentSpot>;
+
 export interface Lineup {
   id: string; // `${weekOf}_${showId}`
   weekOf: string;
@@ -216,7 +262,11 @@ export interface Lineup {
   /** cancelled = called off in advance; canned = it was meant to happen but didn't. */
   status: "draft" | "confirmed" | "cancelled" | "canned";
   sentAt?: number | null;
+  /** Per comic, what was last sent. Edits after confirming are diffed against this. */
+  sent?: SentMap | null;
   groupSync?: GroupSyncPlan | null;
+  /** Members the curator marked to leave the group on the next sync, even if they'd normally stay (admins). */
+  groupLeaving?: string[] | null;
   /** Comics who dropped out after confirmation. */
   dropped?: { comicId: string; at: number }[];
   /** Date the show-day group update ran, so it happens once. */
@@ -238,6 +288,7 @@ export type CommandType =
   | "logout"
   | "list_groups"
   | "send_confirmations"
+  | "send_lineup_updates"
   | "send_rejections"
   | "send_action"
   | "send_offer"
@@ -249,8 +300,10 @@ export type CommandType =
   | "plan_group_sync"
   | "sync_group"
   | "pull_group_members"
+  | "list_group_members"
   | "list_contacts"
   | "move_account"
+  | "reclassify_requests"
   | "send_message";
 
 export interface Command {

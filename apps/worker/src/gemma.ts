@@ -1,4 +1,4 @@
-import { DAY_NAMES, type AiSettings, type Intent, type IntentKind, type Show, type Weekday } from "@spot/shared";
+import { DAY_NAMES, INTENT_TAGS, INTENT_TAG_HELP, type AiSettings, type Intent, type IntentKind, type IntentTag, type SenderFacts, type Show, type Venue, type Weekday } from "@spot/shared";
 import { generateJson } from "./llm.ts";
 
 const KINDS: IntentKind[] = ["spot_request", "cancel_spot", "status_query", "last_spot_query", "show_info", "other"];
@@ -12,23 +12,68 @@ const SCHEMA = {
     confidence: { type: "number" },
     preferred_days: { type: "array", items: { type: "string", enum: [...DAY_NAMES] } },
     show_hint: { type: "string" },
+    venue_id: { type: "string" },
+    tags: { type: "array", items: { type: "string", enum: [...INTENT_TAGS] } },
     note: { type: "string" },
   },
-  required: ["evidence", "kind", "is_spot_request", "confidence", "preferred_days", "note"],
+  required: ["evidence", "kind", "is_spot_request", "confidence", "preferred_days", "venue_id", "tags", "note"],
 };
 
-export function buildPrompt(messages: string[], shows: Pick<Show, "name" | "weekday" | "startTime">[]) {
-  const showList = shows.length
-    ? shows.map((s) => `- ${s.name} (${DAY_NAMES[s.weekday]} ${s.startTime})`).join("\n")
-    : "- (no shows configured)";
-  return `You help a stand-up comedy open-mic curator in Bangalore triage WhatsApp DMs.
+/** What the app knows besides the messages: the curator's venues and facts about the sender. */
+export interface ClassifyContext {
+  venues?: Venue[];
+  sender?: SenderFacts;
+}
+
+type PromptShow = Pick<Show, "name" | "weekday" | "startTime"> & Partial<Pick<Show, "venueId" | "active">>;
+
+function venueSection(shows: PromptShow[], venues: Venue[]) {
+  if (!shows.length) return "- (no shows configured)";
+  const lines: string[] = [];
+  const used = new Set<string>();
+  for (const v of venues) {
+    const here = shows.filter((s) => s.venueId === v.id);
+    if (!here.length) continue;
+    used.add(v.id);
+    const aliases = (v.aliases ?? []).map((a) => a.trim()).filter(Boolean);
+    lines.push(`- venue_id "${v.id}": ${v.name}${v.area ? `, area ${v.area}` : ""}${aliases.length ? `, also called: ${aliases.join(", ")}` : ""}`);
+    for (const s of here) lines.push(`    - ${s.name} (${DAY_NAMES[s.weekday]} ${s.startTime})`);
+  }
+  const loose = shows.filter((s) => !s.venueId || !used.has(s.venueId));
+  for (const s of loose) lines.push(`- ${s.name} (${DAY_NAMES[s.weekday]} ${s.startTime})`);
+  return lines.join("\n");
+}
+
+function senderSection(f: SenderFacts) {
+  const lines = [
+    `- On the curator's roster: ${f.onRoster ? "yes" : "no"}`,
+    `- Saved name: ${f.savedName ?? "none"}`,
+    `- Past spots here: ${f.pastSpots}${f.lastSpotDate ? `, last on ${f.lastSpotDate}` : ""}`,
+    `- Earlier requests in other weeks: ${f.priorRequests}`,
+    `- Tier: ${f.tier}`,
+    `- Performed last week: ${f.performedLastWeek ? "yes" : "no"}`,
+  ];
+  return lines.join("\n");
+}
+
+export function buildPrompt(messages: string[], shows: PromptShow[], venues: Venue[] = [], sender?: SenderFacts) {
+  const tagList = INTENT_TAGS.map((t) => `- ${t}: ${INTENT_TAG_HELP[t]}`).join("\n");
+  return `You help a stand-up comedy open-mic curator triage WhatsApp DMs.
 Comics ask for a "spot" (a slot to perform) in many ways: English, Hindi, Kannada or Hinglish, slang, indirect hints. Examples of spot requests:
-"bro any spot this monday?", "bhai tuesday ka mic hai kya, naya 5 hai", "can I come up next week", "put me down for mon pls", "is there space on the lineup".
+"bro any spot this monday?", "bhai tuesday ka mic hai kya", "can I come up next week", "put me down for mon pls", "is there space on the lineup".
 NOT spot requests: bank/UPI/bill/OTP/delivery/promo notifications, property or job listings, forwarded links, casual chat, memes, audience questions (tickets, entry fee, bringing friends to WATCH a show), payment talk, replies like "thanks"/"ok" with no ask.
 
-Shows this week:
-${showList}
-
+The curator's venues and shows (use these exact venue ids):
+${venueSection(shows, venues)}
+${
+    sender
+      ? `
+Facts about the sender, from the app (these are known, not guesses):
+${senderSection(sender)}
+Do not judge whether this person is new or experienced. The app already knows. Never write "new comic", "new face" or similar in the note.
+`
+      : ""
+  }
 Messages from one person, oldest first (read them together as one conversation):
 ${messages.map((m, i) => `${i + 1}. ${m}`).join("\n")}
 
@@ -44,9 +89,13 @@ Think step by step:
 2. evidence: copy the exact words that show that kind (the ask, the cancellation, the question). For "other" use "".
 3. is_spot_request: true ONLY if kind is spot_request and evidence is non-empty. Mentioning a show, thanking, paying or praising is NOT asking.
 4. preferred_days: only days they literally name (mon, monday, tue, "kal" etc). If they name none, []. If they say any day works, list every show day.
+5. venue_id: if a message names one of the venues above, its area or one of its aliases (even loosely, like "bloom" or "indira nagar"), give that venue's id. A word that matches a venue or area is the place, not a nickname or a person. If no venue is mentioned, "".
+6. tags: zero or more of these labels, only when the messages clearly say so. When unsure, leave it out.
+${tagList}
+7. note: an objective summary of what they asked for, nothing else.
 
 Reply ONLY with JSON:
-{"evidence": "...", "kind": "...", "is_spot_request": boolean, "confidence": 0..1, "preferred_days": [...], "show_hint": "show name or empty", "note": "<=12 word summary for the curator, e.g. 'wants Monday, trying new 5'"}`;
+{"evidence": "...", "kind": "...", "is_spot_request": boolean, "confidence": 0..1, "preferred_days": [...], "show_hint": "show name or empty", "venue_id": "venue id or empty", "tags": [...], "note": "<=12 word summary of the ask, e.g. 'wants Monday, asks for an early slot'"}`;
 }
 
 const norm = (t: string) => t.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
@@ -62,7 +111,29 @@ export function evidenceIsReal(evidence: string, messages: string[]) {
   return words.length > 0 && hits / words.length >= 0.75;
 }
 
-function parseIntent(raw: string, model: string, messages: string[]): Intent {
+/** The app knows whether someone is new. Drop any clause where the model claims it anyway. */
+const NEWNESS = /\b(new|first[- ]time)\s+(comic|comedian|face|performer|artist|talent|joiner|to (the )?(scene|mic|us|here|bangalore))\b|\bnewcomer\b|\bnew here\b/i;
+export function cleanNote(note: unknown) {
+  const kept = String(note ?? "")
+    .split(/(?<=[,;.])\s+|\s+-\s+/)
+    .filter((c) => c.trim() && !NEWNESS.test(c));
+  const out = kept.join(" ").replace(/[,;]\s*$/, "").trim();
+  return out || null;
+}
+
+/** Keep only tags from the fixed list, once each. */
+export function validTags(raw: unknown): IntentTag[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return [...new Set(list.map((t) => String(t).trim().toLowerCase()))].filter((t): t is IntentTag => (INTENT_TAGS as readonly string[]).includes(t));
+}
+
+/** Only an id the curator actually has counts; anything else is a guess. */
+export function validVenueId(raw: unknown, venueIds: string[]) {
+  const id = String(raw ?? "").trim();
+  return id && venueIds.includes(id) ? id : null;
+}
+
+export function parseIntent(raw: string, model: string, messages: string[], venueIds: string[] = []): Intent {
   const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
   const o = JSON.parse(json) as Record<string, unknown>;
   let kind = (KINDS.includes(o.kind as IntentKind) ? o.kind : o.is_spot_request ? "spot_request" : "other") as IntentKind;
@@ -76,23 +147,27 @@ function parseIntent(raw: string, model: string, messages: string[]): Intent {
     .map((d) => DAY_NAMES.findIndex((n) => n.toLowerCase() === String(d).toLowerCase()))
     .filter((d) => d >= 0) as Weekday[];
   const confidence = Math.max(0, Math.min(1, Number(o.confidence) || 0));
+  const quoted = kind !== "other";
   return {
     kind,
+    venueId: quoted ? validVenueId(o.venue_id, venueIds) : null,
+    tags: quoted ? validTags(o.tags) : [],
     isSpotRequest: Boolean(o.is_spot_request),
     confidence: o.is_spot_request ? confidence : Math.min(confidence, 0.3),
     preferredDays: [...new Set(days)],
     preferredShowHint: o.show_hint ? String(o.show_hint) : null,
-    note: o.note ? String(o.note) : null,
+    note: cleanNote(o.note),
     model,
   };
 }
 
 /** Classify one comic's burst of messages. `uid` picks whose Gemini key to use. */
-export async function classify(uid: string | null, messages: string[], shows: Show[], ai: AiSettings): Promise<Intent> {
+export async function classify(uid: string | null, messages: string[], shows: Show[], ai: AiSettings, ctx: ClassifyContext = {}): Promise<Intent> {
   // Long automated messages (bills, OTPs, listings) confuse small models; a spot ask is never an essay.
   const trimmed = messages.map((m) => (m.length > 400 ? `${m.slice(0, 400)}…` : m));
-  const { text, model } = await generateJson(uid, ai, buildPrompt(trimmed, shows), SCHEMA);
-  return parseIntent(text, model, trimmed);
+  const venues = ctx.venues ?? [];
+  const { text, model } = await generateJson(uid, ai, buildPrompt(trimmed, shows, venues, ctx.sender), SCHEMA);
+  return parseIntent(text, model, trimmed, venues.map((v) => v.id));
 }
 
 const PROFILE_SCHEMA = {
