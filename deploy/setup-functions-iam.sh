@@ -76,7 +76,28 @@ YAML
 fi
 
 echo "4. Bucket role (default bucket only)"
-run gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" --member "serviceAccount:$SA_EMAIL" --role roles/storage.admin --quiet --format=none
+# Some gcloud installs crash on `gcloud storage` (Python ssl). Fall back to the Storage JSON API.
+bucket_bind_rest() {
+  local token policy
+  token="$(gcloud auth print-access-token)"
+  policy="$(curl -fsS -H "Authorization: Bearer $token" "https://storage.googleapis.com/storage/v1/b/$BUCKET/iam?optionsRequestedPolicyVersion=3")"
+  printf '%s' "$policy" | python3 -c '
+import json, sys
+p = json.load(sys.stdin); member, role = sys.argv[1], sys.argv[2]
+b = next((x for x in p.setdefault("bindings", []) if x["role"] == role and "condition" not in x), None)
+if b is None: p["bindings"].append({"role": role, "members": [member]})
+elif member not in b["members"]: b["members"].append(member)
+print(json.dumps(p))' "serviceAccount:$SA_EMAIL" roles/storage.admin |
+    curl -fsS -X PUT -H "Authorization: Bearer $token" -H "Content-Type: application/json" --data @- "https://storage.googleapis.com/storage/v1/b/$BUCKET/iam" >/dev/null
+  echo "  bound through the Storage API"
+}
+if (( DRY )); then
+  run gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" --member "serviceAccount:$SA_EMAIL" --role roles/storage.admin --quiet --format=none
+  echo "  (fallback) the same binding through the Storage JSON API: GET then PUT https://storage.googleapis.com/storage/v1/b/$BUCKET/iam"
+elif ! gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" --member "serviceAccount:$SA_EMAIL" --role roles/storage.admin --quiet --format=none 2>/dev/null; then
+  echo "  gcloud couldn't update the bucket; using the Storage API instead"
+  bucket_bind_rest
+fi
 
 echo "5. Let you deploy functions that run as $SA_ID"
 if [[ "$ME" == *.gserviceaccount.com ]]; then MEMBER="serviceAccount:$ME"; else MEMBER="user:${ME:-<you>}"; fi
