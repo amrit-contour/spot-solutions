@@ -257,7 +257,7 @@ export function Requests() {
             </p>
           )}
         </div>
-        <aside aria-label="Updates" className={cx("min-w-0 lg:sticky lg:top-[calc(1rem+var(--page-header-h,0px))] lg:max-h-[calc(100dvh-2rem-var(--page-header-h,0px))] lg:overflow-y-auto lg:overscroll-contain", view === "requests" && "hidden lg:block")}>
+        <aside aria-label="Updates" className={cx("min-w-0 lg:sticky lg:top-[calc(1rem+var(--page-header-h,0px))] lg:max-h-[calc(100dvh-2rem-var(--page-header-h,0px))] lg:overflow-y-auto lg:overflow-x-hidden lg:overscroll-contain", view === "requests" && "hidden lg:block")}>
           <UpdatesPanel lineups={lineups.data} />
         </aside>
       </div>
