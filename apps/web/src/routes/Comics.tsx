@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { deleteDoc, setDoc, writeBatch } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { cancellations, formatDate, shiftWeek, type Comic, type ComicList, type Tier } from "@spot/shared";
+import { cancellations, formatDate, localNow, shiftWeek, type Comic, type ComicList, type Tier } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
@@ -196,6 +196,7 @@ export function Comics() {
 
 function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose: () => void }) {
   const { uid, shows, settings } = useApp();
+  const today = localNow(new Date(), settings.timezone).date;
   const [d, setD] = useState<Partial<Comic>>({});
   const [last, setLast] = useState<Partial<Comic> | null>(null);
   if (value !== last) {
@@ -304,15 +305,17 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
             </div>
             {d.history?.length ? (
               <ul className="overflow-hidden rounded-md bg-surface-container">
-                {d.history.slice(0, 8).map((h) => (
-                  <li key={`${h.date}-${h.showId}`} className="flex items-center gap-3 border-b border-outline-variant/40 px-3 py-2 last:border-0">
-                    <span className="w-16 type-label-m tabular text-on-surface-variant">{formatDate(h.date)}</span>
-                    <span className="flex-1 truncate type-body-m">{h.showName}</span>
-                    <span className={cx("type-label-m", h.status === "confirmed" ? "text-primary" : h.status === "cancelled" ? "text-error" : "text-on-surface-variant")}>
-                      {h.status === "confirmed" ? "Performed" : h.status === "cancelled" ? "Cancelled" : "Mic didn't happen"}
-                    </span>
-                  </li>
-                ))}
+                {d.history.slice(0, 8).map((h) => {
+                  // A confirmed spot is only "performed" once the show date has passed.
+                  const label = h.status === "cancelled" ? "Cancelled" : h.status === "canned" ? "Mic didn't happen" : h.date > today ? "Booked" : h.date === today ? "Tonight" : "Performed";
+                  return (
+                    <li key={`${h.date}-${h.showId}`} className="flex items-center gap-3 border-b border-outline-variant/40 px-3 py-2 last:border-0">
+                      <span className="w-16 type-label-m tabular text-on-surface-variant">{formatDate(h.date)}</span>
+                      <span className="flex-1 truncate type-body-m">{h.showName}</span>
+                      <span className={cx("type-label-m", label === "Performed" ? "text-primary" : label === "Cancelled" ? "text-error" : label === "Mic didn't happen" ? "text-on-surface-variant" : "text-tertiary")}>{label}</span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="type-body-s text-on-surface-variant">No spots yet. History builds as you confirm lineups.</p>
