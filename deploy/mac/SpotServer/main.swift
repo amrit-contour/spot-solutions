@@ -310,12 +310,33 @@ struct ConsoleWebView: NSViewRepresentable {
     final class Coordinator {
         weak var view: WKWebView?
         private var timer: Timer?
-        /// The console isn't up the instant launchd starts it; retry until it answers.
+        private var boot: Double?
+        private var active: NSObjectProtocol?
+        /// Keeps the page current: retries until the console answers, and reloads when the console restarts
+        /// (an update or a restart serves new code) or when the app comes to the front.
         func schedule() {
-            timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] t in
-                guard let v = self?.view else { return t.invalidate() }
-                if v.url == nil || v.title?.isEmpty == true { v.load(URLRequest(url: consoleURL)) } else { t.invalidate() }
+            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] t in
+                guard let self, let v = self.view else { return t.invalidate() }
+                if v.url == nil || v.title?.isEmpty == true { v.load(URLRequest(url: consoleURL)); return }
+                self.checkBoot()
             }
+            active = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.view?.reload()
+            }
+        }
+        private func checkBoot() {
+            URLSession.shared.dataTask(with: consoleURL.appendingPathComponent("api/boot")) { [weak self] data, _, _ in
+                guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let b = obj["boot"] as? Double else { return }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if let old = self.boot, old != b { self.view?.load(URLRequest(url: consoleURL)) }
+                    self.boot = b
+                }
+            }.resume()
+        }
+        deinit {
+            timer?.invalidate()
+            if let active { NotificationCenter.default.removeObserver(active) }
         }
     }
 }

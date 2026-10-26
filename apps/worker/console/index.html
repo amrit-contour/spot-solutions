@@ -86,6 +86,16 @@
   .theme { display: inline-flex; background: var(--s-high); border-radius: 999px; padding: 3px; gap: 2px; }
   .theme button { background: none; color: var(--on-surface-v); border: 0; border-radius: 999px; padding: 6px 12px; font: 500 13px/1 inherit; cursor: pointer; min-height: 0; }
   .theme button[aria-pressed="true"] { background: var(--primary-c); color: var(--on-primary-c); }
+  details.sec > summary { list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  details.sec > summary::-webkit-details-marker { display: none; }
+  details.sec > summary h2 { margin: 0; }
+  details.sec > summary .sum { margin-left: auto; }
+  details.sec > summary .chev { width: 10px; height: 10px; border-right: 2px solid var(--on-surface-v); border-bottom: 2px solid var(--on-surface-v); transform: rotate(-45deg); transition: transform .2s; flex: none; }
+  details.sec[open] > summary .chev { transform: rotate(45deg); }
+  details.sec[open] > summary { margin-bottom: 12px; }
+  details.sec.tight > summary { padding: 20px 20px 4px; }
+  details.sec.tight[open] > summary { margin-bottom: 4px; }
+  @media (prefers-reduced-motion: reduce) { details.sec > summary .chev { transition: none; } }
 </style>
 </head>
 <body>
@@ -110,6 +120,12 @@ const meter = (label, used, total, detail) => {
 const logo = `<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="14" fill="var(--primary)"/><path d="M19 0h10l9 42H10z" fill="var(--on-primary)" opacity=".13"/><ellipse cx="24" cy="40.5" rx="12" ry="2.6" fill="var(--on-primary)" opacity=".25"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="var(--on-primary)"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="var(--primary)"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="var(--primary)"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="var(--on-primary)" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="var(--on-primary)"/></svg>`;
 
 let state = null, editing = false, phone = null;
+// Collapsible sections: open state per section, remembered on this machine.
+let secs = {};
+try { secs = JSON.parse(localStorage.getItem("spot-console-sections") || "{}"); } catch {}
+const isOpen = (id, dflt) => (id in secs ? secs[id] : dflt);
+const sec = (id, title, summary, body, { open = true, cls = "", style = "" } = {}) =>
+  `<details class="card sec ${cls}" data-sec="${id}" style="${style}" ${isOpen(id, open) ? "open" : ""}><summary><h2>${title}</h2>${summary ? `<span class="muted small sum">${summary}</span>` : ""}<span class="chev" aria-hidden="true"></span></summary><div class="secbody">${body}</div></details>`;
 // Join form state lives outside render(), so the 5 s refresh never wipes what was typed.
 let joinCode = "", joinName = null, joining = false, showDrop = false, replaceOpen = false;
 try { joinCode = new URLSearchParams(location.search).get("join") || ""; } catch {}
@@ -136,23 +152,20 @@ function render() {
   </header>
 
   <div class="grid g2">
-    <section class="card tight">
-      <h2 style="padding:20px 20px 4px">Services</h2>
+${sec("services", "Services", allUp ? "All running" : "Needs attention", `
       <div class="row"><span class="dot ${s.services.worker ? "ok" : "bad"}"></span><div class="grow"><b>Spot Solutions worker</b><div class="muted small">${s.services.worker ? "Running" : k ? "Stopped. Check the logs below." : "Waits for the Firebase key"}</div></div><button class="tonal sm" data-restart="worker">Restart</button></div>
       ${s.localModel ? `<div class="row"><span class="dot ${s.services.ollama ? "ok" : "bad"}"></span><div class="grow"><b>Ollama</b><div class="muted small">${s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"} installed` : "Not responding"}</div></div><button class="tonal sm" data-restart="ollama">Restart</button></div>` : `<div class="row"><span class="dot ok"></span><div class="grow"><b>Local model</b><div class="muted small">Off: this server answers with Gemini only. It can't host accounts set to Local only.</div></div></div>`}
       ${s.ollama.models.length ? `<div class="row"><div class="models">${s.ollama.models.map((m) => `<span class="chip neutral mono">${esc(m.name)} · ${fmt(m.size)}</span>`).join("")}</div></div>` : ""}
-    </section>
-    <section class="card grid" style="gap:14px">
-      <h2 style="margin:0">Machine</h2>
+`, { cls: "tight" })}
+${sec("machine", "Machine", `CPU ${Math.round(s.cpu.usage * 100)}% · memory ${Math.round((1 - s.memory.free / s.memory.total) * 100)}%`, `
       ${meter("CPU", s.cpu.usage, 1, `${Math.round(s.cpu.usage * 100)}% · ${s.cpu.cores} cores · load ${s.cpu.load[0].toFixed(2)}`)}
       ${meter("Memory", s.memory.total - s.memory.free, s.memory.total, `${fmt(s.memory.total - s.memory.free)} of ${fmt(s.memory.total)}`)}
       ${s.disk ? meter("Disk", s.disk.total - s.disk.free, s.disk.total, `${fmt(s.disk.free)} free of ${fmt(s.disk.total)}`) : ""}
       <div class="muted small">${esc(s.cpu.model)}</div>
-    </section>
+`, {})}
   </div>
 
-  <section class="card" style="margin-top:16px">
-    <h2>Setup</h2>
+${sec("setup", "Setup", `${steps.filter((x) => x.done || x.optional).length} of ${steps.length} done`, `
     ${steps.map((st, i) => `<div class="step"><span class="num ${st.done ? "done" : ""}">${st.done ? "✓" : i + 1}</span><div class="grow"><b>${st.title}</b><div class="muted small" style="margin-top:2px">${st.body}</div></div></div>`).join("")}
     ${(() => { const inner = `
       <form id="join" autocomplete="off">
@@ -172,24 +185,23 @@ function render() {
       <input type="password" id="gemini" autocomplete="off" placeholder="AIza…">
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button type="submit">Save &amp; restart worker</button><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app" target="_blank" rel="noreferrer">Open Spot Solutions ↗</a><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app/help" target="_blank" rel="noreferrer">Server guide ↗</a></div>
     </form>
-  </section>
+`, { open: !steps.every((x) => x.done || x.optional), style: "margin-top:16px" })}
 
-  ${phone && phone.qr ? `<section class="card" style="margin-top:16px;display:flex;gap:20px;flex-wrap:wrap;align-items:center">
-    <pre class="qr" aria-label="QR code for this console">${esc(phone.qr)}</pre>
-    <div class="grow" style="min-width:220px"><h2 style="margin:0 0 6px">Open this console on your phone</h2><div class="muted small">Scan with your phone's camera while it's on the same Wi-Fi. The link includes this server's access code, so only share it with people who should manage the server.</div><div class="mono small" style="margin-top:8px;word-break:break-all">${esc(phone.url)}</div></div>
-  </section>` : ""}
+  ${phone && phone.qr ? sec("phone", "Open this console on your phone", "Scan with your phone's camera", `<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center"><pre class="qr" aria-label="QR code for this console">${esc(phone.qr)}</pre><div class="grow" style="min-width:220px"><div class="muted small">Scan while your phone is on the same Wi-Fi. The link includes this server's access code, so only share it with people who should manage the server.</div><div class="mono small" style="margin-top:8px;word-break:break-all">${esc(phone.url)}</div></div></div>`, { open: false, style: "margin-top:16px" }) : ""}
 
-  <section class="card tight" style="margin-top:16px">
-    <div class="row" style="padding-bottom:8px"><h2 class="grow" style="margin:0">Worker logs</h2><span class="muted small">refreshes every 5 s</span></div>
-    <pre class="logs" id="logs">${esc(s.logs)}</pre>
-  </section>`;
+  ${sec("logs", "Worker logs", "updates every 5 s", `<pre class="logs" id="logs">${esc(s.logs)}</pre>`, { open: false, cls: "tight", style: "margin-top:16px" })}`;
 
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.onclick = () => {
     theme = b.dataset.themeSet; applyTheme();
     try { localStorage.setItem("spot-console-theme", theme); } catch {}
     render();
   });
-  const logs = $("#logs"); logs.scrollTop = logs.scrollHeight;
+  document.querySelectorAll("details.sec").forEach((d) => d.ontoggle = () => {
+    secs[d.dataset.sec] = d.open;
+    try { localStorage.setItem("spot-console-sections", JSON.stringify(secs)); } catch {}
+    if (d.dataset.sec === "logs" && d.open) { const l = $("#logs"); if (l) l.scrollTop = l.scrollHeight; }
+  });
+  const logs = $("#logs"); if (logs) logs.scrollTop = logs.scrollHeight;
   document.querySelectorAll("[data-restart]").forEach((b) => b.onclick = async () => {
     b.disabled = true; b.textContent = "Restarting…";
     try { const r = await api("/api/restart", { service: b.dataset.restart }); toast(r.active ? "Restarted" : "Restart sent, not active yet: check the logs"); } catch (e) { toast(e.message); }

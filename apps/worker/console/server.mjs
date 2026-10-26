@@ -22,6 +22,8 @@ const ENV_FILE = process.env.SPOT_ENV_FILE ?? (WIN ? "C:\\SpotSolutions\\app\\ap
 const WORKER_LOG = MAC ? path.join(DATA, "..", "logs", "worker.log") : path.join(DATA, "worker.log");
 const OLLAMA_EXE = process.env.SPOT_OLLAMA_EXE ?? "ollama";
 const PORT = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
+// Changes on every start, so an embedded view (the Mac app) knows to reload a stale page.
+const BOOT = Date.now();
 const TOKEN_FILE = process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(DATA, "console-token");
 const KEY_FILE = path.join(DATA, "service-account.json");
 // Cloud Function that trades a join code for this server's own key (functions/src/index.ts redeemJoinCode).
@@ -253,6 +255,7 @@ createServer(async (req, res) => {
     if (!authed(req)) return json(res, 401, { error: "Open the link with ?token=… printed by the installer (sudo cat " + TOKEN_FILE + ")" });
 
     if (url.pathname === "/api/status") return json(res, 200, await status());
+    if (url.pathname === "/api/boot") return json(res, 200, { boot: BOOT });
 
     // Only for someone at this machine: the link carries the access token.
     if (url.pathname === "/api/phone") {
