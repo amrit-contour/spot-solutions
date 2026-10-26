@@ -13,7 +13,7 @@ import { PageHeader } from "@spot/ui";
 import { StickyBar } from "@spot/ui";
 import { ConfirmDialog } from "@spot/ui";
 import { Menu, MenuItem } from "@spot/ui";
-import { ImportContactsSheet, ImportFileSheet } from "../components/ImportSheets";
+import { ImportContactsSheet, ImportFileSheet, ImportGoogleSheet } from "../components/ImportSheets";
 import { Avatar, Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "@spot/ui";
 import { IconChat, IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "@spot/ui";
 
@@ -27,7 +27,7 @@ const TIERS: { value: Tier; label: string }[] = [
 
 export function Comics() {
   const { uid, comics, currentWeek, shows, session } = useApp();
-  const [importing, setImporting] = useState<"contacts" | "file" | null>(null);
+  const [importing, setImporting] = useState<"contacts" | "file" | "google" | null>(null);
   const waHint = isDemoUser() ? "Off in demo" : session?.status !== "ready" ? "Connect WhatsApp" : undefined;
   const [q, setQ] = useState("");
   const [tier, setTier] = useState<Tier | "all">("all");
@@ -110,6 +110,7 @@ export function Comics() {
             {(close) => (
               <>
                 <MenuItem disabled={Boolean(waHint)} hint={waHint} onClick={() => (close(), setImporting("contacts"))}>From WhatsApp contacts</MenuItem>
+                <MenuItem disabled={isDemoUser()} hint={isDemoUser() ? "Off in demo" : undefined} onClick={() => (close(), setImporting("google"))}>From Google Contacts</MenuItem>
                 <MenuItem onClick={() => (close(), setImporting("file"))}>From a file (CSV / vCard)</MenuItem>
               </>
             )}
@@ -127,7 +128,7 @@ export function Comics() {
             <IconSearch className="icon pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-on-surface-variant" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or number" className="h-12 w-full rounded-full bg-surface-high pr-4 pl-12 type-body-l outline-none placeholder:text-on-surface-variant focus:shadow-[inset_0_0_0_2px_var(--md-sys-color-primary)]" />
           </div>
-          <Segmented size="sm" value={tier} onChange={setTier} options={[{ value: "all", label: "All" }, ...TIERS]} />
+          <div className="w-full sm:w-auto"><Segmented size="sm" full value={tier} onChange={setTier} options={[{ value: "all", label: "All" }, ...TIERS]} /></div>
         </div>
         </StickyBar>
         {!list.length ? (
@@ -194,6 +195,7 @@ export function Comics() {
       </ConfirmDialog>
       <ComicEditor value={editing} onClose={() => setEditing(null)} />
       <ImportContactsSheet open={importing === "contacts"} onClose={() => setImporting(null)} />
+      <ImportGoogleSheet open={importing === "google"} onClose={() => setImporting(null)} />
       <ImportFileSheet open={importing === "file"} onClose={() => setImporting(null)} />
     </div>
   );

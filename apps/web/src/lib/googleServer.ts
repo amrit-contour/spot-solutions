@@ -87,6 +87,11 @@ export async function planGoogleServer(ids: string[]): Promise<ContactPlan> {
   return (await httpsCallable<{ ids: string[] }, ContactPlan>(fns(), "planGoogleContacts", { timeout: 130_000 })({ ids })).data;
 }
 
+/** Read-only: names and numbers of every Google contact with a phone, read by the server link. */
+export async function listGoogleServer(): Promise<{ name: string; numbers: string[] }[]> {
+  return (await httpsCallable<Record<string, never>, { contacts: { name: string; numbers: string[] }[] }>(fns(), "listGoogleContacts", { timeout: 130_000 })({})).data.contacts;
+}
+
 export async function runGoogleServer(ids: string[]): Promise<{ created: number; updated: number; failed: number }> {
   return (await httpsCallable<{ ids: string[] }, { created: number; updated: number; failed: number }>(fns(), "runGoogleContacts", { timeout: 550_000 })({ ids })).data;
 }

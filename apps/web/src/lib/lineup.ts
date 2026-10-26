@@ -89,12 +89,12 @@ export async function setGroupLeaving(uid: string, week: string, show: Show, ids
   await setDoc(ref, { ...(cur ?? blank(week, show)), groupLeaving: ids });
 }
 
-/** Regular / Co-host tags live on the show. Taking someone out of the group drops both (`off`). */
-export function tagMember(uid: string, show: Show, comicId: string, tag: "regulars" | "protected", on: boolean) {
+/** Regular / Co-host / POC tags live on the show. Taking someone out of the group drops both (`off`). */
+export function tagMember(uid: string, show: Show, comicId: string, tag: "regulars" | "protected" | "pocs", on: boolean) {
   return updateDoc(userDoc(uid, "shows", show.id), { [tag]: on ? arrayUnion(comicId) : arrayRemove(comicId) });
 }
 export function untagMember(uid: string, show: Show, comicId: string) {
-  return updateDoc(userDoc(uid, "shows", show.id), { regulars: arrayRemove(comicId), protected: arrayRemove(comicId) });
+  return updateDoc(userDoc(uid, "shows", show.id), { regulars: arrayRemove(comicId), protected: arrayRemove(comicId), pocs: arrayRemove(comicId) });
 }
 
 /** Mic got cancelled last week? Bring the same lineup back. */

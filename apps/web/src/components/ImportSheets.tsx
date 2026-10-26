@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getDocFromServer } from "firebase/firestore";
-import { comicIdForPhone, parsePeopleFile, type WaContact } from "@spot/shared";
+import { comicIdForPhone, normalizePhone, parsePeopleFile, shouldUpdateName, type WaContact } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, userDoc } from "../lib/data";
 import { importPeople, rosterLookup } from "../lib/people";
 import { useGoogleSync } from "./GoogleContactsSync";
+import { connectGoogleContacts, hasGoogleToken, listGoogleContactsBrowser, reportGoogleError } from "../lib/googleContacts";
+import { callableMessage, listGoogleServer, useServerLink } from "../lib/googleServer";
 import { Avatar, Button, Chip, Empty, Spinner, cx } from "@spot/ui";
 import { Sheet } from "@spot/ui";
 import { IconCheck, IconPhone, IconSearch, IconUserPlus, IconWarn } from "@spot/ui";
@@ -17,6 +19,8 @@ interface Row {
   phone: string;
   /** On the roster already: shown, never re-imported. */
   known: boolean;
+  /** Shown instead of "On roster" for known rows, or under the number for a row that would rename a comic. */
+  note?: string;
 }
 
 const SHOWN = 300;
@@ -82,9 +86,10 @@ function Checklist({ rows, picked, setPicked }: { rows: Row[]; picked: Set<strin
                 <span className="min-w-0 flex-1">
                   <span className="block truncate type-title-s">{r.name}</span>
                   <span className="block type-body-s text-on-surface-variant tabular">+{r.phone}</span>
+                  {!r.known && r.note && <span className="block truncate type-body-s text-tertiary">{r.note}</span>}
                 </span>
                 {r.known ? (
-                  <Chip>On roster</Chip>
+                  <Chip>{r.note ?? "On roster"}</Chip>
                 ) : (
                   <input type="checkbox" className="size-5 accent-[var(--md-sys-color-primary)]" checked={picked.has(r.key)} onChange={() => toggle(r.key)} aria-label={`Import ${r.name}`} />
                 )}
@@ -279,5 +284,120 @@ export function ImportFileSheet({ open, onClose }: { open: boolean; onClose: () 
     </Sheet>
     {google.dialog}
     </>
+  );
+}
+
+/** Google contacts with a phone number, one row per number, deduped. The curator's own number never appears. */
+export function googleRows(contacts: { name: string; numbers: string[] }[], comics: ReturnType<typeof useApp>["comics"], own: string[]) {
+  const mine = new Set(own.map((o) => normalizePhone(o)).filter(Boolean));
+  const find = rosterLookup(comics);
+  const seen = new Set<string>();
+  const rows: Row[] = [];
+  for (const c of contacts) {
+    const name = c.name.trim();
+    if (!name) continue;
+    for (const raw of c.numbers) {
+      const phone = normalizePhone(raw);
+      if (!phone || mine.has(phone) || seen.has(phone)) continue;
+      seen.add(phone);
+      const cur = find({ id: comicIdForPhone(phone), phone });
+      if (!cur) rows.push({ key: phone, name, phone, known: false });
+      else if (cur.name === name) rows.push({ key: phone, name, phone, known: true });
+      else if (shouldUpdateName(cur, { name, nameSource: "contact" })) rows.push({ key: phone, name, phone, known: false, note: `Renames "${cur.name}" on your roster` });
+      else rows.push({ key: phone, name, phone, known: true, note: `On roster as ${cur.name}` });
+    }
+  }
+  return rows;
+}
+
+export function ImportGoogleSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { uid, comics, comicsLoaded, session } = useApp();
+  const link = useServerLink();
+  const server = link.state === "connected";
+  const [contacts, setContacts] = useState<{ name: string; numbers: string[] }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const find = useMemo(() => rosterLookup(comics), [comics]);
+  // Ready to read without a popup: kept connected on the server, or a token already in this browser.
+  const ready = server || hasGoogleToken();
+
+  const load = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      // From a click when a popup is needed. The server link reads Google itself, with no token in the browser.
+      if (!server && !hasGoogleToken()) await connectGoogleContacts();
+      setContacts(server ? await listGoogleServer() : await listGoogleContactsBrowser());
+      setPicked(new Set());
+    } catch (e) {
+      if (server) setError(callableMessage(e));
+      else {
+        setError((e as Error).message);
+        reportGoogleError(e, "Couldn't read Google Contacts");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (!open) {
+      setContacts(null);
+      setError(null);
+      setPicked(new Set());
+    } else if (link.state !== "unknown" && ready && !contacts && !loading) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, link.state]);
+
+  const rows = useMemo(() => googleRows(contacts ?? [], comics, session?.phone ? [session.phone] : []), [contacts, comics, session?.phone]);
+  const save = async () => {
+    setSaving(true);
+    try {
+      const chosen = rows.filter((r) => picked.has(r.key)).map((r) => ({ id: comicIdForPhone(r.phone), name: r.name, phone: r.phone, nameSource: "contact" as const }));
+      const done = await importPeople(uid, chosen, find);
+      toast.success(summary(done));
+      onClose();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Import from Google Contacts"
+      footer={
+        <>
+          <Button variant="text" onClick={onClose}>Cancel</Button>
+          <Button icon={IconUserPlus} onClick={save} loading={saving} disabled={!picked.size || !comicsLoaded}>{picked.size ? `Import ${plural(picked.size, "comic")}` : "Import"}</Button>
+        </>
+      }
+    >
+      {error ? (
+        <Empty icon={IconWarn} title="Couldn't read Google Contacts" action={<Button variant="tonal" onClick={load} loading={loading}>Try again</Button>}>{error}</Empty>
+      ) : contacts ? (
+        !rows.length ? (
+          <Empty icon={IconPhone} title="No contacts with a phone number">Nothing in your Google Contacts has a number to import.</Empty>
+        ) : (
+          <>
+            <p className="mb-4 type-body-m text-on-surface-variant">Your Google contacts that have a phone number. Pick who to add to your roster. Nobody is messaged, and nothing in Google Contacts is changed.</p>
+            <Checklist rows={rows} picked={picked} setPicked={setPicked} />
+          </>
+        )
+      ) : loading || (ready && link.state === "unknown") ? (
+        <div className="flex flex-col items-center gap-3 py-16 text-on-surface-variant">
+          <Spinner className="size-7 text-primary" />
+          Reading your Google contacts…
+        </div>
+      ) : (
+        <Empty icon={IconPhone} title="Connect Google Contacts" action={<Button variant="tonal" onClick={load}>Allow access</Button>}>
+          Google asks first. This only reads names and numbers. Press Keep connected in Settings to skip this next time.
+        </Empty>
+      )}
+    </Sheet>
   );
 }

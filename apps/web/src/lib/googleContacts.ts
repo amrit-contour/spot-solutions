@@ -131,6 +131,26 @@ export async function loadGoogleIndex(force = false): Promise<GoogleIndex> {
   return map;
 }
 
+export interface GoogleContactListing {
+  name: string;
+  numbers: string[];
+}
+
+/** Read-only: every Google contact with a phone number (names and numbers), straight from the browser token. */
+export async function listGoogleContactsBrowser(): Promise<GoogleContactListing[]> {
+  const out: GoogleContactListing[] = [];
+  let pageToken = "";
+  do {
+    const r = await call<{ connections?: Person[]; nextPageToken?: string }>(`people/me/connections?personFields=names,phoneNumbers&pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`);
+    for (const p of r.connections ?? []) {
+      const numbers = (p.phoneNumbers ?? []).map((n) => n.canonicalForm || n.value || "").filter(Boolean);
+      if (numbers.length) out.push({ name: p.names?.[0]?.displayName?.trim() ?? "", numbers });
+    }
+    pageToken = r.nextPageToken ?? "";
+  } while (pageToken);
+  return out;
+}
+
 const personFor = (c: ContactCreate): Person => ({ names: [splitName(c.name)], phoneNumbers: [{ value: `+${c.phone}`, type: "mobile" }] });
 
 /** Names only. The body carries the etag, and a stale etag (400) is refetched once. */
