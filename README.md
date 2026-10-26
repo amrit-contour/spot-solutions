@@ -87,7 +87,7 @@ The laptop never opens a port. The web app writes commands to Firestore and the 
 
 - Understands English, Hinglish and Kannada ("bhai monday ka spot milega?", "guru tuesday sigutta?").
 - Sorts every conversation into spot request (with preferred days), cancellation, "am I up this week?", "when was my last spot?", venue and timing questions, or noise.
-- Chats that aren't spot requests are never stored.
+- Chats that aren't spot requests are never stored. A "spot request" has to mention a spot, a day or one of your venues, so a chat about rent or lunch can only ever reach **Maybe**.
 - Rules from V1: request windows, skip-last-week, host, ban and ignore lists. Rule-breakers wait in a **Held** tab instead of your inbox.
 </details>
 
@@ -95,6 +95,7 @@ The laptop never opens a port. The web app writes commands to Firestore and the 
 <summary><b>Curation</b></summary>
 
 - Lineup board with drag and drop on desktop and a tap-to-add flow on phones.
+- Two looks: **NBC** (black, white and green, the default) or **Classic** marigold, in Settings → Appearance.
 - "Performed last week" tags, experience tiers, preferred-day chips and spot history ("last spot 12 days ago").
 - **Repeat last week** for weeks after a cancelled mic. **Reset a lineup or the whole week** when plans change.
 - "Did the mic happen?" the next morning. "No" undoes the night in everyone's history.
@@ -105,6 +106,10 @@ The laptop never opens a port. The web app writes commands to Firestore and the 
 <details>
 <summary><b>Messages and groups</b></summary>
 
+- **Your voice** (opt-in): Gemma learns how you write from messages *you* sent, then writes each message to a comic that way, a little different for everyone. Your template is the guide and the safety net: a draft that changes a date, time, venue or link is thrown out and the template goes out instead.
+- Every message is editable in Settings → Messages: acknowledgements, confirmations, regrets, cancellations, spot offers, "am I up?", "where and when", held-request replies and more.
+- Saved replies: your own templates, one tap away on any reply box, with `{{name}}` filled in.
+- `{{name}}` is the name you saved them under in your phone, else their WhatsApp name, else "there".
 - Templates for acknowledgements, confirmations and regrets with `{{name}}`, `{{show}}`, `{{venue}}`, `{{day}}`, `{{date}}`, `{{time}}`, `{{minutes}}`, `{{mapsLink}}`, and optional sections such as `{{#minutes}}…{{/minutes}}`.
 - Group sync: after confirming, review who gets added to and removed from each show's group. Admins, regulars and co-hosts always stay. Or let a show update its group automatically on the day.
 - New faces: someone you haven't saved gets a friendly "who are you?" and their answer fills in their profile.
@@ -116,6 +121,8 @@ The laptop never opens a port. The web app writes commands to Firestore and the 
 - Import comics from your saved WhatsApp contacts, from a CSV or vCard file (Google Contacts exports work), or from every member of a show's group.
 - Search by keyword (commas match any: `comic, open mic`), select all matches, import.
 - Mark regulars and co-hosts straight from the group's member list.
+- Only clear spot asks join Comics on their own. A Maybe joins when you place it on a lineup.
+- Select many comics and remove them in one go, with Undo.
 </details>
 
 <details>
@@ -204,6 +211,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 - **Nothing is sent without your OK.** Confirmations and regrets go out only when you press send.
 - **Auto-acknowledge is off by default.** When on, it replies only to a quoted ask at 85%+ confidence, in a message under 10 minutes old, from a real person (never a business account).
+- **Your voice reads only what you sent**, keeps a short description and up to 15 examples, and never stores the chats. Off until you turn it on.
 - **No cloud model reads your chats** unless you allow Gemini as a backup. "Local only" turns it off entirely.
 - Chats from before you linked are only read when you run **Scan past messages** yourself (Requests, ⋯ menu). It runs on your own server, sends nothing to anyone, and saves only the spot requests it finds.
 - Security details and how to report a problem: [SECURITY.md](SECURITY.md).

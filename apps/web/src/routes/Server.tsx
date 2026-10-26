@@ -205,7 +205,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
 
       {s.ollama.models.length > 0 && (
         <Collapsible id={`server:${s.id}:models`} title="Local models" icon={IconCpu} summary={`${s.ollama.models.length}`}>
-          <div className="flex flex-wrap gap-1.5 px-4 pb-4">
+          <div className="flex flex-wrap gap-2 border-t border-outline-variant/40 px-4 pt-3.5 pb-4">
             {s.ollama.models.map((m) => (
               <Chip key={m.name} tone={s.ollama.loaded.includes(m.name) ? "primary" : "neutral"}>
                 <span className="font-mono">{m.name}</span> <span className="opacity-70">· {fmtBytes(m.size)}</span>

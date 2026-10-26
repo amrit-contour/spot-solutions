@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { deleteDoc, setDoc } from "firebase/firestore";
+import { deleteDoc, setDoc, writeBatch } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { cancellations, formatDate, shiftWeek, type Comic, type ComicList, type Tier } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
+import { db } from "../lib/firebase";
 import { saveComicToGoogle } from "../lib/googleContacts";
 import { PageHeader } from "../components/Shell";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Menu, MenuItem } from "../components/Menu";
 import { ImportContactsSheet, ImportFileSheet } from "../components/ImportSheets";
 import { Avatar, Button, Chip, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, cx } from "../components/ui";
-import { IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "../components/icons";
+import { IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "../components/icons";
 
 const LIST_LABEL: Record<ComicList, string> = { host: "Host", ignored: "Ignored", banned: "Banned" };
 
@@ -23,13 +25,24 @@ const TIERS: { value: Tier; label: string }[] = [
 ];
 
 export function Comics() {
-  const { comics, currentWeek, shows, session } = useApp();
+  const { uid, comics, currentWeek, shows, session } = useApp();
   const [importing, setImporting] = useState<"contacts" | "file" | null>(null);
   const waHint = isDemoUser() ? "Off in demo" : session?.status !== "ready" ? "Connect WhatsApp" : undefined;
   const [q, setQ] = useState("");
   const [tier, setTier] = useState<Tier | "all">("all");
   const [editing, setEditing] = useState<Partial<Comic> | null>(null);
   const lastWeek = shiftWeek(currentWeek, -1);
+  // Bulk select: tick several comics and remove them together.
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const exitSelect = () => (setSelecting(false), setSel(new Set()), setConfirming(false));
+  useEffect(() => {
+    if (!selecting || confirming) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && exitSelect();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [selecting, confirming]);
   // The Updates panel links here: ?edit=<comicId> opens a profile, ?add=<name> starts a new one.
   const [params, setParams] = useSearchParams();
   const editId = params.get("edit");
@@ -51,6 +64,37 @@ export function Comics() {
         .sort((a, b) => a.name.localeCompare(b.name)),
     [comics, q, tier],
   );
+  // Only what's in view counts, so a hidden, filtered-out comic is never removed by accident.
+  const chosen = list.filter((c) => sel.has(c.id));
+  const allOn = list.length > 0 && chosen.length === list.length;
+  const toggle = (id: string) => setSel((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const removeChosen = async () => {
+    const gone = chosen;
+    for (let i = 0; i < gone.length; i += 450) {
+      const b = writeBatch(db);
+      gone.slice(i, i + 450).forEach((c) => b.delete(userDoc(uid, "comics", c.id)));
+      await b.commit();
+    }
+    exitSelect();
+    toast.success(`Removed ${gone.length} ${gone.length === 1 ? "comic" : "comics"}`, {
+      duration: 10000,
+      action: {
+        label: "Undo",
+        onClick: async () => {
+          try {
+            for (let i = 0; i < gone.length; i += 450) {
+              const b = writeBatch(db);
+              gone.slice(i, i + 450).forEach((c) => b.set(userDoc(uid, "comics", c.id), c));
+              await b.commit();
+            }
+            toast.success(`Restored ${gone.length}`);
+          } catch (e) {
+            toast.error((e as Error).message);
+          }
+        },
+      },
+    });
+  };
 
   return (
     <div className="w-full">
@@ -71,6 +115,7 @@ export function Comics() {
               </>
             )}
           </Menu>
+          {!selecting && comics.length > 0 && <Button variant="outlined" icon={IconCheck} onClick={() => setSelecting(true)}>Select</Button>}
           <Button icon={IconUserPlus} onClick={() => setEditing({ tier: "open" })}>Add comic</Button>
         </>
       }
@@ -84,16 +129,24 @@ export function Comics() {
         </div>
       </PageHeader>
 
-      <div className="px-4 pb-12 sm:px-8">
+      <div className={cx("px-4 sm:px-8", selecting ? "pb-6" : "pb-12")}>
         {!list.length ? (
           <Empty icon={IconComics} title={comics.length ? "No matches" : "No comics yet"}>
             {comics.length ? "Try a different search." : "Once someone asks for a spot, they're added here automatically. You can also add people by hand."}
           </Empty>
         ) : (
+          <>
+          {selecting && (
+            <label className="state-layer mb-2 flex cursor-pointer items-center gap-4 rounded-xl bg-surface-container px-4 py-3 sm:px-5">
+              <input type="checkbox" className="size-5 flex-none accent-[var(--md-sys-color-primary)]" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(list.map((c) => c.id)))} />
+              <span className="type-title-s">Select all{q || tier !== "all" ? " in this view" : ""} ({list.length})</span>
+            </label>
+          )}
           <motion.ul className="overflow-hidden rounded-xl bg-surface-low" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.02 } } }}>
             {list.map((c, i) => (
               <motion.li key={c.id} variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }} className={cx(i > 0 && "border-t border-outline-variant/50")}>
-                <button onClick={() => setEditing(c)} className="state-layer flex w-full items-center gap-4 px-4 py-3 text-left sm:px-5">
+                <button onClick={() => (selecting ? toggle(c.id) : setEditing(c))} aria-pressed={selecting ? sel.has(c.id) : undefined} className={cx("state-layer flex w-full items-center gap-4 px-4 py-3 text-left sm:px-5", selecting && sel.has(c.id) && "bg-secondary-container/40")}>
+                  {selecting && <input type="checkbox" tabIndex={-1} readOnly checked={sel.has(c.id)} className="pointer-events-none size-5 flex-none accent-[var(--md-sys-color-primary)]" aria-label={`Select ${c.name}`} />}
                   <Avatar name={c.name} size={40} tone={c.tier === "featured" ? "tertiary" : c.tier === "regular" ? "secondary" : "primary"} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
@@ -115,13 +168,25 @@ export function Comics() {
                       </Chip>
                     )}
                   </span>
-                  <IconPen className="icon size-5 text-on-surface-variant" />
+                  {!selecting && <IconPen className="icon size-5 text-on-surface-variant" />}
                 </button>
               </motion.li>
             ))}
           </motion.ul>
+          </>
+        )}
+        {selecting && (
+          <div className="sticky bottom-24 z-30 mt-4 flex items-center gap-2 rounded-full bg-inverse-surface py-2 pr-2 pl-5 text-inverse-on-surface shadow-lg sm:bottom-6">
+            <span className="min-w-0 flex-1 truncate type-label-l tabular">{chosen.length} selected</span>
+            <Button variant="text" onClick={exitSelect} className="text-inverse-on-surface!">Cancel</Button>
+            <Button variant="danger" icon={IconTrash} disabled={!chosen.length} onClick={() => setConfirming(true)}>Remove</Button>
+          </div>
         )}
       </div>
+      <ConfirmDialog open={confirming} onClose={() => setConfirming(false)} title={`Remove ${chosen.length} ${chosen.length === 1 ? "comic" : "comics"}?`} confirmLabel="Remove" onConfirm={removeChosen}>
+        <p>They come off your roster only. Nothing changes in WhatsApp or Google Contacts, and their past requests stay.</p>
+        <p className="type-body-s">{chosen.slice(0, 5).map((c) => c.name).join(", ")}{chosen.length > 5 ? ` and ${chosen.length - 5} more` : ""}. You can undo right after.</p>
+      </ConfirmDialog>
       <ComicEditor value={editing} onClose={() => setEditing(null)} />
       <ImportContactsSheet open={importing === "contacts"} onClose={() => setImporting(null)} />
       <ImportFileSheet open={importing === "file"} onClose={() => setImporting(null)} />

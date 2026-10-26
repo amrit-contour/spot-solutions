@@ -56,7 +56,9 @@
   .dot.ok { background: var(--ok); } .dot.bad { background: var(--error); }
   .row { display: flex; align-items: center; gap: 12px; padding: 14px 20px; }
   .row + .row { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
-  .meter { height: 8px; border-radius: 99px; background: var(--s-highest); overflow: hidden; margin-top: 8px; }
+  .meter { height: 8px; border-radius: 99px; background: var(--s-highest); overflow: hidden; margin-top: 10px; }
+  .mrow + .mrow { margin-top: 20px; }
+  .mfoot { margin-top: 20px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
   .meter > i { display: block; height: 100%; background: var(--primary); border-radius: inherit; transition: width .5s cubic-bezier(.23,1,.32,1); }
   .meter > i.warn { background: var(--error); }
   .stat { font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
@@ -89,7 +91,8 @@
   .theme button[aria-pressed="true"] { background: var(--primary-c); color: var(--on-primary-c); }
   details.sec > summary { list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer; }
   details.sec > summary::-webkit-details-marker { display: none; }
-  details.sec.stack > .secbody { display: grid; gap: 18px; }
+  details.sec.stack > .secbody { display: block; padding-top: 4px; }
+  .grid > details.sec { align-self: start; }
   .g2 { align-items: start; }
   details.sec > summary h2 { margin: 0; }
   details.sec > summary .sum { margin-left: auto; }
@@ -119,7 +122,7 @@ async function api(path, body) {
 }
 const meter = (label, used, total, detail) => {
   const p = total ? Math.min(1, used / total) : 0;
-  return `<div><div class="stat"><span>${label}</span><span class="muted">${detail}</span></div><div class="meter"><i class="${p > .9 ? "warn" : ""}" style="width:${(p * 100).toFixed(1)}%"></i></div></div>`;
+  return `<div class="mrow"><div class="stat"><span>${label}</span><span class="muted">${detail}</span></div><div class="meter"><i class="${p > .9 ? "warn" : ""}" style="width:${(p * 100).toFixed(1)}%"></i></div></div>`;
 };
 const logo = `<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="14" fill="var(--primary)"/><path d="M19 0h10l9 42H10z" fill="var(--on-primary)" opacity=".13"/><ellipse cx="24" cy="40.5" rx="12" ry="2.6" fill="var(--on-primary)" opacity=".25"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="var(--on-primary)"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="var(--primary)"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="var(--primary)"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="var(--on-primary)" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="var(--on-primary)"/></svg>`;
 
@@ -165,7 +168,7 @@ ${sec("machine", "Machine", `CPU ${Math.round(s.cpu.usage * 100)}% · memory ${M
       ${meter("CPU", s.cpu.usage, 1, `${Math.round(s.cpu.usage * 100)}% · ${s.cpu.cores} cores · load ${s.cpu.load[0].toFixed(2)}`)}
       ${meter("Memory", s.memory.total - s.memory.free, s.memory.total, `${fmt(s.memory.total - s.memory.free)} of ${fmt(s.memory.total)}`)}
       ${s.disk ? meter("Disk", s.disk.total - s.disk.free, s.disk.total, `${fmt(s.disk.free)} free of ${fmt(s.disk.total)}`) : ""}
-      <div class="muted small">${esc(s.cpu.model)}</div>
+      <div class="muted small mfoot">${esc(s.cpu.model)}</div>
 `, { cls: "stack" })}
   </div>
 
