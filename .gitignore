@@ -11,3 +11,4 @@ service-account*.json
 .DS_Store
 deploy/mac/dist/
 apps/worker/live-stats.json
+deploy/legacy-dl/
