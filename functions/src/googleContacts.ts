@@ -4,7 +4,7 @@
 import { AppError } from "./core";
 import type { SyncComic, ContactPlan } from "./contactsShared";
 import { decryptToken, encryptToken } from "./gcrypto";
-import { GoogleApiError, GrantRevokedError, People, exchangeCode, mintAccessToken, revokeToken, type Fetch, type OAuthClient, type SyncResult } from "./googleApi";
+import { GoogleApiError, GrantRevokedError, People, type GoogleContactListing, exchangeCode, mintAccessToken, revokeToken, type Fetch, type OAuthClient, type SyncResult } from "./googleApi";
 import { checkAccountEmail, hasContactsScope, isBulk, requireCode, shouldQueueComic, type ComicBits, type QueueDoc } from "./googleLogic";
 
 export interface LinkRecord {
@@ -159,6 +159,16 @@ export async function planContacts(d: GcDeps, caller: Caller, data: { ids?: unkn
   try {
     const own = await d.store.ownPhones(uid);
     return await withPeople(d, uid, (p) => p.plan(comics, own));
+  } catch (e) {
+    throw googleMessage(e);
+  }
+}
+
+/** "Import from Google Contacts": every contact with a phone number, name and numbers only. Read-only; nothing is saved. */
+export async function listContacts(d: GcDeps, caller: Caller): Promise<{ contacts: GoogleContactListing[] }> {
+  const uid = who(caller);
+  try {
+    return { contacts: await withPeople(d, uid, (p) => p.listContacts()) };
   } catch (e) {
     throw googleMessage(e);
   }

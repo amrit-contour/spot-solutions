@@ -76,6 +76,11 @@ interface Person {
   phoneNumbers?: { value?: string; canonicalForm?: string }[];
 }
 
+export interface GoogleContactListing {
+  name: string;
+  numbers: string[];
+}
+
 export interface SyncResult {
   created: number;
   updated: number;
@@ -124,6 +129,21 @@ export class People {
       pageToken = r.nextPageToken ?? "";
     } while (pageToken);
     return map;
+  }
+
+  /** Read-only: every Google contact that has a phone number, as a name and its numbers (as Google has them). Nothing else is kept. */
+  async listContacts(): Promise<GoogleContactListing[]> {
+    const out: GoogleContactListing[] = [];
+    let pageToken = "";
+    do {
+      const r = await this.call<{ connections?: Person[]; nextPageToken?: string }>(`people/me/connections?personFields=names,phoneNumbers&pageSize=1000${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`);
+      for (const p of r.connections ?? []) {
+        const numbers = (p.phoneNumbers ?? []).map((n) => n.canonicalForm || n.value || "").filter(Boolean);
+        if (numbers.length) out.push({ name: p.names?.[0]?.displayName?.trim() ?? "", numbers });
+      }
+      pageToken = r.nextPageToken ?? "";
+    } while (pageToken);
+    return out;
   }
 
   /** `own`: the curator's own numbers, never touched (see planContactSync). */

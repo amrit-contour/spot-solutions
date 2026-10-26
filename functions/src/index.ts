@@ -14,7 +14,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onTaskDispatched } from "firebase-functions/v2/tasks";
 import { getFunctions } from "firebase-admin/functions";
 import { parseKey } from "./gcrypto";
-import { connect as gcConnect, disconnect as gcDisconnect, onComicWritten as gcOnComic, planContacts as gcPlan, processDue as gcProcess, processUser as gcProcessUser, runContacts as gcRun, type Caller as GcCaller, type GcDeps } from "./googleContacts";
+import { connect as gcConnect, disconnect as gcDisconnect, onComicWritten as gcOnComic, planContacts as gcPlan, listContacts as gcList, processDue as gcProcess, processUser as gcProcessUser, runContacts as gcRun, type Caller as GcCaller, type GcDeps } from "./googleContacts";
 import { firestoreGcStore } from "./googleStore";
 import type { ComicBits } from "./googleLogic";
 
@@ -220,6 +220,15 @@ export const disconnectGoogleContacts = onCall({ secrets: GC_SECRETS }, async (r
 export const planGoogleContacts = onCall({ secrets: GC_SECRETS, timeoutSeconds: 120 }, async (req) => {
   try {
     return await gcPlan(gcDeps(), gcCaller(req.auth), (req.data ?? {}) as { ids?: unknown });
+  } catch (e) {
+    return gcRethrow(e);
+  }
+});
+
+/** Web app: "Import from Google Contacts". Names and numbers of contacts that have a phone number; writes nothing. */
+export const listGoogleContacts = onCall({ secrets: GC_SECRETS, timeoutSeconds: 120 }, async (req) => {
+  try {
+    return await gcList(gcDeps(), gcCaller(req.auth));
   } catch (e) {
     return gcRethrow(e);
   }

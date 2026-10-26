@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AppError } from "./core";
 import { decryptToken, encryptToken } from "./gcrypto";
 import type { Fetch } from "./googleApi";
-import { connect, disconnect, onComicWritten, planContacts, processDue, processUser, runContacts, type Caller, type GcDeps, type GcStore, type LinkRecord } from "./googleContacts";
+import { connect, disconnect, listContacts, onComicWritten, planContacts, processDue, processUser, runContacts, type Caller, type GcDeps, type GcStore, type LinkRecord } from "./googleContacts";
 import { enqueue, nextTaskAt, type QueueDoc } from "./googleLogic";
 
 const key = randomBytes(32);
@@ -220,5 +220,34 @@ describe("runGoogleContacts", () => {
     const create = f.mock.calls.find((c) => c[0].endsWith("batchCreateContacts"))!;
     expect(JSON.parse(create[1]!.body!).contacts[0].contactPerson.phoneNumbers[0].value).toBe("+919876543210");
     await expect(runContacts(deps(store, f), me, { ids: "all" })).rejects.toBeInstanceOf(AppError);
+  });
+});
+
+describe("listGoogleContacts", () => {
+  const linked = (s: ReturnType<typeof fakeStore>["s"]) => (s.link = { enc: encryptToken(key, "u1", "1//rt"), email: "amrit@gmail.com", since: 1 });
+  it("pages through every connection and returns only names and numbers, skipping contacts without a phone", async () => {
+    const { s, store } = fakeStore();
+    linked(s);
+    const f = vi.fn<Fetch>(async (url) => {
+      if (url.includes("oauth2.googleapis.com/token")) return res(200, { access_token: "at" });
+      if (url.includes("pageToken=p2")) return res(200, { connections: [{ resourceName: "people/c3", etag: "e3", names: [{ displayName: "Cy" }], phoneNumbers: [{ value: "98765 00003" }] }] });
+      return res(200, { nextPageToken: "p2", connections: [{ resourceName: "people/c1", etag: "e1", names: [{ displayName: "Asha" }], phoneNumbers: [{ canonicalForm: "+919876500001" }, { value: "+65 9123 4567" }] }, { resourceName: "people/c2", etag: "e2", names: [{ displayName: "No phone" }] }] });
+    });
+    const out = await listContacts(deps(store, f), me);
+    expect(out).toEqual({ contacts: [{ name: "Asha", numbers: ["+919876500001", "+65 9123 4567"] }, { name: "Cy", numbers: ["98765 00003"] }] });
+    expect(JSON.stringify(out)).not.toMatch(/etag|resourceName/);
+    expect(f.mock.calls.every((c) => !c[1]?.method || c[1].method === "GET" || c[0].includes("oauth2"))).toBe(true);
+  });
+  it("needs a signed-in curator with Google connected", async () => {
+    const { store } = fakeStore();
+    await expect(listContacts(deps(store, async () => res(200, {})), { ...me, anonymous: true })).rejects.toBeInstanceOf(AppError);
+    await expect(listContacts(deps(store, async () => res(200, {})), me)).rejects.toMatchObject({ code: "failed-precondition" });
+  });
+  it("a removed grant disconnects the link and tells the curator", async () => {
+    const { s, store } = fakeStore();
+    linked(s);
+    const f: Fetch = async (url) => (url.includes("oauth2.googleapis.com/token") ? res(400, { error: "invalid_grant" }) : res(200, {}));
+    await expect(listContacts(deps(store, f), me)).rejects.toMatchObject({ code: "failed-precondition" });
+    expect(s.removed).toEqual(["revoked"]);
   });
 });
