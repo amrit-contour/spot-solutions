@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { DAY_NAMES, dateInWeek, formatDate, formatTime, greetName, renderTemplate, type Lineup, type Show } from "@spot/shared";
+import { DAY_NAMES, confirmSkipReason, dateInWeek, formatDate, formatTime, greetName, renderTemplate, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
 import { Bubble, Button, Empty, Sheet } from "./ui";
@@ -25,10 +25,15 @@ export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regr
       minutes: show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null,
     });
 
+  // Already told, or already in the show's group: they keep their spot but get no message.
+  const skipOf = (cid: string) => confirmSkipReason(comicsById.get(cid) ?? { id: cid }, lineup, show);
+  const toSend = ids.filter((cid) => !skipOf(cid));
+  const skipped = ids.filter((cid) => skipOf(cid));
+
   const send = async () => {
     setSending(true);
     onSending();
-    const t = toast.loading(`Sending ${ids.length} confirmations, a few seconds apart…`);
+    const t = toast.loading(toSend.length ? `Sending ${toSend.length} confirmation${toSend.length > 1 ? "s" : ""}, a few seconds apart…` : "Locking in the lineup…");
     try {
       await runCommand(uid, "send_confirmations", { lineupId: `${week}_${show.id}` }, 15 * 60_000);
       toast.success(`${show.name} is locked in`, { id: t });
@@ -50,7 +55,7 @@ export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regr
         <>
           <Button variant="text" onClick={onClose}>Not yet</Button>
           <Button icon={IconSend} loading={sending} onClick={send}>
-            Send {ids.length} confirmation{ids.length > 1 ? "s" : ""}
+            {toSend.length ? `Send ${toSend.length} confirmation${toSend.length > 1 ? "s" : ""}` : "Confirm, nobody to message"}
           </Button>
         </>
       }
@@ -68,7 +73,7 @@ export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regr
       {settings.voice?.enabled && settings.voice.profile && <p className="mt-3 type-body-s text-on-surface-variant">Your voice is on: each message is reworded the way you write. The details shown here stay exactly the same; if a rewrite changes any of them, this version goes out.</p>}
       <ul className="mt-5 flex flex-col gap-5">
         <AnimatePresence initial={false}>
-          {ids.map((cid, i) => (
+          {toSend.map((cid, i) => (
             <motion.li key={cid} initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: i * 0.03 } }} className="flex flex-col gap-2">
               <span className="flex items-center gap-2 type-label-l">
                 <span className="w-5 text-on-surface-variant tabular">{i + 1}</span>
@@ -79,6 +84,19 @@ export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regr
           ))}
         </AnimatePresence>
       </ul>
+      {skipped.length > 0 && (
+        <div className="mt-6 flex flex-col gap-2">
+          <span className="type-label-l text-on-surface-variant">Already know, no message ({skipped.length})</span>
+          <ul className="flex flex-wrap gap-1.5">
+            {skipped.map((cid) => (
+              <li key={cid} className="inline-flex h-7 items-center gap-1.5 rounded-sm bg-surface-container px-2.5 type-label-m">
+                {comicsById.get(cid)?.name ?? cid}
+                <span className="text-on-surface-variant">· {skipOf(cid) === "told" ? "already told" : "in the group"}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {!ids.length && <Empty icon={IconMic} title="No one placed yet" />}
     </Sheet>
   );

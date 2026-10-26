@@ -14,6 +14,7 @@ import {
   lineupId,
   pendingRejections,
   localNow,
+  confirmSkipReason,
   renderMessage,
   renderTemplate,
   TTL_DAYS,
@@ -122,12 +123,14 @@ const handlers: Record<Command["type"], Handler> = {
 
     const results: Record<string, string> = {};
     // Comics the curator already told by hand ("Check what I've done") are recorded in `sent`: don't message them twice.
-    const toldByHand = new Set(lineup.status === "confirmed" ? [] : Object.keys(lineup.sent ?? {}));
+    // People already in the show's group already have the spot: don't message them either.
+    const fresh = (await col(uid, "shows").doc(show.id).get()).data() as Show | undefined;
     for (const slot of lineup.slots) {
       const comic = comics.get(slot.comicId);
       if (!comic) continue;
-      if (toldByHand.has(slot.comicId)) {
-        results[comic.id] = "sent (already told)";
+      const skip = confirmSkipReason(comic, lineup, { groupId: show.groupId, groupMembers: fresh?.groupMembers ?? show.groupMembers });
+      if (skip) {
+        results[comic.id] = skip === "told" ? "sent (already told)" : "sent (already in the group)";
         continue;
       }
       try {

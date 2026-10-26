@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { useApp } from "../lib/app";
@@ -119,10 +119,45 @@ function ShellFrame({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Every page's title bar. It stays pinned at the top while the page scrolls, shrinking to a compact bar,
+ * and publishes its height as --page-header-h so bars below it (StickyBar, Requests tabs) pin just under it.
+ */
 export function PageHeader({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
   const conn = useConnection();
+  const ref = useRef<HTMLElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => root.style.setProperty("--page-header-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--page-header-h");
+    };
+  }, []);
+  useEffect(() => {
+    const s = sentinel.current;
+    if (!s || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), { threshold: 0 });
+    io.observe(s);
+    return () => io.disconnect();
+  }, []);
   return (
-    <header className="px-4 pt-3 pb-4 sm:px-8 sm:pt-10">
+    <>
+    {/* Scrolling past this 1px line is what "pinned" means. */}
+    <div ref={sentinel} aria-hidden className="h-px" />
+    <header
+      ref={ref}
+      data-stuck={stuck || undefined}
+      className={cx(
+        "sticky top-[env(safe-area-inset-top)] z-30 border-b border-transparent px-4 transition-[padding,background-color,border-color] duration-200 motion-reduce:transition-none sm:px-8",
+        stuck ? "border-outline-variant bg-surface/90 pt-2 pb-2 backdrop-blur-md sm:pt-3 sm:pb-3" : "pt-3 pb-4 sm:pt-10",
+      )}
+    >
       {/* Phones: status + account on top. Desktop keeps both in the nav rail. */}
       <div className="mb-3 flex items-center gap-3 sm:hidden">
         <NavLink to="/settings#whatsapp" className="state-layer mr-auto inline-flex min-w-0 items-center gap-2 rounded-full px-2 py-1 type-label-m text-on-surface-variant">
@@ -132,13 +167,14 @@ export function PageHeader({ title, subtitle, actions, children }: { title: Reac
       </div>
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
-          <h1 className="type-headline-m text-balance sm:type-display-s">{title}</h1>
-          {subtitle && <p className="mt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>}
+          <h1 className={cx("text-balance", stuck ? "truncate type-title-l" : "type-headline-m sm:type-display-s")}>{title}</h1>
+          {subtitle && !stuck && <p className="mt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>}
         </div>
         {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
       </div>
       {children}
     </header>
+    </>
   );
 }
 

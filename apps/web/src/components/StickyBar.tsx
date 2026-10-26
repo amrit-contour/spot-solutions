@@ -34,7 +34,7 @@ export function StickyBar({
     const el = sentinel.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0)), {
-      rootMargin: `-${Math.ceil(safeTop())}px 0px 0px 0px`,
+      rootMargin: `-${Math.ceil(safeTop() + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--page-header-h")) || 0))}px 0px 0px 0px`,
       threshold: 0,
     });
     io.observe(el);
@@ -45,7 +45,7 @@ export function StickyBar({
       data-stuck={stuck || undefined}
       className={cx(
         // z-20: above page content and the Requests sticky aside, below the bottom nav (z-40), menus and sheets (z-[60]).
-        "sticky top-[env(safe-area-inset-top)] z-20 border-b border-transparent transition-[background-color,border-color] duration-200",
+        "sticky top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))] z-20 border-b border-transparent transition-[background-color,border-color] duration-200",
         bleed && "-mx-4 px-4 sm:-mx-8 sm:px-8",
         "data-[stuck]:border-outline-variant data-[stuck]:bg-surface/90 data-[stuck]:backdrop-blur-md",
         className,

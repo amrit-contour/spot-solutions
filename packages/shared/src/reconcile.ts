@@ -161,3 +161,18 @@ export function planReconcilePlace(input: { lineup?: LineupLite | null; show: Pi
   }
   return { outcome: already ? ("already" as const) : ("placed" as const), slots, sent };
 }
+
+/**
+ * Why Confirm & send skips someone: you already told them (dragged in from the group, or applied from your
+ * own reply), or they're already in the show's WhatsApp group, which means they already have the spot.
+ */
+export function confirmSkipReason(
+  comic: Pick<Comic, "id"> & Partial<Pick<Comic, "chatId" | "phone">>,
+  lineup: Pick<Lineup, "status" | "sent"> | undefined,
+  show: Pick<Show, "groupId" | "groupMembers">,
+): "told" | "in_group" | null {
+  if (lineup?.status !== "confirmed" && lineup?.sent?.[comic.id]) return "told";
+  const cache = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.members : null;
+  if (cache && isGroupMember(comic, cache)) return "in_group";
+  return null;
+}
