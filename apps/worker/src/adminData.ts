@@ -131,6 +131,7 @@ export async function runAdminDataCommand(type: string, data: { by?: string; pay
   if (type === "delete_user_data") {
     if (!isDataScope(p.scope)) throw new Error("Pick what to delete");
     const t = await target(p, by);
+    if (t.self || isAdminEmail(t.email)) throw new Error("Admins' data can't be deleted here");
     // Everything also unlinks WhatsApp. Logout rewrites the user doc, so it runs before the delete.
     if (!dryRun && p.scope === "everything") await logout(t.uid);
     const counts = await userData(t.uid, p.scope, dryRun);

@@ -2,7 +2,8 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
-    function email() { return request.auth.token.email != null ? request.auth.token.email.lower() : ""; }
+    // Only verified emails count: an unverified provider must never be able to claim an admin's address.
+    function email() { return request.auth.token.email != null && request.auth.token.email_verified == true ? request.auth.token.email.lower() : ""; }
     function isAdmin() {
       return request.auth != null && exists(/databases/$(database)/documents/config/access)
         && email() in get(/databases/$(database)/documents/config/access).data.admins;
@@ -14,7 +15,8 @@ service cloud.firestore {
 
     // Invite-only: everyone signs in, admins decide who gets a WhatsApp session.
     match /config/access {
-      allow read: if request.auth != null;
+      // Lists admin emails: real accounts only, never anonymous demo visitors.
+      allow read: if request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
       allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['maxCurators'])
         && request.resource.data.maxCurators is int && request.resource.data.maxCurators >= 1 && request.resource.data.maxCurators <= 100;
     }
@@ -29,8 +31,8 @@ service cloud.firestore {
 
     // Worker machines' health. Visible to the admins that server lists in SPOT_ADMIN_EMAILS.
     function isServerAdmin(id) {
-      return request.auth != null && request.auth.token.email != null
-        && request.auth.token.email.lower() in get(/databases/$(database)/documents/servers/$(id)).data.admins;
+      return request.auth != null && email() != ""
+        && email() in get(/databases/$(database)/documents/servers/$(id)).data.admins;
     }
     match /servers/{id} {
       allow read: if request.auth != null && request.auth.token.email != null
@@ -84,7 +86,7 @@ service cloud.firestore {
         allow read: if isOwner(uid) || (isAdmin() && resource.data.type == 'move_account');
         allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members'];
         // Admins can move any approved curator's account to another server (Server page → Fleet).
         allow create: if isAdmin() && isApproved(uid)
           && request.resource.data.status == 'pending'
