@@ -93,8 +93,9 @@
   details.sec > summary .chev { width: 10px; height: 10px; border-right: 2px solid var(--on-surface-v); border-bottom: 2px solid var(--on-surface-v); transform: rotate(-45deg); transition: transform .2s; flex: none; }
   details.sec[open] > summary .chev { transform: rotate(45deg); }
   details.sec[open] > summary { margin-bottom: 12px; }
-  details.sec.tight > summary { padding: 20px 20px 4px; }
-  details.sec.tight[open] > summary { margin-bottom: 4px; }
+  /* Tight cards have no padding of their own: give the header the same 20px as other cards so collapsed rows match. */
+  details.sec.tight > summary { padding: 20px; }
+  details.sec.tight[open] > summary { padding-bottom: 8px; margin-bottom: 0; }
   @media (prefers-reduced-motion: reduce) { details.sec > summary .chev { transition: none; } }
 </style>
 </head>
