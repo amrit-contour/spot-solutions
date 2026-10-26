@@ -29,7 +29,6 @@ import {
   type CalView,
 } from "../lib/calendarDates";
 import { PageHeader } from "@spot/ui";
-import { StickyBar } from "@spot/ui";
 import { Count } from "../components/updates/shared";
 import { Avatar, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { IconArrowLeft, IconArrowRight, IconCalendarMark, IconChat, IconInbox } from "@spot/ui";
@@ -195,16 +194,12 @@ function Calendar() {
 
   return (
     <div className="w-full">
-      <PageHeader title={title} subtitle={subtitle} />
-      <div
-        style={{ "--side-w": side ? "3.5rem" : undefined } as React.CSSProperties}
-        className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_var(--side-w,20rem)] lg:items-start lg:gap-8 lg:transition-[grid-template-columns] lg:duration-300 lg:ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none xl:grid-cols-[minmax(0,1fr)_var(--side-w,21.25rem)]"
-      >
-        <div className="min-w-0">
-          {/* Pinned under the page header, only as wide as this column, opaque so the grid scrolls cleanly beneath it. No
-              title that grows in when stuck: a bar that changes height while pinned shifts everything below it. */}
-          <StickyBar bleed={false} className="top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))]! -mx-3 bg-surface/90! px-3 py-2 backdrop-blur-md">
-            <div className="flex items-center gap-1.5 sm:gap-2" role="toolbar" aria-label="Calendar">
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        // Part of the header's own sticky box: one element pins, so the date bar cannot lag, jump or scroll away.
+        bar={
+<div className="flex items-center gap-1.5 sm:gap-2" role="toolbar" aria-label="Calendar">
               <div className="flex items-center">
                 <IconButton icon={IconArrowLeft} label={`Previous ${view}`} onClick={() => step(-1)} className="size-10 sm:size-9" />
                 <IconButton icon={IconArrowRight} label={`Next ${view}`} onClick={() => step(1)} className="size-10 sm:size-9" />
@@ -216,8 +211,13 @@ function Calendar() {
                 <Segmented value={view} onChange={chooseView} options={VIEW_OPTIONS} size="sm" compact />
               </div>
             </div>
-          </StickyBar>
-
+        }
+      />
+      <div
+        style={{ "--side-w": side ? "3.5rem" : undefined } as React.CSSProperties}
+        className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_var(--side-w,20rem)] lg:items-start lg:gap-8 lg:transition-[grid-template-columns] lg:duration-300 lg:ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none xl:grid-cols-[minmax(0,1fr)_var(--side-w,21.25rem)]"
+      >
+        <div className="min-w-0">
           {!active.length ? (
             <Empty icon={IconCalendarMark} title="No shows yet" action={<Link to="/shows"><Button icon={IconCalendarMark}>Set up shows</Button></Link>}>
               Add the mics you curate (venue, day, time, slot count) and they show up here on their day.

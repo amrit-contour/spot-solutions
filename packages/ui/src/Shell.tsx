@@ -125,7 +125,7 @@ export function AppShell({
 /** The header currently publishing --page-header-h (one page at a time). */
 let headerOwner: HTMLElement | null = null;
 
-export function PageHeader({ title, subtitle, actions, trailing, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, trailing, bar, children }: { title: ReactNode; /** A toolbar pinned as part of the header (e.g. date nav). Same sticky box, so it can never drift from the title bar. */ bar?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
   const { accountMenu, phoneStatus } = useContext(ShellContext);
   const ref = useRef<HTMLElement>(null);
   const [stuck, setStuck] = useState(false);
@@ -175,32 +175,27 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
     <header
       ref={ref}
       data-stuck={stuck || undefined}
-      // One fixed height, scrolled or not: only the glass and the hairline change. Anything that resized here would make
-      // the bars pinned under it (they read its height) lag a frame behind and flash a gap while scrolling.
-      className="sticky top-[env(safe-area-inset-top)] isolate z-30 px-4 pt-4 pb-3 sm:px-8 sm:pt-4"
+      // One sticky box for the title bar AND any `bar` under it, with a solid surface (no backdrop-filter: iOS repaints it every
+      // scroll frame, which flickers). Fixed height: only the hairline/shadow changes when stuck (box-shadow never affects layout).
+      // Nothing above it but the notch strip, so the avatar always sits on plain surface, never under glass.
+      className={cx(
+        "sticky top-[env(safe-area-inset-top)] z-30 bg-surface px-4 pt-3 pb-2 transition-shadow duration-200 motion-reduce:transition-none sm:px-8 sm:pt-4 sm:pb-3",
+        stuck ? "shadow-[0_1px_0_var(--color-outline-variant),0_6px_12px_-8px_rgb(0_0_0/0.5)]" : "shadow-[0_1px_0_transparent]",
+      )}
     >
-      {/* The glass is its own layer behind the bar's content and runs up under the notch strip, so the avatar, status and
-          title always sit on top of it at full strength. */}
-      <div
-        aria-hidden
-        className={cx(
-          "pointer-events-none absolute inset-x-0 bottom-0 -top-[env(safe-area-inset-top)] -z-10 border-b transition-[background-color,border-color] duration-200 motion-reduce:transition-none",
-          stuck ? "border-outline-variant bg-surface/85 backdrop-blur-md" : "border-transparent bg-surface",
-        )}
-      />
-      {/* Phones: status + account on top. Desktop keeps both in the nav rail. */}
-      <div className="mb-2 flex items-center gap-3 sm:hidden">
-        <div className="mr-auto min-w-0">{phoneStatus}</div>
-        {accountMenu()}
-      </div>
       <div className="flex items-center gap-3">
         <h1 className="min-w-0 flex-1 truncate type-headline-m sm:type-display-s">{title}</h1>
         {trailing && <div className="flex flex-none items-center">{trailing}</div>}
         {/* Page actions live on the title's line at every width; the title truncates to make room. */}
         {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
+        {/* Phones: the account button rides the title's line (desktop keeps it in the nav rail), so the pinned header stays one row tall. */}
+        <div className="flex-none sm:hidden">{accountMenu()}</div>
       </div>
       {children}
+      {bar && <div className="mt-2 sm:mt-3">{bar}</div>}
     </header>
+    {/* Connection status is for glancing at, not pinning: it scrolls away with the page. */}
+    {phoneStatus && <div className="px-4 pt-2 sm:hidden">{phoneStatus}</div>}
     {/* The subtitle scrolls away with the page instead of collapsing inside the bar. */}
     {subtitle && <p className="px-4 pb-2 type-body-l text-on-surface-variant sm:px-8">{subtitle}</p>}
     </>
