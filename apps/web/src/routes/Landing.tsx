@@ -183,7 +183,7 @@ const FEATURES = [
 
 const FAQ = [
   ["Does it reply to people on its own?", "Only if you switch it on. By default nothing leaves your WhatsApp until you tap Send. Auto-acknowledge, when enabled, needs a quoted ask at 85% confidence, a message under 10 minutes old, and a real person (never a business account)."],
-  ["Where do my chats go?", "To Gemma, running on your own computer through Ollama. Chats that aren't spot requests are never stored. You can choose Gemini as primary or fallback if you want a bigger model."],
+  ["Where do my chats go?", "To Gemma, running on your own computer through Ollama. Chats that aren't spot requests are never stored, and chats from before you linked are only read when you run “Scan past messages” yourself. You can choose Gemini as primary or fallback if you want a bigger model."],
   ["What do I need to run it?", "Any always-on computer: an old laptop on Ubuntu, a Windows PC or a Mac. One installer each. It works from anywhere after that, even on mobile data."],
   ["Can other curators use my server?", "Yes. It's invite-only: they sign in, you approve them, and each links their own WhatsApp. One 8 GB laptop comfortably hosts about six."],
   ["What does it cost?", "Nothing to run. Gemma is open-weight and runs locally; the app runs on Firebase's free tier."],

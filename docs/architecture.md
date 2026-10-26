@@ -56,7 +56,7 @@ On start the worker listens to `users` and `access`. Only curators whose `access
 
 ## Command flow
 
-The web app never calls the worker. It writes a document to `users/{uid}/commands` and waits for the status to change. Types are listed in `CommandType` (`packages/shared/src/types.ts`): `connect`, `logout`, `list_groups`, `send_confirmations`, `send_rejections`, `send_action`, `send_offer`, `send_host_poll`, `list_models`, `list_gemini_models`, `test_ai`, `pull_model`, `plan_group_sync`, `sync_group`, `pull_group_members`, `list_contacts`, `move_account`, `send_message`.
+The web app never calls the worker. It writes a document to `users/{uid}/commands` and waits for the status to change. Types are listed in `CommandType` (`packages/shared/src/types.ts`): `connect`, `logout`, `list_groups`, `send_confirmations`, `send_rejections`, `send_action`, `send_offer`, `send_host_poll`, `list_models`, `list_gemini_models`, `test_ai`, `pull_model`, `plan_group_sync`, `sync_group`, `pull_group_members`, `list_contacts`, `move_account`, `send_message`, `scan_history`.
 
 ```mermaid
 sequenceDiagram
@@ -117,7 +117,7 @@ flowchart TD
 
 **Debounce.** Messages are grouped per chat (`uid|comicId`). Every new message restarts the timer. `settings.debounceSeconds` sets it (default 45). A burst is read as one conversation. Each message body is cut to 1000 characters on intake and 400 when sent to the model.
 
-**Only live messages.** Anything older than the moment the session went live (minus 5 seconds) is never read. After a restart, `catchUpSince` reads DMs from the last 3 days (capped at 60 chats) in quiet mode: they can create requests and drafts, but nothing is sent automatically.
+**Only live messages, unless the curator asks.** Anything older than the moment the session went live (minus 5 seconds) is not read automatically. Older chats are only read when the curator runs **Scan past messages** themselves (`scan_history`, the last 1 to 21 days of 1:1 DMs): it classifies them with the same local Gemma and fills requests, sends nothing, and stores no non-request messages. After a restart, `catchUpSince` reads DMs from the last 3 days (capped at 60 chats) in quiet mode: they can create requests and drafts, but nothing is sent automatically.
 
 **Classification.** `classify()` asks the model for JSON with `evidence`, `kind`, `is_spot_request`, `confidence`, `preferred_days`, `show_hint` and `note`. Kinds: `spot_request`, `cancel_spot`, `status_query`, `last_spot_query`, `show_info`, `other`.
 
@@ -178,6 +178,12 @@ Types are in `packages/shared/src/types.ts` and `packages/shared/src/fleet.ts`. 
 | `users/demo-curator/...` | Read-only demo template (venues, shows, comics, requests, lineups, actions, notices) | Any signed-in user reads | Seed script |
 
 Cloud Storage holds one thing: `vault/{uid}/login-{gen}-{nonce}.bin`, the AES-256-GCM encrypted login (Chromium `IndexedDB` and `Local Storage`). `storage.rules` denies every client read and write. `VaultMeta.object` names the committed object. Older and uncommitted objects are deleted after 10 minutes.
+
+## Data retention
+
+Short-lived documents carry an `expireAt` Timestamp and Firestore TTL deletes them: `commands` (7 days, both `users/{uid}/commands` and `servers/{id}/commands`), `notices` (30 days), `contactsImport` (1 day) and `invites` (30 days). Set the policies once with `deploy/setup-cost-controls.sh`, then stamp existing documents with `apps/worker/scripts/backfill-expire-at.ts`. The same script turns off Cloud Storage soft delete on the bucket.
+
+The worker also runs a daily job (`apps/worker/src/retention.ts`). Each server deletes old requests for the accounts it holds: dismissed, rejected and confirmed requests whose week is older than `settings.retention.closedRequestsWeeks` (default 8, 0 keeps them forever). Lineups and comics are never deleted. One server a day (a date lock in `config/demoCleanup`) deletes demo sandboxes older than 7 days. The heartbeat in `servers/{id}` sends the worker log only while an admin has the Server page's log open (`logsWanted`).
 
 ## Fleet in one paragraph
 

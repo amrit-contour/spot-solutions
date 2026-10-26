@@ -110,6 +110,9 @@ const meter = (label, used, total, detail) => {
 const logo = `<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="14" fill="var(--primary)"/><path d="M19 0h10l9 42H10z" fill="var(--on-primary)" opacity=".13"/><ellipse cx="24" cy="40.5" rx="12" ry="2.6" fill="var(--on-primary)" opacity=".25"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="var(--on-primary)"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="var(--primary)"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="var(--primary)"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="var(--on-primary)" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="var(--on-primary)"/></svg>`;
 
 let state = null, editing = false, phone = null;
+// Join form state lives outside render(), so the 5 s refresh never wipes what was typed.
+let joinCode = "", joinName = null, joining = false, showDrop = false, replaceOpen = false;
+try { joinCode = new URLSearchParams(location.search).get("join") || ""; } catch {}
 // Theme: system (default), light or dark, remembered on this machine.
 let theme = "system";
 try { theme = localStorage.getItem("spot-console-theme") || "system"; } catch {}
@@ -121,7 +124,7 @@ function render() {
   const s = state, c = s.config, k = c.key;
   const allUp = s.services.worker && (s.services.ollama || !s.localModel); // Gemini-only servers have no Ollama
   const steps = [
-    { done: !!(k && k.projectId), title: "Firebase key", body: k && k.projectId ? `Project <b>${esc(k.projectId)}</b> · <span class="mono">${esc(k.clientEmail)}</span>` : "Use a key made for <b>this device</b> only (the admin runs <span class=\"mono\">deploy/new-server-key.sh &lt;device-name&gt;</span> on their Mac), so it can be revoked on its own. <a href=\"https://spot-solutions.web.app/help#several-servers\" target=\"_blank\" rel=\"noreferrer\">How ↗</a> Drop the .json here." },
+    { done: !!(k && k.projectId), title: "Firebase key", body: k && k.projectId ? `Project <b>${esc(k.projectId)}</b> · <span class="mono">${esc(k.clientEmail)}</span>` : "Enter the join code from the app (<b>Account, Server, Add a server</b>). This device gets its own key, so it can be removed on its own later. <a href=\"https://spot-solutions.web.app/help#several-servers\" target=\"_blank\" rel=\"noreferrer\">How ↗</a>" },
     { done: c.admins.length > 0, title: "Admins", body: c.admins.length ? c.admins.map(esc).join(", ") : "Emails that can see this server's page in the Spot Solutions app." },
     { done: !!c.geminiServerKey, optional: s.localModel, title: s.localModel ? "Server Gemini key (optional)" : "Gemini key (this server has no local model)", body: c.geminiServerKey ? `Set · <span class="mono">${esc(c.geminiServerKey)}</span>. Used for curators who haven't added their own.` : "Curators add their own key in the app (Settings → AI models). Set one here only to share a key with everyone." },
   ];
@@ -151,7 +154,17 @@ function render() {
   <section class="card" style="margin-top:16px">
     <h2>Setup</h2>
     ${steps.map((st, i) => `<div class="step"><span class="num ${st.done ? "done" : ""}">${st.done ? "✓" : i + 1}</span><div class="grow"><b>${st.title}</b><div class="muted small" style="margin-top:2px">${st.body}</div></div></div>`).join("")}
-    <div class="drop" id="drop" style="margin-top:8px"><b>${k ? "Replace Firebase key" : "Drop your service-account .json here"}</b><div class="muted small">or click to choose the file</div><input type="file" id="file" accept=".json,application/json" hidden></div>
+    ${(() => { const inner = `
+      <form id="join" autocomplete="off">
+        <label for="joincode">Enter join code</label>
+        <input type="text" id="joincode" class="mono" placeholder="SPOT-XXXX-XXXX" autocapitalize="characters" spellcheck="false" value="${esc(joinCode)}">
+        <label for="devname">Device name</label>
+        <input type="text" id="devname" placeholder="${esc(s.hostname)}" value="${esc(joinName ?? s.hostname)}">
+        <div class="muted small" style="margin-top:6px">Codes last 15 minutes and work once. The device name labels this server's key in Google Cloud.</div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button type="submit" id="joinbtn" ${joining ? "disabled" : ""}>${joining ? "Joining…" : "Join"}</button><button type="button" class="text" id="showdrop">${showDrop ? "Hide key file" : "or drop a key file"}</button></div>
+      </form>
+      <div class="drop" id="drop" style="margin-top:12px" ${showDrop ? "" : "hidden"}><b>Drop your service-account .json here</b><div class="muted small">or click to choose the file</div><input type="file" id="file" accept=".json,application/json" hidden></div>`;
+      return k ? `<details id="replace" style="margin-top:8px" ${replaceOpen ? "open" : ""}><summary style="cursor:pointer;font-weight:600">Replace the Firebase key</summary>${inner}</details>` : `<div style="margin-top:8px">${inner}</div>`; })()}
     <form id="cfg">
       <label for="admins">Admin emails (comma separated)</label>
       <input type="text" id="admins" value="${esc(c.admins.join(", "))}" placeholder="you@gmail.com">
@@ -188,7 +201,22 @@ function render() {
   drop.ondragleave = () => drop.classList.remove("over");
   drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files[0]); };
   file.onchange = () => upload(file.files[0]);
-  ["admins", "gemini"].forEach((id) => { $("#" + id).onfocus = () => editing = true; $("#" + id).onblur = () => editing = false; });
+  $("#showdrop").onclick = () => { showDrop = !showDrop; render(); };
+  const rep = $("#replace"); if (rep) rep.ontoggle = () => { replaceOpen = rep.open; };
+  $("#joincode").oninput = (e) => { joinCode = e.target.value; };
+  $("#devname").oninput = (e) => { joinName = e.target.value; };
+  $("#join").onsubmit = async (e) => {
+    e.preventDefault();
+    if (!joinCode.trim()) return toast("Enter the join code from the app.");
+    joining = true; render();
+    try {
+      const r = await api("/api/join", { code: joinCode, deviceName: (joinName ?? s.hostname).trim() });
+      joinCode = ""; replaceOpen = false;
+      toast(`Joined ${r.projectId} as ${r.serviceAccount.split("@")[0]}. Worker starting…`);
+    } catch (err) { toast(err.message); }
+    joining = false; editing = false; refresh();
+  };
+  ["admins", "gemini", "joincode", "devname"].forEach((id) => { $("#" + id).onfocus = () => editing = true; $("#" + id).onblur = () => editing = false; });
   $("#cfg").onsubmit = async (e) => {
     e.preventDefault();
     const g = $("#gemini").value.trim();

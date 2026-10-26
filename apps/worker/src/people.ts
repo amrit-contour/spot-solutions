@@ -1,7 +1,7 @@
 // Reads only: pull a show group's members, or list the curator's saved contacts. Nothing is sent.
 import type WAWebJS from "whatsapp-web.js";
-import { comicIdForPhone, normalizePhone, shouldUpdateName, type Comic, type GroupMember, type GroupMembersResult, type Show, type WaContact } from "@spot/shared";
-import { col, db } from "./firebase.ts";
+import { TTL_DAYS, comicIdForPhone, normalizePhone, shouldUpdateName, type Comic, type GroupMember, type GroupMembersResult, type Show, type WaContact } from "@spot/shared";
+import { col, db, expireAt } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 
 const BATCH = 450;
@@ -188,6 +188,6 @@ export async function listContacts(uid: string): Promise<{ count: number; chunks
     await batch.commit();
   }
   const chunks = Math.ceil(contacts.length / CONTACT_CHUNK);
-  await Promise.all(Array.from({ length: chunks }, (_, n) => dest.doc(`chunk${n}`).set({ n, contacts: contacts.slice(n * CONTACT_CHUNK, (n + 1) * CONTACT_CHUNK) })));
+  await Promise.all(Array.from({ length: chunks }, (_, n) => dest.doc(`chunk${n}`).set({ n, contacts: contacts.slice(n * CONTACT_CHUNK, (n + 1) * CONTACT_CHUNK), expireAt: expireAt(TTL_DAYS.contactsImport) })));
   return { count: contacts.length, chunks };
 }

@@ -15,6 +15,7 @@ import {
   pendingRejections,
   localNow,
   renderTemplate,
+  TTL_DAYS,
   resendCandidates,
   sentSnapshot,
   settleSent,
@@ -30,7 +31,7 @@ import {
   type Show,
   type SpotRequest,
 } from "@spot/shared";
-import { col, db, userRef } from "./firebase.ts";
+import { col, db, expireAt, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
@@ -38,8 +39,10 @@ import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
 import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 import { reclassifyRequests } from "./reclassify.ts";
+import { scanHistory } from "./scanHistory.ts";
+import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
 
-type Handler = (uid: string, payload: Record<string, unknown>) => Promise<unknown>;
+type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
 const handlers: Record<Command["type"], Handler> = {
   async connect(uid) {
@@ -87,10 +90,16 @@ const handlers: Record<Command["type"], Handler> = {
     const comics = await loadComics(uid, lineup.slots.map((s) => s.comicId));
 
     const results: Record<string, string> = {};
+    // Comics the curator already told by hand ("Check what I've done") are recorded in `sent`: don't message them twice.
+    const toldByHand = new Set(lineup.status === "confirmed" ? [] : Object.keys(lineup.sent ?? {}));
     for (const slot of lineup.slots) {
       const comic = comics.get(slot.comicId);
       if (!comic) continue;
       const body = confirmBody(uid, show, comic, lineup.weekOf, slot.minutes);
+      if (toldByHand.has(slot.comicId)) {
+        results[comic.id] = "sent (already told)";
+        continue;
+      }
       try {
         await sendQueued(client, comic.chatId ?? comic.id, body);
         results[comic.id] = "sent";
@@ -110,7 +119,7 @@ const handlers: Record<Command["type"], Handler> = {
     // Remember what each comic was told, so edits after confirming can be reviewed against it.
     const sentAt = Date.now();
     const told = lineup.slots.filter((s) => results[s.comicId]?.startsWith("sent"));
-    batch.update(lineupRef, { status: "confirmed", sentAt, sent: sentSnapshot(told, show, sentAt) });
+    batch.update(lineupRef, { status: "confirmed", sentAt, sent: sentSnapshot(told, show, sentAt, lineup.sent) });
     await batch.commit();
 
     // "Review when I confirm" shows open the group review now; manual and show-day ones wait for the curator or the day.
@@ -375,6 +384,9 @@ const handlers: Record<Command["type"], Handler> = {
   list_group_members: listGroupMembers,
   list_contacts: listContacts,
   reclassify_requests: reclassifyRequests,
+  scan_history: scanHistory,
+  reconcile_waiting: reconcileWaiting,
+  apply_reconcile: applyReconcile,
 
   async send_message(uid, { to, body }) {
     await sendQueued(sessions.require(uid), String(to), String(body));
@@ -445,7 +457,7 @@ export async function dropFromLineup(uid: string, client: WAWebJS.Client, comicI
 }
 
 export async function notice(uid: string, level: "info" | "warn", text: string) {
-  await col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false });
+  await col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) });
 }
 
 /**
@@ -523,7 +535,7 @@ export async function runCommand(uid: string, doc: QueryDocumentSnapshot) {
     }
     const handler = handlers[cmd.type];
     if (!handler) throw new Error(`Unknown command ${cmd.type}`);
-    const result = await handler(uid, cmd.payload ?? {});
+    const result = await handler(uid, cmd.payload ?? {}, doc.id);
     await doc.ref.update({ status: "done", result: result ?? null, finishedAt: Date.now() });
   } catch (e) {
     console.error(`[command] ${uid} ${cmd.type} failed`, e);

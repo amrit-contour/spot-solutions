@@ -38,6 +38,56 @@ export function demoSandboxIds(users: { id: string; demo?: unknown; email?: unkn
   return users.filter((u) => u.demo === true && u.id !== DEMO_SOURCE_UID && !u.email).map((u) => u.id);
 }
 
+/** Sandboxes older than this are deleted by the worker's daily job. */
+export const DEMO_SANDBOX_MAX_AGE_DAYS = 7;
+
+/** Sandbox ids (same rules as demoSandboxIds) whose copy was made (demoClonedAt, else createdAt) more than `days` ago. No timestamp: kept. */
+export function expiredSandboxIds(users: { id: string; demo?: unknown; email?: unknown; demoClonedAt?: unknown; createdAt?: unknown }[], now: number, days = DEMO_SANDBOX_MAX_AGE_DAYS): string[] {
+  const cutoff = now - days * DAY_MS;
+  const stamp = (u: { demoClonedAt?: unknown; createdAt?: unknown }) => (typeof u.demoClonedAt === "number" ? u.demoClonedAt : typeof u.createdAt === "number" ? u.createdAt : null);
+  const ids = new Set(demoSandboxIds(users));
+  return users.filter((u) => ids.has(u.id) && (stamp(u) ?? Infinity) < cutoff).map((u) => u.id);
+}
+
+// ---- Retention ----
+
+export const DAY_MS = 24 * 60 * 60_000;
+
+/** How long Firestore TTL (field `expireAt`, a Timestamp) keeps each kind of short-lived document. Policies: deploy/setup-cost-controls.sh. */
+export const TTL_DAYS = {
+  commands: 7, // users/{uid}/commands and servers/{id}/commands (one collection group: both use this)
+  notices: 30,
+  contactsImport: 1,
+  invites: 30,
+} as const;
+export const ttlMs = (days: number, now = Date.now()) => now + days * DAY_MS;
+
+/** What the curator calls "Closed" on the Requests page: dismissed, or turned down with a regret message. */
+export const CLOSED_STATUSES: readonly RequestStatus[] = ["dismissed", "rejected"];
+/** Retention also removes confirmed requests: once a week is long gone, they are finished too. */
+export const RETENTION_STATUSES: readonly RequestStatus[] = [...CLOSED_STATUSES, "confirmed"];
+
+export const isClosedRequest = (r: Pick<SpotRequest, "status">) => CLOSED_STATUSES.includes(r.status);
+
+export const DEFAULT_CLOSED_REQUESTS_WEEKS = 8;
+export const MAX_CLOSED_REQUESTS_WEEKS = 520;
+
+/** settings.retention.closedRequestsWeeks: 8 when unset or invalid, 0 keeps them forever. */
+export function closedRequestsWeeks(settings: { retention?: { closedRequestsWeeks?: unknown } } | undefined | null): number {
+  const v = settings?.retention?.closedRequestsWeeks;
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_CLOSED_REQUESTS_WEEKS ? v : DEFAULT_CLOSED_REQUESTS_WEEKS;
+}
+
+/**
+ * Requests the daily job deletes: closed (dismissed, rejected) or confirmed ones whose week is more than `weeks` weeks
+ * before `currentWeek` (Monday ISO dates). `weeks` 0 keeps everything. Open and placed requests are never selected.
+ */
+export function requestsToExpire<T extends Pick<SpotRequest, "weekOf" | "status">>(requests: T[], currentWeek: string, weeks: number): T[] {
+  if (!(weeks > 0)) return [];
+  const cutoff = shiftWeek(currentWeek, -weeks);
+  return requests.filter((r) => RETENTION_STATUSES.includes(r.status) && r.weekOf < cutoff);
+}
+
 /** Requests from weeks before `beforeWeek` (Monday ISO dates compare as strings). */
 export function oldRequests<T extends Pick<SpotRequest, "weekOf">>(requests: T[], beforeWeek: string): T[] {
   return requests.filter((r) => r.weekOf < beforeWeek);

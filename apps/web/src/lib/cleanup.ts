@@ -1,6 +1,6 @@
 // Reset and clean-up writes for the signed-in curator. Plain Firestore writes, all within what the rules allow.
 import { getCountFromServer, getDocs, query, where, writeBatch, type DocumentReference } from "firebase/firestore";
-import type { LineupResetPlan } from "@spot/shared";
+import { CLOSED_STATUSES, type LineupResetPlan } from "@spot/shared";
 import { db } from "./firebase";
 import { userCol, userDoc } from "./data";
 
@@ -34,6 +34,19 @@ export async function countOldRequests(uid: string, beforeWeek: string) {
 
 export async function deleteOldRequests(uid: string, beforeWeek: string) {
   const refs: DocumentReference[] = (await getDocs(olderThan(uid, beforeWeek))).docs.map((d) => d.ref);
+  await commit(refs.map((r) => (b) => b.delete(r)));
+  return refs.length;
+}
+
+/** Everything the Requests page shows under "Closed" (dismissed, and turned down with a regret), whatever the week. */
+const closed = (uid: string) => query(userCol(uid, "requests"), where("status", "in", [...CLOSED_STATUSES]));
+
+export async function countClosedRequests(uid: string) {
+  return (await getCountFromServer(closed(uid))).data().count;
+}
+
+export async function deleteClosedRequests(uid: string) {
+  const refs: DocumentReference[] = (await getDocs(closed(uid))).docs.map((d) => d.ref);
   await commit(refs.map((r) => (b) => b.delete(r)));
   return refs.length;
 }

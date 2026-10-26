@@ -7,7 +7,7 @@ export function WeekSwitcher() {
   const { week, setWeek, currentWeek } = useApp();
   const label = week === currentWeek ? "This week" : week === shiftWeek(currentWeek, -1) ? "Last week" : week === shiftWeek(currentWeek, 1) ? "Next week" : "Week of";
   return (
-    <div className="flex w-full items-center justify-between gap-1 rounded-full bg-surface-container p-1 sm:inline-flex sm:w-auto">
+    <div className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-full bg-surface-container p-1 sm:inline-flex sm:w-auto sm:flex-none">
       <IconButton icon={IconArrowLeft} label="Previous week" onClick={() => setWeek(shiftWeek(week, -1))} className="size-8" />
       <button
         onClick={() => setWeek(currentWeek)}

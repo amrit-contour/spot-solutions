@@ -1,7 +1,7 @@
 // Encrypted cloud copy of each account's WhatsApp login (docs/fleet.md, "Login vault").
 // Storage and Firestore access are injectable (VaultDeps) so the logic is testable without Firebase.
 import { randomBytes } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { VAULT_OBJECT_MIN_AGE_MS, mayUpload, pickLoginSource, resolveMarker, vaultObjectPath, vaultObjectPrefix, type VaultMeta } from "@spot/shared";
@@ -130,11 +130,45 @@ export interface UploadOpts {
   epoch: number;
   /** This session reached ready from a fresh QR link: with no marker yet, the cloud's current gen is its base (resolveMarker). */
   freshLink?: boolean;
+  /**
+   * A timer-driven upload (not a clean stop or a handoff): skipped when the login folders look unchanged since this
+   * server's last upload of the same cloud gen. Stops and handoffs always upload.
+   */
+  periodic?: boolean;
 }
 
 export interface PrepareOpts {
   /** Fall back to a stale local profile when the cloud copy can't be read (instead of throwing). */
   allowStaleLocal?: boolean;
+}
+
+/** Cheap change detector for the login folders: file count, total bytes and newest mtime (lock files ignored). */
+export async function loginFingerprint(profile: string, dirs: string[] = LOGIN_DIRS): Promise<string> {
+  let files = 0;
+  let bytes = 0;
+  let newest = 0;
+  const walk = async (dir: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (SKIP.test(e.name)) continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) await walk(full);
+      else {
+        const st = await stat(full).catch(() => null);
+        if (!st) continue;
+        files++;
+        bytes += st.size;
+        newest = Math.max(newest, st.mtimeMs);
+      }
+    }
+  };
+  for (const rel of dirs) await walk(path.join(profile, rel));
+  return `${files}:${bytes}:${Math.floor(newest)}`;
 }
 
 export function createVault(deps: VaultDeps, o: { missingRecheckMs?: number } = {}) {
@@ -259,6 +293,8 @@ export function createVault(deps: VaultDeps, o: { missingRecheckMs?: number } = 
     await writeMarker(uid, (await deps.getMeta(uid))?.gen ?? 0);
   }
 
+  /** Per uid, in memory: fingerprint of the login folders at the last committed upload, and the gen it produced. */
+  const lastUpload = new Map<string, { fp: string; gen: number }>();
   const uploadChain = new Map<string, Promise<unknown>>();
   function uploadLogin(uid: string, server: string, opts: UploadOpts): Promise<VaultMeta | null> {
     const run = (uploadChain.get(uid) ?? Promise.resolve()).catch(() => undefined).then(() => doUpload(uid, server, opts));
@@ -281,6 +317,10 @@ export function createVault(deps: VaultDeps, o: { missingRecheckMs?: number } = 
     if (resolved.adopt) await writeMarker(uid, marker);
     if (!mayUpload({ sessionReady: opts.sessionReady, localGen: marker, cloudGen: cloud?.gen ?? null })) return null;
     const expected = cloud?.gen ?? 0;
+    // Taken before the snapshot, so anything written while we copy still counts as a change next time.
+    const fp = await loginFingerprint(profile);
+    const last = lastUpload.get(uid);
+    if (opts.periodic && last && last.fp === fp && last.gen === expected) return null; // nothing new to save
     const gen = expected + 1;
     const objectPath = vaultObjectPath(uid, gen, randomBytes(8).toString("hex")); // unique per attempt: never collides with another writer
 
@@ -325,6 +365,7 @@ export function createVault(deps: VaultDeps, o: { missingRecheckMs?: number } = 
         }
         wrote = false; // committed: now referenced, never delete it
         await writeMarker(uid, gen);
+        lastUpload.set(uid, { fp, gen });
         await deleteStale(uid, objectPath);
         return meta;
       } catch (e) {
@@ -362,6 +403,7 @@ export function createVault(deps: VaultDeps, o: { missingRecheckMs?: number } = 
    */
   async function wipeLogin(uid: string, server: string): Promise<void> {
     await deps.writeTombstone(uid, server);
+    lastUpload.delete(uid);
     await removeLocal(uid);
     for (const o of await deps.listObjects(vaultObjectPrefix(uid))) await deps.deleteObject(o.name);
     await deps.deleteKey(uid);

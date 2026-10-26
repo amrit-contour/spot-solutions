@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_SOURCE_UID, collectionsForScope, demoSandboxIds, isDataScope, oldRequests, planLineupReset, planWeekReset } from "./cleanup.ts";
+import { DAY_MS, DEMO_SOURCE_UID, closedRequestsWeeks, collectionsForScope, expiredSandboxIds, requestsToExpire, ttlMs, demoSandboxIds, isDataScope, oldRequests, planLineupReset, planWeekReset } from "./cleanup.ts";
 import type { Lineup } from "./types.ts";
 
 const lineup = (over: Partial<Lineup> = {}): Lineup => ({ id: "2026-10-26_a", weekOf: "2026-10-26", showId: "a", date: "2026-10-27", slots: [{ comicId: "c1" }, { comicId: "c2" }], status: "draft", ...over });
@@ -98,5 +98,52 @@ describe("demoSandboxIds", () => {
 
   it("skips a flagged user that has an email", () => {
     expect(demoSandboxIds([{ id: "u", demo: true, email: "a@b.co" }])).toEqual([]);
+  });
+});
+
+describe("requestsToExpire", () => {
+  const r = (weekOf: string, status: string) => ({ weekOf, status: status as never });
+  const all = ["new", "acked", "assigned", "confirmed", "rejected", "dismissed"].map((st) => r("2026-08-03", st));
+
+  it("picks dismissed, rejected and confirmed requests older than the cutoff, never open or placed ones", () => {
+    expect(requestsToExpire(all, "2026-10-26", 8).map((x) => x.status)).toEqual(["confirmed", "rejected", "dismissed"]);
+  });
+  it("keeps requests inside the window, including the exact cutoff week", () => {
+    // 8 weeks before 2026-10-26 is 2026-08-31
+    expect(requestsToExpire([r("2026-08-31", "dismissed"), r("2026-08-24", "dismissed")], "2026-10-26", 8)).toEqual([r("2026-08-24", "dismissed")]);
+  });
+  it("0 weeks keeps everything", () => {
+    expect(requestsToExpire(all, "2026-10-26", 0)).toEqual([]);
+  });
+});
+
+describe("closedRequestsWeeks", () => {
+  it("defaults to 8 and accepts 0 as keep-forever", () => {
+    expect(closedRequestsWeeks(undefined)).toBe(8);
+    expect(closedRequestsWeeks({})).toBe(8);
+    expect(closedRequestsWeeks({ retention: { closedRequestsWeeks: 0 } })).toBe(0);
+    expect(closedRequestsWeeks({ retention: { closedRequestsWeeks: 12 } })).toBe(12);
+    expect(closedRequestsWeeks({ retention: { closedRequestsWeeks: -1 } })).toBe(8);
+    expect(closedRequestsWeeks({ retention: { closedRequestsWeeks: "3" } })).toBe(8);
+  });
+});
+
+describe("expiredSandboxIds", () => {
+  const now = Date.UTC(2026, 9, 26);
+  it("selects sandboxes older than 7 days by demoClonedAt, else createdAt, and spares the template, real accounts and undated ones", () => {
+    const users = [
+      { id: "old", demo: true, demoClonedAt: now - 8 * DAY_MS },
+      { id: "fresh", demo: true, demoClonedAt: now - 6 * DAY_MS },
+      { id: "created", demo: true, createdAt: now - 9 * DAY_MS },
+      { id: "reclone", demo: true, demoClonedAt: now - DAY_MS, createdAt: now - 30 * DAY_MS },
+      { id: "demo-curator", demo: true, demoClonedAt: now - 99 * DAY_MS },
+      { id: "real", demo: true, email: "a@b.c", demoClonedAt: now - 99 * DAY_MS },
+      { id: "undated", demo: true },
+      { id: "plain", demoClonedAt: now - 99 * DAY_MS },
+    ];
+    expect(expiredSandboxIds(users, now)).toEqual(["old", "created"]);
+  });
+  it("ttlMs adds whole days", () => {
+    expect(ttlMs(7, 1000)).toBe(1000 + 7 * DAY_MS);
   });
 });

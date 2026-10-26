@@ -175,6 +175,19 @@ describe("vault gen logic", () => {
     expect(await v.prepareLogin("u1")).toBe("local");
   });
 
+  it("skips a periodic upload while the login folders are unchanged, but never a stop or handoff upload", async () => {
+    const m = mockDeps(A);
+    const v = createVault(m.deps);
+    await fakeProfile(path.join(A, "session-u1"), "one");
+    expect((await v.uploadLogin("u1", "S", { ...up, periodic: true }))?.gen).toBe(1); // nothing uploaded yet
+    expect(await v.uploadLogin("u1", "S", { ...up, periodic: true })).toBeNull(); // unchanged
+    expect((await v.uploadLogin("u1", "S", up))?.gen).toBe(2); // a stop or handoff always uploads
+    await writeFile(path.join(A, "session-u1/Default/Local Storage/leveldb/000003.log"), randomBytes(6000)); // changed size
+    expect((await v.uploadLogin("u1", "S", { ...up, periodic: true }))?.gen).toBe(3);
+    await writeFile(path.join(A, "session-u1/Default/Cache/junk"), "changed"); // outside the login folders
+    expect(await v.uploadLogin("u1", "S", { ...up, periodic: true })).toBeNull();
+  });
+
   it("uploads gen+1 each time and moves the account to a second server; newest copy wins", async () => {
     const mA = mockDeps(A);
     const vA = createVault(mA.deps);

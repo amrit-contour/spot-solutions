@@ -205,7 +205,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 - **Nothing is sent without your OK.** Confirmations and regrets go out only when you press send.
 - **Auto-acknowledge is off by default.** When on, it replies only to a quoted ask at 85%+ confidence, in a message under 10 minutes old, from a real person (never a business account).
 - **No cloud model reads your chats** unless you allow Gemini as a backup. "Local only" turns it off entirely.
-- Chats from before you linked are never read.
+- Chats from before you linked are only read when you run **Scan past messages** yourself (Requests, ⋯ menu). It runs on your own server, sends nothing to anyone, and saves only the spot requests it finds.
 - Security details and how to report a problem: [SECURITY.md](SECURITY.md).
 
 > [!NOTE]

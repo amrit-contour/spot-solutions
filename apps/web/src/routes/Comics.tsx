@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { deleteDoc, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -29,6 +30,19 @@ export function Comics() {
   const [tier, setTier] = useState<Tier | "all">("all");
   const [editing, setEditing] = useState<Partial<Comic> | null>(null);
   const lastWeek = shiftWeek(currentWeek, -1);
+  // The Updates panel links here: ?edit=<comicId> opens a profile, ?add=<name> starts a new one.
+  const [params, setParams] = useSearchParams();
+  const editId = params.get("edit");
+  const addName = params.get("add");
+  useEffect(() => {
+    if (addName) setEditing({ tier: "open", name: addName });
+    else {
+      const c = editId ? comics.find((x) => x.id === editId) : null;
+      if (!c) return;
+      setEditing(c);
+    }
+    setParams({}, { replace: true });
+  }, [editId, addName, comics, setParams]);
 
   const list = useMemo(
     () =>

@@ -6,8 +6,10 @@ import type { AccessEntry, ServerStatus } from "@spot/shared";
 import { db } from "../lib/firebase";
 import { timeAgo, useNow } from "../lib/data";
 import { REASON, leaseStale, moveAccount, pinAccount, platformName, serverName, serverOnline, useLease, usePrefs, useVault } from "../lib/fleet";
-import { Avatar, Card, Chip, IconButton, cx } from "./ui";
+import { Avatar, Chip, IconButton, cx } from "./ui";
 import { Menu, MenuItem } from "./Menu";
+import { Collapsible } from "./Collapsible";
+import { RemoveServerButton } from "./RemoveServerButton";
 import { IconCpu, IconMenuDots, IconServer } from "./icons";
 
 function ServerRow({ s, now }: { s: ServerStatus; now: number }) {
@@ -23,6 +25,7 @@ function ServerRow({ s, now }: { s: ServerStatus; now: number }) {
         {f?.draining && <Chip tone="tertiary">Draining</Chip>}
         {f && <Chip tone={f.localModel ? "success" : "neutral"} icon={f.localModel ? IconCpu : undefined}>{f.localModel ? "Local model" : "No local model"}</Chip>}
         <span className="ml-auto type-body-s text-on-surface-variant">{online ? "Online" : `Offline · ${timeAgo(s.lastSeen, now)}`}</span>
+        <RemoveServerButton server={s} />
       </div>
       {f ? (
         <div className="flex items-center gap-3">
@@ -120,12 +123,9 @@ export function FleetView({ servers }: { servers: ServerStatus[] | null }) {
   useEffect(() => onSnapshot(collection(db, "access"), (q) => setAccounts(q.docs.map((d) => ({ ...(d.data() as AccessEntry), uid: d.id })).filter((a) => a.status === "approved"))), []);
   if (!servers?.length) return null;
   const sorted = [...servers].sort((a, b) => Number(serverOnline(b, now)) - Number(serverOnline(a, now)) || a.hostname.localeCompare(b.hostname));
+  const onlineCount = sorted.filter((s) => serverOnline(s, now)).length;
   return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center gap-3 px-4 pt-4 pb-1">
-        <IconServer className="icon size-5 text-primary" />
-        <h3 className="type-title-s">Fleet</h3>
-      </div>
+    <Collapsible id="fleet" title="Fleet" icon={IconServer} summary={`${onlineCount} online`} summaryTone={onlineCount ? "success" : "error"}>
       <p className="px-4 pb-3 type-body-s text-on-surface-variant">Each WhatsApp account runs on one server and moves to another by itself if that one goes offline.</p>
       <div className="bg-surface-container px-4 py-2 type-label-m text-on-surface-variant">Servers ({servers.length})</div>
       <ul className="divide-y divide-outline-variant/40">
@@ -140,6 +140,6 @@ export function FleetView({ servers }: { servers: ServerStatus[] | null }) {
         ))}
         {!accounts.length && <li className="px-4 py-4 type-body-s text-on-surface-variant">No approved curators yet.</li>}
       </ul>
-    </Card>
+    </Collapsible>
   );
 }

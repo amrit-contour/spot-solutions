@@ -55,6 +55,7 @@ import { Menu, MenuItem } from "../components/Menu";
 import { GroupSyncSheet } from "../components/GroupSyncSheet";
 import { GroupPanel } from "../components/GroupPanel";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
+import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
 import { Avatar, Bubble, Button, Chip, Empty, IconButton, Sheet, Stepper, cx } from "../components/ui";
 import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconMic, IconPen, IconRepeat, IconSend, IconSofa, IconStar } from "../components/icons";
@@ -238,6 +239,7 @@ export function LineupBoard() {
               </div>
               <span className="rounded-full bg-surface-high px-2 py-0.5 type-label-m tabular">{cols[BENCH]?.length ?? 0}</span>
             </div>
+            <div className="mb-3"><ReconcileButton lineups={lineups.data} /></div>
             <SortableContext items={cols[BENCH] ?? []} strategy={verticalListSortingStrategy}>
               <ul className="flex min-h-24 flex-col gap-2">
                 {(cols[BENCH] ?? []).map((cid) => (

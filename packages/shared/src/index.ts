@@ -11,3 +11,5 @@ export * from "./demo.ts";
 export * from "./contacts.ts";
 export * from "./lineupUpdates.ts";
 export * from "./requestTags.ts";
+export * from "./scanHistory.ts";
+export * from "./reconcile.ts";

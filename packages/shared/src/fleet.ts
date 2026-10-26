@@ -14,8 +14,10 @@ export const LEASE_RENEW_MS = 30_000;
 export const LEASE_FENCE_MS = 90_000; // holder stops its own WhatsApp if it hasn't renewed for this long
 export const LEASE_EXPIRE_MS = 150_000; // others may claim after this long without a renewal
 export const SERVER_ONLINE_MS = 75_000; // servers/{id}.lastSeen fresher than this counts as online
+export const LOGS_WANTED_FRESH_MS = 3 * 60_000; // servers/{id}.logsWanted fresher than this: someone is watching the log
 export const CLAIM_STAGGER_MS = 20_000; // the Nth-ranked candidate waits N × this before trying to claim
-export const VAULT_UPLOAD_EVERY_MS = 10 * 60_000;
+// The encrypted login is about 63 MB, so this is the main upload cost of a server. Stops and handoffs upload regardless.
+export const VAULT_UPLOAD_EVERY_MS = 60 * 60_000;
 
 /** users/{uid}/fleet/lease: who runs this account's WhatsApp right now. Written only by servers (admin SDK). */
 export interface Lease {

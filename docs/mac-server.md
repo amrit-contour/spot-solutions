@@ -16,7 +16,7 @@ Or download [SpotServer-mac.zip](https://spot-solutions.web.app/dl/SpotServer-ma
 
 1. Open **Spot Server** and type your email.
 2. Click **Set up this Mac**. It downloads Node.js, Ollama and Gemma (about 3.5 GB) into `~/Library/Application Support/SpotSolutions`. It needs no Homebrew and no admin password. If Ollama is already running on the Mac, it uses that.
-3. The server console appears inside the app. Drop in this Mac's own Firebase service-account key; the worker starts by itself. Use one key per device: the admin makes it with `deploy/new-server-key.sh <name>` (see [multi-server.md](multi-server.md)). Delete the file once it's uploaded.
+3. The server console appears inside the app. Type the join code an admin made in the app (**Account, Server, Add a server**) under **Enter join code**, check the device name and click **Join**. The worker starts by itself, with a key made for this Mac only. Without a code, click **or drop a key file** and drop a key made with `deploy/new-server-key.sh <name>` (see [multi-server.md](multi-server.md)), then delete the file.
 4. Link WhatsApp at spot-solutions.web.app → Settings → Show QR code.
 
 **Gemini only.** A Mac with little memory can skip the local model. Tick **Gemini only** before **Set up this Mac**: it downloads Node.js only, and AI runs on Gemini (add a Gemini key in the console, or each curator under Settings → AI models). That server can't host accounts set to **Local only**. From Terminal: `SPOT_NO_LOCAL_MODEL=1 spotctl setup`; switch back with `SPOT_NO_LOCAL_MODEL=0 spotctl setup`. Updates keep the choice.

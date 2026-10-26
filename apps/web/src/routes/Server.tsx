@@ -1,19 +1,22 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import type { ServerStatus } from "@spot/shared";
+import { TTL_DAYS, type ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "../lib/firebase";
-import { timeAgo, useNow } from "../lib/data";
+import { expireAt, timeAgo, useNow } from "../lib/data";
 import { PageHeader } from "../components/Shell";
 import { Curators } from "../components/Curators";
 import { FleetView } from "../components/FleetView";
+import { Collapsible } from "../components/Collapsible";
+import { AddServerCard } from "../components/AddServerCard";
+import { RemoveServerButton } from "../components/RemoveServerButton";
 import { WipeDemoCard } from "../components/AdminDataTools";
 import { isAdmin, useAccessConfig } from "../lib/access";
 import { Avatar, Button, Card, Chip, Empty, cx } from "../components/ui";
-import { IconCheck, IconCpu, IconRefresh, IconServer, IconWarn } from "../components/icons";
+import { IconComics, IconCpu, IconRefresh, IconServer } from "../components/icons";
 
 const ONLINE_MS = 90_000;
 
@@ -76,7 +79,7 @@ function RestartButton({ serverId, type, label, disabled }: { serverId: string; 
     if (type === "restart_worker" && !confirm("Restart the worker? WhatsApp reconnects by itself in about a minute.")) return;
     setBusy(true);
     try {
-      const ref = await addDoc(collection(db, "servers", serverId, "commands"), { type, status: "pending", by: user.email ?? user.uid, createdAt: Date.now() });
+      const ref = await addDoc(collection(db, "servers", serverId, "commands"), { type, status: "pending", by: user.email ?? user.uid, createdAt: Date.now(), expireAt: expireAt(TTL_DAYS.commands) });
       await new Promise<void>((resolve, reject) => {
         const t = setTimeout(() => (unsub(), reject(new Error("The server didn't respond"))), 90_000);
         const unsub = onSnapshot(ref, (d) => {
@@ -103,25 +106,35 @@ function ServerCard({ s }: { s: ServerStatus }) {
   const now = useNow(5_000);
   const online = now - s.lastSeen < ONLINE_MS;
   const linked = s.sessions.filter((x) => x.status === "ready").length;
+
+  // The worker sends its log only while someone is watching: say so while the log section is open, and keep saying it.
+  const [logsOpen, setLogsOpen] = useState(false);
+  useEffect(() => {
+    if (!logsOpen) return;
+    const ping = () => void updateDoc(doc(db, "servers", s.id), { logsWanted: Date.now() }).catch(() => undefined);
+    ping();
+    const t = setInterval(ping, 60_000);
+    return () => clearInterval(t);
+  }, [logsOpen, s.id]);
+
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className={cx("grid size-12 place-items-center rounded-md", online ? "bg-primary-container text-on-primary-container" : "bg-error-container text-on-error-container")}>
-          <IconServer className="icon size-6" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate type-title-l">{s.hostname}</h2>
-          <p className="type-body-s text-on-surface-variant">
-            {s.osRelease} · {s.arch} · v{s.version}
-          </p>
-        </div>
-        <Chip tone={online ? "success" : "error"} icon={online ? IconCheck : IconWarn}>
-          {online ? `Online · up ${fmtUptime(now - s.startedAt)}` : `Offline · last seen ${timeAgo(s.lastSeen, now)}`}
-        </Chip>
+    <Collapsible
+      id={`server:${s.id}`}
+      plain
+      icon={IconServer}
+      title={s.hostname}
+      subtitle={`${s.osRelease} · ${s.arch} · v${s.version}`}
+      summary={online ? `Online · up ${fmtUptime(now - s.startedAt)}` : `Offline · last seen ${timeAgo(s.lastSeen, now)}`}
+      summaryTone={online ? "success" : "error"}
+    >
+      <div className="flex flex-col gap-4 pb-1">
+      <div className="flex justify-end empty:hidden">
+        <RemoveServerButton server={s} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="flex flex-col gap-4 p-5">
+      <Collapsible id={`server:${s.id}:health`} title="Health and services" icon={IconCpu} summary={online ? `${Math.round(s.cpu.usage * 100)}% CPU` : "Offline"} summaryTone={online ? "neutral" : "error"}>
+      <div className="grid gap-4 px-4 pb-4 md:grid-cols-2">
+        <Card tone="container" className="flex flex-col gap-4 p-5">
           <Meter label="CPU" used={s.cpu.usage} total={1} detail={`${Math.round(s.cpu.usage * 100)}% · ${s.cpu.cores} cores · load ${s.cpu.load1.toFixed(2)}`} />
           <Meter label="Memory" used={s.memory.total - s.memory.free} total={s.memory.total} detail={`${fmtBytes(s.memory.total - s.memory.free)} of ${fmtBytes(s.memory.total)} · worker ${fmtBytes(s.memory.process)}`} />
           {s.disk && <Meter label="Disk" used={s.disk.total - s.disk.free} total={s.disk.total} detail={`${fmtBytes(s.disk.free)} free of ${fmtBytes(s.disk.total)}`} />}
@@ -130,7 +143,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
           </p>
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card tone="container" className="overflow-hidden">
           <h3 className="px-4 pt-4 pb-1 type-title-s">Services</h3>
           <ul className="divide-y divide-outline-variant/40">
             <Service name="Spot Solutions worker" up={online} detail={online ? `Heartbeat ${timeAgo(s.lastSeen, now)}` : undefined} action={<RestartButton serverId={s.id} type="restart_worker" label="Restart" disabled={!online} />} />
@@ -140,6 +153,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
           </ul>
         </Card>
       </div>
+      </Collapsible>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -155,8 +169,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
         ))}
       </div>
 
-      <Card className="overflow-hidden">
-        <h3 className="px-4 pt-4 pb-1 type-title-s">Connected curators</h3>
+      <Collapsible id={`server:${s.id}:curators`} title="Connected curators" icon={IconComics} summary={`${linked} linked`} summaryTone={linked ? "success" : "neutral"}>
         <ul className="divide-y divide-outline-variant/40">
           {s.sessions.map((x) => (
             <li key={x.uid} className="flex items-center gap-3 px-4 py-3">
@@ -173,35 +186,34 @@ function ServerCard({ s }: { s: ServerStatus }) {
           ))}
           {!s.sessions.length && <li className="px-4 py-4 type-body-s text-on-surface-variant">No curators yet.</li>}
         </ul>
-      </Card>
+      </Collapsible>
 
-      {s.logs && s.logs.length > 0 && (
-        <Card className="overflow-hidden">
-          <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
-            <h3 className="type-title-s">Worker log</h3>
-            <span className="type-body-s text-on-surface-variant">updates every 30 s</span>
-          </div>
+      <Collapsible id={`server:${s.id}:logs`} title="Worker log" icon={IconCpu} summary={logsOpen ? "Live" : "Off"} summaryTone={logsOpen ? "primary" : "neutral"} defaultOpen={false} persist={false} onOpenChange={setLogsOpen}>
+        <div className="flex items-baseline justify-between px-4 pb-2">
+          <p className="type-body-s text-on-surface-variant">Sent only while this is open, and updates every 30 s.</p>
+        </div>
+        {s.logs && s.logs.length > 0 ? (
           <pre className="max-h-80 overflow-auto bg-surface-container px-4 py-3 font-mono text-xs leading-5 whitespace-pre-wrap text-on-surface-variant" ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
             {s.logs.join("\n")}
           </pre>
-        </Card>
-      )}
+        ) : (
+          <p className="bg-surface-container px-4 py-3 type-body-s text-on-surface-variant">{online ? "Asking the server for its log. This can take up to 30 seconds." : "The server is offline, so there is no log to show."}</p>
+        )}
+      </Collapsible>
 
       {s.ollama.models.length > 0 && (
-        <Card className="p-4">
-          <h3 className="mb-2 flex items-center gap-2 type-title-s">
-            <IconCpu className="icon size-5 text-primary" /> Local models
-          </h3>
-          <div className="flex flex-wrap gap-1.5">
+        <Collapsible id={`server:${s.id}:models`} title="Local models" icon={IconCpu} summary={`${s.ollama.models.length}`}>
+          <div className="flex flex-wrap gap-1.5 px-4 pb-4">
             {s.ollama.models.map((m) => (
               <Chip key={m.name} tone={s.ollama.loaded.includes(m.name) ? "primary" : "neutral"}>
                 <span className="font-mono">{m.name}</span> <span className="opacity-70">· {fmtBytes(m.size)}</span>
               </Chip>
             ))}
           </div>
-        </Card>
+        </Collapsible>
       )}
-    </section>
+      </div>
+    </Collapsible>
   );
 }
 
@@ -213,6 +225,7 @@ export function ServerPage() {
     <div className="w-full">
       <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" actions={admin ? <Link to="/help" className="state-layer rounded-full border border-outline-variant px-4 py-2 type-label-l text-on-surface-variant">Server guide</Link> : undefined} />
       <div className="flex flex-col gap-10 px-4 pb-12 sm:px-8">
+        {admin && <AddServerCard />}
         {admin && <FleetView servers={servers} />}
         {admin && <Curators servers={servers} />}
         {admin && <WipeDemoCard servers={servers} />}

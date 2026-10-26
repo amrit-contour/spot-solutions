@@ -37,6 +37,10 @@ service cloud.firestore {
     match /servers/{id} {
       allow read: if request.auth != null && request.auth.token.email != null
         && request.auth.token.email.lower() in resource.data.admins;
+      // The Server page says "someone is watching the log" (ms, refreshed every minute). Nothing else is client-writable.
+      allow update: if isServerAdmin(id)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logsWanted'])
+        && request.resource.data.logsWanted is number;
       match /commands/{cmd} {
         allow read: if isServerAdmin(id);
         allow create: if isServerAdmin(id)
@@ -53,8 +57,25 @@ service cloud.firestore {
       allow read: if request.auth != null && (isAdmin() || isApproved(request.auth.uid));
     }
 
+    // Invites: an admin invites an email; the worker approves a matching verified sign-in. Admins only.
+    match /invites/{addr} {
+      allow read, delete: if isAdmin();
+      allow create: if isAdmin()
+        && addr == addr.lower()
+        && request.resource.data.keys().hasOnly(['createdBy', 'createdAt', 'expireAt'])
+        && request.resource.data.createdBy == email()
+        && request.resource.data.createdAt is number
+        && request.resource.data.expireAt is timestamp;
+    }
+
     // Each account's login-encryption key. Servers only; no client ever reads or writes it.
     match /vaultKeys/{uid} { allow read, write: if false; }
+
+    // Join codes (hashed), the service accounts made for servers, and join rate limits. Cloud Functions only
+    // (Admin SDK); no client ever reads or writes them (functions/, docs/multi-server.md).
+    match /joinCodes/{hash} { allow read, write: if false; }
+    match /serverKeys/{email} { allow read, write: if false; }
+    match /joinAttempts/{key} { allow read, write: if false; }
 
     // The demo account is a read-only template: demo visitors copy it into their own sandbox.
     // Only the user doc and the collections the clone copies (apps/web/src/lib/demo.ts COLLECTIONS). Never
@@ -96,11 +117,15 @@ service cloud.firestore {
         allow read: if isOwner(uid) || (isAdmin() && resource.data.type == 'move_account');
         allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members', 'list_group_members', 'send_lineup_updates', 'reclassify_requests'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members', 'list_group_members', 'send_lineup_updates', 'reclassify_requests', 'scan_history', 'reconcile_waiting', 'apply_reconcile'];
         // Admins can move any approved curator's account to another server (Server page → Fleet).
         allow create: if isAdmin() && isApproved(uid)
           && request.resource.data.status == 'pending'
           && request.resource.data.type == 'move_account';
+        // The curator can stop a running scan_history, and change nothing else on a command.
+        allow update: if isOwner(uid)
+          && resource.data.type == 'scan_history'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancel']);
       }
 
       // Fleet (docs/fleet.md). Lease and vault are written only by servers (Admin SDK bypasses rules).

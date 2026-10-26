@@ -10,6 +10,7 @@ import { DEFAULT_AI_POLICY, type AiPolicy } from "@spot/shared";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
 import { SERVER_ID, adminConfigured, watchServerCommands, writeServerStatus } from "./stats.ts";
 import { startScheduler } from "./scheduler.ts";
+import { startRetention } from "./retention.ts";
 
 const commandListeners = new Map<string, () => void>();
 const HEARTBEAT_MS = 30_000;
@@ -123,6 +124,7 @@ async function main() {
   );
 
   startScheduler(() => commandListeners.keys());
+  startRetention();
   // Exit non-zero on a requested restart so every supervisor (systemd, launchd, the Windows loop) brings us back.
   if (adminConfigured) watchServerCommands(() => shutdown(75));
 

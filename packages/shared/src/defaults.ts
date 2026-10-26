@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS: Settings = {
   hostPoll: { groupId: null },
   offers: { expiryHours: 3 },
   googleContacts: { enabled: false },
+  scanDays: 7,
+  retention: { closedRequestsWeeks: 8 },
 };
 
 /** Loose yes/no for replies to offers and mic checks (English + common Hindi/Kannada). null = unclear. */

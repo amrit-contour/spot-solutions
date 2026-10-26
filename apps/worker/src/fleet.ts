@@ -3,10 +3,10 @@
 // packages/shared/src/fleet.ts so they can be tested.
 import os from "node:os";
 import {
-  DEFAULT_AI_POLICY, LEASE_FENCE_MS, LEASE_RENEW_MS, SERVER_ONLINE_MS, VAULT_UPLOAD_EVERY_MS, defaultMaxAccounts, preFleetServers, rankCandidates,
+  DEFAULT_AI_POLICY, LEASE_FENCE_MS, TTL_DAYS, LEASE_RENEW_MS, SERVER_ONLINE_MS, VAULT_UPLOAD_EVERY_MS, defaultMaxAccounts, preFleetServers, rankCandidates,
   type AiPolicy, type CandidateServer, type FleetCapacity, type FleetPrefs, type FleetServerSummary, type Lease, type ServerBeat,
 } from "@spot/shared";
-import { col, db } from "./firebase.ts";
+import { col, db, expireAt } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { setFleetProvider } from "./stats.ts";
 import { INSTALLED_AT, SERVER_ID } from "./serverIdentity.ts";
@@ -159,7 +159,7 @@ async function claim(uid: string, opts: { requireWanted: boolean }): Promise<boo
   if (!res) return false;
   const { next, crashed } = res;
   const h: Held = { epoch: next.epoch, claimedAt: Date.now(), lastOkMono: mono(), lastOkWall: Date.now(), handingOff: false, handingOffAt: null, renewing: false, timers: [] };
-  h.timers.push(setInterval(() => void uploadNow(uid), VAULT_UPLOAD_EVERY_MS).unref());
+  h.timers.push(setInterval(() => void uploadNow(uid, true), VAULT_UPLOAD_EVERY_MS).unref());
   held.set(uid, h);
   freshReady.delete(uid);
   leases.set(uid, next);
@@ -167,7 +167,7 @@ async function claim(uid: string, opts: { requireWanted: boolean }): Promise<boo
   publish();
   if (next.from && next.from !== ME) {
     const text = moveText(nameOf(next.from), nameOf(ME), crashed && next.reason === "failover");
-    void col(uid, "notices").add({ level: "info", text, createdAt: Date.now(), read: false }).catch(() => undefined);
+    void col(uid, "notices").add({ level: "info", text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
     void notify(uid, "account_moved", text).catch((e) => console.warn("[fleet] notify failed:", e.message));
   }
   hooks.onAcquire(uid);
@@ -298,16 +298,17 @@ function enqueueUpload<T>(uid: string, job: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function uploadNow(uid: string) {
+/** `periodic`: the timer-driven kind, which the vault skips when the login folders haven't changed. */
+function uploadNow(uid: string, periodic = false) {
   return enqueueUpload(uid, async () => {
     // Checked when the job runs, not when it was queued: a handoff may have started meanwhile.
     const h = held.get(uid);
     if (!h || h.handingOff || !sessions.get(uid)) return;
     try {
       if (!(await touch(uid, h))) return; // not ours any more: the lease watcher will stop the session
-      const meta = await within(uploadLogin(uid, ME, { sessionReady: true, epoch: h.epoch, freshLink: freshReady.has(uid) }), UPLOAD_TIMEOUT_MS);
+      const meta = await within(uploadLogin(uid, ME, { sessionReady: true, epoch: h.epoch, freshLink: freshReady.has(uid), periodic }), UPLOAD_TIMEOUT_MS);
       if (meta === TIMED_OUT) console.warn(`[fleet] ${uid} vault upload timed out; will retry`);
-      else if (!meta) console.log(`[fleet] ${uid} vault upload skipped (not ready, behind the cloud, or another writer won)`);
+      else if (!meta) console.log(`[fleet] ${uid} vault upload skipped (unchanged, not ready, behind the cloud, or another writer won)`);
     } catch (e) {
       console.warn(`[fleet] ${uid} vault upload failed, will retry:`, (e as Error).message);
     }
@@ -526,7 +527,7 @@ function guardAgainstOldServers(now: number) {
       const key = preFleetNoticeKey(s.id, uid);
       if (!k.enabled || oldNoticed.has(key)) continue;
       oldNoticed.add(key);
-      void col(uid, "notices").doc(oldNoticeId(s.id)).set({ level: "warn", text: preFleetText(name), createdAt: Date.now(), read: false }).catch(() => oldNoticed.delete(key));
+      void col(uid, "notices").doc(oldNoticeId(s.id)).set({ level: "warn", text: preFleetText(name), createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => oldNoticed.delete(key));
     }
   }
   return old.length > 0;

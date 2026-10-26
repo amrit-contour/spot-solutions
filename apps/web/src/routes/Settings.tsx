@@ -10,6 +10,10 @@ import {
   DEFAULT_REJECT_TEMPLATE,
   SAMPLE_VARS,
   TEMPLATE_VARIABLES,
+  closedRequestsWeeks,
+  clampScanDays,
+  SCAN_DAYS_MAX,
+  SCAN_DAYS_MIN,
   renderTemplate,
   type GroupInfo,
 } from "@spot/shared";
@@ -194,7 +198,7 @@ export function SettingsPage() {
           icon={IconChat}
           description={
             <>
-              Off by default. When on, it replies only when Gemma quotes a clear ask at 85%+ confidence, in a message that arrived in the last 10 minutes. It never replies to businesses or to chats from before you linked, and sends at most once per comic per week.
+              Off by default. When on, it replies only when Gemma quotes a clear ask at 85%+ confidence, in a message that arrived in the last 10 minutes. It never replies to businesses or to old messages (including ones read by Scan past messages), and sends at most once per comic per week.
             </>
           }
           aside={<Switch checked={settings.ack.enabled} onChange={(v) => saveSettings({ ack: { ...settings.ack, enabled: v } })} label="Auto-acknowledge" />}
@@ -263,6 +267,8 @@ export function SettingsPage() {
             <Switch checked={settings.onboarding.enabled} onChange={(v) => saveSettings({ onboarding: { enabled: v } })} label="Ask new faces who they are" />
           </SettingRow>
         </Section>
+
+        <DataSection />
 
           </>
         )}
@@ -349,7 +355,32 @@ function RulesSection() {
         <SettingRow label="Skip last week's comics" info={<>Hold requests from anyone who performed last week, so newer faces get a shot.</>}>
             <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Skip last week's comics" />
           </SettingRow>
+        <SettingRow label="Scan past messages: days to look back" info={<>The starting choice when you run Requests → Scan past messages. Spot Solutions only reads older DMs when you run that scan yourself.</>}>
+          <Stepper value={clampScanDays(settings.scanDays)} onChange={(v) => saveSettings({ scanDays: v })} min={SCAN_DAYS_MIN} max={SCAN_DAYS_MAX} suffix="days" />
+        </SettingRow>
       </div>
+    </Section>
+  );
+}
+
+function DataSection() {
+  const { settings, saveSettings } = useApp();
+  const weeks = closedRequestsWeeks(settings);
+  return (
+    <Section
+      title="Data"
+      icon={IconShield}
+      description="Spot Solutions tidies up old requests once a day, on your server. Lineups, comics and their history are never deleted."
+    >
+      <SettingRow
+        label="Delete closed requests after"
+        info={<>Requests you dismissed, requests that got a regret message, and confirmed requests are deleted once their week is this many weeks old. Open and placed requests are kept. Set 0 to keep everything forever.</>}
+      >
+        <Stepper value={weeks} onChange={(v) => saveSettings({ retention: { closedRequestsWeeks: v } })} min={0} max={104} suffix="wks" />
+      </SettingRow>
+      <p className="mt-2 type-body-s text-on-surface-variant">
+        {weeks === 0 ? "Closed requests are kept forever." : `Closed requests from more than ${weeks} week${weeks === 1 ? "" : "s"} ago are deleted automatically. Lineups, comics and history stay.`}
+      </p>
     </Section>
   );
 }

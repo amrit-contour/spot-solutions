@@ -31,14 +31,14 @@
   <tr><th>Data</th><th>Why</th><th>Where it lives</th></tr>
   <tr><td>Your Google account name, email address and profile photo</td><td>To sign you in and decide who may use the app (access is invite-only)</td><td>Firebase Authentication and Cloud Firestore</td></tr>
   <tr><td>Your WhatsApp phone number and display name</td><td>To show which WhatsApp account is linked</td><td>Cloud Firestore</td></tr>
-  <tr><td>Messages that are spot requests, cancellations or questions about your shows, plus the sender's name and phone number</td><td>So you can review requests, build lineups and reply</td><td>Cloud Firestore</td></tr>
+  <tr><td>Messages that are spot requests, cancellations or questions about your shows, plus the sender's name and phone number. This includes spot requests found when you run "Scan past messages" over your recent DMs</td><td>So you can review requests, build lineups and reply</td><td>Cloud Firestore</td></tr>
   <tr><td>Your roster of comics, shows, venues, lineups, message templates and settings</td><td>The core function of the app</td><td>Cloud Firestore</td></tr>
   <tr><td>Your WhatsApp Web login session, encrypted</td><td>So another of your servers can take over without a new QR scan</td><td>On the server computer(s) you run, and an encrypted copy (AES-256-GCM, a separate key per account) in Google Cloud Storage</td></tr>
   <tr><td>Contacts you choose to import (from WhatsApp, a file, or a group)</td><td>To add comics to your roster</td><td>Cloud Firestore</td></tr>
   <tr><td>Push notification tokens for your devices</td><td>To send you alerts you turned on</td><td>Cloud Firestore</td></tr>
   <tr><td>An optional Gemini API key you add</td><td>To use Google's Gemini models if you allow them</td><td>Cloud Firestore, readable only by the server</td></tr>
 </table>
-<p>Messages that are not spot requests or related to your shows (personal chats, bank alerts, OTPs and so on) are read only to decide that they are not relevant, and are <b>not stored</b>. Chats from before you linked WhatsApp are never read.</p>
+<p>Messages that are not spot requests or related to your shows (personal chats, bank alerts, OTPs and so on) are read only to decide that they are not relevant, and are <b>not stored</b>. Chats from before you linked WhatsApp are only read when you run "Scan past messages" yourself. That scan runs on your own server, sends nothing to anyone, and messages that are not spot requests are not stored.</p>
 <p>Firestore and Cloud Storage data is hosted by Google Cloud in the asia-south1 (Mumbai) region.</p>
 
 <h2>How messages are processed by AI</h2>

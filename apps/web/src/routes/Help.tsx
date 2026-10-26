@@ -18,6 +18,8 @@ const SECTIONS = [
   { id: "install", title: "Install the server" },
   { id: "setup", title: "First-time setup" },
   { id: "several-servers", title: "Running several servers" },
+  { id: "primary", title: "Make another server your primary" },
+  { id: "start-over", title: "Starting over" },
   { id: "everyday", title: "Start, stop and restart" },
   { id: "always-on", title: "Keep it always on" },
   { id: "logs", title: "Logs and health" },
@@ -161,18 +163,17 @@ export function HelpPage() {
                 ["A computer that can stay on", os === "mac" ? "Any Mac on macOS 13 or newer (Apple Silicon or Intel)" : os === "windows" ? "Windows 10 or 11 with the App Installer (winget). Most PCs already have it." : "Ubuntu 24.04 or newer, Debian or Kali. Installed onto the disk or a USB stick works too; a live USB doesn't."],
                 ["Memory and disk", "8 GB RAM recommended, about 10 GB of free disk"],
                 ["Power and internet", "Plugged in, with Wi-Fi or Ethernet"],
-                ["Firebase key", <>A service-account key (<Code>.json</Code>). See below.</>],
+                ["A join code", <>An admin makes it in the app, under <B>Account → Server → Add a server</B>. See below.</>],
                 ["Your phone", "To scan the WhatsApp QR code once"],
               ]}
             />
-            <h3 className="mt-6 type-title-m">Get the Firebase key</h3>
+            <h3 id="get-code" className="mt-6 type-title-m">Get a join code</h3>
             <Steps>
-              <li>Open <a className="text-primary underline-offset-4 hover:underline" href="https://console.firebase.google.com" target="_blank" rel="noreferrer">console.firebase.google.com</a> with the account that owns the Spot Solutions project.</li>
-              <li>Open the project, click the <B>gear icon</B> → <B>Project settings</B> → <B>Service accounts</B>.</li>
-              <li>Click <B>Generate new private key</B> → <B>Generate key</B>. A <Code>.json</Code> file downloads.</li>
-              <li>Move it to the server computer (USB stick or AirDrop is safest).</li>
+              <li>In the app, sign in as an admin and open <B>Account → Server</B>.</li>
+              <li>Click <B>Add a server</B>, then <B>Make a code</B>. You get a code like <Code>SPOT-7K3F-Q9TX</Code>. It works once and lasts 15 minutes.</li>
+              <li>You enter it on the server computer once it is installed, below.</li>
             </Steps>
-            <Callout tone="warn">Treat the key like a password: anyone with it can read and change your Spot Solutions data. Don't send it over email or chat. Delete the download once the server has it.</Callout>
+            <Callout>Each server gets its own key, made for it. Nothing to download or move around, and one server can be removed without touching the others.</Callout>
           </Section>
 
           <Section id="install" title="Install the server">
@@ -214,19 +215,21 @@ export function HelpPage() {
                 {os === "mac" ? " (it's inside the Spot Server window)" : os === "windows" ? " (the Spot Server Console shortcut; it opens by itself after installing)" : <> from a phone or laptop on the same Wi-Fi, using the link the installer printed. Lost it? Run <Code>sudo spot-console-url</Code></>}
                 .
               </li>
-              <li>Drop your Firebase key <Code>.json</Code> onto it. The worker starts by itself.</li>
+              <li>Type the join code under <B>Enter join code</B>, check the device name and click <B>Join</B>. The worker starts by itself. No code? Click <B>or drop a key file</B> and drop a key made with the scripts under <a className="underline" href="#several-servers">Running several servers</a>.</li>
               <li>Under <B>Admins</B>, add your email (if you didn't already). This shows the server in the app under <B>Account → Server</B>.</li>
               <li>On any computer, open <Link className="text-primary underline-offset-4 hover:underline" to="/settings">Spot Solutions → Settings</Link> → <B>Show QR code</B>, and scan it from WhatsApp on your phone (<B>Settings → Linked devices → Link a device</B>).</li>
             </Steps>
-            <Callout tone="ok">That's it. From now on you can manage the server from the app, from anywhere. The console is only needed for the key.</Callout>
+            <Callout tone="ok">That's it. From now on you can manage the server from the app, from anywhere. The console is only needed to join.</Callout>
             <P>Other curators don't touch the server. They sign in on the website, you approve them under <B>Account → Server → Curators</B>, and they link their own WhatsApp from their Settings.</P>
           </Section>
 
           <Section id="several-servers" title="Running several servers">
             <P>You can run as many servers as you like. Each WhatsApp account runs on one server at a time. If that server goes offline, another one takes the account over with its saved login, with no new QR scan.</P>
-            <P><B>One key per device.</B> Never copy one Firebase key between computers. On your own Mac (with the Google Cloud CLI signed in), from the project folder, make a key for each server and drop it into that server's console:</P>
+            <P><B>One key per device.</B> Never copy one Firebase key between computers. A join code makes each server its own key (see <a className="underline" href="#get-code">above</a>). Lost or retired a device? On <B>Account → Server</B>, click <B>Remove server</B>. That deletes its key and the others carry on. If the server is online and still runs accounts, you are asked to confirm first.</P>
+            <P>Servers set up with the project's default Firebase key (older installs) are only removed from the list. Their key isn't revoked, since Spot Solutions didn't make it.</P>
+            <P><B>Fallback.</B> If a server can't use a code, make its key by hand on your own Mac (with the Google Cloud CLI signed in), from the project folder, and click <B>or drop a key file</B> in its console:</P>
             <Cmd>deploy/new-server-key.sh studio-mac</Cmd>
-            <P>The key can only use the database, the login backups and push notifications, nothing else. Lost or retired a device? Revoke just that one, and the others carry on:</P>
+            <P>The key can only use the database, the login backups and push notifications, nothing else. To revoke one by hand:</P>
             <Cmd>deploy/revoke-server-key.sh studio-mac</Cmd>
             <P>Add <Code>--dry-run</Code> to either script to see what it would do without changing anything.</P>
             <P><B>Gemini-only servers.</B> A computer without room for Gemma (under about 8 GB of memory) can still be a server. Install it without the local model, and it answers with Gemini instead. Add a Gemini key in its console or in the app.</P>
@@ -235,6 +238,23 @@ export function HelpPage() {
             {os === "linux" && <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | sudo SPOT_NO_LOCAL_MODEL=1 bash</Cmd>}
             <P><B>What "Local only" means.</B> A curator who picks Local only never has their chats sent to Gemini. Only servers running Gemma can host that account, so a Gemini-only server will not take it. If no Gemma server is online, the account waits until one is. With the default, Local first, any server can host the account and Gemini answers when Gemma is down.</P>
             <Callout>Keep at least one server with Gemma if any curator uses Local only.</Callout>
+          </Section>
+
+          <Section id="primary" title="Make another server your primary">
+            <Steps>
+              <li><B>Move the accounts.</B> In <B>Account → Server → Fleet</B>, open the menu next to an account, pick <B>Move to</B> and choose the new server. Curators can do it under <B>Settings → WhatsApp &amp; app → Move to…</B>. WhatsApp reconnects in about a minute.</li>
+              <li><B>Pin them.</B> Use <B>Pin to this server</B> (admins) or <B>Keep on this server</B> (curators) on the new server.</li>
+            </Steps>
+            <P><B>On failover:</B> if the pinned server goes offline, another server takes the account after about 150 seconds, with no new QR scan. <B>When it comes back:</B> the account is pulled back to the pinned server and WhatsApp reconnects again in about a minute. Unpin an account if you would rather it stay where it is.</P>
+          </Section>
+
+          <Section id="start-over" title="Starting over">
+            <Steps>
+              <li>On <B>Account → Server</B>, click <B>Remove server</B> on every server.</li>
+              <li>Click <B>Add a server</B> and make a code.</li>
+              <li>On a computer with Spot Solutions installed, open the console, enter the code and click <B>Join</B>. Repeat for each server.</li>
+            </Steps>
+            <Callout>Curators keep their data, and each account's login backup stays in the cloud, so the first server to join takes the accounts over without a new QR scan.</Callout>
           </Section>
 
           <Section id="everyday" title="Start, stop and restart">

@@ -4,8 +4,9 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import { promisify } from "node:util";
-import type { FleetCapacity, FleetServerSummary, ServerStatus } from "@spot/shared";
-import { db } from "./firebase.ts";
+import type { DocumentReference } from "firebase-admin/firestore";
+import { LOGS_WANTED_FRESH_MS, type FleetCapacity, type FleetServerSummary, type ServerStatus } from "@spot/shared";
+import { SERVICE_ACCOUNT, db, FieldValue } from "./firebase.ts";
 import { SERVER_ID } from "./serverIdentity.ts";
 import { recentLogs } from "./logbuf.ts";
 import { ADMIN_DATA_COMMANDS, runAdminDataCommand } from "./adminData.ts";
@@ -69,11 +70,43 @@ async function disk() {
   }
 }
 
+// Logs go into the heartbeat only while an admin has the log section open (servers/{id}.logsWanted, ms, refreshed
+// every minute by the app). Otherwise they are left out, and cleared once so old lines don't linger.
+let logsWantedAt = 0;
+let logsWatching = false;
+let logsInDoc: "unknown" | "present" | "cleared" = "unknown";
+let lastLogs = "";
+const logsWanted = () => Date.now() - logsWantedAt < LOGS_WANTED_FRESH_MS;
+
+function watchLogsWanted() {
+  if (logsWatching) return;
+  logsWatching = true;
+  const ref = db.collection("servers").doc(SERVER_ID);
+  ref.onSnapshot(
+    (snap) => {
+      const was = logsWanted();
+      const at = snap.data()?.logsWanted;
+      logsWantedAt = typeof at === "number" ? at : 0;
+      // Someone just opened the log: don't make them wait for the next heartbeat.
+      if (!was && logsWanted()) void sendLogs(ref).catch(() => undefined);
+    },
+    (e) => console.error("[server] logsWanted listener", e.message),
+  );
+}
+
+async function sendLogs(ref: DocumentReference) {
+  const logs = recentLogs.slice(-120);
+  lastLogs = logs.join("\n");
+  logsInDoc = "present";
+  await ref.set({ logs }, { merge: true });
+}
+
 export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "sessions" | "geminiServerKey">) {
   const cpus = os.cpus();
   const status: ServerStatus = {
     id: SERVER_ID,
     hostname: os.hostname(),
+    serviceAccount: SERVICE_ACCOUNT,
     platform: process.platform,
     osRelease: `${os.type()} ${os.release()}`,
     arch: os.arch(),
@@ -85,12 +118,26 @@ export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "se
     disk: await disk(),
     counters: { ...counters },
     admins: ADMINS,
-    logs: recentLogs.slice(-120),
     ...extra,
     ...(fleetCapacity ? { fleet: fleetCapacity() } : {}),
   };
-  // merge: fleet.ts also updates servers/{id}.fleet between heartbeats; never wipe it.
-  await db.collection("servers").doc(SERVER_ID).set(status, { merge: true });
+  watchLogsWanted();
+  const logs = recentLogs.slice(-120);
+  const logsPart: Record<string, unknown> = {};
+  if (logsWanted()) {
+    // Only when the lines changed since the last write.
+    if (logs.join("\n") !== lastLogs || logsInDoc !== "present") {
+      logsPart.logs = logs;
+      lastLogs = logs.join("\n");
+      logsInDoc = "present";
+    }
+  } else if (logsInDoc !== "cleared") {
+    logsPart.logs = FieldValue.delete();
+    logsInDoc = "cleared";
+    lastLogs = "";
+  }
+  // merge: fleet.ts also updates servers/{id}.fleet between heartbeats, and the app owns logsWanted; never wipe them.
+  await db.collection("servers").doc(SERVER_ID).set({ ...status, ...logsPart }, { merge: true });
   if (status.fleet) {
     const summary: FleetServerSummary = { id: SERVER_ID, hostname: status.hostname, platform: status.platform, lastSeen: status.lastSeen, ...status.fleet };
     await db.collection("fleetServers").doc(SERVER_ID).set(summary, { merge: true });

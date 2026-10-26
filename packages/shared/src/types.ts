@@ -38,6 +38,10 @@ export interface Settings {
   offers: { expiryHours: number };
   /** Write comic names to the curator's Google Contacts (done in the browser, with the curator's own Google token). */
   googleContacts: { enabled: boolean };
+  /** Days "Scan past messages" looks back by default (1 to 21). Missing counts as 7. */
+  scanDays?: number;
+  /** Data retention. Missing on older docs: closedRequestsWeeks counts as 8. */
+  retention?: { closedRequestsWeeks: number };
 }
 
 export interface ComicProfile {
@@ -105,6 +109,8 @@ export interface ComicAction {
   lineupId?: string | null;
   status: "pending" | "sent" | "dismissed";
   createdAt: number;
+  /** When the curator ignored it in the app (cleared again by Undo). */
+  dismissedAt?: number;
 }
 
 export interface AppNotice {
@@ -113,6 +119,8 @@ export interface AppNotice {
   text: string;
   createdAt: number;
   read: boolean;
+  /** When the curator dismissed it in the app (cleared again by Undo). */
+  dismissedAt?: number;
 }
 
 export interface Venue {
@@ -304,6 +312,9 @@ export type CommandType =
   | "list_contacts"
   | "move_account"
   | "reclassify_requests"
+  | "scan_history"
+  | "reconcile_waiting"
+  | "apply_reconcile"
   | "send_message";
 
 export interface Command {
@@ -312,6 +323,12 @@ export interface Command {
   status: "pending" | "running" | "done" | "error";
   error?: string | null;
   createdAt: number;
+  /** scan_history: written by the worker while it runs. */
+  progress?: { chats: number; done: number; found: number };
+  /** scan_history: the curator sets this to stop it. */
+  cancel?: boolean;
+  /** Firestore Timestamp (TTL policy, deploy/setup-cost-controls.sh). Typed loosely: shared code never imports an SDK. */
+  expireAt?: unknown;
 }
 
 export type AiProvider = "ollama" | "gemini";
@@ -340,6 +357,8 @@ export interface AiKeyStatus {
 export interface ServerStatus {
   id: string;
   hostname: string;
+  /** client_email of the key this server runs with (null for application-default credentials). */
+  serviceAccount?: string | null;
   platform: string; // "linux", "win32", "darwin"
   osRelease: string;
   arch: string;
@@ -354,7 +373,9 @@ export interface ServerStatus {
   sessions: { uid: string; email?: string | null; name?: string | null; status: string; phone?: string | null }[];
   counters: { messagesIn: number; classified: number; sent: number; errors: number };
   admins: string[]; // lower-case emails
-  logs?: string[]; // most recent last
+  logs?: string[]; // most recent last; only written while someone is watching (logsWanted)
+  /** Set by the Server page (ms) while its log section is open, refreshed every minute. The worker sends logs only while it is fresh. */
+  logsWanted?: number;
   /** Fleet capacity (docs/fleet.md). Missing on servers older than the fleet release. */
   fleet?: import("./fleet.ts").FleetCapacity;
 }
@@ -369,6 +390,8 @@ export interface ServerCommand {
   by: string;
   error?: string | null;
   createdAt: number;
+  /** Firestore Timestamp (TTL, deploy/setup-cost-controls.sh). */
+  expireAt?: unknown;
 }
 
 /** access/{uid}: who may use this Spot Solutions install. Created "pending" on first sign-in. */
@@ -381,6 +404,16 @@ export interface AccessEntry {
   requestedAt: number;
   decidedAt?: number | null;
   decidedBy?: string | null;
+  /** Written by the worker: why a pending request is waiting (an invite that could not be used yet). */
+  note?: string | null;
+}
+
+/** invites/{emailLower}: an admin invited this address; the worker approves a matching verified sign-in. */
+export interface Invite {
+  createdBy: string;
+  createdAt: number;
+  /** Firestore Timestamp, 30 days after creation (TTL, deploy/setup-cost-controls.sh). */
+  expireAt: unknown;
 }
 
 /** config/access: written by the worker from SPOT_ADMIN_EMAILS; maxCurators editable by admins. */

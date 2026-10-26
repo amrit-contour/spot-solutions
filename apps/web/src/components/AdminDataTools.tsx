@@ -6,7 +6,8 @@ import { SCOPE_LABEL, type AccessEntry, type AdminDataPayload, type AdminDataRes
 import { useApp } from "../lib/app";
 import { pickServer, runAdminData } from "../lib/adminData";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { Button, Card, Field, Select } from "./ui";
+import { Button, Field, Select } from "./ui";
+import { Collapsible } from "./Collapsible";
 import { IconTrash } from "./icons";
 
 type Servers = ServerStatus[] | null;
@@ -142,14 +143,18 @@ export function WipeDemoCard({ servers }: { servers: Servers }) {
   const state = useCount(open, servers, "wipe_demo", {});
   const n = state.result?.users ?? 0;
   return (
-    <Card className="flex flex-wrap items-center gap-3 p-4">
+    <>
+    <Collapsible id="admin-data" title="Admin data tools" icon={IconTrash} summary="Demo sandboxes">
+      <div className="flex flex-wrap items-center gap-3 px-4 pb-4">
       <div className="min-w-0 flex-1">
-        <h3 className="type-title-s">Demo sandboxes</h3>
-        <p className="type-body-s text-on-surface-variant">Every demo visitor gets a private copy of the demo week. Wiping deletes those copies; the demo template stays.</p>
+        <h4 className="type-label-l">Wipe demo sandboxes</h4>
+        <p className="type-body-s text-on-surface-variant">Deletes the private copies of the sample data that demo visitors get. Never touches real curators or the demo template. They are also cleaned up automatically after 7 days.</p>
       </div>
       <Button size="sm" variant="tonal" icon={IconTrash} className="text-error" onClick={() => setOpen(true)}>
         Wipe sandboxes…
       </Button>
+      </div>
+    </Collapsible>
       <ConfirmDialog
         open={open}
         onClose={() => setOpen(false)}
@@ -173,6 +178,6 @@ export function WipeDemoCard({ servers }: { servers: Servers }) {
           <p>No demo sandboxes to wipe.</p>
         )}
       </ConfirmDialog>
-    </Card>
+    </>
   );
 }

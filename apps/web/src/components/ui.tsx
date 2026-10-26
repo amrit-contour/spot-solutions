@@ -39,24 +39,18 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
 }
 
+/** Button classes for things that must be a link but look like a button. */
+export function buttonClass({ variant = "filled", size = "md", icon, className }: { variant?: Variant; size?: "sm" | "md" | "lg"; icon?: boolean; className?: string } = {}) {
+  const h = size === "sm" ? "h-8 px-3 gap-1.5 type-label-m" : size === "lg" ? "h-14 px-6 gap-2.5 type-title-m" : "h-10 px-5 gap-2 type-label-l";
+  return cx("state-layer pressable inline-flex items-center justify-center rounded-full whitespace-nowrap select-none disabled:opacity-40", h, icon && size !== "lg" && "pl-4", VARIANT[variant], className);
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = "filled", icon: I, size = "md", loading, className, children, disabled, ...rest },
   ref,
 ) {
-  const h = size === "sm" ? "h-8 px-3 gap-1.5 type-label-m" : size === "lg" ? "h-14 px-6 gap-2.5 type-title-m" : "h-10 px-5 gap-2 type-label-l";
   return (
-    <button
-      ref={ref}
-      disabled={disabled || loading}
-      className={cx(
-        "state-layer pressable inline-flex items-center justify-center rounded-full whitespace-nowrap select-none disabled:opacity-40",
-        h,
-        I && size !== "lg" && "pl-4",
-        VARIANT[variant],
-        className,
-      )}
-      {...rest}
-    >
+    <button ref={ref} disabled={disabled || loading} className={buttonClass({ variant, size, icon: Boolean(I), className })} {...rest}>
       {loading ? <Spinner className={size === "sm" ? "size-4" : "size-5"} /> : I && <I className={cx("icon", size === "sm" ? "size-4" : size === "lg" ? "size-6" : "size-5")} />}
       {children}
     </button>

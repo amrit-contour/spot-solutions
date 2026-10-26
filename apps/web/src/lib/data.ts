@@ -5,11 +5,15 @@ import {
   doc,
   onSnapshot,
   query,
+  Timestamp,
   type QueryConstraint,
 } from "firebase/firestore";
-import type { Command, CommandType } from "@spot/shared";
+import { TTL_DAYS, ttlMs, type Command, type CommandType } from "@spot/shared";
 import { db } from "./firebase";
 import { isDemoUser } from "./demo";
+
+/** Firestore TTL field: a Timestamp (not a number), `days` from now. See deploy/setup-cost-controls.sh. */
+export const expireAt = (days: number) => Timestamp.fromMillis(ttlMs(days));
 
 export const userCol = (uid: string, name: string) => collection(db, "users", uid, name);
 export const userDoc = (uid: string, name: string, id: string) => doc(db, "users", uid, name, id);
@@ -47,7 +51,7 @@ export function useDocument<T>(path: string[] | null) {
 /** Drop a command for the worker and resolve when it finishes. */
 export async function runCommand<R = unknown>(uid: string, type: CommandType, payload: Record<string, unknown> = {}, timeoutMs = 10 * 60_000) {
   if (isDemoUser()) throw new Error("This needs a linked WhatsApp, so it's off in the demo. Sign in with Google to try it for real.");
-  const ref = await addDoc(userCol(uid, "commands"), { type, payload, status: "pending", createdAt: Date.now() } satisfies Command);
+  const ref = await addDoc(userCol(uid, "commands"), { type, payload, status: "pending", createdAt: Date.now(), expireAt: expireAt(TTL_DAYS.commands) } satisfies Command);
   return new Promise<R>((resolve, reject) => {
     const timer = setTimeout(() => {
       unsub();

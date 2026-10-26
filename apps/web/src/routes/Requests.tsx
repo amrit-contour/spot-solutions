@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { where } from "firebase/firestore";
 import { AnimatePresence, motion } from "motion/react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { updateDoc } from "firebase/firestore";
 import {
@@ -24,10 +24,14 @@ import { placeComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
-import { Avatar, Bubble, Button, Chip, Empty, IconButton, cx } from "../components/ui";
+import { Avatar, Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "../components/ui";
 import { ConnectCard } from "../components/ConnectCard";
 import { ClearOldRequests } from "../components/ClearOldRequests";
-import { ActionInbox, MicCheck, Notices } from "../components/Inbox";
+import { ScanHistorySheet } from "../components/ScanHistorySheet";
+import { isDemoUser } from "../lib/demo";
+import { UpdatesPanel } from "../components/UpdatesPanel";
+import { Count } from "../components/updates/shared";
+import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
 import { IconArrowDown, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
@@ -58,7 +62,13 @@ export function Requests() {
   const [lane, setLane] = useState<Lane>("asked");
   const [clearOpen, setClearOpen] = useState(false);
   const [rereading, setRereading] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const lastWeek = shiftWeek(week, -1);
+  // Phones and tablets show one view at a time; the URL keeps it linkable (/?view=updates). Desktop shows both.
+  const [params, setParams] = useSearchParams();
+  const view: "requests" | "updates" = params.get("view") === "updates" ? "updates" : "requests";
+  const setView = (v: "requests" | "updates") => setParams(v === "updates" ? { view: "updates" } : {}, { replace: true });
+  const updates = useUpdates();
 
   const grouped = useMemo(() => {
     const g: Record<Lane, SpotRequest[]> = { asked: [], maybe: [], held: [], placed: [], closed: [] };
@@ -106,14 +116,37 @@ export function Requests() {
                     Re-read this week's requests
                     <span className="block type-body-s text-on-surface-variant">Updates tags and notes only</span>
                   </MenuItem>
-                  <MenuItem onClick={() => (close(), setClearOpen(true))}>Clear old requests…</MenuItem>
+                  <MenuItem disabled={isDemoUser() || !linked} onClick={() => (close(), setScanOpen(true))}>
+                    Scan past messages…
+                    <span className="block type-body-s text-on-surface-variant">{isDemoUser() ? "Needs a linked WhatsApp, so it's off in the demo" : linked ? "Find spot requests in your recent DMs" : "Link WhatsApp first"}</span>
+                  </MenuItem>
+                  <MenuItem onClick={() => (close(), setClearOpen(true))}>Clear requests…</MenuItem>
                 </>
               )}
             </Menu>
           </>
         }
       >
-        <div className="-mx-4 mt-5 flex overflow-x-auto border-b border-outline-variant px-4 [scrollbar-width:none] sm:mx-0 sm:mt-6 sm:gap-1 sm:px-0" role="tablist">
+        <div className="mt-5 lg:hidden" aria-label="Requests or updates">
+          <Segmented
+            full
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "requests", label: "Requests" },
+              {
+                value: "updates",
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    Updates
+                    <Count value={updates.total} className={cx("rounded-full px-1.5 type-label-s", updates.total ? "bg-primary text-on-primary" : "bg-surface-high text-on-surface-variant")} />
+                  </span>
+                ),
+              },
+            ]}
+          />
+        </div>
+        <div className={cx("-mx-4 mt-5 flex overflow-x-auto border-b border-outline-variant px-4 [scrollbar-width:none] sm:mx-0 sm:mt-6 sm:gap-1 sm:px-0", view === "updates" && "hidden lg:flex")} role="tablist">
           {LANES.map((l) => (
             <button key={l.id} role="tab" aria-selected={lane === l.id} onClick={() => setLane(l.id)} className="state-layer relative flex flex-1 items-center justify-center gap-1.5 rounded-t-sm px-2.5 pt-2 pb-3 type-title-s whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4">
               <span className={lane === l.id ? "text-primary" : "text-on-surface-variant"}>{l.label}</span>
@@ -125,28 +158,31 @@ export function Requests() {
       </PageHeader>
 
       <ClearOldRequests open={clearOpen} onClose={() => setClearOpen(false)} />
-      <div className="px-4 pb-10 sm:px-8">
-        <MicCheck />
-        <Notices />
-        {lane === "asked" && <ActionInbox />}
-        {!linked && !requests.data.length ? (
-          <ConnectCard compact />
-        ) : grouped[lane].length === 0 ? (
-          <LaneEmpty lane={lane} />
-        ) : (
-          <motion.ul className="grid items-start gap-3 xl:grid-cols-2" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
-            <AnimatePresence initial={false}>
-              {grouped[lane].map((r) => (
-                <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={comicsById.get(r.comicId)?.lastPerformedWeek === lastWeek} tier={comicsById.get(r.comicId)?.tier} showVenue={manyVenues} />
-              ))}
-            </AnimatePresence>
-          </motion.ul>
-        )}
-        {!activeShows.length && requests.data.length > 0 && (
-          <p className="mt-6 type-body-m text-on-surface-variant">
-            Add your shows in <Link className="text-primary underline-offset-4 hover:underline" to="/shows">Shows</Link> to start placing comics.
-          </p>
-        )}
+      <ScanHistorySheet open={scanOpen} onClose={() => setScanOpen(false)} />
+      <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className={cx("min-w-0", view === "updates" && "hidden lg:block")}>
+          {!linked && !requests.data.length ? (
+            <ConnectCard compact />
+          ) : grouped[lane].length === 0 ? (
+            <LaneEmpty lane={lane} />
+          ) : (
+            <motion.ul className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-1" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
+              <AnimatePresence initial={false}>
+                {grouped[lane].map((r) => (
+                  <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={comicsById.get(r.comicId)?.lastPerformedWeek === lastWeek} tier={comicsById.get(r.comicId)?.tier} showVenue={manyVenues} />
+                ))}
+              </AnimatePresence>
+            </motion.ul>
+          )}
+          {!activeShows.length && requests.data.length > 0 && (
+            <p className="mt-6 type-body-m text-on-surface-variant">
+              Add your shows in <Link className="text-primary underline-offset-4 hover:underline" to="/shows">Shows</Link> to start placing comics.
+            </p>
+          )}
+        </div>
+        <aside aria-label="Updates" className={cx("min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:overscroll-contain", view === "requests" && "hidden lg:block")}>
+          <UpdatesPanel lineups={lineups.data} />
+        </aside>
       </div>
     </div>
   );

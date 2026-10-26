@@ -24,6 +24,8 @@ const OLLAMA_EXE = process.env.SPOT_OLLAMA_EXE ?? "ollama";
 const PORT = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
 const TOKEN_FILE = process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(DATA, "console-token");
 const KEY_FILE = path.join(DATA, "service-account.json");
+// Cloud Function that trades a join code for this server's own key (functions/src/index.ts redeemJoinCode).
+const JOIN_URL = process.env.SPOT_JOIN_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net/redeemJoinCode";
 const OLLAMA = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const HTML = readFileSync(new URL("./index.html", import.meta.url));
 
@@ -209,6 +211,13 @@ const body = (req) =>
       }
     });
   });
+const isServiceAccountKey = (k) => Boolean(k && k.type === "service_account" && k.project_id && k.private_key);
+// One way to store a key, whether it was dropped as a file or came from a join code, then restart the worker.
+async function installKey(k) {
+  writeFileSync(KEY_FILE, JSON.stringify(k, null, 2), { mode: 0o600 });
+  writeEnv({ FIREBASE_SERVICE_ACCOUNT: KEY_FILE, FIREBASE_PROJECT_ID: k.project_id });
+  await restart("spot-worker");
+}
 const isLocal = (req) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "");
 function authed(req) {
   if (isLocal(req)) return true;
@@ -256,11 +265,33 @@ createServer(async (req, res) => {
 
     if (url.pathname === "/api/key" && req.method === "POST") {
       const k = await body(req);
-      if (k.type !== "service_account" || !k.project_id || !k.private_key) return json(res, 400, { error: "That isn't a Firebase service-account key." });
-      writeFileSync(KEY_FILE, JSON.stringify(k, null, 2), { mode: 0o600 });
-      writeEnv({ FIREBASE_SERVICE_ACCOUNT: KEY_FILE, FIREBASE_PROJECT_ID: k.project_id });
-      await restart("spot-worker");
+      if (!isServiceAccountKey(k)) return json(res, 400, { error: "That isn't a Firebase service-account key." });
+      await installKey(k);
       return json(res, 200, { ok: true, projectId: k.project_id });
+    }
+
+    // Join with a code from the app (Account, Server, Add a server): the function makes this device's own key.
+    if (url.pathname === "/api/join" && req.method === "POST") {
+      const b = await body(req);
+      const code = String(b.code ?? "").trim();
+      if (!code) return json(res, 400, { error: "Enter the join code." });
+      const deviceName = String(b.deviceName ?? "").trim() || os.hostname();
+      let r, out;
+      try {
+        r = await fetch(JOIN_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code, deviceName }),
+          signal: AbortSignal.timeout(90_000),
+        });
+        out = await r.json().catch(() => ({}));
+      } catch {
+        return json(res, 502, { error: "Couldn't reach Spot Solutions. Check this server's internet and try again." });
+      }
+      if (!r.ok) return json(res, r.status === 429 ? 429 : 400, { error: out.error || "That code didn't work." });
+      if (!isServiceAccountKey(out.key)) return json(res, 502, { error: "Spot Solutions sent back something that isn't a key." });
+      await installKey(out.key);
+      return json(res, 200, { ok: true, projectId: out.key.project_id, serviceAccount: out.serviceAccount });
     }
 
     if (url.pathname === "/api/config" && req.method === "POST") {

@@ -1,8 +1,8 @@
 // Admin-only data tools, run from servers/{id}/commands (see stats.ts). They cross user
 // boundaries, which the browser can't do, so they use the Admin SDK and re-check the requester here.
 import type { CollectionReference, DocumentReference } from "firebase-admin/firestore";
-import { DEMO_SOURCE_UID, collectionsForScope, demoSandboxIds, isDataScope, type AdminDataPayload, type AdminDataResult, type DataScope } from "@spot/shared";
-import { col, db, userRef } from "./firebase.ts";
+import { DEMO_SOURCE_UID, TTL_DAYS, collectionsForScope, demoSandboxIds, expiredSandboxIds, isDataScope, type AdminDataPayload, type AdminDataResult, type DataScope } from "@spot/shared";
+import { col, db, expireAt, userRef } from "./firebase.ts";
 import { SERVER_ID } from "./serverIdentity.ts";
 import { wipeLogin } from "./vault.ts";
 import { isAdminEmail } from "./access.ts";
@@ -45,7 +45,7 @@ async function collectionNames(uid: string, scope: DataScope) {
 }
 
 /** Delete (or, with dryRun, count) a curator's data for a scope. "everything" includes the profile doc. */
-async function userData(uid: string, scope: DataScope, dryRun: boolean): Promise<Record<string, number>> {
+export async function userData(uid: string, scope: DataScope, dryRun: boolean): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   for (const name of await collectionNames(uid, scope)) {
     const ref = userRef(uid).collection(name);
@@ -63,6 +63,19 @@ async function userData(uid: string, scope: DataScope, dryRun: boolean): Promise
     if (!dryRun) await userRef(uid).delete();
   }
   return counts;
+}
+
+/**
+ * Anonymous demo sandboxes: users docs flagged `demo: true`, minus the template. The flag alone isn't enough: a real
+ * account (email on the doc, or an access request) is never a sandbox. `olderThanDays`: only copies older than that.
+ */
+export async function demoSandboxUids(olderThanDays?: number): Promise<string[]> {
+  const snap = await db.collection("users").where("demo", "==", true).get();
+  const users = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const flagged = olderThanDays === undefined ? demoSandboxIds(users) : expiredSandboxIds(users, Date.now(), olderThanDays);
+  const access = flagged.length ? await db.getAll(...flagged.map((id) => db.collection("access").doc(id))) : [];
+  const real = new Set(access.filter((a) => a.exists).map((a) => a.id));
+  return flagged.filter((id) => !real.has(id));
 }
 
 const sum = (c: Record<string, number>) => Object.values(c).reduce((a, b) => a + b, 0);
@@ -100,7 +113,7 @@ async function logout(uid: string) {
   for (const end = Date.now() + UNLINK_WAIT_MS; fleet.isMoving(uid) && Date.now() < end; ) await new Promise((r) => setTimeout(r, 1_000));
   if (fleet.holds(uid)) await sessions.logout(uid);
   else if (fleet.hasRemoteHolder(uid)) {
-    const ref = await col(uid, "commands").add({ type: "logout", status: "pending", by: "admin-data-tool", createdAt: Date.now() });
+    const ref = await col(uid, "commands").add({ type: "logout", status: "pending", by: "admin-data-tool", createdAt: Date.now(), expireAt: expireAt(TTL_DAYS.commands) });
     const end = Date.now() + UNLINK_WAIT_MS;
     let status = "pending";
     while (Date.now() < end && (status === "pending" || status === "running")) {
@@ -120,12 +133,7 @@ export async function runAdminDataCommand(type: string, data: { by?: string; pay
   const dryRun = p.dryRun === true;
 
   if (type === "wipe_demo") {
-    const snap = await db.collection("users").where("demo", "==", true).get();
-    // The flag alone isn't enough: a real account (email on the doc, or an access request) is never a sandbox.
-    const flagged = demoSandboxIds(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    const access = flagged.length ? await db.getAll(...flagged.map((id) => db.collection("access").doc(id))) : [];
-    const real = new Set(access.filter((a) => a.exists).map((a) => a.id));
-    const uids = flagged.filter((id) => !real.has(id));
+    const uids = await demoSandboxUids();
     const counts: Record<string, number> = {};
     for (const uid of uids) merge(counts, await userData(uid, "everything", dryRun));
     if (!dryRun) console.log(`[admin] ${by} wiped ${uids.length} demo sandbox(es), ${sum(counts)} docs`);

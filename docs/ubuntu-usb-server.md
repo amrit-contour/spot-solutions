@@ -82,7 +82,7 @@ At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it 
 
 The console shows services, CPU/RAM/disk, installed models and live worker logs, with Restart buttons.
 
-1. **Firebase key:** one key per device. The admin makes this server's key on their own machine with `deploy/new-server-key.sh <name>` (see [multi-server.md](multi-server.md)). Drag the `.json` onto the console, then delete the file. The worker starts by itself.
+1. **Join code:** one key per device, made for you. In the app, an admin opens **Account, Server, Add a server** and makes a code. Type it under **Enter join code**, check the device name and click **Join**. The worker starts by itself. Without a code, click **or drop a key file** and drag in a key made with `deploy/new-server-key.sh <name>` (see [multi-server.md](multi-server.md)), then delete the file.
 2. **Admins:** your email (already set if you passed `ADMIN_EMAILS`). It opens **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere.
 3. **Server Gemini key:** optional on a server with Gemma. Leave it blank; each curator adds their own in the app under **Settings → AI models**, where they can test it, browse models and pick a primary and a fallback. On a Gemini-only server, add one here or have each curator add theirs.
 

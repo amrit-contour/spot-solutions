@@ -5,8 +5,8 @@ import { cp, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import WAWebJS from "whatsapp-web.js";
-import type { SessionState } from "@spot/shared";
-import { FieldValue, col, sessionRef, userRef } from "./firebase.ts";
+import { TTL_DAYS, type SessionState } from "@spot/shared";
+import { FieldValue, col, expireAt, sessionRef, userRef } from "./firebase.ts";
 import { catchUpSince, enqueue, markLive } from "./intake.ts";
 import { handleSelfReply, handleVote } from "./replies.ts";
 import { unwatchUser, watchUser } from "./userData.ts";
@@ -78,7 +78,7 @@ async function killOrphanChromium(uid: string) {
   }
 }
 
-const notice = (uid: string, level: "info" | "warn", text: string) => col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false }).catch(() => undefined);
+const notice = (uid: string, level: "info" | "warn", text: string) => col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
 
 // lastSeen drives the app's online dot (zeroed on shutdown); aliveAt is when we last processed messages (never zeroed).
 const setState = (uid: string, s: Partial<SessionState>) =>

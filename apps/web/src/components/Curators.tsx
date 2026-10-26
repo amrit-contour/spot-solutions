@@ -1,17 +1,111 @@
 // Server page → Curators: approve, remove and cap who can use this install.
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import type { AccessEntry, ServerStatus } from "@spot/shared";
+import { TTL_DAYS, type AccessEntry, type Invite, type ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "../lib/firebase";
 import { useAccessConfig } from "../lib/access";
-import { timeAgo } from "../lib/data";
-import { Avatar, Button, Card, Chip, IconButton, Stepper } from "./ui";
+import { expireAt, timeAgo } from "../lib/data";
+import { Avatar, Button, Chip, IconButton, Stepper, TextInput } from "./ui";
+import { Collapsible } from "./Collapsible";
 import { Menu, MenuItem } from "./Menu";
 import { DeleteDataDialog, RemoveUserDialog } from "./AdminDataTools";
-import { IconArrowDown, IconCheck, IconClose, IconComics, IconMenuDots } from "./icons";
+import { IconArrowDown, IconCheck, IconClose, IconComics, IconMenuDots, IconUserPlus } from "./icons";
+
+const APP_URL = "https://spot-solutions.web.app";
+const EMAIL = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
+
+/** Ready-to-send message for an invite. */
+const inviteMessage = (email: string) =>
+  `You're invited to Spot Solutions, the comic lineup assistant.\n\nOpen ${APP_URL} and sign in with ${email}. Use that exact email: access is approved for you automatically, within a minute or two.\n\nThis invite works for ${TTL_DAYS.invites} days.`;
+
+async function copy(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success("Message copied");
+  } catch {
+    toast.error("Couldn't copy. Select the text and copy it by hand.");
+  }
+}
+
+type InviteRow = Invite & { email: string };
+
+/** Admin: invite an email address and get a message to send. */
+function Invites() {
+  const { user } = useApp();
+  const [invites, setInvites] = useState<InviteRow[]>([]);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [last, setLast] = useState<string | null>(null);
+  useEffect(
+    () =>
+      onSnapshot(
+        collection(db, "invites"),
+        (q) => setInvites(q.docs.map((d) => ({ ...(d.data() as Invite), email: d.id })).filter((i) => (typeof (i.expireAt as { toMillis?: () => number })?.toMillis === "function" ? (i.expireAt as { toMillis: () => number }).toMillis() : 0) > Date.now())),
+        () => setInvites([]),
+      ),
+    [],
+  );
+
+  const create = async () => {
+    const addr = email.trim().toLowerCase();
+    if (!EMAIL.test(addr)) return toast.error("Enter a full email address");
+    setBusy(true);
+    try {
+      await deleteDoc(doc(db, "invites", addr)).catch(() => undefined); // start the 30 days again if it already exists
+      await setDoc(doc(db, "invites", addr), { createdBy: (user.email ?? user.uid).toLowerCase(), createdAt: Date.now(), expireAt: expireAt(TTL_DAYS.invites) });
+      setEmail("");
+      setLast(addr);
+      void copy(inviteMessage(addr));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 px-4 pb-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void create()} placeholder="Invite by email" aria-label="Email to invite" className="h-10 min-w-0 flex-1" />
+        <Button size="sm" icon={IconUserPlus} loading={busy} disabled={!email.trim()} onClick={() => void create()}>
+          Invite
+        </Button>
+      </div>
+      <p className="type-body-s text-on-surface-variant">
+        Creates an invite for {TTL_DAYS.invites} days and copies a message to send. When they sign in with that email, they are approved automatically, as long as there is room under the limit.
+      </p>
+      {last && (
+        <textarea readOnly rows={5} value={inviteMessage(last)} onFocus={(e) => e.currentTarget.select()} className="w-full resize-none rounded-md border border-outline-variant bg-surface-container px-3 py-2 type-body-s outline-none" />
+      )}
+      {invites.length > 0 && (
+        <div>
+          <div className="-mx-4 bg-surface-container px-4 py-2 type-label-m text-on-surface-variant">Invited ({invites.length})</div>
+          <ul className="-mx-4 divide-y divide-outline-variant/40">
+            {invites.map((i) => (
+              <li key={i.email} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate type-body-l">{i.email}</div>
+                  <div className="truncate type-body-s text-on-surface-variant">
+                    Invited {timeAgo(i.createdAt)} by {i.createdBy}
+                  </div>
+                </div>
+                <Button size="sm" variant="text" onClick={() => void copy(inviteMessage(i.email))}>
+                  Copy message
+                </Button>
+                <Button size="sm" variant="text" className="text-error" onClick={() => void deleteDoc(doc(db, "invites", i.email)).then(() => toast.success("Invite revoked"), (e) => toast.error((e as Error).message))}>
+                  Revoke
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Curators({ servers }: { servers: ServerStatus[] | null }) {
   const { user } = useApp();
@@ -56,22 +150,23 @@ export function Curators({ servers }: { servers: ServerStatus[] | null }) {
         <div className="truncate type-body-s text-on-surface-variant">
           {e.email} · {e.status === "pending" ? `asked ${timeAgo(e.requestedAt)}` : `since ${timeAgo(e.decidedAt ?? e.requestedAt)}`}
         </div>
+        {e.status === "pending" && e.note && <div className="type-body-s text-tertiary">{e.note}</div>}
       </div>
       <div className="flex gap-1.5">{children}</div>
     </motion.li>
   );
 
   return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3 px-4 pt-4 pb-2">
-        <IconComics className="icon size-5 text-primary" />
-        <h3 className="flex-1 type-title-s">Curators</h3>
+    <>
+    <Collapsible id="curators" title="Curators" icon={IconComics} summary={pending.length ? `${pending.length} pending` : `${approved.length}/${max} in use`} summaryTone={pending.length ? "tertiary" : "neutral"}>
+      <div className="flex flex-wrap items-center gap-3 px-4 pb-2">
+        <p className="min-w-0 flex-1 type-body-s text-on-surface-variant">
+          Invite-only: new sign-ins wait here unless you invited them. Each approved curator gets their own WhatsApp session on the server (about 300–400 MB of memory). {approved.length}/{max} in use.
+        </p>
         <span className="type-body-s text-on-surface-variant">Limit</span>
         <Stepper value={max} min={1} max={100} onChange={(v) => void updateDoc(doc(db, "config", "access"), { maxCurators: v })} />
       </div>
-      <p className="px-4 pb-3 type-body-s text-on-surface-variant">
-        Invite-only: new sign-ins wait here. Each approved curator gets their own WhatsApp session on the server (about 300–400 MB of memory). {approved.length}/{max} in use.
-      </p>
+      <Invites />
 
       {pending.length > 0 && (
         <>
@@ -128,8 +223,9 @@ export function Curators({ servers }: { servers: ServerStatus[] | null }) {
           </ul>
         </details>
       )}
-      <DeleteDataDialog entry={deleting} servers={servers} onClose={() => setDeleting(null)} />
-      <RemoveUserDialog entry={removing} servers={servers} onClose={() => setRemoving(null)} />
-    </Card>
+    </Collapsible>
+    <DeleteDataDialog entry={deleting} servers={servers} onClose={() => setDeleting(null)} />
+    <RemoveUserDialog entry={removing} servers={servers} onClose={() => setRemoving(null)} />
+    </>
   );
 }

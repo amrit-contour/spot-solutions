@@ -8,7 +8,7 @@ You need:
 |---|---|
 | **A PC** | Windows 10 or 11. 8 GB RAM recommended (Gemma 3 4B uses about 3.5 GB). Keep it plugged in and online. |
 | **winget** | Part of Windows "App Installer". Only used to install Ollama, so you don't need it for a Gemini-only server or if Ollama is already installed. Most PCs have it. |
-| **A Firebase key for this PC** | One key per device. Ask the admin to run `deploy/new-server-key.sh <name>`, see [multi-server.md](multi-server.md). |
+| **A join code** | One key per device, made for you. An admin makes a code in the app under **Account, Server, Add a server**. See [multi-server.md](multi-server.md). |
 
 ## Install
 
@@ -52,7 +52,7 @@ At the end the console opens and the installer prints a link for a phone on the 
 
 ## Finish setup in the console
 
-1. Drop this PC's own Firebase key (`.json`) onto **Drop your service-account .json here**. The worker starts by itself. Delete the file from Downloads afterwards. It is a password.
+1. Type the join code (from **Account, Server, Add a server** in the app) under **Enter join code**, check the device name, and click **Join**. The worker starts by itself. No code? Click **or drop a key file** and drop a key made with `deploy/new-server-key.sh` (then delete the file, it is a password).
 2. Under **Admins**, add your email. This shows the server in the app under **Account, Server**, from anywhere.
 3. Gemini-only server: also add a Gemini key (the console, or each curator under **Settings, AI models**).
 4. Open **Spot Solutions** from the desktop, go to **Settings, Show QR code**, and scan it from WhatsApp on your phone (**Linked devices**).
@@ -106,7 +106,7 @@ Double-click **Uninstall.cmd**. It stops the worker, removes the two scheduled t
 | Symptom | Fix |
 |---|---|
 | App says "Server offline" | Check the PC is on and online. Double-click **Restart Worker.cmd**, then **View Logs.cmd**. |
-| Nothing starts after install | The worker waits for a Firebase key. Drop it into the console. |
+| Nothing starts after install | The worker waits for a Firebase key. Enter a join code in the console (or drop a key file). |
 | The installer says it can't install Ollama | Install it from ollama.com/download, then run the installer again. |
 | The installer says to run as Administrator | Use the `.cmd` and click Yes on the prompt, or open PowerShell as Administrator. |
 | Console doesn't open from a phone | The PC must be on the same Wi-Fi, and that network set to **Private**. Use the link the installer printed. |

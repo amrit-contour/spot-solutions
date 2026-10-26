@@ -1,7 +1,8 @@
 // Admin data tools: write a command to servers/{id}/commands and wait for the worker's result.
 import { addDoc, collection, onSnapshot } from "firebase/firestore";
-import type { AdminDataPayload, AdminDataResult, ServerCommand, ServerStatus } from "@spot/shared";
+import { TTL_DAYS, type AdminDataPayload, type AdminDataResult, type ServerCommand, type ServerStatus } from "@spot/shared";
 import { db } from "./firebase";
+import { expireAt } from "./data";
 
 const ONLINE_MS = 90_000;
 
@@ -12,7 +13,7 @@ export function pickServer(servers: ServerStatus[] | null, uid?: string) {
 }
 
 export async function runAdminData(serverId: string, type: "delete_user_data" | "remove_user" | "wipe_demo", payload: AdminDataPayload, by: string, timeoutMs = 10 * 60_000) {
-  const ref = await addDoc(collection(db, "servers", serverId, "commands"), { type, payload: { ...payload }, status: "pending", by, createdAt: Date.now() } satisfies ServerCommand);
+  const ref = await addDoc(collection(db, "servers", serverId, "commands"), { type, payload: { ...payload }, status: "pending", by, createdAt: Date.now(), expireAt: expireAt(TTL_DAYS.commands) } satisfies ServerCommand);
   return new Promise<AdminDataResult>((resolve, reject) => {
     const t = setTimeout(() => (unsub(), reject(new Error("The server didn't respond"))), timeoutMs);
     const unsub = onSnapshot(ref, (d) => {

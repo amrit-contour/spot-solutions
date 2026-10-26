@@ -51,12 +51,16 @@ over-capacity server sheds its most recently claimed accounts.
   - `cloud`: download, decrypt, verify sha256, replace the local profile, write the marker.
   - `local`: keep it; upload within a minute of `ready` so the cloud catches up.
   - `fresh`: no login anywhere, show a QR.
-- Upload: every `VAULT_UPLOAD_EVERY_MS` while ready, on clean stop and before every handoff. Only the lease holder
+- Upload: every `VAULT_UPLOAD_EVERY_MS` (60 minutes; the login is about 63 MB, so this is the main upload cost) while ready, on clean stop and before every handoff. A periodic upload is skipped when the login folders (file count, total size, newest mtime of `Default/IndexedDB` and `Default/Local Storage`) are unchanged since this server's last upload of the same gen; stops and handoffs always upload. Only the lease holder
   uploads, and the meta commit transaction re-checks `lease.server == me && lease.epoch == myEpoch`, so a holder that
   was fenced and replaced mid-upload cannot commit; gens are strictly increasing per account.
 - Encryption: AES-256-GCM, random 12-byte IV per upload, key from `vaultKeys/{uid}` (created on first upload).
 - Migration: on the first fleet start, a server with an existing local login and no cloud copy treats it as
   `local` and uploads it, so nobody has to scan again.
+- Cleanup: superseded login objects are deleted 10 minutes after a newer commit (`VAULT_OBJECT_MIN_AGE_MS`). Cloud Storage
+  soft delete must be OFF on the default bucket, or every deleted object is still kept and billed for 7 more days
+  (the default soft-delete window). `deploy/setup-cost-controls.sh` turns it off; the REST equivalent is
+  `PATCH https://storage.googleapis.com/storage/v1/b/<bucket>` with `{"softDeletePolicy":{"retentionDurationSeconds":"0"}}`.
 - Logout: delete the local profile, marker, cloud object, vault meta and key.
 
 ## AI policy
