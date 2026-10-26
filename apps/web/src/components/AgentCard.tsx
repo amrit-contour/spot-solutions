@@ -1,4 +1,4 @@
-// Settings → WhatsApp & app: the agent number. A second WhatsApp, linked by QR like the first, that talks only to you:
+// Settings → WhatsApp: the agent number. A second WhatsApp, linked by QR like the first, that talks only to you:
 // it tells you things, answers questions and does things you ask (after your yes). See docs/agent.md.
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";

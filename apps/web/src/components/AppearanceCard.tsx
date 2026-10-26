@@ -1,4 +1,4 @@
-// Settings → WhatsApp & app: pick the look of the app (per user).
+// Settings → App: pick the look of the app (per user).
 import { toast } from "sonner";
 import { motion } from "motion/react";
 import { useApp } from "../lib/app";

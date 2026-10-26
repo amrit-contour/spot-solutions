@@ -41,7 +41,8 @@ import { Bubble, Button, Field, Info, Select, SettingRow, Stepper, Switch, TextA
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose } from "../components/icons";
 
 const TABS = [
-  { id: "whatsapp", label: "WhatsApp & app", icon: IconPhone },
+  { id: "whatsapp", label: "WhatsApp", icon: IconChat },
+  { id: "app", label: "App", icon: IconPhone },
   { id: "messages", label: "Messages", icon: IconChat },
   { id: "rules", label: "Rules & replies", icon: IconShield },
   { id: "show", label: "Around the show", icon: IconMic },
@@ -205,9 +206,13 @@ export function SettingsPage() {
             <ConnectCard />
             <AgentCard />
             <FleetCard />
+          </>
+        )}
+        {tab === "app" && (
+          <>
+            <AppearanceCard />
             <NotifyCard />
             <GoogleContactsCard />
-            <AppearanceCard />
             <InstallCard />
           </>
         )}

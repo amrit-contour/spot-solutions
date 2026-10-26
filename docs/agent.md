@@ -4,7 +4,7 @@ A second WhatsApp number per curator, linked by QR like the first. It talks **on
 buttons: whatsapp-web.js can't send them; see [plans/agent-number.md](plans/agent-number.md) for the Cloud API route).
 
 Code: `packages/shared/src/agent.ts` (pure: who it obeys, intents, the yes state machine, texts), `apps/worker/src/agent*.ts`,
-`lineupOps.ts`, the `AgentCard` in Settings → WhatsApp & app.
+`lineupOps.ts`, the `AgentCard` in Settings → WhatsApp.
 
 ## What it does
 

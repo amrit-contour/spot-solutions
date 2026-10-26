@@ -133,7 +133,7 @@ If a curator uses Local only and no server with Gemma is online, the account wai
 
 Both live in the app. A curator sees the buttons when at least two servers are online.
 
-**Curators:** **Settings**, then the **WhatsApp & app** tab, shows "Running on <server>" and when the login was last backed up.
+**Curators:** **Settings**, then the **WhatsApp** tab, shows "Running on <server>" and when the login was last backed up.
 
 - **Keep on this server** pins the account. Whenever that server is online, the account stays on it, and if it comes back after an outage the account is pulled back from wherever it went.
 - **Stop keeping on this server** unpins it.
@@ -150,7 +150,7 @@ A move is refused, with a message, if the target is offline, full, draining, or 
 - "Your WhatsApp moved from X to Y." After a crash: "...because X stopped responding."
 - A warning if an old server is blocking the new ones (see below).
 
-**Push notifications** go to every browser or phone where you turned on **Settings, WhatsApp & app, Notifications on this device**. On iPhone and iPad, add the app to your home screen first.
+**Push notifications** go to every browser or phone where you turned on **Settings, App, Notifications on this device**. On iPhone and iPad, add the app to your home screen first.
 
 | Push | When |
 | --- | --- |
@@ -193,7 +193,7 @@ To update a server by hand, run its installer again (see the guide for [Mac](mac
 | An admin sees "Waiting for a server" for an account | No server qualifies: all offline, full or draining, or the account is Local only and no Gemma server is online. Start a server. |
 | **Move to...** says the server "can't take this account right now" | The target is offline, full, paused, or has no local model. Pick another, or add the model. |
 | Account keeps going back to one server | It is pinned there. Unpin it. |
-| Asked to scan the QR again | The login copy was missing or corrupt. Check **Settings, WhatsApp & app** for "Login backed up ...". If it says "not backed up yet", the account never finished one upload. |
+| Asked to scan the QR again | The login copy was missing or corrupt. Check **Settings, WhatsApp** for "Login backed up ...". If it says "not backed up yet", the account never finished one upload. |
 | A server shows no capacity bar | It is running an older release. Update it. |
 | `new-server-key.sh` says the name is too long | Use a device name of 25 characters or fewer. (Join codes shorten the name for you.) |
 | The console says the code isn't valid | Codes work once and last 15 minutes. Make a new one under **Add a server**. After 10 wrong tries from one network, wait 15 minutes. |

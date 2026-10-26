@@ -114,7 +114,7 @@ class AgentSessionManager {
     this.clients.set(uid, client);
 
     client.on("qr", (qr) => {
-      if (!sawQr && wasLinked) void notice(uid, "The agent number asked to be linked again. Open Settings → WhatsApp & app → Agent number and scan the code.");
+      if (!sawQr && wasLinked) void notice(uid, "The agent number asked to be linked again. Open Settings → WhatsApp → Agent number and scan the code.");
       sawQr = true;
       void setState(uid, { status: "qr", qr });
     });
