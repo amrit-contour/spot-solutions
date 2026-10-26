@@ -203,7 +203,7 @@ function Calendar() {
         <div className="min-w-0">
           {/* Pinned under the page header, only as wide as this column, opaque so the grid scrolls cleanly beneath it. No
               title that grows in when stuck: a bar that changes height while pinned shifts everything below it. */}
-          <StickyBar bleed={false} className="top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))]! bg-surface! py-2">
+          <StickyBar bleed={false} className="top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))]! -mx-3 bg-surface! px-3 py-2">
             <div className="flex items-center gap-1.5 sm:gap-2" role="toolbar" aria-label="Calendar">
               <div className="flex items-center">
                 <IconButton icon={IconArrowLeft} label={`Previous ${view}`} onClick={() => step(-1)} className="size-10 sm:size-9" />

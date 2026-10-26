@@ -177,8 +177,9 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
       ref={ref}
       data-stuck={stuck || undefined}
       className={cx(
-        "sticky top-[env(safe-area-inset-top)] z-30 border-b border-transparent px-4 transition-[padding,background-color,border-color] duration-200 motion-reduce:transition-none sm:px-8",
-        stuck ? "border-outline-variant bg-surface/90 pt-2 pb-2 backdrop-blur-md sm:pt-3 sm:pb-3" : "pt-3 pb-4 sm:pt-10",
+        // Opaque when pinned, so nothing (outlines, rings) shows through it. One easing for every part.
+        "sticky top-[env(safe-area-inset-top)] z-30 border-b border-transparent bg-surface px-4 transition-[padding,border-color] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none sm:px-8",
+        stuck ? "border-outline-variant pt-2 pb-2 sm:pt-3 sm:pb-3" : "pt-3 pb-4 sm:pt-10",
       )}
     >
       {/* Phones: status + account on top. Desktop keeps both in the nav rail. */}
@@ -191,10 +192,18 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-          <h1 className={cx("min-w-0 flex-1 text-balance", stuck ? "truncate type-title-l" : "type-headline-m sm:type-display-s")}>{title}</h1>
+          {/* The size animates (font-size/line-height) instead of jumping between two classes. */}
+          <h1 className={cx("min-w-0 flex-1 truncate transition-[font-size,line-height,letter-spacing] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none", stuck ? "type-title-l" : "type-headline-m sm:type-display-s")}>{title}</h1>
           {trailing && <div className="flex flex-none items-center">{trailing}</div>}
           </div>
-          {subtitle && !stuck && <p className="mt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>}
+          {subtitle && (
+            // Collapses smoothly (grid rows 1fr -> 0fr) rather than popping out of the layout.
+            <div className={cx("grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none", stuck ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100")} aria-hidden={stuck || undefined}>
+              <div className="overflow-hidden">
+                <p className="pt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>
+              </div>
+            </div>
+          )}
         </div>
         {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
       </div>
