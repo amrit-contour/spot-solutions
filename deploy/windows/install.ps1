@@ -276,5 +276,12 @@ Write-Host "  1. Drop this server's own Firebase key into it (one key per device
 if ($NoLocal) { Write-Host "     Gemini-only: also add a Gemini key (Server Console, or each curator in the app)." }
 Write-Host "  2. Add your email under Admins to see this server in the app, from anywhere."
 Write-Host "  3. Link WhatsApp at https://spot-solutions.web.app -> Settings."
-if ($token -and $ip) { Write-Host "From a phone on this Wi-Fi: http://${ip}:7420/?token=$token" -ForegroundColor Cyan }
+if ($token -and $ip) {
+  $phoneUrl = "http://${ip}:7420/?token=$token"
+  Write-Host ""
+  Write-Host "Manage this server from your phone (same Wi-Fi): scan this QR code, or open the link." -ForegroundColor Cyan
+  # Node writes the QR's block characters straight to the console, which handles them correctly.
+  & $Node "$AppDir\apps\worker\console\qr.mjs" $phoneUrl 2>$null
+  Write-Host $phoneUrl -ForegroundColor Cyan
+}
 if (Test-Path $edge) { Start-Process $edge "--app=http://localhost:7420" } else { Start-Process "http://localhost:7420" }

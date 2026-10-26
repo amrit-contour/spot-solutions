@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync, existsSync, chmodSync, statSync, openSync,
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
@@ -216,6 +217,17 @@ function authed(req) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+// qrcode-terminal ships with the worker; the console stays usable without it.
+function qrText(text) {
+  try {
+    let out = null;
+    createRequire(import.meta.url)("qrcode-terminal").generate(text, { small: true }, (q) => (out = q));
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   try {
@@ -232,6 +244,15 @@ createServer(async (req, res) => {
     if (!authed(req)) return json(res, 401, { error: "Open the link with ?token=… printed by the installer (sudo cat " + TOKEN_FILE + ")" });
 
     if (url.pathname === "/api/status") return json(res, 200, await status());
+
+    // Only for someone at this machine: the link carries the access token.
+    if (url.pathname === "/api/phone") {
+      if (!isLocal(req)) return json(res, 403, { error: "Only shown on the server itself" });
+      const ip = lanIps()[0];
+      if (!ip) return json(res, 200, { url: null, qr: null });
+      const link = `http://${ip}:${PORT}/?token=${TOKEN}`;
+      return json(res, 200, { url: link, qr: qrText(link) });
+    }
 
     if (url.pathname === "/api/key" && req.method === "POST") {
       const k = await body(req);

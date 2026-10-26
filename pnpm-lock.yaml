@@ -101,6 +101,9 @@ importers:
       firebase-admin:
         specifier: ^14.5.0
         version: 14.5.0(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)
+      qrcode-terminal:
+        specifier: 0.12.0
+        version: 0.12.0
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -3271,6 +3274,10 @@ packages:
   puppeteer@24.38.0:
     resolution: {integrity: sha512-abnJOBVoL9PQTLKSbYGm9mjNFyIPaTVj77J/6cS370dIQtcZMpx8wyZoAuBzR71Aoon6yvI71NEVFUsl3JU82g==}
     engines: {node: '>=18'}
+    hasBin: true
+
+  qrcode-terminal@0.12.0:
+    resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
     hasBin: true
 
   qrcode.react@4.2.0:
@@ -7462,6 +7469,8 @@ snapshots:
       - supports-color
       - typescript
       - utf-8-validate
+
+  qrcode-terminal@0.12.0: {}
 
   qrcode.react@4.2.0(react@19.3.1):
     dependencies:

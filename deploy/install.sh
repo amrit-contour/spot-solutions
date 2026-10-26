@@ -170,6 +170,9 @@ cat > /usr/local/bin/spot-console-url <<EOF
 # Prints the console link (with its access token) for every network address of this machine.
 TOKEN=\$(cat ${DATA_DIR}/console-token 2>/dev/null) || { echo "Run with sudo"; exit 1; }
 for ip in \$(hostname -I) localhost; do echo "http://\${ip}:${PORT}/?token=\${TOKEN}"; done
+IP=\$(hostname -I | awk '{print \$1}')
+QR="${APP_DIR}/apps/worker/console/qr.mjs"
+if [[ -n "\$IP" && -f "\$QR" ]] && command -v node >/dev/null; then echo; echo "Scan to open it on your phone (same Wi-Fi):"; node "\$QR" "http://\${IP}:${PORT}/?token=\${TOKEN}"; fi
 EOF
 chmod 755 /usr/local/bin/spot-console-url
 

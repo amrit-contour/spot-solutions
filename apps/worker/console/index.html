@@ -23,6 +23,14 @@
     --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950;
     color-scheme: dark;
   } }
+  :root[data-theme="dark"] {
+    --primary: #f2bc6e; --on-primary: #432c00; --primary-c: #5f4100; --on-primary-c: #ffddb0;
+    --tertiary-c: #3a4b33; --on-tertiary-c: #d7e8cd;
+    --error: #ffb4ab; --error-c: #93000a; --on-error-c: #ffdad6;
+    --surface: #18120c; --s-low: #211a14; --s-cont: #251e18; --s-high: #302822; --s-highest: #3b332c;
+    --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950;
+    color-scheme: dark;
+  }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--surface); color: var(--on-surface); font: 400 15px/1.45 "Roboto Flex", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
@@ -74,6 +82,10 @@
   .locked { text-align: center; padding: 80px 16px; }
   a { color: var(--primary); }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  pre.qr { margin: 0; padding: 14px; background: #000; color: #fff; font: 10px/1 ui-monospace, Menlo, Consolas, monospace; border-radius: 12px; letter-spacing: 0; }
+  .theme { display: inline-flex; background: var(--s-high); border-radius: 999px; padding: 3px; gap: 2px; }
+  .theme button { background: none; color: var(--on-surface-v); border: 0; border-radius: 999px; padding: 6px 12px; font: 500 13px/1 inherit; cursor: pointer; min-height: 0; }
+  .theme button[aria-pressed="true"] { background: var(--primary-c); color: var(--on-primary-c); }
 </style>
 </head>
 <body>
@@ -97,7 +109,13 @@ const meter = (label, used, total, detail) => {
 };
 const logo = `<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="14" fill="var(--primary)"/><path d="M19 0h10l9 42H10z" fill="var(--on-primary)" opacity=".13"/><ellipse cx="24" cy="40.5" rx="12" ry="2.6" fill="var(--on-primary)" opacity=".25"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="var(--on-primary)"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="var(--primary)"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="var(--primary)"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="var(--on-primary)" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="var(--on-primary)"/></svg>`;
 
-let state = null, editing = false;
+let state = null, editing = false, phone = null;
+// Theme: system (default), light or dark, remembered on this machine.
+let theme = "system";
+try { theme = localStorage.getItem("spot-console-theme") || "system"; } catch {}
+const applyTheme = () => (theme === "system" ? document.documentElement.removeAttribute("data-theme") : document.documentElement.setAttribute("data-theme", theme));
+applyTheme();
+fetch("/api/phone").then((r) => (r.ok ? r.json() : null)).then((p) => { phone = p; if (state) render(); }).catch(() => {});
 
 function render() {
   const s = state, c = s.config, k = c.key;
@@ -111,6 +129,7 @@ function render() {
   <header>${logo}
     <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
     <span class="chip ${allUp ? "ok" : "bad"}">${allUp ? "All services running" : "Needs attention"}</span>
+    <div class="theme" role="group" aria-label="Theme">${["system", "light", "dark"].map((t) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
   </header>
 
   <div class="grid g2">
@@ -142,11 +161,21 @@ function render() {
     </form>
   </section>
 
+  ${phone && phone.qr ? `<section class="card" style="margin-top:16px;display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+    <pre class="qr" aria-label="QR code for this console">${esc(phone.qr)}</pre>
+    <div class="grow" style="min-width:220px"><h2 style="margin:0 0 6px">Open this console on your phone</h2><div class="muted small">Scan with your phone's camera while it's on the same Wi-Fi. The link includes this server's access code, so only share it with people who should manage the server.</div><div class="mono small" style="margin-top:8px;word-break:break-all">${esc(phone.url)}</div></div>
+  </section>` : ""}
+
   <section class="card tight" style="margin-top:16px">
     <div class="row" style="padding-bottom:8px"><h2 class="grow" style="margin:0">Worker logs</h2><span class="muted small">refreshes every 5 s</span></div>
     <pre class="logs" id="logs">${esc(s.logs)}</pre>
   </section>`;
 
+  document.querySelectorAll("[data-theme-set]").forEach((b) => b.onclick = () => {
+    theme = b.dataset.themeSet; applyTheme();
+    try { localStorage.setItem("spot-console-theme", theme); } catch {}
+    render();
+  });
   const logs = $("#logs"); logs.scrollTop = logs.scrollHeight;
   document.querySelectorAll("[data-restart]").forEach((b) => b.onclick = async () => {
     b.disabled = true; b.textContent = "Restarting…";
