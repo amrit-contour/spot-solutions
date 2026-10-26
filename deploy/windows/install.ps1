@@ -90,9 +90,12 @@ if ((Node-Major) -lt 22) {
   $unpack = "$env:TEMP\spot-node"
   Remove-Item -Recurse -Force $unpack, $NodeDir -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $unpack | Out-Null
-  tar.exe -xf $zip -C $unpack
-  if ($LASTEXITCODE -ne 0) { throw "Unpacking Node.js failed." }
-  Move-Item "$unpack\node-$v-win-$arch" $NodeDir
+  # .NET's zip reader: present on every Windows, unlike tar.exe (Git's tar can shadow it and can't read zips).
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $unpack)
+  $exe = Get-ChildItem $unpack -Recurse -Filter node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $exe) { throw "Unpacking Node.js failed: node.exe isn't in the download. Run this again." }
+  Move-Item $exe.Directory.FullName $NodeDir
 }
 $major = Node-Major
 if ($major -lt 22) { throw "Couldn't set up Node.js in $NodeDir. Check the internet connection and run this again." }
@@ -131,7 +134,8 @@ $env:PUPPETEER_CACHE_DIR = $ChromeDir
 New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
 $tgz = "$env:TEMP\spot-solutions.tar.gz"
 Invoke-WebRequest $SrcUrl -OutFile $tgz
-tar.exe -xzf $tgz -C $AppDir
+# Windows' own tar by full path: Git for Windows' tar can come first on PATH and reads "C:\..." as a remote host.
+& "$env:SystemRoot\System32\tar.exe" -xzf $tgz -C $AppDir
 if ($LASTEXITCODE -ne 0) { throw "Unpacking the code failed." }
 Push-Location $AppDir
 # Run the exact pnpm the repo pins, through npx (no corepack needed).
