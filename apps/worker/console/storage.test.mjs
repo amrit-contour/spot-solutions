@@ -2,8 +2,8 @@ import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, exis
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { MARKER, copyTree, fmtGb, inspectTarget, isInside, judgeFs, makeFolder, measure, pathKey, removeTree, replacePaths, rewriteEnvPaths, summariseData, toFsPath, validatePath, verifyTree } from "./storage.mjs";
-import { planMove, readyCounts, runCleanup, runMove, waitHealthy } from "./move.mjs";
+import { MARKER, copyTree, fingerprint, isCacheOnly, waitQuiet, fmtGb, inspectTarget, isInside, judgeFs, makeFolder, measure, pathKey, removeTree, replacePaths, rewriteEnvPaths, summariseData, toFsPath, validatePath, verifyTree } from "./storage.mjs";
+import { browserPidsOn, planMove, readyCounts, runCleanup, runMove, waitHealthy } from "./move.mjs";
 
 const tmp = () => realpathSync.native(mkdtempSync(path.join(os.tmpdir(), "spot-store-")));
 const write = (file, text = "x") => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); };
@@ -234,8 +234,88 @@ describe("making a folder that doesn't exist yet", () => {
   });
 });
 
+
+describe("browser caches", () => {
+  const withCaches = (root) => {
+    makeData(root);
+    const s = path.join(root, "wwebjs", "session-u1");
+    write(path.join(s, "Default", "Cache", "Cache_Data", "f_000001"), "c".repeat(900));
+    write(path.join(s, "Default", "Code Cache", "js", "idx"), "j".repeat(100));
+    write(path.join(s, "Default", "GPUCache", "data_0"), "g");
+    write(path.join(s, "Default", "Service Worker", "CacheStorage", "x", "y"), "s".repeat(50));
+    write(path.join(s, "Default", "Service Worker", "Database", "000003.log"), "keep");
+    write(path.join(s, "ShaderCache", "a"), "a");
+    write(path.join(s, "Crashpad", "reports", "r"), "r");
+    write(path.join(s, "Default", "Local Storage", "leveldb", "000005.ldb"), "login".repeat(30));
+    write(path.join(s, "Default", "IndexedDB", "https_web.whatsapp.com_0.indexeddb.leveldb", "000003.log"), "idb");
+  };
+  it("knows which paths are only cache", () => {
+    for (const p of ["wwebjs/session-u1/Default/Cache", "wwebjs/session-u1/Default/Code Cache/js/x", "wwebjs/session-u1/GrShaderCache/a", "wwebjs/session-u1/Crashpad/r", "wwebjs/session-u1/Default/Service Worker/CacheStorage/z", "wwebjs/session-u1/Default/Service Worker/ScriptCache"]) expect(isCacheOnly(p), p).toBe(true);
+    for (const p of ["wwebjs/session-u1/Default/Local Storage/leveldb/1.ldb", "wwebjs/session-u1/Default/IndexedDB/a", "wwebjs/session-u1/Default/Cookies", "wwebjs/session-u1/Default/Preferences", "wwebjs/session-u1/Default/Service Worker/Database/1", "wwebjs/server.json", "Cache", "ollama-models/Cache/x", "wwebjs/Cache"]) expect(isCacheOnly(p), p).toBe(false);
+  });
+  it("doesn't copy or measure them, and keeps everything that holds the login", async () => {
+    const a = tmp(), b = path.join(tmp(), "new");
+    withCaches(a);
+    await copyTree(a, b);
+    const s = path.join(b, "wwebjs", "session-u1");
+    for (const gone of [["Default", "Cache"], ["Default", "Code Cache"], ["Default", "GPUCache"], ["Default", "Service Worker", "CacheStorage"], ["ShaderCache"], ["Crashpad"]]) expect(existsSync(path.join(s, ...gone)), gone.join("/")).toBe(false);
+    for (const kept of [["Default", "Cookies"], ["Default", "Local Storage", "leveldb", "000005.ldb"], ["Default", "IndexedDB", "https_web.whatsapp.com_0.indexeddb.leveldb", "000003.log"], ["Default", "Service Worker", "Database", "000003.log"]]) expect(existsSync(path.join(s, ...kept)), kept.join("/")).toBe(true);
+    expect((await measure(b)).bytes).toBe((await measure(a)).bytes);
+    expect((await measure(a, { dropCaches: false })).bytes).toBeGreaterThan((await measure(a)).bytes);
+  });
+  it("a cache that grows or differs never fails a move, but a login file still does", async () => {
+    const a = tmp(), b = path.join(tmp(), "new");
+    withCaches(a);
+    await copyTree(a, b);
+    const s = path.join(a, "wwebjs", "session-u1");
+    writeFileSync(path.join(s, "Default", "Cache", "Cache_Data", "f_000001"), "grew while copying".repeat(100));
+    write(path.join(s, "Default", "Cache", "Cache_Data", "f_000002"), "new");
+    write(path.join(b, "wwebjs", "session-u1", "Default", "GPUCache", "other"), "z");
+    expect((await verifyTree(a, b)).ok).toBe(true);
+    writeFileSync(path.join(a, "wwebjs", "session-u1", "Default", "Local Storage", "leveldb", "000005.ldb"), "login".repeat(31));
+    const v = await verifyTree(a, b);
+    expect(v.ok).toBe(false);
+    expect(v.problems.join()).toMatch(/size differs: wwebjs\/session-u1\/Default\/Local Storage/);
+  });
+});
+
+describe("waiting for the data folder to go quiet", () => {
+  it("sees a file that is still being written, and ignores caches and volatile files", async () => {
+    const a = tmp(); makeData(a);
+    const before = await fingerprint(a);
+    write(path.join(a, "wwebjs", "session-u1", "Default", "Cache", "f"), "x");
+    write(path.join(a, "console.log"), "more");
+    expect(await fingerprint(a)).toEqual(before);
+    write(path.join(a, "wwebjs", "session-u1", "Default", "Cookies"), "c".repeat(5100));
+    expect(await fingerprint(a)).not.toEqual(before);
+  });
+  it("is quiet when nothing changes, and gives up while something keeps writing", async () => {
+    const a = tmp(); makeData(a);
+    expect((await waitQuiet(a, { gapMs: 1, wait: async () => {} })).ok).toBe(true);
+    let n = 0, t = 0;
+    const wait = async () => { write(path.join(a, "wwebjs", "session-u1", "Default", "Cookies"), "c".repeat(6000 + ++n)); t += 10_000; };
+    expect((await waitQuiet(a, { gapMs: 1, timeoutMs: 25_000, wait, now: () => t })).ok).toBe(false);
+  });
+});
+
+describe("finding the browsers to stop (macOS and Linux)", () => {
+  const ps = [
+    "  100     1 /usr/bin/node worker",
+    "  200   100 /opt/chrome/chrome --user-data-dir=/data/wwebjs/session-u1 --no-sandbox",
+    "  201   200 /opt/chrome/chrome --type=renderer --no-sandbox",
+    "  202   201 /opt/chrome/chrome --type=utility",
+    "  300     1 /opt/chrome/chrome --user-data-dir=/other/place",
+    "  400     1 /usr/bin/vim /data/notes.txt",
+  ].join("\n");
+  it("takes the browser for this folder and its helpers, nothing else", () => {
+    expect(browserPidsOn(ps, "/data").sort()).toEqual([200, 201, 202]);
+    expect(browserPidsOn(ps, "/nowhere")).toEqual([]);
+  });
+});
+
 // ---------- the orchestrator, with fake services ----------
-function rig({ failAt = null, healthy = true, models = false } = {}) {
+function rig({ failAt = null, healthy = true, models = false, quietOk = true, drift = false } = {}) {
+  let fp = 0;
   const root = tmp();
   const stateDir = path.join(root, "state"), old = path.join(root, "old-data"), target = path.join(root, "drive", "new-data");
   mkdirSync(stateDir, { recursive: true }); mkdirSync(path.join(root, "drive"), { recursive: true });
@@ -255,6 +335,8 @@ function rig({ failAt = null, healthy = true, models = false } = {}) {
     measure: async (d) => measure(d),
     inspect: async (t, o) => { trip("inspect"); return inspectTarget(t, { platform: "linux", current: old, forbidden: [], ...o }); },
     copy: async (a, b, o) => { trip("copy"); return copyTree(a, b, o); },
+    quiet: async () => (quietOk ? { ok: true } : { ok: false }),
+    fingerprint: async (d) => (drift ? { files: ++fp, bytes: 0, newest: 0 } : fingerprint(d)),
     verify: async (a, b, o) => { const v = await verifyTree(a, b, o); if (failAt === "verify") return { ok: false, problems: ["size differs: x"] }; return v; },
     syncSmall: async () => {},
     health: async () => (healthy ? { ok: true } : { ok: false, error: "Checked for 6 minutes: WhatsApp asked for a QR scan." }),
@@ -287,6 +369,24 @@ describe("moving the data", () => {
     const st = JSON.parse(readFileSync(r.ctx.stateFile, "utf8"));
     expect(st).toMatchObject({ phase: "awaiting-cleanup", verified: true, old: r.old, target: r.target });
     expect(r.steps).toContain("Waiting for WhatsApp to come back");
+  });
+
+  it("won't copy while something is still writing, and says so plainly", async () => {
+    const r = rig({ quietOk: false });
+    const res = await runMove({ ...r, request: { target: r.target } });
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/WhatsApp is still closing; try again in a minute/);
+    expect(res.error).toMatch(/back on the old folder/);
+    expect(r.calls.map((c) => c[0])).toEqual(["stop", "start"]);
+    expect(existsSync(r.target) ? readdirSync(r.target) : []).toEqual([]);
+  });
+  it("calls it still closing when the original changed during the copy", async () => {
+    const r = rig({ drift: true });
+    const res = await runMove({ ...r, request: { target: r.target } });
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/still closing/);
+    expect(JSON.parse(readFileSync(r.ctx.stateFile, "utf8")).phase).toBe("failed");
+    expect(existsSync(path.join(r.old, "wwebjs", "session-u1"))).toBe(true);
   });
 
   for (const failAt of ["inspect", "stop", "prepare", "copy", "verify", "persist", "start"]) {

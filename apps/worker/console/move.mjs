@@ -253,6 +253,24 @@ function writeEnvPaths(ctx, from, to, modelsFrom, modelsTo) {
   if (next !== text) writeFileSync(ctx.envFile, next); // writeFileSync keeps the file's owner and mode
 }
 
+/**
+ * From `ps -axo pid=,ppid=,command=` output: the browsers that use `dir` as their profile folder, plus everything below them
+ * (renderers and helpers don't carry the folder in their command line, so they are found through their parent).
+ */
+export function browserPidsOn(psOut, dir, selfPid = process.pid) {
+  const rows = [];
+  for (const line of psOut.split("\n")) {
+    const mm = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+    if (mm) rows.push({ pid: Number(mm[1]), ppid: Number(mm[2]), cmd: mm[3] });
+  }
+  const hit = new Set(rows.filter((r) => /chrom/i.test(r.cmd) && r.cmd.includes(`--user-data-dir=${dir}`) && r.pid !== selfPid).map((r) => r.pid));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const r of rows) if (!hit.has(r.pid) && r.pid !== selfPid && hit.has(r.ppid)) { hit.add(r.pid); grew = true; }
+  }
+  return [...hit];
+}
+
 export function makeOps(ctx, { dry = false, log = console.log } = {}) {
   const win = ctx.platform === "win32", mac = ctx.platform === "darwin";
   const m = modFor(ctx.platform);
@@ -264,29 +282,47 @@ export function makeOps(ctx, { dry = false, log = console.log } = {}) {
   const ids = {};
   const idOf = async (user) => { if (!ids[user]) { const [u, g] = await Promise.all([sh("id", ["-u", user]), sh("id", ["-g", user])]); ids[user] = { uid: Number(u), gid: Number(g) }; } return ids[user]; };
 
-  // Other programs' processes that hold files in `dir`: browsers WhatsApp left behind.
-  async function killBrowsersOn(dir) {
+  // Other programs' processes that hold files in `dir`: browsers WhatsApp left behind (with their helpers). Kills them, then
+  // waits until they are really gone, and says so if they are not.
+  async function killBrowsersOn(dir, { tries = 30, wait = sleep } = {}) {
     if (dry) return D(`kill browsers using ${dir}`);
-    const out = await sh("ps", ["-axo", "pid=,command="]);
-    for (const line of out.split("\n")) {
-      const mm = /^\s*(\d+)\s+(.*)$/.exec(line);
-      if (!mm || !/chrom/i.test(mm[2]) || !mm[2].includes(`--user-data-dir=${dir}`)) continue;
-      try { process.kill(Number(mm[1]), "SIGKILL"); } catch { /* gone */ }
+    for (let i = 0; i < tries; i++) {
+      const pids = browserPidsOn(await sh("ps", ["-axo", "pid=,ppid=,command="]), dir);
+      if (!pids.length) return;
+      for (const pid of pids) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }
+      await wait(1000);
     }
+    throw new Error(STILL_CLOSING);
   }
 
   return {
     async stop({ from, models }) {
       if (win) {
-        await ps(`
+        const out = await ps(`
 $ErrorActionPreference = 'SilentlyContinue'
+$old = $env:SPOT_OLD.TrimEnd('\\')
+$chrome = $env:SPOT_CHROME
+$ci = [StringComparison]::OrdinalIgnoreCase
+function Kill-Tree($id) { & taskkill.exe /PID $id /T /F *> $null; Stop-Process -Id $id -Force }
+# Wildcard-free matching (a folder name with [ ] must not break it). Chrome, Edge or Chromium running from our profile folders,
+# including the crash handler; their helpers die with them (taskkill /T).
+function Get-Browsers { Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.Name -match '^(chrome|chromium|msedge|chrome_crashpad_handler|crashpad_handler)\\.exe$' -and (($chrome -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($chrome + '\\', $ci)) -or ($_.CommandLine -and $_.CommandLine.IndexOf($old, $ci) -ge 0)) } }
+function Get-Workers { Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*SpotSolutions*' -and $_.CommandLine -notlike '*console*server.mjs*' -and $_.CommandLine -notlike '*move.mjs*' } }
 Stop-ScheduledTask -TaskName SpotSolutionsWorker
-Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*SpotSolutions*' -and $_.CommandLine -notlike '*console*server.mjs*' -and $_.CommandLine -notlike '*move.mjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { ($_.ExecutablePath -and $_.ExecutablePath -like ($env:SPOT_CHROME + '\\*')) -or ($_.CommandLine -and $_.CommandLine -like ('*' + $env:SPOT_OLD + '*')) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+# The launcher loop starts the worker again ~10 s after it dies, and that new browser would write into the folder being copied: it goes first.
+Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf('run-worker.ps1', $ci) -ge 0 } | ForEach-Object { Kill-Tree $_.ProcessId }
+Get-Workers | ForEach-Object { Kill-Tree $_.ProcessId }
 if ($env:SPOT_STOP_MODELS -eq '1') { Get-Process -Name 'ollama','ollama app' | Stop-Process -Force }
-Start-Sleep 3
-for ($i = 0; $i -lt 15; $i++) { if (-not (Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine -like ('*' + $env:SPOT_OLD + '*') })) { break }; Start-Sleep 1 }`,
+# Wait (up to ~40 s) until no browser or worker is left, killing whatever shows up again.
+for ($i = 0; $i -lt 40; $i++) {
+  $left = @(Get-Browsers) + @(Get-Workers)
+  if (-not $left.Count) { break }
+  $left | ForEach-Object { Kill-Tree $_.ProcessId }
+  Start-Sleep 1
+}
+if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNING' } else { Write-Output 'STOPPED' }`,
           { SPOT_CHROME: ctx.chrome, SPOT_OLD: from, SPOT_STOP_MODELS: models ? "1" : "0" });
+        if (!dry && !/STOPPED/.test(String(out)) ) throw new Error(STILL_CLOSING);
       } else if (mac) {
         if (!dry) {
           await sh("launchctl", ["bootout", `${gui}/com.spotsolutions.worker`]);
