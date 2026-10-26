@@ -64,7 +64,25 @@ a pasted curator list per venue, and screenshots of the Bangalore Comics WhatsAp
 - **Spot alert**: from whom, room, time, reach-by, who to DM (sender or tagged), expires.
 - **Published roster**: title, city, owner, version, last updated, rooms (shared fields only), followers, suggestions to approve.
 
-## Open (Round 2)
+## Decided (Round 2, 27 Oct)
 
-Who can publish and contribute, co-maintainers, whether group-driven changes also suggest to the published roster, curator
-numbers in public, spot-alert urgency and filters, domains, logo files, and build order (split first or rooms page first).
+- **Map pin**: search a place (free OpenStreetMap search) or paste a Google Maps link; the pin is read from it.
+- **Tags**: a set of suggested tags (English only, new comics, experienced only, bringer, paid entry, walk-in, check BMS) to tap,
+  plus custom tags.
+- **Sharing beyond publishing**: share a roster with one user (in-app), and export / import as a file (Excel/CSV/JSON).
+- **Everything stays inside the app**: published rosters, curator numbers and suggestions are only visible to signed-in,
+  allowed users. Nothing public on the web.
+- **Publishers are restricted**: an admin-edited list of publishers; the admin is a publisher by default. A publisher pushes
+  their current roster to their published one; followers get "update available" and pick what to take (merge with review).
+- **Suggestions**: anyone signed in can suggest a change; owners can add co-maintainers who approve suggestions.
+- **Group-driven changes** update only the comic's own roster. Publishing stays a deliberate push by the publisher.
+- **Spot alerts**: push as fast as possible with **Ask for it**. The only filter: skip (or flag) a spot that clashes in time with
+  a spot already booked. No cooldown or limit checks: a spot offered in a group is ad hoc and the comic decides.
+- **The co-comic's sheet** ("Spots - Arjun") was made by another comic for themselves: a weekly calendar of their spots, a
+  spots counter and an asks log. That is what My spots should replace.
+- **Domains**: nothingbotcurating.web.app, nothingbotcomedy.web.app, and hyphenated nothing-bot-curating.web.app,
+  nothing-bot-comedy.web.app. spot-solutions.web.app stays (installed servers update from it).
+- **Logo**: minimal first; built from the NBC mark (outlined "n", solid "bc", lime dot) and the current logo; may use the
+  NBC wording. Files: Amrit's zip (four PNGs: nbc and "Nothing but comedy." on black and on white).
+- **Order** (my call): split first (shared UI package + comic app shell + the new sites), then the rooms page in the comic
+  app. Building rooms inside the curator app and moving it later would be double work.
