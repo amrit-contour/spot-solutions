@@ -177,9 +177,9 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
       ref={ref}
       data-stuck={stuck || undefined}
       className={cx(
-        // Opaque when pinned, so nothing (outlines, rings) shows through it. One easing for every part.
-        "sticky top-[env(safe-area-inset-top)] z-30 border-b border-transparent bg-surface px-4 transition-[padding,border-color] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none sm:px-8",
-        stuck ? "border-outline-variant pt-2 pb-2 sm:pt-3 sm:pb-3" : "pt-3 pb-4 sm:pt-10",
+        // Frosted when pinned (90% + blur). One easing for every part.
+        "sticky top-[env(safe-area-inset-top)] z-30 border-b border-transparent px-4 transition-[padding,border-color,background-color] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none sm:px-8",
+        stuck ? "border-outline-variant bg-surface/90 pt-2 pb-2 backdrop-blur-md sm:pt-3 sm:pb-3" : "bg-surface pt-3 pb-4 sm:pt-10",
       )}
     >
       {/* Phones: status + account on top. Desktop keeps both in the nav rail. */}
