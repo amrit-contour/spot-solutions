@@ -1,9 +1,10 @@
 // You already answered someone by hand in WhatsApp: apply what you said (place them, or close their request).
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
-import type { ComicAction } from "@spot/shared";
+import type { ComicAction, SpotRequest } from "@spot/shared";
 import { useApp } from "../../lib/app";
-import { runCommand, timeAgo } from "../../lib/data";
+import { runCommand, timeAgo, useDocument, userDoc } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
 import { Avatar, Bubble, Button, Chip } from "../ui";
 import { IconCheck, IconGroup, IconSkip, IconUserCheck, IconUserMinus } from "../icons";
@@ -15,6 +16,13 @@ export function FollowUpCard({ a }: { a: ComicAction }) {
   const f = a.followUp!;
   const place = f.action === "place";
   const first = a.comicName.split(" ")[0];
+  // Already handled some other way (dragged onto a lineup, Assign, Check what I've done, or closed): clear the card.
+  const req = useDocument<SpotRequest>(["users", uid, "requests", f.requestId]);
+  const done = !req.loading && (!req.data || !["new", "acked"].includes(req.data.status));
+  useEffect(() => {
+    if (done) void updateDoc(userDoc(uid, "actions", a.id), { status: "sent", sentAt: Date.now() }).catch(() => undefined);
+  }, [done, uid, a.id]);
+  if (done) return null;
 
   const apply = async () => {
     setBusy(true);

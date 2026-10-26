@@ -226,6 +226,9 @@ export async function applyReconcile(uid: string, payload: Record<string, unknow
       });
     });
   }
+  // Settled here, so any "You already replied" card for the same person is done too.
+  const settled = [...out.placed.map((p) => p.requestId), ...out.closed];
+  await Promise.all(settled.map((id) => col(uid, "actions").doc(`fu_${id}`.replace(/[^\w-]/g, "_")).update({ status: "sent", sentAt: Date.now() }).catch(() => undefined)));
   console.log(`[reconcile] ${uid} ${week}: applied ${out.placed.length} placed, ${out.closed.length} closed, ${out.skipped.length} skipped`);
   return out;
 }
