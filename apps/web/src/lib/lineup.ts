@@ -1,5 +1,5 @@
 import { arrayRemove, arrayUnion, getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
-import { dateInWeek, lineupId, sentSnapshot, shiftWeek, withHistory, type Comic, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
+import { dateInWeek, lineupId, planReconcilePlace, sentSnapshot, shiftWeek, withHistory, type Comic, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
 import { db } from "./firebase";
 import { userDoc } from "./data";
 
@@ -138,4 +138,34 @@ export async function seedDefaults(uid: string, week: string, show: Show, people
   if (!created) return 0;
   await Promise.all(picked.map((p) => ensureComic(uid, week, p.id, { name: p.name })));
   return picked.length;
+}
+
+/**
+ * Put someone on a lineup as already told: you gave them the spot yourself (and added them to the group),
+ * so Confirm & send and Send updates won't message them. Records the spot in their history like a confirmation.
+ */
+export async function placeAsTold(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], name: string) {
+  // Off any other show this week first, the same way placeComic does.
+  for (const l of lineups) {
+    if (l.showId !== show.id && l.slots.some((s) => s.comicId === comicId) && l.status !== "cancelled" && l.status !== "canned") {
+      await updateDoc(lineupRef(uid, week, l.showId), { slots: l.slots.filter((s) => s.comicId !== comicId) });
+    }
+  }
+  await ensureComic(uid, week, comicId, { name });
+  const ref = lineupRef(uid, week, show.id);
+  const outcome = await runTransaction(db, async (tx) => {
+    const cur = (await tx.get(ref)).data() as Lineup | undefined;
+    const plan = planReconcilePlace({ lineup: cur ?? null, show, comicId, markTold: true, now: Date.now() });
+    if (plan.outcome === "full" || plan.outcome === "called_off") return plan.outcome;
+    tx.set(ref, { ...(cur ?? blank(week, show)), slots: plan.slots, ...(plan.sent ? { sent: plan.sent } : {}) });
+    const comicRef = userDoc(uid, "comics", comicId);
+    const comic = (await tx.get(comicRef)).data() as Comic | undefined;
+    tx.set(comicRef, { lastPerformedWeek: week, history: withHistory(comic?.history, { date: dateInWeek(week, show.weekday), showId: show.id, showName: show.name, status: "confirmed" }) }, { merge: true });
+    return plan.outcome;
+  });
+  if (outcome === "full") throw new Error(`${show.name} is full`);
+  if (outcome === "called_off") throw new Error(`${show.name} is called off this week`);
+  // Their request (if any) is settled: you already told them.
+  const req = await getDoc(requestRef(uid, week, comicId));
+  if (req.exists() && ["new", "acked", "assigned"].includes((req.data() as SpotRequest).status)) await updateDoc(req.ref, { status: "confirmed", updatedAt: Date.now() });
 }

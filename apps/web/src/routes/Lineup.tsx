@@ -49,7 +49,7 @@ import {
 import { useApp } from "../lib/app";
 import { runCommand, useCollection, useDocument } from "../lib/data";
 import { OfferSheet } from "../components/OfferSheet";
-import { markCanned, markRequest, placeComic, repeatLastWeek, seedDefaults, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
+import { markCanned, markRequest, placeAsTold, placeComic, repeatLastWeek, seedDefaults, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
@@ -126,6 +126,10 @@ export function LineupBoard() {
     await placeComic(uid, week, show, cid, lineups.data, shows, seed);
     toast.success(`${(comicsById.get(cid)?.name ?? requestByComic.get(cid)?.comicName ?? seed?.name ?? "Comic").split(" ")[0]} → ${show.name}`);
   };
+  const addTold = (cid: string, show: Show, name: string) =>
+    void placeAsTold(uid, week, show, cid, lineups.data, name)
+      .then(() => toast.success(`${name.split(" ")[0]} → ${show.name}`, { description: "Marked as already told, so they won't get a confirmation." }))
+      .catch((e: Error) => toast.error(e.message));
   /** A group member's name from any show's cached member list. */
   const memberName = (showId: string, id: string) => shows.find((s) => s.id === showId)?.groupMembers?.members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
   const removeFrom = (cid: string, show: Show) => unplaceComic(uid, week, show, cid, lineupByShow.get(show.id));
@@ -169,7 +173,8 @@ export function LineupBoard() {
       const show = target && target !== BENCH ? activeShows.find((s) => s.id === target) : undefined;
       if (show && !closed(show.id) && !(cols[show.id] ?? []).includes(memberId)) {
         if ((cols[show.id] ?? []).length >= show.slotCount) return void toast.error(`${show.name} is full`);
-        void addTo(memberId, show, { name: memberName(showId, memberId) }).catch((e: Error) => toast.error(e.message));
+        // From the group: you already gave them this spot, so they count as told (no confirmation goes out).
+        addTold(memberId, show, memberName(showId, memberId));
       }
       return;
     }
@@ -291,7 +296,7 @@ export function LineupBoard() {
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} onAdd={(cid, seed) => addTo(cid, show, seed)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} onAdd={(cid, seed) => addTo(cid, show, seed)} onAddTold={(cid, name) => addTold(cid, show, name)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
@@ -396,7 +401,7 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
   );
 }
 
-function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, onAdd, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string, seed?: { name: string }) => Promise<void>; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, onAdd, onAddTold, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string, seed?: { name: string }) => Promise<void>; onAddTold: (cid: string, name: string) => void; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
   const { uid, week, currentWeek, venues, settings, session } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
@@ -437,7 +442,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
   const baseline = confirmed && lineup ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
   const changes = baseline && lineup ? diffLineup(lineup.slots, baseline, show) : null;
   const noteFor = (cid: string) => {
-    if (!changes) return undefined;
+    if (!changes) return lineup?.sent?.[cid] ? "Already told" : undefined;
     if (changes.added.includes(cid)) return "New · not told yet";
     const m = changes.moved.find((x) => x.comicId === cid);
     const t = changes.minutes.find((x) => x.comicId === cid);
@@ -609,7 +614,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
       ) : null}
 
       <div className="flex-1" />
-      {!cancelled && <GroupPanel show={show} lineup={lineup} ids={ids} dragging={dragKind} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? (cid, name) => void onAdd(cid, { name }).catch((e: Error) => toast.error(e.message)) : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />}
+      {!cancelled && <GroupPanel show={show} lineup={lineup} ids={ids} dragging={dragKind} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? onAddTold : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />}
 
       <footer className="mt-3 flex flex-wrap items-center gap-2">
         {canned ? null : cancelled ? (

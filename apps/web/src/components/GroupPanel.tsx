@@ -176,7 +176,7 @@ export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveH
                                       onAddToLineup && !r.id.endsWith("@lid") && (
                                         <MenuItem onClick={() => (close(), onAddToLineup(r.id, nameOf(r.id)))}>
                                           Put on this lineup
-                                          <span className="block type-body-s text-on-surface-variant">Or drag them onto a show</span>
+                                          <span className="block type-body-s text-on-surface-variant">As already told: you gave them the spot</span>
                                         </MenuItem>
                                       )
                                     )}

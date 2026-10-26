@@ -33,7 +33,7 @@ import { UpdatesPanel } from "../components/UpdatesPanel";
 import { Count } from "../components/updates/shared";
 import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
-import { IconArrowDown, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
+import { IconArrowDown, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
 type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
 const LANES: { id: Lane; label: string }[] = [
@@ -60,6 +60,7 @@ export function Requests() {
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const [lane, setLane] = useState<Lane>("asked");
+  const [q, setQ] = useState("");
   const [clearOpen, setClearOpen] = useState(false);
   const [rereading, setRereading] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -72,7 +73,12 @@ export function Requests() {
 
   const grouped = useMemo(() => {
     const g: Record<Lane, SpotRequest[]> = { asked: [], maybe: [], held: [], placed: [], closed: [] };
-    for (const r of requests.data) g[laneOf(r)].push(r);
+    const needle = q.trim().toLowerCase();
+    // Search name, number, what they wrote and the note, across every lane (the counts follow).
+    const hit = (r: SpotRequest) =>
+      !needle ||
+      [r.comicName, comicsById.get(r.comicId)?.name ?? "", r.comicId.split("@")[0], r.intent.note ?? "", ...r.messages.map((m) => m.body)].some((t) => t.toLowerCase().includes(needle));
+    for (const r of requests.data) if (hit(r)) g[laneOf(r)].push(r);
     // Fairness first: people who didn't perform last week float up, then first-come.
     for (const k of Object.keys(g) as Lane[])
       g[k].sort((a, b) => {
@@ -81,7 +87,7 @@ export function Requests() {
         return pa - pb || a.createdAt - b.createdAt;
       });
     return g;
-  }, [requests.data, comicsById, lastWeek]);
+  }, [requests.data, comicsById, lastWeek, q]);
 
   const activeShows = shows.filter((s) => s.active);
   const linked = session?.status === "ready";
@@ -146,25 +152,43 @@ export function Requests() {
             ]}
           />
         </div>
-        <div className={cx("-mx-4 mt-5 flex overflow-x-auto border-b border-outline-variant px-4 [scrollbar-width:none] sm:mx-0 sm:mt-6 sm:gap-1 sm:px-0", view === "updates" && "hidden lg:flex")} role="tablist">
-          {LANES.map((l) => (
-            <button key={l.id} role="tab" aria-selected={lane === l.id} onClick={() => setLane(l.id)} className="state-layer relative flex flex-1 items-center justify-center gap-1.5 rounded-t-sm px-2.5 pt-2 pb-3 type-title-s whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4">
-              <span className={lane === l.id ? "text-primary" : "text-on-surface-variant"}>{l.label}</span>
-              <span className={cx("rounded-full px-1.5 type-label-s tabular", lane === l.id ? "bg-primary text-on-primary" : "bg-surface-high text-on-surface-variant")}>{grouped[l.id].length}</span>
-              {lane === l.id && <motion.span layoutId="lane-ink" className="absolute inset-x-3 bottom-0 h-[3px] rounded-t-full bg-primary" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
-            </button>
-          ))}
-        </div>
       </PageHeader>
 
       <ClearOldRequests open={clearOpen} onClose={() => setClearOpen(false)} />
       <ScanHistorySheet open={scanOpen} onClose={() => setScanOpen(false)} />
       <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className={cx("min-w-0", view === "updates" && "hidden lg:block")}>
+          <div className="sticky top-0 z-20 -mx-4 mb-4 border-b border-outline-variant bg-surface/95 px-4 pt-2 backdrop-blur sm:mx-0 sm:px-0">
+            <div className="flex flex-col gap-2 2xl:flex-row-reverse 2xl:items-center">
+              <label className="relative block 2xl:w-64 2xl:flex-none">
+                <IconSearch className="icon pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-on-surface-variant" />
+                <input
+                  type="search"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  onKeyDown={(e) => e.key === "Escape" && setQ("")}
+                  placeholder="Search name, number or message"
+                  aria-label="Search requests"
+                  className="h-10 w-full rounded-full border border-outline-variant bg-surface-low pr-3 pl-9 type-body-m outline-none placeholder:text-on-surface-variant/70 focus:border-primary"
+                />
+              </label>
+              <div className="min-w-0 flex-1">
+            <div className="flex overflow-x-auto [scrollbar-width:none] sm:gap-1" role="tablist">
+                  {LANES.map((l) => (
+                    <button key={l.id} role="tab" aria-selected={lane === l.id} onClick={() => setLane(l.id)} className="state-layer relative flex flex-1 items-center justify-center gap-1.5 rounded-t-sm px-2.5 pt-2 pb-3 type-title-s whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4">
+                      <span className={lane === l.id ? "text-primary" : "text-on-surface-variant"}>{l.label}</span>
+                      <span className={cx("rounded-full px-1.5 type-label-s tabular", lane === l.id ? "bg-primary text-on-primary" : "bg-surface-high text-on-surface-variant")}>{grouped[l.id].length}</span>
+                      {lane === l.id && <motion.span layoutId="lane-ink" className="absolute inset-x-3 bottom-0 h-[3px] rounded-t-full bg-primary" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
           {!linked && !requests.data.length ? (
             <ConnectCard compact />
           ) : grouped[lane].length === 0 ? (
-            <LaneEmpty lane={lane} />
+            q.trim() ? <p className="rounded-lg bg-surface-low px-5 py-8 text-center type-body-m text-on-surface-variant">No {LANES.find((l) => l.id === lane)?.label} requests match “{q.trim()}”. Other tabs show their matches in the counts.</p> : <LaneEmpty lane={lane} />
           ) : (
             <motion.ul className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-1" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
               <AnimatePresence initial={false}>
@@ -225,6 +249,15 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
     toast.success(`${r.comicName.split(" ")[0]} → ${show.name}`);
   };
   const setStatus = (status: SpotRequest["status"]) => updateDoc(userDoc(uid, "requests", r.id), { status, updatedAt: Date.now() });
+  /** Closed by mistake: back to waiting (Held if a rule still holds it). A regret that went out isn't unsent. */
+  const reopen = async () => {
+    const before = r.status;
+    await updateDoc(userDoc(uid, "requests", r.id), { status: r.ackedAt ? "acked" : "new", rejectedAt: null, updatedAt: Date.now() });
+    toast.success(`${r.comicName.split(" ")[0]} is back in ${r.hold && !r.holdOverridden ? "Held" : r.intent.confidence >= INTENT_THRESHOLD ? "Asked" : "Maybe"}`, {
+      description: before === "rejected" ? "They already got your regret message, so tell them if things changed." : undefined,
+      action: { label: "Undo", onClick: () => void setStatus(before) },
+    });
+  };
 
   return (
     <motion.li
@@ -312,10 +345,15 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
             </Button>
           </>
         ) : r.status === "rejected" ? (
-          <Chip icon={IconChatCheck}>Regret sent</Chip>
+          <>
+            <Chip icon={IconChatCheck}>Regret sent</Chip>
+            <Button size="sm" variant="tonal" onClick={() => void reopen()}>
+              Reopen
+            </Button>
+          </>
         ) : r.status === "dismissed" ? (
-          <Button size="sm" variant="text" onClick={() => setStatus(r.ackedAt ? "acked" : "new")}>
-            Restore
+          <Button size="sm" variant="tonal" onClick={() => void reopen()}>
+            Reopen
           </Button>
         ) : (
           <>
