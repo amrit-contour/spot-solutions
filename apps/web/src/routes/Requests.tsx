@@ -33,7 +33,7 @@ import { UpdatesPanel } from "../components/UpdatesPanel";
 import { Count } from "../components/updates/shared";
 import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
-import { IconArrowDown, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
+import { IconArrowDown, IconSort, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
 export type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
 const LANES: { id: Lane; label: string }[] = [
@@ -42,6 +42,16 @@ const LANES: { id: Lane; label: string }[] = [
   { id: "held", label: "Held" },
   { id: "placed", label: "Placed" },
   { id: "closed", label: "Closed" },
+];
+
+type SortKey = "fair" | "newest" | "oldest" | "confidence" | "name";
+const SORT_KEY = "spot.requests.sort";
+const SORTS: { id: SortKey; label: string; help: string }[] = [
+  { id: "fair", label: "Fair order", help: "Didn't perform last week first, then first come" },
+  { id: "newest", label: "Newest", help: "Latest message first" },
+  { id: "oldest", label: "Oldest", help: "First asked first" },
+  { id: "confidence", label: "Most likely", help: "Clearest asks first" },
+  { id: "name", label: "Name", help: "A to Z" },
 ];
 
 export const laneOf = (r: SpotRequest): Lane =>
@@ -63,6 +73,22 @@ export function Requests() {
   // Messages links here with ?q=name to land on that person's card.
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(() => params.get("q") ?? "");
+  const [sort, setSortState] = useState<SortKey>(() => {
+    try {
+      const v = localStorage.getItem(SORT_KEY) as SortKey | null;
+      return v && SORTS.some((x) => x.id === v) ? v : "fair";
+    } catch {
+      return "fair";
+    }
+  });
+  const setSort = (v: SortKey) => {
+    setSortState(v);
+    try {
+      localStorage.setItem(SORT_KEY, v);
+    } catch {
+      /* not remembered */
+    }
+  };
   const [clearOpen, setClearOpen] = useState(false);
   const [rereading, setRereading] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -83,12 +109,18 @@ export function Requests() {
     // Fairness first: people who didn't perform last week float up, then first-come.
     for (const k of Object.keys(g) as Lane[])
       g[k].sort((a, b) => {
+        const latest = (r: SpotRequest) => r.messages[r.messages.length - 1]?.at ?? r.updatedAt ?? r.createdAt;
+        if (sort === "newest") return latest(b) - latest(a);
+        if (sort === "oldest") return a.createdAt - b.createdAt;
+        if (sort === "confidence") return b.intent.confidence - a.intent.confidence || a.createdAt - b.createdAt;
+        if (sort === "name") return (comicsById.get(a.comicId)?.name ?? a.comicName).localeCompare(comicsById.get(b.comicId)?.name ?? b.comicName);
+        // Fair order: people who didn't perform last week float up, then first-come.
         const pa = comicsById.get(a.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
         const pb = comicsById.get(b.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
         return pa - pb || a.createdAt - b.createdAt;
       });
     return g;
-  }, [requests.data, comicsById, lastWeek, q]);
+  }, [requests.data, comicsById, lastWeek, q, sort]);
 
   const activeShows = shows.filter((s) => s.active);
   const linked = session?.status === "ready";
@@ -161,7 +193,8 @@ export function Requests() {
         <div className={cx("min-w-0", view === "updates" && "hidden lg:block")}>
           <div className="sticky top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))] z-20 -mx-4 mb-4 border-b border-outline-variant bg-surface/95 px-4 pt-2 backdrop-blur sm:mx-0 sm:px-0">
             <div className="flex flex-col gap-2 2xl:flex-row-reverse 2xl:items-center">
-              <label className="relative block 2xl:w-64 2xl:flex-none">
+              <div className="flex items-center gap-2 2xl:flex-none">
+              <label className="relative block min-w-0 flex-1 2xl:w-64 2xl:flex-none">
                 <IconSearch className="icon pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-on-surface-variant" />
                 <input
                   type="search"
@@ -173,6 +206,25 @@ export function Requests() {
                   className="h-10 w-full rounded-full border border-outline-variant bg-surface-low pr-3 pl-9 type-body-m outline-none placeholder:text-on-surface-variant/70 focus:border-primary"
                 />
               </label>
+              <Menu
+                align="right"
+                trigger={(t, isOpen) => (
+                  <button onClick={t} aria-expanded={isOpen} aria-label={`Sort: ${SORTS.find((x) => x.id === sort)?.label}`} title="Sort" className="state-layer pressable inline-flex h-10 flex-none items-center gap-1.5 rounded-full border border-outline-variant px-3 type-label-l text-on-surface-variant">
+                    <IconSort className="icon size-4" />
+                    <span className="max-sm:hidden">{SORTS.find((x) => x.id === sort)?.label}</span>
+                  </button>
+                )}
+              >
+                {(close) =>
+                  SORTS.map((x) => (
+                    <MenuItem key={x.id} highlighted={x.id === sort} hint={x.id === sort ? "✓" : undefined} onClick={() => (close(), setSort(x.id))}>
+                      {x.label}
+                      <span className="block type-body-s text-on-surface-variant">{x.help}</span>
+                    </MenuItem>
+                  ))
+                }
+              </Menu>
+              </div>
               <div className="min-w-0 flex-1">
             <div className="flex overflow-x-auto [scrollbar-width:none] sm:gap-1" role="tablist">
                   {LANES.map((l) => (
@@ -317,7 +369,13 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: [0.2, 0, 0, 1] }}>
-            <div className="mt-4 flex flex-col gap-2 border-t border-outline-variant/40 bg-surface-lowest px-4 py-4 sm:px-5">
+            <div className="mt-4 max-h-80 overflow-y-auto overscroll-contain border-t border-outline-variant/40 bg-surface-lowest">
+              {/* Pinned inside the box, so it can be folded from anywhere while scrolling through long chats. */}
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-surface-lowest/95 px-4 py-2 backdrop-blur sm:px-5">
+                <span className="type-label-m text-on-surface-variant">{r.messages.length} message{r.messages.length > 1 ? "s" : ""}</span>
+                <IconButton icon={IconArrowDown} label="Hide messages" onClick={() => setOpen(false)} className="size-8 rotate-180" />
+              </div>
+              <div className="flex flex-col gap-2 px-4 pb-4 sm:px-5">
               {r.messages.map((m) => (
                 <Bubble key={m.id} meta={new Date(m.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}>
                   {m.body}
@@ -326,21 +384,22 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
               <span className="mt-1 type-label-s text-on-surface-variant">
                 Read by {r.intent.model ?? "Gemma"} · {Math.round(r.intent.confidence * 100)}% sure
               </span>
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <div className="mt-3 flex items-center gap-2 border-t border-outline-variant/40 py-2 pr-3 pl-2 sm:pr-4 sm:pl-3">
-        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="state-layer inline-flex h-10 items-center gap-1.5 rounded-full px-3 type-label-l text-on-surface-variant">
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="state-layer inline-flex h-10 flex-none whitespace-nowrap items-center gap-1.5 rounded-full px-3 type-label-l text-on-surface-variant">
           {r.messages.length} message{r.messages.length > 1 ? "s" : ""}
           <IconArrowDown className={cx("icon size-4 transition-transform duration-200", open && "rotate-180")} />
         </button>
         <Confidence value={r.intent.confidence} />
         <div className="flex-1" />
-        <Link to={`/messages?c=${encodeURIComponent(r.comicId)}`} className="state-layer pressable inline-flex h-10 items-center gap-1.5 rounded-full px-3 type-label-l text-on-surface-variant" title={`Open the chat with ${r.comicName}`}>
+        <Link to={`/messages?c=${encodeURIComponent(r.comicId)}`} className="state-layer pressable inline-flex h-10 flex-none items-center gap-1.5 rounded-full px-3 type-label-l whitespace-nowrap text-on-surface-variant" title={`Open the chat with ${r.comicName}`}>
           <IconChat className="icon size-4" />
-          <span className="max-[400px]:sr-only">Open chat</span>
+          <span className="max-xl:sr-only">Open chat</span>
         </Link>
         {held ? (
           <>
