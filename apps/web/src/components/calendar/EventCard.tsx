@@ -148,7 +148,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
             );
           })}
           {open && !off && !past && (
-            <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70", slots.length ? "h-10" : "h-14")}>
+            <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant px-4 py-2 text-center type-body-s text-balance text-on-surface-variant/70", slots.length ? "min-h-10" : "min-h-14")}>
               {slots.length ? `${show.slotCount - slots.length} open slot${show.slotCount - slots.length === 1 ? "" : "s"}` : seeds.length ? "Nobody on the lineup yet" : "No lineup yet"}
             </li>
           )}

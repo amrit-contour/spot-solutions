@@ -117,7 +117,7 @@ function HeroLoop() {
                     </motion.div>
                   ))}
               </AnimatePresence>
-              {!placed.some((p) => p.show === s) && <div className="grid h-10 place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70">Waiting for requests…</div>}
+              {!placed.some((p) => p.show === s) && <div className="grid min-h-10 place-items-center rounded-md border border-dashed border-outline-variant px-4 py-2 text-center type-body-s text-on-surface-variant/70">Waiting for requests…</div>}
             </div>
           </div>
         ))}

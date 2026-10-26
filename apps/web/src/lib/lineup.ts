@@ -179,3 +179,20 @@ export async function placeAsTold(uid: string, week: string, show: Show, comicId
   const req = await getDoc(requestRef(uid, week, comicId));
   if (req.exists() && ["new", "acked", "assigned"].includes((req.data() as SpotRequest).status)) await updateDoc(req.ref, { status: "confirmed", updatedAt: Date.now() });
 }
+
+/** Add the show's regulars, co-hosts and group admins who aren't on yet, up to the slot count. Any time, on request. */
+export async function addDefaults(uid: string, week: string, show: Show, people: { id: string; name: string }[]) {
+  if (!people.length) return 0;
+  const ref = lineupRef(uid, week, show.id);
+  const added = await runTransaction(db, async (tx) => {
+    const cur = (await tx.get(ref)).data() as Lineup | undefined;
+    if (cur && (cur.status === "cancelled" || cur.status === "canned")) throw new Error(`${show.name} is called off this week`);
+    const have = new Set((cur?.slots ?? []).map((s) => s.comicId));
+    const pick = people.filter((p) => !have.has(p.id)).slice(0, Math.max(0, show.slotCount - have.size));
+    if (!pick.length) return [];
+    tx.set(ref, { ...(cur ?? blank(week, show)), defaultsSeeded: true, slots: [...(cur?.slots ?? []), ...pick.map((p) => ({ comicId: p.id, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null }))] });
+    return pick;
+  });
+  await Promise.all(added.map((p) => ensureComic(uid, week, p.id, { name: p.name })));
+  return added.length;
+}

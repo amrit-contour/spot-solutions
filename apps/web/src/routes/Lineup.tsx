@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { where } from "firebase/firestore";
+import { doc, getDoc, where } from "firebase/firestore";
+import { db } from "../lib/firebase";
 import { Link } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { LayoutGroup, motion } from "motion/react";
@@ -50,7 +51,7 @@ import { useApp } from "../lib/app";
 import { runCommand, useCollection, useDocument } from "../lib/data";
 import { OfferSheet } from "../components/OfferSheet";
 import { ConfirmSheet } from "../components/ConfirmSheet";
-import { markCanned, markRequest, placeAsTold, placeComic, repeatLastWeek, seedDefaults, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
+import { markCanned, markRequest, addDefaults, placeAsTold, placeComic, repeatLastWeek, seedDefaults, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
@@ -463,6 +464,29 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
       .catch((e: Error) => toast.error(e.message));
   }, [lineupsLoaded, lineup, past, week, currentWeek, show, session?.phone, comicsById, uid]);
 
+  // "Add regulars and co-hosts": read the group again, then add whoever is missing (any week, any time).
+  const [syncingRegulars, setSyncingRegulars] = useState(false);
+  const addRegulars = async () => {
+    setSyncingRegulars(true);
+    try {
+      let members = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.members : [];
+      if (show.groupId) {
+        await runCommand(uid, "list_group_members", { showId: show.id }, 3 * 60_000).catch(() => undefined);
+        const fresh = (await getDoc(doc(db, "users", uid, "shows", show.id))).data() as Show | undefined;
+        if (fresh?.groupMembers?.groupId === show.groupId) members = fresh.groupMembers.members;
+      }
+      const me = session?.phone ? `${session.phone}@c.us` : null;
+      const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
+      const people = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])].filter((id) => id !== me);
+      const n = await addDefaults(uid, week, show, people.map((id) => ({ id, name: nameOf(id) })));
+      toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on, or the lineup is full");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSyncingRegulars(false);
+    }
+  };
+
   // What the comics were last told. Lineups confirmed before that was recorded start from how they stand now.
   const baseline = confirmed && lineup ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
   const changes = baseline && lineup ? diffLineup(lineup.slots, baseline, show) : null;
@@ -566,6 +590,10 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
             >
               {(close) => (
                 <>
+                  <MenuItem disabled={syncingRegulars || ids.length >= show.slotCount} onClick={() => (close(), void addRegulars())}>
+                    Add regulars and co-hosts
+                    <span className="block type-body-s text-on-surface-variant">Reads the group again, adds anyone missing</span>
+                  </MenuItem>
                   <MenuItem onClick={() => (close(), void repeat())}>Repeat last week's lineup</MenuItem>
                   <MenuItem disabled={ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>Offer a spot…</MenuItem>
                   <MenuItem disabled={!resetPlan} onClick={() => (close(), setResetOpen(true))}>Reset lineup…</MenuItem>
@@ -706,7 +734,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
             />
           ))}
           {ids.length < show.slotCount && (
-            <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70 transition-colors", ids.length ? "h-11" : "h-20", dragKind && "border-primary/60 text-primary")}>
+            <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant px-4 py-2.5 text-center type-body-s text-balance text-on-surface-variant/70 transition-colors", ids.length ? "min-h-11" : "min-h-20", dragKind && "border-primary/60 text-primary")}>
               {!ids.length ? "Drop comics or group members here" : `${show.slotCount - ids.length} open slot${show.slotCount - ids.length === 1 ? "" : "s"}`}
             </li>
           )}

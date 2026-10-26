@@ -324,7 +324,7 @@ function MemberTile({ show, row, name, openShows, onAddTold }: { show: Show; row
 function LeaveZone({ showId, active }: { showId: string; active: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: `leave:${showId}` });
   return (
-    <div ref={setNodeRef} className={cx("grid h-10 place-items-center rounded-md border border-dashed type-body-s transition-colors duration-150", isOver ? "border-error bg-error-container text-on-error-container" : active ? "border-error/60 text-error" : "border-outline-variant text-on-surface-variant/70")}>
+    <div ref={setNodeRef} className={cx("grid min-h-11 place-items-center rounded-md border border-dashed px-4 py-2.5 text-center type-body-s text-balance transition-colors duration-150", isOver ? "border-error bg-error-container text-on-error-container" : active ? "border-error/60 text-error" : "border-outline-variant text-on-surface-variant/70")}>
       <span className="hidden sm:inline">Drag here to take someone out on the next sync</span>
       <span className="sm:hidden">Remove from group: use the group button</span>
     </div>
