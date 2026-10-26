@@ -141,16 +141,18 @@ export function tellPill(s: TellState, i = 0): PillSpec {
  * The pills for one comic, most useful first: tell state, role at this show, performed last week, day preference.
  * The day pill is dashed (read from their message) and only appears when they actually sent a request.
  */
-export function comicPills({ comic, request, show, lastWeek, states, days = true, adhoc }: { comic?: Comic; request?: SpotRequest; show?: Pick<Show, "regulars" | "protected">; lastWeek?: string; states?: TellState[]; days?: boolean; /** A last-minute spot on this lineup. */ adhoc?: boolean }, id?: string): PillSpec[] {
+export function comicPills({ comic, request, show, lastWeek, states, days = true, adhoc }: { comic?: Comic; request?: SpotRequest; show?: Pick<Show, "regulars" | "protected" | "pocs">; lastWeek?: string; states?: TellState[]; days?: boolean; /** A last-minute spot on this lineup. */ adhoc?: boolean }, id?: string): PillSpec[] {
   const out: PillSpec[] = [];
   const cid = id ?? comic?.id ?? request?.comicId;
-  // Regulars and co-hosts always know: their role pill says enough, so no "Already told" on them.
-  const standing = Boolean(cid && (show?.protected?.includes(cid) || show?.regulars?.includes(cid)));
+  // POCs, regulars and co-hosts always know: their role pill says enough, so no "Already told" on them.
+  const poc = Boolean(cid && show?.pocs?.includes(cid));
+  const standing = Boolean(cid && (poc || show?.protected?.includes(cid) || show?.regulars?.includes(cid)));
   (states ?? []).forEach((s, i) => {
     if (standing && s.kind === "told") return;
     out.push(tellPill(s, i));
   });
-  if (cid && show?.protected?.includes(cid)) out.push({ key: "role", label: "Co-host", tone: "fact", icon: IconCrown });
+  if (poc) out.push({ key: "role", label: "POC", tone: "fact", icon: IconUserCheck, title: "Runs this mic: always stays in the group" });
+  else if (cid && show?.protected?.includes(cid)) out.push({ key: "role", label: "Co-host", tone: "fact", icon: IconCrown });
   else if (cid && show?.regulars?.includes(cid)) out.push({ key: "role", label: "Regular", tone: "fact", icon: IconRepeat });
   if (adhoc) out.push({ key: "adhoc", label: "Ad hoc", tone: "fact", icon: IconUserPlus, title: "Last-minute spot: kept in their history, doesn't hold them back" });
   if (lastWeek && comic?.lastPerformedWeek === lastWeek) out.push({ key: "last", label: "Last week", tone: "fact", icon: IconHistory, title: "Performed last week" });

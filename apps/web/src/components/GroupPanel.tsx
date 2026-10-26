@@ -11,11 +11,12 @@ import { ConfirmDialog } from "@spot/ui";
 import { Popover, ToolButton } from "@spot/ui";
 import { Pill, PillRow, type PillSpec } from "./Pills";
 import { Avatar, Button, IconButton, Select, Spinner, TextInput, cx } from "@spot/ui";
-import { IconAdd, IconCrown, IconGroup, IconMenuDots, IconMic, IconRefresh, IconSearch, IconShield, IconStar, IconUserMinus } from "@spot/ui";
+import { IconAdd, IconCrown, IconUserCheck, IconGroup, IconMenuDots, IconMic, IconRefresh, IconSearch, IconShield, IconStar, IconUserMinus } from "@spot/ui";
 
 /** Who they are to this show, and what the next sync does with them. */
 const TAGS: Record<GroupTag, Omit<PillSpec, "key">> = {
   admin: { label: "Admin", tone: "primary", icon: IconShield },
+  poc: { label: "POC", tone: "warn", icon: IconUserCheck },
   cohost: { label: "Co-host", tone: "warn", icon: IconCrown },
   regular: { label: "Regular", tone: "secondary", icon: IconStar },
   lineup: { label: "On lineup", tone: "fact", icon: IconMic },
@@ -24,7 +25,7 @@ const TAGS: Record<GroupTag, Omit<PillSpec, "key">> = {
 };
 export const tagPills = (tags: GroupTag[]): PillSpec[] => tags.map((t) => ({ key: t, ...TAGS[t] }));
 
-const RANK: Record<GroupTag, number> = { joining: 0, lineup: 1, cohost: 2, admin: 3, regular: 4, leaving: 6 };
+const RANK: Record<GroupTag, number> = { joining: 0, lineup: 1, poc: 2, cohost: 2, admin: 3, regular: 4, leaving: 6 };
 const rankOf = (r: GroupRow) => (r.tags.includes("leaving") ? 6 : Math.min(...r.tags.map((t) => RANK[t]), 5));
 
 /** The cached WhatsApp members of a show, tagged against its lineup. Shared by the column popover and the Waiting "Group" tab. */
@@ -36,7 +37,7 @@ export function useGroupRows(show: Show, ids: string[], lineup?: Lineup) {
   const nameOf = (id: string) => comicsById.get(id)?.name ?? names.get(id) ?? `+${id.split("@")[0]}`;
   const leaving = lineup?.groupLeaving ?? [];
   const panel = useMemo(
-    () => groupPanel({ members: cache?.members ?? [], lineup: ids, regulars: show.regulars ?? [], protected: show.protected ?? [], forceRemove: leaving }),
+    () => groupPanel({ members: cache?.members ?? [], lineup: ids, regulars: show.regulars ?? [], protected: show.protected ?? [], pocs: show.pocs ?? [], forceRemove: leaving }),
     [cache, ids, show.regulars, show.protected, leaving],
   );
   const rows = useMemo(() => [...panel.rows].sort((a, b) => rankOf(a) - rankOf(b) || nameOf(a.id).localeCompare(nameOf(b.id))), [panel.rows, names, comicsById]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -63,7 +64,7 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
 
   const kept = new Set(panel.kept);
   const stayers = panel.rows.filter((r) => kept.has(r.id));
-  const staying = stayers.filter((r) => r.tags.includes("regular") || r.tags.includes("cohost")).length;
+  const staying = stayers.filter((r) => r.tags.includes("regular") || r.tags.includes("cohost") || r.tags.includes("poc")).length;
   const adminsOnly = stayers.length - staying;
   const preview = `+${panel.toAdd.length} add, −${panel.toRemove.length} remove${cache ? `, ${staying} regular${staying === 1 ? "" : "s"} and co-host${staying === 1 ? "" : "s"} stay${adminsOnly ? `, ${adminsOnly} admin${adminsOnly === 1 ? "" : "s"} stay` : ""}` : ""}`;
 
@@ -86,15 +87,15 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
     }
   };
 
-  const toggleTag = (id: string, tag: "regulars" | "protected", on: boolean) => void tagMember(uid, show, id, tag, on).catch((e: Error) => toast.error(e.message));
+  const toggleTag = (id: string, tag: "regulars" | "protected" | "pocs", on: boolean) => void tagMember(uid, show, id, tag, on).catch((e: Error) => toast.error(e.message));
   const askLeave = (row: GroupRow) => {
     if (row.tags.includes("lineup") || row.tags.includes("joining")) return toast("They're on the lineup. Take them off it first.");
     if (row.tags.includes("leaving")) return toast(`${nameOf(row.id)} is already leaving on the next sync`);
-    if (row.tags.some((t) => t === "admin" || t === "cohost" || t === "regular")) return setWarn(row);
+    if (row.tags.some((t) => t === "admin" || t === "poc" || t === "cohost" || t === "regular")) return setWarn(row);
     toast("We can't match this number to a comic, so a sync keeps them.");
   };
   const leave = async (row: GroupRow) => {
-    if (row.tags.includes("cohost") || row.tags.includes("regular")) await untagMember(uid, show, row.id);
+    if (row.tags.includes("cohost") || row.tags.includes("regular") || row.tags.includes("poc")) await untagMember(uid, show, row.id);
     if (row.isAdmin) await setGroupLeaving(uid, week, show, [...new Set([...leaving, row.id])]);
     toast.success(`${nameOf(row.id)} will leave the group on the next sync`);
   };
@@ -171,6 +172,10 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
                                 Regular
                                 <span className="block type-body-s text-on-surface-variant">Always stays in the group</span>
                               </MenuItem>
+                              <MenuItem disabled={!r.known} hint={r.tags.includes("poc") ? "on" : undefined} onClick={() => (close(), toggleTag(r.id, "pocs", !r.tags.includes("poc")))}>
+                                POC
+                                <span className="block type-body-s text-on-surface-variant">Runs this mic; tagged with {"{{pocs}}"}</span>
+                              </MenuItem>
                               <MenuItem disabled={!r.known} hint={r.tags.includes("cohost") ? "on" : undefined} onClick={() => (close(), toggleTag(r.id, "protected", !r.tags.includes("cohost")))}>
                                 Co-host
                                 <span className="block type-body-s text-on-surface-variant">Never removed</span>
@@ -216,7 +221,7 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
         onClose={() => setWarn(null)}
         title={warn ? `Remove ${nameOf(warn.id)}?` : ""}
         confirmLabel="Mark as leaving"
-        ack={warn ? `I know ${nameOf(warn.id)} is ${warn.tags.filter((t) => t === "admin" || t === "cohost" || t === "regular").map((t) => TAGS[t].label).join(" and ")}.` : undefined}
+        ack={warn ? `I know ${nameOf(warn.id)} is ${warn.tags.filter((t) => t === "admin" || t === "poc" || t === "cohost" || t === "regular").map((t) => TAGS[t].label).join(" and ")}.` : undefined}
         onConfirm={async () => {
           if (warn) await leave(warn);
         }}
@@ -224,9 +229,9 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
         {warn && (
           <>
             <p>
-              {nameOf(warn.id)} is {warn.tags.filter((t) => t === "admin" || t === "cohost" || t === "regular").map((t) => `${t === "admin" ? "a WhatsApp " : "a "}${TAGS[t].label}`).join(" and ")} for {show.name}. Syncs normally keep them.
+              {nameOf(warn.id)} is {warn.tags.filter((t) => t === "admin" || t === "poc" || t === "cohost" || t === "regular").map((t) => `${t === "admin" ? "a WhatsApp " : "a "}${TAGS[t].label}`).join(" and ")} for {show.name}. Syncs normally keep them.
             </p>
-            <p>This marks them as leaving{warn.tags.some((t) => t === "cohost" || t === "regular") ? ` and drops their ${warn.tags.filter((t) => t === "cohost" || t === "regular").map((t) => TAGS[t].label).join(" and ")} tag${warn.tags.filter((t) => t === "cohost" || t === "regular").length > 1 ? "s" : ""}` : ""}. They're only removed when you run Sync group and approve it.</p>
+            <p>This marks them as leaving{warn.tags.some((t) => t === "poc" || t === "cohost" || t === "regular") ? ` and drops their ${warn.tags.filter((t) => t === "poc" || t === "cohost" || t === "regular").map((t) => TAGS[t].label).join(" and ")} tag${warn.tags.filter((t) => t === "poc" || t === "cohost" || t === "regular").length > 1 ? "s" : ""}` : ""}. They're only removed when you run Sync group and approve it.</p>
           </>
         )}
       </ConfirmDialog>
