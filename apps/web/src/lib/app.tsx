@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { toast } from "sonner";
 import {
   DEFAULT_AI_POLICY,
   DEFAULT_SETTINGS,
@@ -16,7 +17,7 @@ import {
 } from "@spot/shared";
 import { auth, db } from "./firebase";
 import { useCollection, useDocument, useNow } from "./data";
-import { cloneDemo } from "./demo";
+import { cloneDemo, needsDemoClone } from "./demo";
 import { useForegroundPush } from "./push";
 
 interface UserDoc {
@@ -34,6 +35,8 @@ interface AppState {
   shows: Show[];
   venues: Venue[];
   comics: Comic[];
+  /** The roster snapshot has arrived. Writes that depend on knowing who is already there wait for it. */
+  comicsLoaded: boolean;
   comicsById: Map<string, Comic>;
   week: string;
   setWeek: (w: string) => void;
@@ -78,9 +81,15 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
   // First sign-in: create the user doc so the worker starts listening for this curator.
   useEffect(() => {
     const ref = doc(db, "users", uid);
+    const clone = () =>
+      cloneDemo(uid).catch((e: Error) => {
+        console.error("demo clone failed", e);
+        toast.error("Couldn't set up the demo", { description: e.message, duration: Infinity, closeButton: true, action: { label: "Retry", onClick: () => void clone() } });
+      });
     getDoc(ref).then((s) => {
-      if (s.exists()) return;
-      if (user.isAnonymous) void cloneDemo(uid);
+      // A demo doc with no marker is a clone that never finished: do it again.
+      if (s.exists() && !(user.isAnonymous && needsDemoClone(s.data()))) return;
+      if (user.isAnonymous) void clone();
       else void setDoc(ref, { settings: DEFAULT_SETTINGS, email: user.email, name: user.displayName, createdAt: Date.now() });
     });
   }, [uid, user.email, user.displayName, user.isAnonymous]);
@@ -123,13 +132,14 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       shows: sortedShows,
       venues: venues.data,
       comics: comics.data,
+      comicsLoaded: !comics.loading,
       comicsById,
       week,
       setWeek,
       currentWeek,
       saveSettings: (patch) => setDoc(doc(db, "users", uid), { settings: { ...settings, ...patch } }, { merge: true }),
     }),
-    [user, uid, settings, session.data, workerOnline, sortedShows, venues.data, comics.data, comicsById, week, currentWeek],
+    [user, uid, settings, session.data, workerOnline, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, currentWeek],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

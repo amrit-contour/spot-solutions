@@ -57,7 +57,7 @@ const BENCH = "bench";
 type Columns = Record<string, string[]>;
 
 export function LineupBoard() {
-  const { uid, week, shows, comicsById } = useApp();
+  const { uid, week, shows, comics, comicsById } = useApp();
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const offers = useCollection<SpotOffer>(uid, "offers", [where("weekOf", "==", week)], week);
@@ -65,7 +65,7 @@ export function LineupBoard() {
   const activeShows = useMemo(() => shows.filter((s) => s.active), [shows]);
   const lastWeek = shiftWeek(week, -1);
   const [resetWeekOpen, setResetWeekOpen] = useState(false);
-  const weekPlans = useMemo(() => planWeekReset(lineups.data, requests.data), [lineups.data, requests.data]);
+  const weekPlans = useMemo(() => planWeekReset(lineups.data, requests.data, shows, comics), [lineups.data, requests.data, shows, comics]);
 
   const lineupByShow = useMemo(() => new Map(lineups.data.map((l) => [l.showId, l])), [lineups.data]);
   const requestByComic = useMemo(() => new Map(requests.data.map((r) => [r.comicId, r])), [requests.data]);
@@ -196,7 +196,7 @@ export function LineupBoard() {
           </>
         }
       />
-      <ResetDialog open={resetWeekOpen} onClose={() => setResetWeekOpen(false)} plans={weekPlans} shows={activeShows} scope="week" />
+      <ResetDialog open={resetWeekOpen} onClose={() => setResetWeekOpen(false)} plans={weekPlans} shows={shows} scope="week" />
       <RegretBanner count={regrets.length} openShows={openShows.length} />
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActiveId(null), setCols(remote))}>
         <div className="flex flex-col gap-4 px-4 pb-10 sm:px-8 lg:flex-row lg:items-start">
@@ -337,7 +337,7 @@ function ShowColumn({ offers, poll, onAdd, onRemove, regretsAfter, show, ids, li
   const [syncOpen, setSyncOpen] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
-  const resetPlan = lineup ? planLineupReset(lineup, requests) : null;
+  const resetPlan = lineup ? planLineupReset(lineup, requests, [...comicsById.values()]) : null;
   const pendingOffers = offers.filter((o) => o.showId === show.id && o.status === "pending");
   const hostsFree = Object.entries(poll?.votes ?? {}).filter(([, v]) => v.includes(show.id)).map(([k]) => ({ id: k.replace(/_/g, "."), name: poll?.voterNames[k] ?? k }));
   const fill = Math.min(1, ids.length / Math.max(1, show.slotCount));

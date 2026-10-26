@@ -67,14 +67,24 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      // Curators can't flip worker-owned fields on their own doc.
-      allow read, create: if isOwner(uid);
+      // Curators can't flip worker-owned fields on their own doc, nor the demo flag: only the anonymous demo
+      // clone (apps/web/src/lib/demo.ts) creates a doc with demo: true. A real account never gets it, so
+      // the admin "wipe demo" tool can't be pointed at it.
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && (request.auth.token.firebase.sign_in_provider == 'anonymous'
+          || !request.resource.data.keys().hasAny(['demo', 'demoClonedAt']));
       allow update: if isOwner(uid)
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['waEnabled', 'selfId']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['waEnabled', 'selfId', 'demo'])
+        // demoClonedAt: the anonymous sandbox stamps it when a (re-)clone finishes, nobody else.
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['demoClonedAt'])
+          || (request.auth.token.firebase.sign_in_provider == 'anonymous' && resource.data.get('demo', false) == true));
 
       // Written only by the worker (Admin SDK bypasses rules).
       match /session/{doc} { allow read: if isOwner(uid); }
       match /groups/{doc}  { allow read: if isOwner(uid); }
+      // list_contacts results, in chunks. Written only by the worker.
+      match /contactsImport/{doc} { allow read: if isOwner(uid); }
       match /offers/{doc}  { allow read: if isOwner(uid); }
       // API keys: the curator can set or clear them but never read them back; only the worker (Admin SDK) reads.
       match /secrets/{doc} { allow create, update, delete: if isOwner(uid); }

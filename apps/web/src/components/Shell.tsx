@@ -6,7 +6,8 @@ import { cx, type Icon } from "./ui";
 import { IconCalendar, IconComics, IconInbox, IconMic, IconPhone, IconSettings } from "./icons";
 import { Logo } from "./Logo";
 import { isDemoUser } from "../lib/demo";
-import { signInWithPopup, signOut } from "firebase/auth";
+import { signInWithPopup } from "firebase/auth";
+import { toast } from "sonner";
 import { auth, google } from "../lib/firebase";
 import { AccountMenu } from "./AccountMenu";
 
@@ -131,10 +132,11 @@ function DemoBanner() {
         <span className="hidden sm:inline">You're in your own copy of a demo curator's week. Drag comics, edit messages, explore everything. Changes stay in your sandbox, and WhatsApp features need a real account.</span>
       </span>
       <button
-        onClick={async () => {
-          await signOut(auth);
-          await signInWithPopup(auth, google);
-        }}
+        // Open the popup straight from the click (Safari blocks it after an await). Signing in as the real
+        // account replaces the anonymous one; the sandbox is simply left behind.
+        onClick={() => void signInWithPopup(auth, google).catch((e: { code?: string }) => {
+          if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") toast.error("Couldn't sign in. Allow popups and try again.");
+        })}
         className="state-layer rounded-full bg-on-tertiary-container px-4 py-1.5 type-label-l text-tertiary-container"
       >
         Use my own account

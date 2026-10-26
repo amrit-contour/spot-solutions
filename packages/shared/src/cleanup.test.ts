@@ -25,8 +25,21 @@ describe("planLineupReset", () => {
   it("flags confirmed lineups, reopens them and resets confirmed requests", () => {
     const p = planLineupReset(lineup({ status: "confirmed", sentAt: 9 }), [req("c1", "confirmed"), req("c2", "rejected")])!;
     expect(p.confirmed).toBe(true);
-    expect(p.lineupPatch).toMatchObject({ slots: [], status: "draft", sentAt: null, groupSync: null });
+    expect(p.lineupPatch).toMatchObject({ slots: [], status: "draft", sentAt: null, groupSync: null, showDaySyncedOn: null, micCheckSentOn: null, outcome: null });
     expect(p.requestResets).toEqual([{ id: "2026-10-26_c1", status: "new" }]);
+  });
+
+  it("undoes the performed mark and confirmed history of a confirmed lineup", () => {
+    const entry = (status: string, date = "2026-10-27", showId = "a") => ({ date, showId, showName: "A", status: status as never });
+    const comics = [
+      { id: "c1", lastPerformedWeek: "2026-10-26", history: [entry("confirmed"), entry("confirmed", "2026-10-20")] },
+      { id: "c2", lastPerformedWeek: "2026-10-19", history: [entry("canned")] },
+      { id: "c9", lastPerformedWeek: "2026-10-26", history: [entry("confirmed")] },
+    ];
+    const p = planLineupReset(lineup({ status: "confirmed" }), [], comics)!;
+    expect(p.comicPatches).toEqual([{ id: "c1", patch: { lastPerformedWeek: null, history: [entry("confirmed", "2026-10-20")] } }]);
+    // A draft was never confirmed: nothing to undo.
+    expect(planLineupReset(lineup(), [], comics)!.comicPatches).toEqual([]);
   });
 
   it("keeps a cancelled lineup cancelled and skips empty lineups", () => {
@@ -36,10 +49,21 @@ describe("planLineupReset", () => {
 });
 
 describe("planWeekReset", () => {
+  const shows = ["a", "b", "c", "d", "e", "f"].map((id) => ({ id, active: id !== "f" }));
+
   it("plans every lineup that has comics", () => {
-    const plans = planWeekReset([lineup(), lineup({ id: "2026-10-26_b", showId: "b", slots: [] }), lineup({ id: "2026-10-26_c", showId: "c", status: "confirmed" })], []);
+    const plans = planWeekReset([lineup(), lineup({ id: "2026-10-26_b", showId: "b", slots: [] }), lineup({ id: "2026-10-26_c", showId: "c", status: "confirmed" })], [], shows);
     expect(plans.map((p) => p.showId)).toEqual(["a", "c"]);
     expect(plans.filter((p) => p.confirmed)).toHaveLength(1);
+  });
+
+  it("skips cancelled and canned lineups and lineups of inactive or unknown shows", () => {
+    const plans = planWeekReset(
+      [lineup(), lineup({ id: "x_d", showId: "d", status: "cancelled" }), lineup({ id: "x_e", showId: "e", status: "canned" }), lineup({ id: "x_f", showId: "f" }), lineup({ id: "x_g", showId: "g" })],
+      [],
+      shows,
+    );
+    expect(plans.map((p) => p.showId)).toEqual(["a"]);
   });
 });
 
@@ -68,7 +92,11 @@ describe("data scopes", () => {
 
 describe("demoSandboxIds", () => {
   it("takes only demo-flagged users and never the source copy", () => {
-    const users = [{ id: "anon1", demo: true }, { id: DEMO_SOURCE_UID, demo: true }, { id: "real" }, { id: "x", demo: "true" }, { id: "anon2", demo: true }];
+    const users = [{ id: "anon1", demo: true }, { id: DEMO_SOURCE_UID, demo: true }, { id: "real" }, { id: "x", demo: "true" }, { id: "anon2", demo: true, email: null }];
     expect(demoSandboxIds(users)).toEqual(["anon1", "anon2"]);
+  });
+
+  it("skips a flagged user that has an email", () => {
+    expect(demoSandboxIds([{ id: "u", demo: true, email: "a@b.co" }])).toEqual([]);
   });
 });

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { getDocFromServer } from "firebase/firestore";
 import { comicIdForPhone, parsePeopleFile, type WaContact } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { runCommand } from "../lib/data";
+import { runCommand, userDoc } from "../lib/data";
 import { importPeople, rosterLookup } from "../lib/people";
 import { Avatar, Button, Chip, Empty, Spinner, cx } from "./ui";
 import { Sheet } from "./ui";
@@ -99,7 +100,7 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const summary = (r: { added: number; updated: number }) => [r.added && `${plural(r.added, "comic")} added`, r.updated && `${r.updated} renamed`].filter(Boolean).join(", ") || "Nothing new to add";
 
 export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { uid, comics } = useApp();
+  const { uid, comics, comicsLoaded } = useApp();
   const [contacts, setContacts] = useState<WaContact[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -110,8 +111,10 @@ export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose:
     setError(null);
     setContacts(null);
     try {
-      const r = await runCommand<{ contacts: WaContact[] }>(uid, "list_contacts", {}, 180_000);
-      setContacts(r.contacts);
+      // The worker leaves the contacts in contactsImport chunks (a command result is too small for a big phonebook).
+      const r = await runCommand<{ count: number; chunks: number }>(uid, "list_contacts", {}, 180_000);
+      const docs = await Promise.all(Array.from({ length: r.chunks }, (_, n) => getDocFromServer(userDoc(uid, "contactsImport", `chunk${n}`))));
+      setContacts(docs.flatMap((d) => (d.data()?.contacts as WaContact[] | undefined) ?? []));
       // Start empty: a phonebook is mostly not comics. Search, then select the matches.
       setPicked(new Set());
     } catch (e) {
@@ -145,7 +148,7 @@ export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose:
       footer={
         <>
           <Button variant="text" onClick={onClose}>Cancel</Button>
-          <Button icon={IconUserPlus} onClick={save} loading={saving} disabled={!picked.size}>{picked.size ? `Import ${plural(picked.size, "comic")}` : "Import"}</Button>
+          <Button icon={IconUserPlus} onClick={save} loading={saving} disabled={!picked.size || !comicsLoaded}>{picked.size ? `Import ${plural(picked.size, "comic")}` : "Import"}</Button>
         </>
       }
     >
@@ -169,7 +172,7 @@ export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose:
 }
 
 export function ImportFileSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { uid, comics } = useApp();
+  const { uid, comics, comicsLoaded } = useApp();
   const input = useRef<HTMLInputElement>(null);
   const [parsed, setParsed] = useState<{ file: string; people: { name: string; phone: string }[]; duplicates: number } | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -221,7 +224,7 @@ export function ImportFileSheet({ open, onClose }: { open: boolean; onClose: () 
         <>
           {parsed && <Button variant="text" onClick={() => setParsed(null)} className="mr-auto">Choose another file</Button>}
           <Button variant="text" onClick={onClose}>Cancel</Button>
-          <Button icon={IconUserPlus} onClick={save} loading={saving} disabled={!picked.size}>{picked.size ? `Import ${plural(picked.size, "comic")}` : "Import"}</Button>
+          <Button icon={IconUserPlus} onClick={save} loading={saving} disabled={!picked.size || !comicsLoaded}>{picked.size ? `Import ${plural(picked.size, "comic")}` : "Import"}</Button>
         </>
       }
     >

@@ -25,7 +25,8 @@ export async function importPeople(uid: string, people: PersonToImport[], find: 
       const cur = find(p);
       if (!cur) {
         const c: Comic = { id: p.id, name: p.name, nameSource: p.nameSource, phone: p.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
-        batch.set(userDoc(uid, "comics", p.id), c);
+        // Merge: if the roster was stale and this comic exists after all, its other fields (history, notes, list) survive.
+        batch.set(userDoc(uid, "comics", p.id), c, { merge: true });
         added++;
       } else if (shouldUpdateName(cur, p)) {
         batch.update(userDoc(uid, "comics", cur.id), { name: p.name, nameSource: p.nameSource });

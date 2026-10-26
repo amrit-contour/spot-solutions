@@ -160,6 +160,17 @@ describe("normalizePhone", () => {
     expect(normalizePhone("(+44) 7700 900123")).toBe("447700900123");
     expect(normalizePhone("0091 98765 43210")).toBe("919876543210");
   });
+  it("accepts 8 to 15 digits when the number says it is international", () => {
+    expect(normalizePhone("+65 9123 4567")).toBe("6591234567");
+    expect(normalizePhone("(+65) 9123 4567")).toBe("6591234567");
+    expect(normalizePhone("0065 9123 4567")).toBe("6591234567");
+    expect(normalizePhone("+852 9123 4567")).toBe("85291234567");
+    expect(normalizePhone("+1234567")).toBe("");
+  });
+  it("still needs 11+ digits without a prefix", () => {
+    expect(normalizePhone("6591234567")).toBe("916591234567");
+    expect(normalizePhone("659123456")).toBe("");
+  });
   it("rejects junk", () => {
     expect(normalizePhone("")).toBe("");
     expect(normalizePhone("12345")).toBe("");

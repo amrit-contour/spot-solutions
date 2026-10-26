@@ -14,13 +14,14 @@ async function commit(ops: ((b: ReturnType<typeof writeBatch>) => void)[]) {
   }
 }
 
-/** Clear the planned lineups and put their requests back to waiting. Sends nothing. */
+/** Clear the planned lineups, put their requests back to waiting and undo confirmed comics' performed marks. Sends nothing. */
 export function applyResets(uid: string, plans: LineupResetPlan[]) {
   const now = Date.now();
   return commit(
     plans.flatMap((p) => [
       (b: ReturnType<typeof writeBatch>) => b.update(userDoc(uid, "lineups", p.lineupId), p.lineupPatch),
       ...p.requestResets.map((r) => (b: ReturnType<typeof writeBatch>) => b.update(userDoc(uid, "requests", r.id), { status: r.status, updatedAt: now })),
+      ...p.comicPatches.map((c) => (b: ReturnType<typeof writeBatch>) => b.set(userDoc(uid, "comics", c.id), c.patch, { merge: true })),
     ]),
   );
 }

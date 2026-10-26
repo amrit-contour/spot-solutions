@@ -7,3 +7,4 @@ export * from "./rules.ts";
 export * from "./people.ts";
 export * from "./cleanup.ts";
 export * from "./fleet.ts";
+export * from "./demo.ts";

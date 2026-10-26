@@ -10,7 +10,7 @@ export interface ImportPerson {
   phone: string;
 }
 
-/** One contact from the curator's WhatsApp (worker `list_contacts` result). */
+/** One contact from the curator's WhatsApp (stored by the worker's `list_contacts` in contactsImport chunks). */
 export interface WaContact extends ImportPerson {
   id: string; // comic id (919876543210@c.us)
 }
@@ -27,11 +27,14 @@ export interface GroupMembersResult {
 
 export const comicIdForPhone = (phone: string) => `${phone}@c.us`;
 
-/** Digits with country code, or "" when it can't be a phone number. 10 digits are taken as Indian. */
+/**
+ * Digits with country code, or "" when it can't be a phone number. 10 digits are taken as Indian, unless the
+ * input carries an explicit + or 00 prefix: then 8 to 15 digits are accepted as-is (+65 9123 4567).
+ */
 export function normalizePhone(raw: string, defaultCountry = "91"): string {
   const s = raw.trim();
   if (!s) return "";
-  const hasPlus = s.startsWith("+");
+  const hasPlus = /^[\s(]*\+/.test(s);
   let d = s.replace(/\D/g, "");
   let intl = hasPlus;
   if (!intl && d.startsWith("00")) {
@@ -42,7 +45,7 @@ export function normalizePhone(raw: string, defaultCountry = "91"): string {
     if (d.length === 11 && d[0] === "0") d = d.slice(1);
     if (d.length === 10) d = defaultCountry + d;
   }
-  return d.length >= 11 && d.length <= 15 ? d : "";
+  return d.length >= (intl ? 8 : 11) && d.length <= 15 ? d : "";
 }
 
 const RANK: Record<NameSource, number> = { number: 0, whatsapp: 1, contact: 2, manual: 3 };

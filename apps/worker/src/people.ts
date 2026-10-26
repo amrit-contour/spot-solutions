@@ -1,6 +1,6 @@
 // Reads only: pull a show group's members, or list the curator's saved contacts. Nothing is sent.
 import type WAWebJS from "whatsapp-web.js";
-import { comicIdForPhone, shouldUpdateName, type Comic, type GroupMembersResult, type WaContact } from "@spot/shared";
+import { comicIdForPhone, normalizePhone, shouldUpdateName, type Comic, type GroupMembersResult, type WaContact } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 
@@ -53,11 +53,11 @@ export async function pullGroupMembers(uid: string, { groupId }: Record<string, 
   const chat = await client.getChatById(String(groupId));
   if (!chat.isGroup) throw new Error("That isn't a WhatsApp group");
   const group = chat as WAWebJS.GroupChat;
-  const me = client.info.wid.user;
-  const people = group.participants.filter((p) => p.id.user !== me);
+  const self = client.info.wid;
+  const people = group.participants.filter((p) => p.id.user !== self.user);
   const lids = await lidToPhone(client, people.map((p) => p.id._serialized));
 
-  const members = await mapLimit(people, CONCURRENCY, async (p) => {
+  const resolved = await mapLimit(people, CONCURRENCY, async (p) => {
     const raw = p.id._serialized;
     const phone = p.id.server === "lid" ? (lids.get(raw) ?? "") : p.id.user;
     const contact = await client.getContactById(raw).catch(() => null);
@@ -69,44 +69,60 @@ export async function pullGroupMembers(uid: string, { groupId }: Record<string, 
       ...contactName(contact, phone),
     };
   });
-  // The same person can show up twice (@lid and @c.us); keep one entry per comic id.
-  const unique = [...new Map(members.map((m) => [m.id, m])).values()];
+  // The curator's own @lid only shows its phone once resolved, so this can't happen before the lookup.
+  const members = resolved.filter((m) => m.phone !== self.user && m.chatId !== self._serialized);
 
-  const existing = new Map<string, Comic>();
-  await inChunks(unique, 300, async (chunk) => {
-    const snaps = await db.getAll(...chunk.map((m) => col(uid, "comics").doc(m.id)));
-    for (const s of snaps) if (s.exists) existing.set(s.id, s.data() as Comic);
+  // Find who is on the roster already: by phone-based id, by the raw @lid id, or by the chat id they were first seen on.
+  const docs = new Map<string, Comic>();
+  const byChat = new Map<string, Comic>();
+  const docIds = [...new Set(members.flatMap((m) => [m.id, m.chatId]))];
+  await inChunks(docIds, 300, async (chunk) => {
+    const snaps = await db.getAll(...chunk.map((id) => col(uid, "comics").doc(id)));
+    for (const s of snaps) if (s.exists) docs.set(s.id, { ...(s.data() as Comic), id: s.id });
   });
+  await inChunks(members.map((m) => m.chatId), 30, async (chunk) => {
+    for (const s of (await col(uid, "comics").where("chatId", "in", chunk).get()).docs) byChat.set(s.get("chatId"), { ...(s.data() as Comic), id: s.id });
+  });
+  const matched = members.map((m) => ({ m, cur: docs.get(m.id) ?? byChat.get(m.chatId) ?? docs.get(m.chatId) }));
+  // The same person can show up twice (@lid and @c.us); keep one entry per comic.
+  const unique = [...new Map(matched.map((x) => [x.cur?.id ?? x.m.id, x])).values()];
 
   let added = 0;
   let updated = 0;
   await inChunks(unique, BATCH, async (chunk) => {
     const batch = db.batch();
-    for (const m of chunk) {
-      const ref = col(uid, "comics").doc(m.id);
-      const cur = existing.get(m.id);
+    for (const { m, cur } of chunk) {
       if (!cur) {
         const c: Comic = { id: m.id, chatId: m.chatId, name: m.name, nameSource: m.nameSource, phone: m.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
-        batch.set(ref, c);
+        batch.set(col(uid, "comics").doc(m.id), c);
         added++;
         continue;
       }
+      // An existing comic keeps its id (and anything the curator set); we only fill in what it was missing.
       const patch: Partial<Comic> = {};
       if (!cur.chatId) patch.chatId = m.chatId;
+      if (!cur.phone && m.phone) patch.phone = m.phone;
       if (shouldUpdateName(cur, m)) Object.assign(patch, { name: m.name, nameSource: m.nameSource });
       if (Object.keys(patch).length) {
-        batch.update(ref, patch);
+        batch.update(col(uid, "comics").doc(cur.id), patch);
         updated++;
       }
     }
     await batch.commit();
   });
 
-  return { total: unique.length, added, updated, memberIds: unique.map((m) => m.id), adminIds: unique.filter((m) => m.isAdmin).map((m) => m.id) };
+  const idOf = (x: (typeof unique)[number]) => x.cur?.id ?? x.m.id;
+  return { total: unique.length, added, updated, memberIds: unique.map(idOf), adminIds: unique.filter((x) => x.m.isAdmin).map(idOf) };
 }
 
-/** The curator's saved WhatsApp contacts that are real people with a phone number. */
-export async function listContacts(uid: string): Promise<{ contacts: WaContact[] }> {
+/** Contacts per users/{uid}/contactsImport/chunkN doc. Keeps each doc well under Firestore's 1 MiB limit. */
+const CONTACT_CHUNK = 1000;
+
+/**
+ * The curator's saved WhatsApp contacts that are real people with a phone number. A command result is one Firestore
+ * doc (1 MiB), too small for a big phonebook, so the contacts go to contactsImport chunks and the result says how many.
+ */
+export async function listContacts(uid: string): Promise<{ count: number; chunks: number }> {
   const client = sessions.require(uid);
   const all = await client.getContacts();
   const mine = all.filter((c) => c.isMyContact && !c.isGroup && c.isUser && !c.isMe && c.id.user !== client.info.wid.user);
@@ -115,12 +131,23 @@ export async function listContacts(uid: string): Promise<{ contacts: WaContact[]
   const seen = new Set<string>();
   const contacts: WaContact[] = [];
   for (const c of mine) {
-    const phone = c.id.server === "lid" ? (lids.get(c.id._serialized) ?? "") : (c.number || c.id.user);
-    if (!/^\d{8,15}$/.test(phone) || seen.has(phone)) continue;
+    // WhatsApp numbers always carry the country code, so treat them as international (same rules as file import).
+    const phone = normalizePhone(`+${c.id.server === "lid" ? (lids.get(c.id._serialized) ?? "") : (c.number || c.id.user)}`);
+    if (!phone || seen.has(phone)) continue;
     seen.add(phone);
     const name = c.name?.trim() || c.pushname?.trim() || `+${phone}`;
     contacts.push({ id: comicIdForPhone(phone), name, phone });
   }
   contacts.sort((a, b) => a.name.localeCompare(b.name));
-  return { contacts };
+
+  const dest = col(uid, "contactsImport");
+  const old = await dest.listDocuments();
+  for (let i = 0; i < old.length; i += BATCH) {
+    const batch = db.batch();
+    old.slice(i, i + BATCH).forEach((r) => batch.delete(r));
+    await batch.commit();
+  }
+  const chunks = Math.ceil(contacts.length / CONTACT_CHUNK);
+  await Promise.all(Array.from({ length: chunks }, (_, n) => dest.doc(`chunk${n}`).set({ n, contacts: contacts.slice(n * CONTACT_CHUNK, (n + 1) * CONTACT_CHUNK) })));
+  return { count: contacts.length, chunks };
 }

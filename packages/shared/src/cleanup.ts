@@ -1,11 +1,12 @@
 // Pure rules for the reset and data-management tools, shared by the app (client writes) and the worker (admin deletes).
-import type { Lineup, RequestStatus, SpotRequest } from "./types.ts";
+import type { Comic, Lineup, RequestStatus, Show, SpotHistoryEntry, SpotRequest } from "./types.ts";
+import { shiftWeek } from "./week.ts";
 
 /** The read-only template account that demo sandboxes are copied from. Never deleted. */
 export const DEMO_SOURCE_UID = "demo-curator";
 
 /** Every collection under users/{uid} the app and worker use. */
-export const USER_COLLECTIONS = ["venues", "shows", "comics", "requests", "lineups", "actions", "notices", "offers", "polls", "groups", "commands", "session", "secrets"] as const;
+export const USER_COLLECTIONS = ["venues", "shows", "comics", "requests", "lineups", "actions", "notices", "offers", "polls", "groups", "commands", "session", "secrets", "contactsImport"] as const;
 
 export type DataScope = "requests" | "lineups" | "comics" | "history" | "everything";
 
@@ -32,8 +33,9 @@ export function collectionsForScope(scope: DataScope): string[] {
 export const isDataScope = (v: unknown): v is DataScope => typeof v === "string" && (v === "everything" || Object.hasOwn(SCOPE_COLLECTIONS, v));
 
 /** Anonymous demo sandboxes: users docs flagged `demo: true`, minus the source copy. */
-export function demoSandboxIds(users: { id: string; demo?: unknown }[]): string[] {
-  return users.filter((u) => u.demo === true && u.id !== DEMO_SOURCE_UID).map((u) => u.id);
+export function demoSandboxIds(users: { id: string; demo?: unknown; email?: unknown }[]): string[] {
+  // A sandbox never has an email; one that does is a real account that must not be wiped.
+  return users.filter((u) => u.demo === true && u.id !== DEMO_SOURCE_UID && !u.email).map((u) => u.id);
 }
 
 /** Requests from weeks before `beforeWeek` (Monday ISO dates compare as strings). */
@@ -50,7 +52,11 @@ export interface LineupResetPlan {
   confirmed: boolean;
   lineupPatch: Partial<Lineup>;
   requestResets: { id: string; status: RequestStatus }[];
+  /** Comics whose "performed" mark and history entry for this week's confirmation are undone. */
+  comicPatches: { id: string; patch: Partial<Pick<Comic, "lastPerformedWeek" | "history">> }[];
 }
+
+type ComicState = Pick<Comic, "id" | "lastPerformedWeek" | "history">;
 
 /** Back to the waiting state a request had before it was placed (matches unplacing a comic on the board). */
 const waiting = (r: Pick<SpotRequest, "ackedAt">): RequestStatus => (r.ackedAt ? "acked" : "new");
@@ -59,25 +65,47 @@ const waiting = (r: Pick<SpotRequest, "ackedAt">): RequestStatus => (r.ackedAt ?
  * Clear a lineup's slots and put its comics' requests back to waiting. Nothing is sent.
  * Null when there is nothing to clear. A confirmed lineup also goes back to draft.
  */
-export function planLineupReset(lineup: Lineup, requests: Pick<SpotRequest, "id" | "comicId" | "weekOf" | "status" | "ackedAt">[]): LineupResetPlan | null {
+export function planLineupReset(lineup: Lineup, requests: Pick<SpotRequest, "id" | "comicId" | "weekOf" | "status" | "ackedAt">[], comics: ComicState[] = []): LineupResetPlan | null {
   if (!lineup.slots.length) return null;
   const confirmed = lineup.status === "confirmed";
-  const comics = new Set(lineup.slots.map((s) => s.comicId));
+  const onLineup = new Set(lineup.slots.map((s) => s.comicId));
   const requestResets = requests
-    .filter((r) => r.weekOf === lineup.weekOf && comics.has(r.comicId) && (r.status === "assigned" || (confirmed && r.status === "confirmed")))
+    .filter((r) => r.weekOf === lineup.weekOf && onLineup.has(r.comicId) && (r.status === "assigned" || (confirmed && r.status === "confirmed")))
     .map((r) => ({ id: r.id, status: waiting(r) }));
   return {
     lineupId: lineup.id,
     showId: lineup.showId,
     cleared: lineup.slots.length,
     confirmed,
-    lineupPatch: confirmed ? { slots: [], status: "draft", sentAt: null, groupSync: null, dropped: [] } : { slots: [] },
+    lineupPatch: confirmed ? { slots: [], status: "draft", sentAt: null, groupSync: null, dropped: [], showDaySyncedOn: null, micCheckSentOn: null, outcome: null } : { slots: [] },
     requestResets,
+    comicPatches: confirmed ? unconfirmComics(lineup, comics) : [],
   };
 }
 
-export function planWeekReset(lineups: Lineup[], requests: Pick<SpotRequest, "id" | "comicId" | "weekOf" | "status" | "ackedAt">[]): LineupResetPlan[] {
-  return lineups.flatMap((l) => planLineupReset(l, requests) ?? []);
+/** Confirming marks each comic as performed that week and logs a 'confirmed' history entry; take both back. */
+function unconfirmComics(lineup: Lineup, comics: ComicState[]): LineupResetPlan["comicPatches"] {
+  const slotIds = new Set(lineup.slots.map((s) => s.comicId));
+  const weekEnd = shiftWeek(lineup.weekOf, 1);
+  const isThis = (h: SpotHistoryEntry) => h.status === "confirmed" && h.showId === lineup.showId && h.date >= lineup.weekOf && h.date < weekEnd;
+  return comics.flatMap((c) => {
+    if (!slotIds.has(c.id)) return [];
+    const patch: Partial<Pick<Comic, "lastPerformedWeek" | "history">> = {};
+    if (c.lastPerformedWeek === lineup.weekOf) patch.lastPerformedWeek = null;
+    if (c.history?.some(isThis)) patch.history = c.history.filter((h) => !isThis(h));
+    return Object.keys(patch).length ? [{ id: c.id, patch }] : [];
+  });
+}
+
+/** Plans for a whole week. Called-off lineups (cancelled, canned) and lineups of inactive shows are left alone. */
+export function planWeekReset(
+  lineups: Lineup[],
+  requests: Pick<SpotRequest, "id" | "comicId" | "weekOf" | "status" | "ackedAt">[],
+  shows: Pick<Show, "id" | "active">[],
+  comics: ComicState[] = [],
+): LineupResetPlan[] {
+  const active = new Set(shows.filter((s) => s.active).map((s) => s.id));
+  return lineups.filter((l) => l.status !== "cancelled" && l.status !== "canned" && active.has(l.showId)).flatMap((l) => planLineupReset(l, requests, comics) ?? []);
 }
 
 /** Admin data commands (servers/{id}/commands). `dryRun` only counts. */

@@ -121,7 +121,11 @@ export async function runAdminDataCommand(type: string, data: { by?: string; pay
 
   if (type === "wipe_demo") {
     const snap = await db.collection("users").where("demo", "==", true).get();
-    const uids = demoSandboxIds(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    // The flag alone isn't enough: a real account (email on the doc, or an access request) is never a sandbox.
+    const flagged = demoSandboxIds(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const access = flagged.length ? await db.getAll(...flagged.map((id) => db.collection("access").doc(id))) : [];
+    const real = new Set(access.filter((a) => a.exists).map((a) => a.id));
+    const uids = flagged.filter((id) => !real.has(id));
     const counts: Record<string, number> = {};
     for (const uid of uids) merge(counts, await userData(uid, "everything", dryRun));
     if (!dryRun) console.log(`[admin] ${by} wiped ${uids.length} demo sandbox(es), ${sum(counts)} docs`);
