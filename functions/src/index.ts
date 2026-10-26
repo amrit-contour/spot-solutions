@@ -11,8 +11,10 @@ import { OAuth2Client } from "google-auth-library";
 import { defineSecret, defineString } from "firebase-functions/params";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onTaskDispatched } from "firebase-functions/v2/tasks";
+import { getFunctions } from "firebase-admin/functions";
 import { parseKey } from "./gcrypto";
-import { connect as gcConnect, disconnect as gcDisconnect, onComicWritten as gcOnComic, planContacts as gcPlan, processDue as gcProcess, runContacts as gcRun, type Caller as GcCaller, type GcDeps } from "./googleContacts";
+import { connect as gcConnect, disconnect as gcDisconnect, onComicWritten as gcOnComic, planContacts as gcPlan, processDue as gcProcess, processUser as gcProcessUser, runContacts as gcRun, type Caller as GcCaller, type GcDeps } from "./googleContacts";
 import { firestoreGcStore } from "./googleStore";
 import type { ComicBits } from "./googleLogic";
 
@@ -169,8 +171,19 @@ const gcDeps = (): GcDeps => {
     verifyIdToken: async (idToken) => (await new OAuth2Client().verifyIdToken({ idToken, audience: clientId })).getPayload() ?? {},
     now: Date.now,
     log: (m) => console.log(`[google-contacts] ${m}`),
+    schedule: scheduleFlush,
   };
 };
+
+/** One Cloud Task per curator per batch; the id makes a repeated schedule for the same moment a no-op. */
+async function scheduleFlush(uid: string, at: number) {
+  try {
+    await getFunctions().taskQueue(`locations/${REGION}/functions/flushGoogleContacts`).enqueue({ uid }, { scheduleTime: new Date(at), id: `${uid}-${at}` });
+  } catch (e) {
+    // Already scheduled (same id), or Tasks is briefly unavailable: the safety sweep picks the batch up.
+    if ((e as { code?: string }).code !== "functions/task-already-exists") console.warn("[google-contacts] schedule", e);
+  }
+}
 
 const gcCaller = (auth: { uid: string; token: { email?: string; email_verified?: boolean; firebase?: { sign_in_provider?: string } } } | undefined): GcCaller => ({
   uid: auth?.uid,
@@ -221,18 +234,26 @@ export const runGoogleContacts = onCall({ secrets: GC_SECRETS, timeoutSeconds: 5
   }
 });
 
-/** A comic was added or renamed: queue it (cheap). The scheduled function below writes it after a quiet minute. */
+/** A comic was added or renamed: queue it and, if none is pending, schedule one task to write it after a quiet minute. */
 export const queueGoogleContact = onDocumentWritten({ document: "users/{uid}/comics/{id}" }, async (event) => {
   const { uid, id } = event.params;
   try {
-    await gcOnComic({ store: firestoreGcStore(), now: Date.now }, uid, id, event.data?.before.data() as ComicBits | undefined, event.data?.after.data() as ComicBits | undefined);
+    await gcOnComic({ store: firestoreGcStore(), now: Date.now, schedule: scheduleFlush }, uid, id, event.data?.before.data() as ComicBits | undefined, event.data?.after.data() as ComicBits | undefined);
   } catch (e) {
     console.error("[google-contacts] queue", e);
   }
 });
 
-/** Every 2 minutes: write the comics that have been quiet for 45 seconds, per curator, in batches. */
-export const syncGoogleContacts = onSchedule({ schedule: "every 2 minutes", secrets: GC_SECRETS, timeoutSeconds: 300, maxInstances: 1 }, async () => {
+/** The task scheduled above: writes one curator's batch. Runs only when there's something to write. */
+export const flushGoogleContacts = onTaskDispatched({ invoker: serviceAccountEmail(ENROLLER_ID, PROJECT_ID), secrets: GC_SECRETS, timeoutSeconds: 300, retryConfig: { maxAttempts: 3, minBackoffSeconds: 60 }, rateLimits: { maxConcurrentDispatches: 5 } }, async (req) => {
+  const uid = String((req.data as { uid?: unknown })?.uid ?? "");
+  if (!uid) return;
+  const r = await gcProcessUser(gcDeps(), uid);
+  if (r.saved) console.log(`[google-contacts] ${uid}: ${r.saved} contacts saved`);
+});
+
+/** Safety sweep, 4 times a day: a batch whose task was lost. The tasks do the real work (this used to run every 2 minutes). */
+export const syncGoogleContacts = onSchedule({ schedule: "every 6 hours", secrets: GC_SECRETS, timeoutSeconds: 300, maxInstances: 1 }, async () => {
   const r = await gcProcess(gcDeps());
   if (r.users) console.log(`[google-contacts] ${r.users} curators, ${r.saved} contacts saved`);
 });

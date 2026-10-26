@@ -23,6 +23,23 @@ export interface QueueDoc {
   attempts: number;
   /** While in the future, a run owns this entry. */
   leaseUntil: number;
+  /** When the pending Cloud Task for this entry fires. 0 or missing: none is pending. */
+  taskAt?: number;
+}
+
+/** A task that should have fired this long ago is treated as lost, so the next edit schedules a fresh one. */
+export const TASK_GRACE_MS = 10 * 60_000;
+/** A task never fires sooner than this after it's scheduled (a run in flight, or a due time already passed). */
+export const TASK_MIN_DELAY_MS = 30_000;
+
+/**
+ * When to schedule the next task for this entry, or null when none is needed: the entry is gone, or (unless `force`, used by
+ * the task itself, whose own taskAt is still set) a task is already pending. Never earlier than a run in flight frees it.
+ */
+export function nextTaskAt(q: QueueDoc | undefined, now: number, force = false): number | null {
+  if (!q) return null;
+  if (!force && q.taskAt && q.taskAt + TASK_GRACE_MS > now) return null;
+  return Math.max(q.dueAt, q.leaseUntil, now + TASK_MIN_DELAY_MS);
 }
 
 /** A comic edit arrived: add it and push the due time back (capped), without cancelling a run in flight. */
@@ -35,7 +52,7 @@ export function enqueue(prev: QueueDoc | undefined, id: string, now: number): Qu
   let dueAt = Math.min(now + DEBOUNCE_MS, firstAt + MAX_WAIT_MS);
   // Backing off after a failure: an edit must not make the retry earlier.
   if (prev && prev.attempts > 0) dueAt = Math.max(dueAt, prev.dueAt);
-  return { ids: next.slice(0, COLLECT_CAP), overflow, firstAt, dueAt, attempts: prev?.attempts ?? 0, leaseUntil: prev?.leaseUntil ?? 0 };
+  return { ids: next.slice(0, COLLECT_CAP), overflow, firstAt, dueAt, attempts: prev?.attempts ?? 0, leaseUntil: prev?.leaseUntil ?? 0, taskAt: prev?.taskAt ?? 0 };
 }
 
 export const isDue = (q: QueueDoc, now: number) => q.dueAt <= now && q.leaseUntil <= now;

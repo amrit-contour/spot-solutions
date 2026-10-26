@@ -13,6 +13,7 @@
 #   roles/datastore.user                      read and write join codes and server records in Firestore
 #   roles/logging.logWriter                   write function logs
 #   roles/eventarc.eventReceiver              receive the Firestore trigger that queues Google Contacts saves
+#   roles/cloudtasks.enqueuer                 schedule the one-off task that writes a batch of Google Contacts
 # It also lets you (the signed-in account) deploy functions that run as spot-enroller.
 #
 # Safe to run again: it only adds what is missing. --dry-run prints the gcloud commands and changes nothing.
@@ -25,7 +26,7 @@ SA_ID="spot-enroller"
 SA_EMAIL="$SA_ID@$PROJECT.iam.gserviceaccount.com"
 # The roles the functions may hand to a server's account: exactly the ones in new-server-key.sh.
 GRANTABLE="'roles/datastore.user', 'roles/firebasecloudmessaging.admin'"
-PLAIN_ROLES=(roles/iam.serviceAccountAdmin roles/iam.serviceAccountKeyAdmin roles/datastore.user roles/logging.logWriter roles/eventarc.eventReceiver)
+PLAIN_ROLES=(roles/iam.serviceAccountAdmin roles/iam.serviceAccountKeyAdmin roles/datastore.user roles/logging.logWriter roles/eventarc.eventReceiver roles/cloudtasks.enqueuer)
 APIS=(iam.googleapis.com cloudresourcemanager.googleapis.com cloudfunctions.googleapis.com run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com eventarc.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com people.googleapis.com)
 
 DRY=0; UNRESTRICTED=0
@@ -103,6 +104,8 @@ fi
 echo "5. Let you deploy functions that run as $SA_ID"
 if [[ "$ME" == *.gserviceaccount.com ]]; then MEMBER="serviceAccount:$ME"; else MEMBER="user:${ME:-<you>}"; fi
 run gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" --project "$PROJECT" --member "$MEMBER" --role roles/iam.serviceAccountUser --quiet --format=none
+# Google Contacts tasks are signed as spot-enroller itself, so it may act as itself (and nothing else).
+run gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" --project "$PROJECT" --member "serviceAccount:$SA_EMAIL" --role roles/iam.serviceAccountUser --quiet --format=none
 
 cat <<MSG
 

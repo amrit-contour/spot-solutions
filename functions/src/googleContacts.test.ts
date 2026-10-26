@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { AppError } from "./core";
 import { decryptToken, encryptToken } from "./gcrypto";
 import type { Fetch } from "./googleApi";
-import { connect, disconnect, onComicWritten, processDue, runContacts, type Caller, type GcDeps, type GcStore, type LinkRecord } from "./googleContacts";
-import { enqueue, type QueueDoc } from "./googleLogic";
+import { connect, disconnect, onComicWritten, processDue, processUser, runContacts, type Caller, type GcDeps, type GcStore, type LinkRecord } from "./googleContacts";
+import { enqueue, nextTaskAt, type QueueDoc } from "./googleLogic";
 
 const key = randomBytes(32);
 const res = (status: number, body: unknown) => ({ ok: status < 300, status, headers: { get: () => null }, json: async () => body });
@@ -29,6 +29,12 @@ function fakeStore(over: Partial<GcStore> = {}) {
     notice: async (_u, _l, t) => void s.notices.push(t),
     enqueue: async (_u, id, now) => void (s.queue = enqueue(s.queue ?? undefined, id, now)),
     claimDue: async () => (s.queue ? [{ uid: "u1", q: s.queue }] : []),
+    claimOne: async (_u, now) => (s.queue && s.queue.dueAt <= now && s.queue.leaseUntil <= now ? s.queue : null),
+    armTask: async (_u, now, force) => {
+      const at = nextTaskAt(s.queue ?? undefined, now, force);
+      if (at !== null && s.queue) s.queue = { ...s.queue, taskAt: at };
+      return at;
+    },
     finish: async () => void (s.queue = null),
     fail: async () => true,
     drop: async () => void (s.queue = null),
@@ -114,6 +120,34 @@ describe("trigger and scheduled worker", () => {
     expect(await onComicWritten(d, "u1", "a@c.us", undefined, { ...after, nameSource: "whatsapp" })).toBe(false);
     expect(await onComicWritten(d, "u1", "a@c.us", undefined, after)).toBe(true);
     expect(s.queue?.ids).toEqual(["a@c.us"]);
+  });
+  it("a burst of edits schedules one task, not one per edit", async () => {
+    const { s, store } = fakeStore();
+    linked(s);
+    const schedule = vi.fn(async () => {});
+    const d = { ...deps(store, api), schedule };
+    const after = { name: "Asha", phone: "919876543210", nameSource: "manual" };
+    await onComicWritten(d, "u1", "a@c.us", undefined, after);
+    await onComicWritten(d, "u1", "b@c.us", undefined, { ...after, name: "Bina" });
+    expect(schedule).toHaveBeenCalledTimes(1);
+    expect(s.queue?.ids).toEqual(["a@c.us", "b@c.us"]);
+  });
+  it("the task writes a due batch and schedules nothing more", async () => {
+    const { s, store } = fakeStore();
+    linked(s);
+    s.queue = { ...enqueue(undefined, "a@c.us", 0), taskAt: 45_000 };
+    const schedule = vi.fn(async () => {});
+    expect(await processUser({ ...deps(store, api), schedule }, "u1")).toEqual({ saved: 1 });
+    expect(s.queue).toBeNull();
+    expect(schedule).not.toHaveBeenCalled();
+  });
+  it("a task that fires early (a later edit pushed the batch back) re-arms for the new time", async () => {
+    const { s, store } = fakeStore();
+    linked(s);
+    s.queue = { ...enqueue(undefined, "a@c.us", 1_000_000), taskAt: 1_000_000 };
+    const schedule = vi.fn(async () => {});
+    expect(await processUser({ ...deps(store, api), schedule }, "u1")).toEqual({ saved: 0 });
+    expect(schedule).toHaveBeenCalledWith("u1", 1_045_000);
   });
   it("writes a due batch and clears it", async () => {
     const { s, store } = fakeStore();

@@ -5,7 +5,7 @@
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import type { SyncComic } from "./contactsShared";
 import type { GcStore, LinkRecord } from "./googleContacts";
-import { LEASE_MS, afterFailure, afterRun, enqueue, isDue, type QueueDoc } from "./googleLogic";
+import { LEASE_MS, afterFailure, afterRun, enqueue, isDue, nextTaskAt, type QueueDoc } from "./googleLogic";
 
 const NOTICE_TTL_MS = 30 * 24 * 3_600_000;
 
@@ -64,6 +64,23 @@ export function firestoreGcStore(db = getFirestore()): GcStore {
         if (claimed) out.push({ uid: doc.id, q: claimed });
       }
       return out;
+    },
+    async claimOne(uid, now) {
+      const ref = queue.doc(uid);
+      return db.runTransaction(async (tx) => {
+        const q = (await tx.get(ref)).data() as QueueDoc | undefined;
+        if (!q || !isDue(q, now)) return null;
+        tx.update(ref, { leaseUntil: now + LEASE_MS });
+        return q;
+      });
+    },
+    async armTask(uid, now, force) {
+      const ref = queue.doc(uid);
+      return db.runTransaction(async (tx) => {
+        const at = nextTaskAt((await tx.get(ref)).data() as QueueDoc | undefined, now, force);
+        if (at !== null) tx.update(ref, { taskAt: at });
+        return at;
+      });
     },
     async finish(uid, processed, now, clearOverflow) {
       const ref = queue.doc(uid);
