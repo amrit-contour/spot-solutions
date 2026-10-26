@@ -132,8 +132,13 @@ export function tellPill(s: TellState, i = 0): PillSpec {
  */
 export function comicPills({ comic, request, show, lastWeek, states, days = true }: { comic?: Comic; request?: SpotRequest; show?: Pick<Show, "regulars" | "protected">; lastWeek?: string; states?: TellState[]; days?: boolean }, id?: string): PillSpec[] {
   const out: PillSpec[] = [];
-  (states ?? []).forEach((s, i) => out.push(tellPill(s, i)));
   const cid = id ?? comic?.id ?? request?.comicId;
+  // Regulars and co-hosts always know: their role pill says enough, so no "Already told" on them.
+  const standing = Boolean(cid && (show?.protected?.includes(cid) || show?.regulars?.includes(cid)));
+  (states ?? []).forEach((s, i) => {
+    if (standing && s.kind === "told") return;
+    out.push(tellPill(s, i));
+  });
   if (cid && show?.protected?.includes(cid)) out.push({ key: "role", label: "Co-host", tone: "fact", icon: IconCrown });
   else if (cid && show?.regulars?.includes(cid)) out.push({ key: "role", label: "Regular", tone: "fact", icon: IconRepeat });
   if (lastWeek && comic?.lastPerformedWeek === lastWeek) out.push({ key: "last", label: "Last week", tone: "fact", icon: IconHistory, title: "Performed last week" });
