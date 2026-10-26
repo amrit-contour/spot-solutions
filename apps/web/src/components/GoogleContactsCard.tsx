@@ -56,11 +56,19 @@ export function GoogleContactsCard() {
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
             <Button variant={connected ? "outlined" : "tonal"} onClick={() => void connect()} loading={connecting} disabled={demo}>
-              {connected ? "Reconnect Google" : "Connect Google Contacts"}
+              {connected || enabled ? "Reconnect Google" : "Connect Google Contacts"}
             </Button>
-            <span className="type-label-m text-on-surface-variant">{connected && until ? `Connected until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Not connected"}</span>
+            <span className={cx("type-label-m", !connected && enabled ? "text-error" : "text-on-surface-variant")}>
+              {connected && until
+                ? `Connected until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                : enabled
+                  ? "Paused: reconnect to keep saving names"
+                  : "Not connected"}
+            </span>
           </div>
-          <p className="type-body-s text-on-surface-variant">Google gives apps that run in your browser one hour of access at a time, and we never store it on a server. When it runs out, tap Reconnect; no new consent screen, just a quick popup.</p>
+          <p className="type-body-s text-on-surface-variant">
+            Google lets apps in your browser in for one hour at a time, and this app never keeps that access on a server. So after an hour, or when you reload the page, it shows Paused. Nothing is lost: tap Reconnect (a quick popup, no new consent screen) and the switch below carries on.
+          </p>
           <p className="type-body-s text-on-surface-variant">The first time, Google may say “Google hasn't verified this app”. Choose Advanced, then continue. Only names and phone numbers are used, and nothing is ever deleted.</p>
         </div>
 

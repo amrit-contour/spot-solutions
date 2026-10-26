@@ -63,6 +63,32 @@ export function useGoogleSync() {
         <>
           <p className="type-title-s text-on-surface">{planSentence(plan)}.</p>
           <p>Only names change. Other phone numbers and details on your contacts stay as they are, and nothing is deleted.</p>
+          {plan.create.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="type-label-l text-on-surface">New in Google (no contact with this number there yet)</span>
+              <ul className="max-h-40 overflow-y-auto rounded-md bg-surface-container px-3 py-2 type-body-s">
+                {plan.create.map((c) => (
+                  <li key={c.comicId} className="flex justify-between gap-3 py-0.5">
+                    <span className="min-w-0 truncate">{c.name}</span>
+                    <span className="flex-none tabular text-on-surface-variant">+{c.phone}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {plan.update.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="type-label-l text-on-surface">Renamed in Google</span>
+              <ul className="max-h-40 overflow-y-auto rounded-md bg-surface-container px-3 py-2 type-body-s">
+                {plan.update.map((c) => (
+                  <li key={c.comicId} className="flex justify-between gap-3 py-0.5">
+                    <span className="min-w-0 truncate"><span className="text-on-surface-variant line-through">{c.from}</span> → {c.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="type-body-s">Already in your phone but listed as new? That contact is probably saved on the phone or SIM only, not in your Google account, so Google can't see it.</p>
           {plan.skipped.length > 0 && <p>{n(plan.skipped.length, "comic")} skipped: no phone number WhatsApp will tell us.</p>}
           {progress && (
             <div role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} className="flex flex-col gap-1.5">
