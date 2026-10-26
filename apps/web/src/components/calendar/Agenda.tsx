@@ -4,7 +4,7 @@ import { fmtDayShort } from "../../lib/calendarDates";
 import { useApp } from "../../lib/app";
 import { cx } from "../ui";
 import { IconMap } from "../icons";
-import { EventPopover, fillOf, toneOf, useCal } from "./shared";
+import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal } from "./shared";
 
 export function Agenda({ dates, label }: { dates: string[]; label: string }) {
   const cal = useCal();
@@ -43,7 +43,10 @@ export function Agenda({ dates, label }: { dates: string[]; label: string }) {
                           )}
                         </span>
                         <span className="flex flex-none flex-col items-end gap-1">
-                          <span className={cx("inline-flex h-5 items-center rounded-sm px-1.5 type-label-m whitespace-nowrap", tone.block)}>{tone.label}</span>
+                          <span className="flex items-center gap-1">
+                            <NotToldMark n={pendingCount(ev)} />
+                            <span className={cx("inline-flex h-5 items-center rounded-sm px-1.5 type-label-m whitespace-nowrap", tone.block)}>{tone.label}</span>
+                          </span>
                           <span className="type-label-m text-on-surface-variant tabular">{fillOf(ev)}</span>
                         </span>
                       </EventPopover>

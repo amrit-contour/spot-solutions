@@ -3,7 +3,7 @@
 import { DAY_SHORT, formatTime } from "@spot/shared";
 import { dayNum, fmtDayLong, fmtHour, weekDates, weekdayOf } from "../../lib/calendarDates";
 import { cx } from "../ui";
-import { EventPopover, fillOf, toneOf, useCal, type CalEvent } from "./shared";
+import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal, type CalEvent } from "./shared";
 
 const HOUR = 72; // px per hour
 const RAIL = 48; // px, the hour labels
@@ -75,7 +75,7 @@ export function WeekGrid({ monday }: { monday: string }) {
               type="button"
               onClick={() => cal.openDay(d)}
               aria-label={`${fmtDayLong(d)}, ${n ? `${n} show${n > 1 ? "s" : ""}` : "no shows"}. Open day`}
-              className={cx("state-layer flex min-w-0 flex-col items-center gap-0.5 border-l border-outline-variant/60 py-2", d < cal.today && "opacity-70")}
+              className={cx("state-layer flex min-w-0 flex-col items-center gap-0.5 focus-visible:outline-offset-[-3px]! border-l border-outline-variant/60 py-2", d < cal.today && "opacity-70")}
             >
               <span className={cx("type-label-m", isToday ? "text-primary" : "text-on-surface-variant")}>{DAY_SHORT[weekdayOf(d)]}</span>
               <DayNumber date={d} today={cal.today} />
@@ -112,7 +112,10 @@ export function WeekGrid({ monday }: { monday: string }) {
                     className={cx("relative flex size-full flex-col gap-0.5 overflow-hidden rounded-md py-1.5 pr-1.5 pl-3", tone.block, past && tone.id !== "ask" && "opacity-75")}
                   >
                     <span aria-hidden className={cx("absolute inset-y-0 left-0 w-1", tone.bar)} />
-                    <span className="line-clamp-2 type-label-l leading-4 break-words">{ev.show.name}</span>
+                    <span className="flex items-start gap-1">
+                      <span className="line-clamp-2 min-w-0 flex-1 type-label-l leading-4 break-words">{ev.show.name}</span>
+                      <NotToldMark n={pendingCount(ev)} />
+                    </span>
                     <span className="truncate type-body-s tabular opacity-80">{formatTime(ev.show.startTime)}</span>
                     <span className="mt-auto flex items-center gap-1.5">
                       <span aria-hidden className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-current/15">

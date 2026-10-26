@@ -4,7 +4,7 @@ import { dayNum, fmtDayLong, fmtHour, monthKey, monthWeeks, weekDates, type CalV
 import { cx } from "../ui";
 import { DayEvents } from "./DayView";
 import { DayNumber } from "./WeekGrid";
-import { EventPopover, fillOf, toneOf, useCal } from "./shared";
+import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal } from "./shared";
 
 const HEAD = [1, 2, 3, 4, 5, 6, 0] as const;
 const MAX_CHIPS = 3;
@@ -44,7 +44,7 @@ export function MonthGrid({ date }: { date: string }) {
                     type="button"
                     onClick={() => cal.openDay(d)}
                     aria-label={`${fmtDayLong(d)}, ${evs.length ? `${evs.length} show${evs.length > 1 ? "s" : ""}` : "no shows"}. Open day`}
-                    className={cx("state-layer -m-0.5 self-start rounded-full p-0.5", !inMonth && "opacity-45")}
+                    className={cx("state-layer -m-0.5 self-start rounded-full p-0.5 focus-visible:outline-offset-0!", !inMonth && "opacity-45")}
                   >
                     <DayNumber date={d} today={cal.today} size={28} />
                   </button>
@@ -58,6 +58,7 @@ export function MonthGrid({ date }: { date: string }) {
                             <span className="flex w-full items-center gap-1 type-label-s tracking-normal text-on-surface-variant">
                               <span aria-hidden className={cx("size-1.5 flex-none rounded-full", tone.bar, tone.dashed && "bg-transparent ring-1 ring-outline ring-inset")} />
                               <span className="min-w-0 flex-1 whitespace-nowrap tabular">{fmtHour(ev.startMin)}</span>
+                              <NotToldMark n={pendingCount(ev)} className="size-4" />
                               <span className="flex-none tabular">{fillOf(ev)}</span>
                             </span>
                           </EventPopover>

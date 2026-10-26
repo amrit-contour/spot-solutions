@@ -1,7 +1,7 @@
 // Landing page: the calendar. Day, Week and Month views of the shows, each opening the same card with every quick
 // action the Lineup page has, and a side column for Updates, requests and next week's asks.
 // The URL carries the view and date (/?view=month&date=2026-10-26) so any view can be linked; the last view is remembered.
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { where } from "firebase/firestore";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -32,7 +32,8 @@ import { PageHeader } from "../components/Shell";
 import { StickyBar } from "../components/StickyBar";
 import { Count } from "../components/updates/shared";
 import { Avatar, Button, Chip, Empty, IconButton, Segmented, cx } from "../components/ui";
-import { IconArrowLeft, IconArrowRight, IconCalendarMark } from "../components/icons";
+import { IconArrowLeft, IconArrowRight, IconCalendarMark, IconChat, IconInbox } from "../components/icons";
+import { ToolButton } from "../components/Popover";
 import { Agenda } from "../components/calendar/Agenda";
 import { DayView } from "../components/calendar/DayView";
 import { MonthCompact, MonthGrid } from "../components/calendar/MonthViews";
@@ -69,6 +70,8 @@ function Calendar() {
   const phone = useMedia("(max-width: 639px)");
   const reduce = useReducedMotion();
   const arrive = useRef<Arrive>("none");
+  const [side, setSide] = useSide();
+  const wide = useMedia("(min-width: 1024px)");
 
   const viewParam = params.get("view");
   const view: CalView = (CAL_VIEWS as string[]).includes(viewParam ?? "") ? (viewParam as CalView) : (readView() ?? "week");
@@ -133,6 +136,7 @@ function Calendar() {
       loading: lineups.loading,
       comicsById,
       asksByWeek,
+      lineups: lineups.data,
       eventsOn: (d: string): CalEvent[] => {
         const w = mondayOf(d);
         const wd = weekdayOf(d);
@@ -144,7 +148,7 @@ function Calendar() {
       },
       openDay: (d) => go(d, "day"),
     }),
-    [today, nowMin, lineups.loading, comicsById, asksByWeek, active, lineupBy, regretInfo, go],
+    [today, nowMin, lineups.loading, lineups.data, comicsById, asksByWeek, active, lineupBy, regretInfo, go],
   );
 
   const chooseView = (v: CalView) => {
@@ -192,9 +196,14 @@ function Calendar() {
   return (
     <div className="w-full">
       <PageHeader title={title} subtitle={subtitle} />
-      <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div
+        style={{ "--side-w": side ? "3.5rem" : undefined } as React.CSSProperties}
+        className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_var(--side-w,20rem)] lg:items-start lg:gap-8 lg:transition-[grid-template-columns] lg:duration-300 lg:ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none xl:grid-cols-[minmax(0,1fr)_var(--side-w,21.25rem)]"
+      >
         <div className="min-w-0">
-          <StickyBar title={period} className="top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))]! py-2">
+          {/* Pinned under the page header, only as wide as this column, opaque so the grid scrolls cleanly beneath it. No
+              title that grows in when stuck: a bar that changes height while pinned shifts everything below it. */}
+          <StickyBar bleed={false} className="top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))]! bg-surface! py-2">
             <div className="flex items-center gap-1.5 sm:gap-2" role="toolbar" aria-label="Calendar">
               <div className="flex items-center">
                 <IconButton icon={IconArrowLeft} label={`Previous ${view}`} onClick={() => step(-1)} className="size-10 sm:size-9" />
@@ -215,7 +224,8 @@ function Calendar() {
             </Empty>
           ) : (
             <CalProvider value={cal}>
-              <div className="mt-3 overflow-x-clip">
+              {/* overflow-x-clip is what keeps a sliding view from widening the page; the side padding gives focus and selection rings room inside it. */}
+              <div className="-mx-2 mt-1 overflow-x-clip px-2 pt-2 pb-2">
                 <AnimatePresence initial={false} mode="popLayout">
                   <motion.div
                     key={`${view}:${anchor}`}
@@ -234,20 +244,55 @@ function Calendar() {
           )}
         </div>
 
-        <aside aria-label="Summary" className="mt-6 flex min-w-0 flex-col gap-4 lg:sticky lg:top-[calc(var(--page-header-h,0px)+1rem)] lg:mt-3">
-          <UpdatesCard total={updates.total} needsYou={updates.needsYou} />
-          <RequestsCard title={week === currentWeek ? "Requests this week" : `Requests · ${formatDate(week)}`} by={byLane} loading={requests.loading} />
-          <NextWeekCard
-            by={nextByLane}
-            loading={nextRequests.loading}
-            viewing={week === nextWeek}
-            onOpen={() => setWeek(nextWeek)}
-            shows={active}
-          />
+        <aside aria-label="Summary" className="relative mt-6 min-w-0 lg:sticky lg:top-[calc(var(--page-header-h,0px)+1rem)] lg:-mx-1 lg:mt-3 lg:overflow-x-clip lg:px-1 lg:py-1">
+          {/* Collapsed (large screens only): a slim rail of icons with counts. */}
+          <div className={cx("absolute inset-x-1 top-1 hidden flex-col items-center gap-1 transition-opacity duration-200 motion-reduce:transition-none", side ? "lg:flex" : "lg:hidden")} aria-hidden={!side}>
+            <ToolButton icon={IconArrowLeft} label="Show the side column" onClick={() => setSide(false)} />
+            <span className="my-1 h-px w-6 bg-outline-variant" aria-hidden />
+            <ToolButton icon={IconInbox} label="Updates" count={updates.total} tone={updates.needsYou ? "attention" : "plain"} onClick={() => setSide(false)} />
+            <ToolButton icon={IconChat} label="Requests this week" count={byLane.asked.length + byLane.maybe.length} onClick={() => setSide(false)} />
+            <ToolButton icon={IconCalendarMark} label="Asking for next week" count={nextByLane.asked.length + nextByLane.maybe.length + nextByLane.held.length} onClick={() => setSide(false)} />
+          </div>
+          <div className={cx("flex min-w-0 flex-col gap-4 lg:w-[19.5rem] xl:w-[21rem]", side && "lg:invisible lg:opacity-0")} inert={side && wide ? true : undefined} style={{ transition: "opacity 200ms" }}>
+            <div className="hidden items-center justify-between lg:flex">
+              <span className="px-1 type-label-l text-on-surface-variant">At a glance</span>
+              <IconButton icon={IconArrowRight} label="Hide the side column" onClick={() => setSide(true)} className="size-9" />
+            </div>
+            <UpdatesCard total={updates.total} needsYou={updates.needsYou} />
+            <RequestsCard title={week === currentWeek ? "Requests this week" : `Requests · ${formatDate(week)}`} by={byLane} loading={requests.loading} />
+            <NextWeekCard
+              by={nextByLane}
+              loading={nextRequests.loading}
+              viewing={week === nextWeek}
+              onOpen={() => setWeek(nextWeek)}
+              shows={active}
+            />
+          </div>
         </aside>
       </div>
     </div>
   );
+}
+
+const SIDE_KEY = "spot.calendar.sideCollapsed";
+/** Whether the side column is folded into its rail. Remembered; blocked storage just means it isn't. */
+function useSide() {
+  const [side, set] = useState(() => {
+    try {
+      return localStorage.getItem(SIDE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setSide = useCallback((v: boolean) => {
+    set(v);
+    try {
+      localStorage.setItem(SIDE_KEY, v ? "1" : "0");
+    } catch {
+      /* not remembered */
+    }
+  }, []);
+  return [side, setSide] as const;
 }
 
 function Legend() {

@@ -143,7 +143,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
                 <span className="w-4 flex-none text-center type-label-m text-on-surface-variant tabular">{i + 1}</span>
                 <Avatar name={name(s.comicId)} size={28} />
                 <span className="min-w-0 flex-1 truncate type-body-m">{name(s.comicId)}</span>
-                <PillRow pills={pills} max={1} className="flex-none" />
+                <PillRow pills={pills} max={4} compact className="flex-none" />
               </li>
             );
           })}

@@ -1,10 +1,11 @@
 // What every calendar view shares: the event model, the status colours, the data the views read, and the
 // button that opens an event's full card in a popover (a bottom sheet on phones).
 import { createContext, useContext, type CSSProperties, type ReactNode } from "react";
-import { formatTime, type Comic, type Lineup, type Show, type SpotRequest } from "@spot/shared";
+import { diffLineup, formatTime, sentSnapshot, type Comic, type Lineup, type Show, type SpotRequest } from "@spot/shared";
 import { Popover } from "../Popover";
 import { EventCard } from "./EventCard";
 import { cx } from "../ui";
+import { IconChatCross } from "../icons";
 import { fmtDayShort, toMinutes } from "../../lib/calendarDates";
 
 export interface CalEvent {
@@ -25,6 +26,8 @@ export interface CalData {
   loading: boolean;
   comicsById: Map<string, Comic>;
   asksByWeek: Map<string, SpotRequest[]>;
+  /** Every lineup the current view loaded (all its weeks). */
+  lineups: Lineup[];
   /** Shows that fit a day, earliest first. */
   eventsOn: (date: string) => CalEvent[];
   regretsFor: (ev: CalEvent) => number;
@@ -96,6 +99,24 @@ export const TONE_LEGEND: { id: Tone["id"]; label: string }[] = [
 ];
 export const legendBar = (id: Tone["id"]) => TONES[id].bar;
 
+/** Changes made since the lineup was confirmed that the comics haven't been told about. */
+export function pendingCount(ev: CalEvent) {
+  const l = ev.lineup;
+  if (!l || l.status !== "confirmed") return 0;
+  return diffLineup(l.slots, l.sent ?? sentSnapshot(l.slots, ev.show, l.sentAt ?? 0), ev.show).total;
+}
+
+/** Shown in a week block, month chip or agenda row when people still need telling. Static: the whole event is the button. */
+export function NotToldMark({ n, className }: { n: number; className?: string }) {
+  if (!n) return null;
+  const label = `${n} change${n > 1 ? "s" : ""} not told yet`;
+  return (
+    <span title={label} role="img" aria-label={label} className={cx("inline-grid size-5 flex-none place-items-center rounded-sm bg-tertiary text-on-tertiary", className)}>
+      <IconChatCross className="icon size-3.5" />
+    </span>
+  );
+}
+
 export const fillOf = (ev: CalEvent) => `${ev.lineup?.slots.length ?? 0}/${ev.show.slotCount}`;
 
 /* ---------- The popover ---------- */
@@ -120,7 +141,7 @@ export function EventPopover({ ev, anchorClassName, anchorStyle, className, chil
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-label={`${ev.show.name}, ${fmtDayShort(ev.date)}, ${formatTime(ev.show.startTime)}. ${tone.label}, ${fillOf(ev)} slots filled`}
-          className={cx("state-layer pressable text-left", className)}
+          className={cx("state-layer pressable text-left focus-visible:outline-offset-[-3px]! aria-expanded:ring-2 aria-expanded:ring-inset aria-expanded:ring-primary", className)}
         >
           {children}
         </button>
