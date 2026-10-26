@@ -5,10 +5,10 @@ import { toast } from "sonner";
 import { Button, TextInput, cx } from "./ui";
 
 /**
- * Centered confirmation for destructive actions. `children` must state exactly what goes.
+ * Centered confirmation, for destructive actions by default (`tone="primary"` for safe bulk ones). `children` must state exactly what goes.
  * `ack` adds a checkbox that has to be ticked; `typed` makes the user type a value first.
  */
-export function ConfirmDialog({ open, onClose, title, children, confirmLabel, onConfirm, ack, typed, disabled }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; confirmLabel: string; onConfirm: () => Promise<void>; ack?: string; typed?: { expect: string; label: string }; disabled?: boolean }) {
+export function ConfirmDialog({ open, onClose, title, children, confirmLabel, onConfirm, ack, typed, disabled, tone = "danger" }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; confirmLabel: string; onConfirm: () => Promise<void>; ack?: string; typed?: { expect: string; label: string }; disabled?: boolean; tone?: "danger" | "primary" }) {
   const [busy, setBusy] = useState(false);
   const [checked, setChecked] = useState(false);
   const [text, setText] = useState("");
@@ -66,7 +66,7 @@ export function ConfirmDialog({ open, onClose, title, children, confirmLabel, on
               <Button variant="text" onClick={onClose} disabled={busy}>
                 Cancel
               </Button>
-              <Button variant="danger" loading={busy} disabled={!ready} onClick={() => void go()}>
+              <Button variant={tone === "danger" ? "danger" : "filled"} loading={busy} disabled={!ready} onClick={() => void go()}>
                 {confirmLabel}
               </Button>
             </div>

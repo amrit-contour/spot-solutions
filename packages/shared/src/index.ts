@@ -8,3 +8,4 @@ export * from "./people.ts";
 export * from "./cleanup.ts";
 export * from "./fleet.ts";
 export * from "./demo.ts";
+export * from "./contacts.ts";

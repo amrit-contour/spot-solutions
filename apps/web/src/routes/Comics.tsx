@@ -6,6 +6,7 @@ import { cancellations, formatDate, shiftWeek, type Comic, type ComicList, type 
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
+import { saveComicToGoogle } from "../lib/googleContacts";
 import { PageHeader } from "../components/Shell";
 import { Menu, MenuItem } from "../components/Menu";
 import { ImportContactsSheet, ImportFileSheet } from "../components/ImportSheets";
@@ -115,7 +116,7 @@ export function Comics() {
 }
 
 function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose: () => void }) {
-  const { uid, shows } = useApp();
+  const { uid, shows, settings } = useApp();
   const [d, setD] = useState<Partial<Comic>>({});
   const [last, setLast] = useState<Partial<Comic> | null>(null);
   if (value !== last) {
@@ -143,6 +144,8 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
         return setDoc(userDoc(uid, "shows", s.id), { regulars }, { merge: true });
       }),
     );
+    // New comic, or a changed name or number: write it to Google Contacts if that's on.
+    if (isNew || value?.name !== d.name) saveComicToGoogle({ id, name: d.name.trim(), phone: full }, settings.googleContacts.enabled);
     onClose();
   };
   const remove = async () => {

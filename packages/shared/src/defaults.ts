@@ -17,6 +17,7 @@ export const DEFAULT_SETTINGS: Settings = {
   micCheck: { enabled: true, time: "10:00", whatsapp: false },
   hostPoll: { groupId: null },
   offers: { expiryHours: 3 },
+  googleContacts: { enabled: false },
 };
 
 /** Loose yes/no for replies to offers and mic checks (English + common Hindi/Kannada). null = unclear. */

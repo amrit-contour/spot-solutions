@@ -108,6 +108,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       micCheck: { ...DEFAULT_SETTINGS.micCheck, ...s.micCheck },
       hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...s.hostPoll },
       offers: { ...DEFAULT_SETTINGS.offers, ...s.offers },
+      googleContacts: { ...DEFAULT_SETTINGS.googleContacts, ...s.googleContacts },
       ai: { ...aiFromLegacy(s), policy: s.ai?.policy ?? DEFAULT_AI_POLICY },
     };
   }, [userDoc.data]);

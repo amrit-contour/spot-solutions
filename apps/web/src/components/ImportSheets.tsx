@@ -3,8 +3,10 @@ import { toast } from "sonner";
 import { getDocFromServer } from "firebase/firestore";
 import { comicIdForPhone, parsePeopleFile, type WaContact } from "@spot/shared";
 import { useApp } from "../lib/app";
+import { isDemoUser } from "../lib/demo";
 import { runCommand, userDoc } from "../lib/data";
 import { importPeople, rosterLookup } from "../lib/people";
+import { useGoogleSync } from "./GoogleContactsSync";
 import { Avatar, Button, Chip, Empty, Spinner, cx } from "./ui";
 import { Sheet } from "./ui";
 import { IconCheck, IconPhone, IconSearch, IconUserPlus, IconWarn } from "./icons";
@@ -99,6 +101,17 @@ function Checklist({ rows, picked, setPicked }: { rows: Row[]; picked: Set<strin
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const summary = (r: { added: number; updated: number }) => [r.added && `${plural(r.added, "comic")} added`, r.updated && `${r.updated} renamed`].filter(Boolean).join(", ") || "Nothing new to add";
 
+/** After an import: if Google Contacts saving is on, offer it (the curator confirms the counts first, nothing runs silently). */
+function useOfferGoogle() {
+  const { settings } = useApp();
+  const sync = useGoogleSync();
+  const offer = (r: { changed: { id: string; name: string; phone: string }[] }) => {
+    if (!settings.googleContacts.enabled || isDemoUser() || !r.changed.length) return;
+    toast("Save these names to Google Contacts too?", { duration: 15_000, action: { label: "Review", onClick: () => void sync.start(r.changed) } });
+  };
+  return { offer, dialog: sync.dialog };
+}
+
 export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { uid, comics, comicsLoaded } = useApp();
   const [contacts, setContacts] = useState<WaContact[] | null>(null);
@@ -106,6 +119,7 @@ export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose:
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const find = useMemo(() => rosterLookup(comics), [comics]);
+  const google = useOfferGoogle();
 
   const load = async () => {
     setError(null);
@@ -131,7 +145,9 @@ export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose:
     setSaving(true);
     try {
       const chosen = (contacts ?? []).filter((c) => picked.has(c.id)).map((c) => ({ ...c, nameSource: "contact" as const }));
-      toast.success(summary(await importPeople(uid, chosen, find)));
+      const done = await importPeople(uid, chosen, find);
+      toast.success(summary(done));
+      google.offer(done);
       onClose();
     } catch (e) {
       toast.error((e as Error).message);
@@ -141,6 +157,7 @@ export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose:
   };
 
   return (
+    <>
     <Sheet
       open={open}
       onClose={onClose}
@@ -168,6 +185,8 @@ export function ImportContactsSheet({ open, onClose }: { open: boolean; onClose:
         </>
       )}
     </Sheet>
+    {google.dialog}
+    </>
   );
 }
 
@@ -178,6 +197,7 @@ export function ImportFileSheet({ open, onClose }: { open: boolean; onClose: () 
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const find = useMemo(() => rosterLookup(comics), [comics]);
+  const google = useOfferGoogle();
 
   useEffect(() => {
     if (!open) {
@@ -206,7 +226,9 @@ export function ImportFileSheet({ open, onClose }: { open: boolean; onClose: () 
     try {
       // Names typed in your own file count as set by you, so WhatsApp never renames them.
       const chosen = (parsed?.people ?? []).filter((p) => picked.has(p.phone)).map((p) => ({ ...p, id: comicIdForPhone(p.phone), nameSource: "manual" as const }));
-      toast.success(summary(await importPeople(uid, chosen, find)));
+      const done = await importPeople(uid, chosen, find);
+      toast.success(summary(done));
+      google.offer(done);
       onClose();
     } catch (e) {
       toast.error((e as Error).message);
@@ -216,6 +238,7 @@ export function ImportFileSheet({ open, onClose }: { open: boolean; onClose: () 
   };
 
   return (
+    <>
     <Sheet
       open={open}
       onClose={onClose}
@@ -254,5 +277,7 @@ export function ImportFileSheet({ open, onClose }: { open: boolean; onClose: () 
         </>
       )}
     </Sheet>
+    {google.dialog}
+    </>
   );
 }

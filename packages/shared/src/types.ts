@@ -34,6 +34,8 @@ export interface Settings {
   /** Group where hosts/POCs vote on which shows they can take. */
   hostPoll: { groupId: string | null };
   offers: { expiryHours: number };
+  /** Write comic names to the curator's Google Contacts (done in the browser, with the curator's own Google token). */
+  googleContacts: { enabled: boolean };
 }
 
 export interface ComicProfile {

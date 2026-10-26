@@ -21,6 +21,7 @@ import { AiModels } from "../components/AiModels";
 import { AiPolicyPicker } from "../components/AiPolicy";
 import { FleetCard } from "../components/FleetCard";
 import { NotifyCard } from "../components/NotifyCard";
+import { GoogleContactsCard } from "../components/GoogleContactsCard";
 import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield } from "../components/icons";
 
@@ -169,6 +170,7 @@ export function SettingsPage() {
             <ConnectCard />
             <FleetCard />
             <NotifyCard />
+            <GoogleContactsCard />
             <InstallCard />
           </>
         )}

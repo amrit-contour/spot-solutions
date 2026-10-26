@@ -19,6 +19,8 @@ export function rosterLookup(comics: Comic[]) {
 export async function importPeople(uid: string, people: PersonToImport[], find: ReturnType<typeof rosterLookup>) {
   let added = 0;
   let updated = 0;
+  /** Everyone whose roster name was just written, with the name now on the roster. */
+  const changed: { id: string; name: string; phone: string }[] = [];
   for (let i = 0; i < people.length; i += 450) {
     const batch = writeBatch(db);
     for (const p of people.slice(i, i + 450)) {
@@ -28,12 +30,14 @@ export async function importPeople(uid: string, people: PersonToImport[], find: 
         // Merge: if the roster was stale and this comic exists after all, its other fields (history, notes, list) survive.
         batch.set(userDoc(uid, "comics", p.id), c, { merge: true });
         added++;
+        changed.push({ id: p.id, name: p.name, phone: p.phone });
       } else if (shouldUpdateName(cur, p)) {
         batch.update(userDoc(uid, "comics", cur.id), { name: p.name, nameSource: p.nameSource });
         updated++;
+        changed.push({ id: cur.id, name: p.name, phone: cur.phone || p.phone });
       }
     }
     await batch.commit();
   }
-  return { added, updated };
+  return { added, updated, changed };
 }
