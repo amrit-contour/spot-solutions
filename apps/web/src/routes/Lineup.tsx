@@ -49,7 +49,7 @@ import {
 import { useApp } from "../lib/app";
 import { runCommand, useCollection, useDocument } from "../lib/data";
 import { OfferSheet } from "../components/OfferSheet";
-import { markCanned, markRequest, placeComic, repeatLastWeek, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
+import { markCanned, markRequest, placeComic, repeatLastWeek, seedDefaults, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
@@ -122,10 +122,12 @@ export function LineupBoard() {
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const addTo = async (cid: string, show: Show) => {
-    await placeComic(uid, week, show, cid, lineups.data, shows);
-    toast.success(`${(comicsById.get(cid)?.name ?? requestByComic.get(cid)?.comicName ?? "Comic").split(" ")[0]} → ${show.name}`);
+  const addTo = async (cid: string, show: Show, seed?: { name: string }) => {
+    await placeComic(uid, week, show, cid, lineups.data, shows, seed);
+    toast.success(`${(comicsById.get(cid)?.name ?? requestByComic.get(cid)?.comicName ?? seed?.name ?? "Comic").split(" ")[0]} → ${show.name}`);
   };
+  /** A group member's name from any show's cached member list. */
+  const memberName = (showId: string, id: string) => shows.find((s) => s.id === showId)?.groupMembers?.members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
   const removeFrom = (cid: string, show: Show) => unplaceComic(uid, week, show, cid, lineupByShow.get(show.id));
   const containerOf = (id: string) => (id.startsWith(GROUP) ? id.slice(GROUP.length) : id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
   // Confirmed lineups stay editable (changes are reviewed in Send updates); only called-off ones are closed.
@@ -160,7 +162,15 @@ export function LineupBoard() {
     if (id.startsWith(MEMBER)) {
       // gm:{showId}:{comicId}. Only the leave zone of the member's own show does anything.
       const [showId, ...rest] = id.slice(MEMBER.length).split(":");
-      if (over && String(over.id) === `${LEAVE}${showId}`) setLeaveReq({ showId, id: rest.join(":") });
+      const memberId = rest.join(":");
+      if (over && String(over.id) === `${LEAVE}${showId}`) return setLeaveReq({ showId, id: memberId });
+      // Dropped on a show's slots: put them on that lineup (the group panel itself isn't a target, so tidying the list never adds anyone).
+      const target = over && !String(over.id).startsWith(GROUP) && !String(over.id).startsWith(LEAVE) ? containerOf(String(over.id)) : null;
+      const show = target && target !== BENCH ? activeShows.find((s) => s.id === target) : undefined;
+      if (show && !closed(show.id) && !(cols[show.id] ?? []).includes(memberId)) {
+        if ((cols[show.id] ?? []).length >= show.slotCount) return void toast.error(`${show.name} is full`);
+        void addTo(memberId, show, { name: memberName(showId, memberId) }).catch((e: Error) => toast.error(e.message));
+      }
       return;
     }
     if (!over || !origin || String(over.id).startsWith(LEAVE)) return setCols(remote);
@@ -281,7 +291,7 @@ export function LineupBoard() {
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} onAdd={(cid) => addTo(cid, show)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} onAdd={(cid, seed) => addTo(cid, show, seed)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
@@ -308,7 +318,7 @@ export function LineupBoard() {
 function Column({ id, children, className }: { id: string; children: React.ReactNode; className?: string }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <section ref={setNodeRef} className={cx("rounded-xl bg-surface-low p-3 transition-[box-shadow] duration-150", isOver && "shadow-[inset_0_0_0_2px_var(--md-sys-color-primary)]", className)}>
+    <section ref={setNodeRef} className={cx("flex flex-col rounded-xl bg-surface-low p-3 transition-[box-shadow] duration-150", isOver && "shadow-[inset_0_0_0_2px_var(--md-sys-color-primary)]", className)}>
       {children}
     </section>
   );
@@ -386,8 +396,8 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
   );
 }
 
-function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, onAdd, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string) => Promise<void>; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
-  const { uid, week, venues, settings } = useApp();
+function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, onAdd, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string, seed?: { name: string }) => Promise<void>; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+  const { uid, week, currentWeek, venues, settings, session } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
   const confirmed = status === "confirmed";
@@ -407,6 +417,21 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
   const fill = Math.min(1, ids.length / Math.max(1, show.slotCount));
   const minutesOf = new Map(lineup?.slots.map((s) => [s.comicId, s.minutes]));
   const mode = groupModeOf(show);
+
+  // A week's lineup starts with the show's regulars, co-hosts and group admins (not you). Once; removals stick.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || !lineupsLoaded || lineup || past || week < currentWeek) return;
+    const me = session?.phone ? `${session.phone}@c.us` : null;
+    const members = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.members : [];
+    const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
+    const ids = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])].filter((id) => id !== me && !id.endsWith("@lid"));
+    if (!ids.length) return;
+    seeded.current = true;
+    void seedDefaults(uid, week, show, ids.map((id) => ({ id, name: nameOf(id) })))
+      .then((n) => n && toast(`${show.name}: added ${n} regular${n === 1 ? "" : "s"}, co-host${n === 1 ? "" : "s"} and admins`, { description: "Take anyone off who isn't on tonight. They stay in the group." }))
+      .catch((e: Error) => toast.error(e.message));
+  }, [lineupsLoaded, lineup, past, week, currentWeek, show, session?.phone, comicsById, uid]);
 
   // What the comics were last told. Lineups confirmed before that was recorded start from how they stand now.
   const baseline = confirmed && lineup ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
@@ -555,11 +580,11 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
               action={cancelled ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />}
             />
           ))}
-          {Array.from({ length: Math.max(0, Math.min(3, show.slotCount - ids.length)) }).map((_, i) => (
-            <li key={`empty-${i}`} className="grid h-12 place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70">
-              {i === 0 && !ids.length ? "Drop comics here" : `Slot ${ids.length + i + 1}`}
+          {ids.length < show.slotCount && (
+            <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70 transition-colors", ids.length ? "h-11" : "h-20", dragKind && "border-primary/60 text-primary")}>
+              {!ids.length ? "Drop comics or group members here" : `${show.slotCount - ids.length} open slot${show.slotCount - ids.length === 1 ? "" : "s"}`}
             </li>
-          ))}
+          )}
         </ol>
       </SortableContext>
 
@@ -583,7 +608,8 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
         <p className="mt-2 px-1 type-body-s text-error">Dropped out: {lineup.dropped.map((d) => comicsById.get(d.comicId)?.name ?? "comic").join(", ")}</p>
       ) : null}
 
-      {!cancelled && <GroupPanel show={show} lineup={lineup} ids={ids} dragging={dragKind} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onSync={syncGroup} onReview={() => setSyncOpen(true)} />}
+      <div className="flex-1" />
+      {!cancelled && <GroupPanel show={show} lineup={lineup} ids={ids} dragging={dragKind} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? (cid, name) => void onAdd(cid, { name }).catch((e: Error) => toast.error(e.message)) : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />}
 
       <footer className="mt-3 flex flex-wrap items-center gap-2">
         {canned ? null : cancelled ? (
@@ -606,7 +632,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
           </>
         ) : (
           <>
-            {!ids.length && (
+            {(!ids.length || lineup?.defaultsSeeded) && (
               <Button size="sm" variant="text" icon={IconRepeat} onClick={repeat}>
                 Repeat last week
               </Button>

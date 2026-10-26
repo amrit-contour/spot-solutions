@@ -317,6 +317,8 @@ export interface Lineup {
   showDaySyncedOn?: string | null;
   /** Answer to the morning-after check. */
   outcome?: "happened" | "canned" | null;
+  /** Regulars, co-hosts and group admins were put on this lineup when it was first opened. Not redone after you remove someone. */
+  defaultsSeeded?: boolean;
   micCheckSentOn?: string | null;
 }
 

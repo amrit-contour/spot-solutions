@@ -40,7 +40,7 @@ const rankOf = (r: GroupRow) => (r.tags.includes("leaving") ? 6 : Math.min(...r.
  * Drop a Waiting comic anywhere on the panel to put them on the lineup (and so, after a sync, in the group).
  * Drag a member to the Leaving zone, or use their menu, to take them out on the next sync.
  */
-export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveHandled, onRemoveFromLineup, onSync, onReview }: { show: Show; lineup?: Lineup; ids: string[]; dragging: "member" | "tile" | null; pendingLeave: string | null; onLeaveHandled: () => void; onRemoveFromLineup: (cid: string) => void; onSync: () => Promise<void>; onReview: () => void }) {
+export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveHandled, onRemoveFromLineup, onAddToLineup, onSync, onReview }: { show: Show; lineup?: Lineup; ids: string[]; dragging: "member" | "tile" | null; pendingLeave: string | null; onLeaveHandled: () => void; onRemoveFromLineup: (cid: string) => void; onAddToLineup?: (cid: string, name: string) => void; onSync: () => Promise<void>; onReview: () => void }) {
   const { uid, week, comicsById } = useApp();
   const now = useNow(30_000);
   const [open, setOpen] = useState(false);
@@ -167,6 +167,19 @@ export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveH
                               <>
                                 {r.member ? (
                                   <>
+                                    {r.tags.includes("lineup") ? (
+                                      <MenuItem onClick={() => (close(), onRemoveFromLineup(r.id))}>
+                                        Take off this lineup
+                                        <span className="block type-body-s text-on-surface-variant">Stays in the group</span>
+                                      </MenuItem>
+                                    ) : (
+                                      onAddToLineup && !r.id.endsWith("@lid") && (
+                                        <MenuItem onClick={() => (close(), onAddToLineup(r.id, nameOf(r.id)))}>
+                                          Put on this lineup
+                                          <span className="block type-body-s text-on-surface-variant">Or drag them onto a show</span>
+                                        </MenuItem>
+                                      )
+                                    )}
                                     <MenuItem disabled={!r.known} hint={r.tags.includes("regular") ? "on" : undefined} onClick={() => (close(), toggleTag(r.id, "regulars", !r.tags.includes("regular")))}>
                                       Regular
                                       <span className="block type-body-s text-on-surface-variant">Always stays in the group</span>

@@ -33,18 +33,24 @@ export async function setSlots(uid: string, week: string, show: Show, slots: Slo
   });
 }
 
-/** Maybe asks don't create a comic; placing one does, from what the request knows about them. */
-async function ensureComic(uid: string, week: string, comicId: string) {
+/** Maybe asks and group members aren't comics yet; placing one makes them one, from the request or the group list. */
+async function ensureComic(uid: string, week: string, comicId: string, fallback?: { name: string }) {
   const ref = userDoc(uid, "comics", comicId);
   if ((await getDoc(ref)).exists()) return;
   const req = (await getDoc(userDoc(uid, "requests", `${week}_${comicId}`))).data() as SpotRequest | undefined;
-  if (!req) return;
+  if (!req) {
+    if (!fallback) return;
+    const phone = comicId.endsWith("@c.us") ? comicId.split("@")[0] : "";
+    const c: Comic = { id: comicId, chatId: comicId, name: fallback.name || (phone ? `+${phone}` : "Group member"), nameSource: "whatsapp", phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
+    await setDoc(ref, c, { merge: true });
+    return;
+  }
   const c: Comic = { id: comicId, chatId: req.contact?.chatId ?? comicId, name: req.comicName, nameSource: req.contact?.nameSource ?? "whatsapp", phone: req.contact?.phone ?? comicId.split("@")[0], tier: "open", lastPerformedWeek: null, regularOf: [] };
   await setDoc(ref, c, { merge: true });
 }
 
-export async function placeComic(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], shows: Show[] = []) {
-  await ensureComic(uid, week, comicId);
+export async function placeComic(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], shows: Show[] = [], seed?: { name: string }) {
+  await ensureComic(uid, week, comicId, seed);
   // A comic sits in at most one show per week.
   for (const l of lineups) {
     if (l.showId !== show.id && l.slots.some((s) => s.comicId === comicId) && l.status !== "cancelled" && l.status !== "canned") {
@@ -114,4 +120,22 @@ export async function markCanned(uid: string, lineup: Lineup, show: Show, comics
       return setDoc(userDoc(uid, "comics", s.comicId), { history, ...(c?.lastPerformedWeek === lineup.weekOf ? { lastPerformedWeek: null } : {}) }, { merge: true });
     }),
   );
+}
+
+/**
+ * The first time a week's lineup is opened, start it with the show's regulars, co-hosts and group admins.
+ * Runs once per lineup (the doc then exists), so taking someone off for a night sticks.
+ */
+export async function seedDefaults(uid: string, week: string, show: Show, people: { id: string; name: string }[]) {
+  if (!people.length) return 0;
+  const ref = lineupRef(uid, week, show.id);
+  const picked = people.slice(0, show.slotCount);
+  const created = await runTransaction(db, async (tx) => {
+    if ((await tx.get(ref)).exists()) return false;
+    tx.set(ref, { ...blank(week, show), defaultsSeeded: true, slots: picked.map((p) => ({ comicId: p.id, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null })) });
+    return true;
+  });
+  if (!created) return 0;
+  await Promise.all(picked.map((p) => ensureComic(uid, week, p.id, { name: p.name })));
+  return picked.length;
 }
