@@ -95,6 +95,17 @@ export function PillRow({ pills, max = 2, className, compact }: { pills: PillSpe
   if (!pills.length) return null;
   const shown = pills.slice(0, max);
   const rest = pills.slice(max);
+  // Compact rows use icons to save room, but a lone pill has room for its words.
+  if (compact && pills.length === 1) {
+    const p = pills[0];
+    return (
+      <div className={cx("flex min-w-0 items-center", className)}>
+        <Pill tone={p.tone} icon={p.icon} title={p.title ?? p.label}>
+          {p.label}
+        </Pill>
+      </div>
+    );
+  }
   if (compact)
     return (
       <div className={cx("flex min-w-0 items-center gap-1", className)}>
