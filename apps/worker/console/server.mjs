@@ -18,6 +18,7 @@ import { createUpdater } from "./update.mjs";
 import { createAi } from "./ai.mjs";
 import { createLive } from "./live.mjs";
 import { createStorage } from "./storageview.mjs";
+import { createBrowser } from "./fsbrowse.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 
 const exec = promisify(execFile);
@@ -285,6 +286,8 @@ const storage = createStorage({
   updater,
   run: async (cmd, args) => (await exec(cmd, args, { timeout: 15000 })).stdout,
 });
+// The folder picker (fsbrowse.mjs): drives, sub-folders and "New folder". Folders only, never file contents, and only inside a drive.
+const browser = createBrowser({ ctx: () => storage.ctx(), run: async (cmd, args) => (await exec(cmd, args, { timeout: 15000, maxBuffer: 4 << 20 })).stdout });
 const ai = createAi({
   readEnv,
   writeEnv,
@@ -389,6 +392,16 @@ createServer(async (req, res) => {
       } catch (e) {
         return json(res, 400, { error: e.message });
       }
+    }
+
+    // Folder picker for the Storage section. Same token as everything else; only folder names ever leave the disk.
+    if (url.pathname === "/api/fs/roots" && req.method === "GET") return json(res, 200, await browser.roots(url.searchParams.get("fresh") === "1"));
+    if (url.pathname === "/api/fs/list" && req.method === "GET") {
+      try { return json(res, 200, await browser.list(url.searchParams.get("path") ?? "", { hidden: url.searchParams.get("hidden") === "1" })); } catch (e) { return json(res, e.status ?? 400, { error: e.message }); }
+    }
+    if (url.pathname === "/api/fs/mkdir" && req.method === "POST") {
+      const b = await body(req);
+      try { return json(res, 200, await browser.mkdir(String(b.parent ?? ""), b.name)); } catch (e) { return json(res, e.status ?? 400, { error: e.message }); }
     }
 
     // AI models: the server's Gemini key, model choice, tests, local models, default routing (ai.mjs).

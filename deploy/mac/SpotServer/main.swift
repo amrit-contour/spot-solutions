@@ -290,11 +290,45 @@ func confirm(_ title: String, _ text: String) -> Bool {
     return a.runModal() == .alertFirstButtonReturn
 }
 
+/// Opens the Mac's own folder chooser for the console page. Only the console (served from 127.0.0.1) is loaded in this web view.
+/// The chosen path is only text for the page to fill in; the console checks it like a typed one.
+final class FolderPicker: NSObject, WKScriptMessageHandler {
+    func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "chooseFolder", let web = message.webView else { return }
+        let start = ((message.body as? [String: Any])?["start"] as? String) ?? ""
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.message = "Choose a new or empty folder for Spot Solutions' data. A drive that is not APFS or Mac OS Extended won't work."
+        var dir = URL(fileURLWithPath: "/Volumes")
+        if start.hasPrefix("/") {
+            // Open at the nearest folder that already exists.
+            var cand = URL(fileURLWithPath: start)
+            while cand.path != "/" && !FileManager.default.fileExists(atPath: cand.path) { cand = cand.deletingLastPathComponent() }
+            dir = cand
+        }
+        panel.directoryURL = dir
+        let finish: (NSApplication.ModalResponse) -> Void = { [weak web] response in
+            let path: String? = response == .OK ? panel.url?.path : nil
+            // JSON-encode inside an array so quotes or backslashes in a folder name can't break out of the script.
+            guard let data = try? JSONSerialization.data(withJSONObject: [(path as Any?) ?? NSNull()]), let arr = String(data: data, encoding: .utf8) else { return }
+            web?.evaluateJavaScript("window.spotFolderChosen && window.spotFolderChosen(\(arr)[0])", completionHandler: nil)
+        }
+        if let window = web.window { panel.beginSheetModal(for: window, completionHandler: finish) } else { finish(panel.runModal()) }
+    }
+}
+
 /// The same console Linux and Windows serve, embedded. Reloads when the console comes back.
 struct ConsoleWebView: NSViewRepresentable {
     let url: URL
     func makeNSView(context: Context) -> WKWebView {
-        let v = WKWebView()
+        // The console's "Choose with Finder…" button posts to `chooseFolder`; the answer goes back through window.spotFolderChosen.
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(FolderPicker(), name: "chooseFolder")
+        let v = WKWebView(frame: .zero, configuration: config)
         v.setValue(false, forKey: "drawsBackground")
         v.load(URLRequest(url: url))
         context.coordinator.view = v
@@ -302,6 +336,9 @@ struct ConsoleWebView: NSViewRepresentable {
         return v
     }
     func updateNSView(_ v: WKWebView, context: Context) {}
+    static func dismantleNSView(_ v: WKWebView, coordinator: Coordinator) {
+        v.configuration.userContentController.removeScriptMessageHandler(forName: "chooseFolder")
+    }
     func makeCoordinator() -> Coordinator { Coordinator() }
     final class Coordinator {
         weak var view: WKWebView?

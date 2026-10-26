@@ -267,6 +267,57 @@
   .pbar > i { display: block; height: 100%; background: var(--primary); border-radius: inherit; transition: width .5s cubic-bezier(.23,1,.32,1); }
   .scanning { opacity: .6; }
   .eq + .blk { margin-top: 20px; padding-top: 20px; border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
+  /* ---- folder picker ---- */
+  .pickrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .picked { margin-top: 10px; padding: 8px 12px; border-radius: 8px; background: var(--s-cont); overflow-wrap: anywhere; }
+  details.typepath { margin-top: 10px; }
+  details.typepath > summary { display: inline-flex; align-items: center; min-height: 32px; padding: 0 4px; border-radius: 8px; color: var(--primary); font-size: 13px; font-weight: 600; }
+  details.typepath > input { margin-top: 8px; }
+  .chip.warn { background: color-mix(in srgb, var(--primary) 22%, transparent); color: var(--on-surface); }
+  .pk-back { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgb(0 0 0 / .5); animation: pk-fade .18s ease-out; }
+  .pk { width: min(600px, 100%); max-height: min(720px, 100%); display: flex; flex-direction: column; background: var(--s-low); color: var(--on-surface); border: 1px solid var(--outline-v); border-radius: 20px; box-shadow: 0 16px 48px rgb(0 0 0 / .35); overflow: hidden; animation: pk-pop .22s cubic-bezier(.23,1,.32,1); }
+  .pk-h { display: flex; align-items: center; gap: 8px; padding: 16px 12px 4px 20px; }
+  .pk-h h2 { margin: 0; flex: 1; font-size: 18px; outline: none; }
+  .pk-x { width: 36px; height: 36px; padding: 0; justify-content: center; }
+  .pk-crumbs { padding: 4px 12px 8px; overflow-x: auto; scrollbar-width: none; }
+  .pk-crumbs::-webkit-scrollbar { display: none; }
+  .pk-crumbs ol { display: flex; align-items: center; margin: 0; padding: 0; list-style: none; width: max-content; }
+  .pk-crumbs li { display: flex; align-items: center; }
+  .pk-crumbs li + li::before { content: "›"; color: var(--on-surface-v); padding: 0 2px; }
+  .pk-crumbs button { height: 32px; padding: 0 8px; border-radius: 8px; background: transparent; color: var(--on-surface-v); font-weight: 500; font-size: 13px; }
+  .pk-crumbs button:hover { background: var(--s-highest); }
+  .pk-crumbs button[aria-current="page"] { color: var(--on-surface); font-weight: 600; }
+  .pk-body { flex: 1; min-height: 160px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
+  .pk-list { list-style: none; margin: 0; padding: 6px; display: grid; gap: 2px; }
+  .pk-row { width: 100%; min-height: 48px; height: auto; padding: 8px 12px; border-radius: 12px; background: transparent; color: var(--on-surface); font-weight: 500; text-align: left; justify-content: flex-start; gap: 12px; }
+  .pk-row:hover:not(:disabled) { background: var(--s-highest); }
+  .pk-row:focus-visible, .pk-crumbs button:focus-visible, .pk-x:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .pk-row:disabled { opacity: .55; }
+  .pk-row svg { width: 22px; height: 22px; flex: none; color: var(--primary); }
+  .pk-row .nm { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .pk-row .nm > b { font-weight: 600; overflow-wrap: anywhere; }
+  .pk-row .nm > span { font-weight: 400; overflow-wrap: anywhere; }
+  .pk-row .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .pk-row .go { color: var(--on-surface-v); width: 18px; height: 18px; }
+  .pk-info { margin: 10px 12px 2px; padding: 8px 12px; border-radius: 8px; background: var(--s-cont); font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .pk-info.bad { background: var(--error-c); color: var(--on-error-c); }
+  .pk-note { padding: 18px 20px; }
+  .pk-f { padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); display: grid; gap: 10px; }
+  .pk-f .opts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+  .pk-f .chk { margin: 0; font-size: 13px; }
+  .pk-f .hint { font-size: 13px; min-height: 18px; overflow-wrap: anywhere; }
+  .pk-f .btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .pk-mk { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pk-mk input { flex: 1 1 160px; min-width: 0; }
+  @keyframes pk-fade { from { opacity: 0; } }
+  @keyframes pk-pop { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+  @media (max-width: 640px) {
+    .pk-back { align-items: flex-end; padding: 0; }
+    .pk { width: 100%; height: min(92vh, 92dvh); max-height: none; border-radius: 24px 24px 0 0; border-bottom: 0; animation-name: pk-sheet; }
+    .pk-f .btns button { flex: 1; justify-content: center; }
+  }
+  @keyframes pk-sheet { from { transform: translateY(40px); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .pk-back, .pk { animation: none !important; } }
 </style>
 </head>
 <body>
@@ -651,7 +702,7 @@ document.addEventListener("click", (e) => {
 });
 
 // ---------- storage: what's in the data folder, free space, moving it to another drive ----------
-let stor = null, moveInput = "", moveModels = false, moveCheck = null, checking = false, startingMove = false;
+let stor = null, typeOpen = false, moveInput = "", moveModels = false, moveCheck = null, checking = false, startingMove = false;
 let keepOld = null; // the finishedAt of a move whose old copy the owner chose to keep
 try { keepOld = Number(localStorage.getItem("spot-console-keepold")) || null; } catch {}
 const PHASES = ["Checking the new folder", "Stopping the worker", "Copying data", "Checking the copy", "Switching to the new folder", "Starting the worker", "Waiting for WhatsApp to come back"];
@@ -696,8 +747,11 @@ function storageBody(s) {
       <b>Move data to another folder</b>
       <div class="muted small" style="margin-top:2px">For when this drive is full, or to keep the data on a bigger disk. It is copied and checked first, and only then switched; the old copy stays until you delete it. WhatsApp is offline for a few minutes.</div>
       <form id="movef" autocomplete="off">
-        <label for="movepath">New folder (the full path)</label>
-        <input type="text" id="movepath" class="mono" placeholder="${esc(stor.example)}" spellcheck="false" autocapitalize="off" value="${esc(moveInput)}">
+        <label id="movelbl">New folder</label>
+        <div class="pickrow" role="group" aria-labelledby="movelbl"><button type="button" class="tonal" data-pick>${moveInput.trim() ? "Choose a different folder…" : "Choose folder…"}</button>${nativePicker() ? `<button type="button" class="tonal" data-pick-native>Choose with Finder…</button>` : ""}</div>
+        ${moveInput.trim() && !typeOpen ? `<div class="picked mono small" id="pickedpath">${esc(moveInput)}</div>` : ""}
+        <details class="typepath" id="typepath" ${typeOpen ? "open" : ""}><summary>Type a path instead</summary>
+          <input type="text" id="movepath" class="mono" aria-label="New folder, the full path" placeholder="${esc(stor.example)}" spellcheck="false" autocapitalize="off" value="${esc(moveInput)}"></details>
         ${modelsLabel}
         ${moveCheck ? (moveCheck.ok && ok ? `<div class="check-res ok small" role="status">✓ That folder works. It needs ${fmt(moveCheck.needBytes)} (data${moveCheck.modelsBytes ? " and models" : ""} plus 1 GB spare) and ${moveCheck.free != null ? fmt(moveCheck.free) : "enough"} is free there.${(moveCheck.warnings || []).map((w) => `<div>${esc(w)}</div>`).join("")}</div>` : moveCheck.ok ? "" : `<div class="check-res bad small" role="alert">${esc(moveCheck.error)}</div>`) : ""}
         <div class="actions"><button type="submit" class="tonal" ${checking || !moveInput.trim() ? "disabled" : ""}>${checking ? "Checking…" : "Check folder"}</button><button type="button" data-move-go ${ok && !startingMove ? "" : "disabled"}>${startingMove ? "Starting…" : "Move data"}</button></div>
@@ -865,12 +919,10 @@ function wireStorage() {
   if (inp) inp.oninput = (e) => { moveInput = e.target.value; if (moveCheck && moveCheck.path !== moveInput.trim()) { moveCheck = null; } const go = $("[data-move-go]"); if (go) go.disabled = true; const chk = $("#movef button[type=submit]"); if (chk) chk.disabled = !moveInput.trim(); };
   const mm = $("#movemodels"); if (mm) mm.onchange = () => { moveModels = mm.checked; moveCheck = null; render(); };
   const f = $("#movef");
-  if (f) f.onsubmit = async (e) => {
-    e.preventDefault();
-    checking = true; moveCheck = null; editing = false; render();
-    try { moveCheck = await post("/api/storage/check", { path: moveInput, models: moveModels }); if (moveCheck.ok) moveInput = moveCheck.path; } catch (err) { moveCheck = { ok: false, error: err.message }; }
-    checking = false; render();
-  };
+  if (f) f.onsubmit = (e) => { e.preventDefault(); runCheck(); };
+  const tp = $("#typepath"); if (tp) tp.ontoggle = () => { typeOpen = tp.open; };
+  const pb = $("[data-pick]"); if (pb) pb.onclick = openPicker;
+  const nb = $("[data-pick-native]"); if (nb) nb.onclick = () => { try { window.webkit.messageHandlers.chooseFolder.postMessage({ start: moveInput.trim() }); } catch { toast("Couldn't open Finder. Use Choose folder… instead."); } };
   const go = $("[data-move-go]");
   if (go) go.onclick = async () => {
     const where = moveCheck?.path || moveInput.trim();
@@ -891,6 +943,180 @@ function wireStorage() {
 }
 
 const post = (path, body) => api(path, body ?? {});
+// ---------- the folder picker ----------
+const nativePicker = () => Boolean(window.webkit?.messageHandlers?.chooseFolder);
+const IC = {
+  drive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M5 13l2.2-6.4A2 2 0 0 1 9.1 5h5.8a2 2 0 0 1 1.9 1.6L19 13"/><circle cx="7.5" cy="16.5" r=".7" fill="currentColor"/></svg>`,
+  home: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>`,
+  folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`,
+  go: `<svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
+};
+let pk = null, pkSeq = 0, pkReturn = null;
+
+function pkParents(p) {
+  // The folder, then the ones above it: a new folder that doesn't exist yet opens in the nearest one that does.
+  const win = /^[A-Za-z]:/.test(p), out = [];
+  let cur = p.replace(/[\\/]+$/, "");
+  for (let i = 0; i < 6 && cur; i++) {
+    out.push(cur);
+    const k = Math.max(cur.lastIndexOf("/"), cur.lastIndexOf("\\"));
+    if (k <= (win ? 2 : 0)) { out.push(win ? cur.slice(0, 3) : "/"); break; }
+    cur = cur.slice(0, k);
+  }
+  return out;
+}
+async function openPicker() {
+  pk = { view: "roots", roots: null, dir: null, hidden: false, loading: true, err: null, mk: null, platform: stor?.platform };
+  pkReturn = document.activeElement;
+  document.body.style.overflow = "hidden";
+  let host = $("#pk"); if (!host) { host = document.createElement("div"); host.id = "pk"; host.className = "pk-back"; document.body.appendChild(host); host.addEventListener("keydown", pkKey); host.addEventListener("click", pkClick); host.addEventListener("submit", pkSubmit); host.addEventListener("change", pkChange); }
+  pkRender("title");
+  const seq = ++pkSeq;
+  try {
+    const r = await api("/api/fs/roots?fresh=1");
+    if (seq !== pkSeq) return;
+    pk.roots = r.roots; pk.platform = r.platform; pk.sep = r.sep;
+    if (moveInput.trim()) {
+      for (const cand of pkParents(moveInput.trim())) {
+        try { pk.dir = await api(`/api/fs/list?path=${encodeURIComponent(cand)}&hidden=0`); pk.view = "dir"; break; } catch { /* try the folder above */ }
+        if (seq !== pkSeq) return;
+      }
+    }
+  } catch (e) { pk.err = e.message; }
+  pk.loading = false;
+  pkRender("first");
+}
+function closePicker() {
+  pkSeq++; pk = null;
+  const host = $("#pk"); if (host) host.remove();
+  document.body.style.overflow = "";
+  const back = $("[data-pick]") || pkReturn; if (back?.focus) back.focus();
+}
+async function pkGo(p) {
+  if (!pk) return;
+  const seq = ++pkSeq;
+  pk.loading = true; pk.err = null; pk.mk = null; pkRender();
+  try {
+    const d = await api(`/api/fs/list?path=${encodeURIComponent(p)}&hidden=${pk.hidden ? 1 : 0}`);
+    if (seq !== pkSeq || !pk) return;
+    pk.dir = d; pk.view = "dir";
+  } catch (e) { if (seq !== pkSeq || !pk) return; pk.err = e.message; }
+  pk.loading = false; pkRender("first");
+}
+function pkRoots() { if (!pk) return; pkSeq++; pk.view = "roots"; pk.err = null; pk.mk = null; pk.loading = false; pkRender("first"); }
+const pkFsBadge = (r) => !r.fsName ? "" : r.error ? `<span class="chip bad" title="${esc(r.error)}">${esc(r.fsName)} · not suitable</span>` : r.warning ? `<span class="chip warn" title="${esc(r.warning)}">${esc(r.fsName)} · works, not ideal</span>` : `<span class="chip neutral">${esc(r.fsName)}</span>`;
+function pkRender(focus) {
+  const host = $("#pk"); if (!host || !pk) return;
+  const root = pk.view === "roots";
+  const d = pk.dir;
+  const crumbs = [`<li><button type="button" data-pk-roots ${root ? 'aria-current="page"' : ""}>${pk.platform === "win32" ? "This PC" : "Drives"}</button></li>`]
+    .concat(root ? [] : d.crumbs.map((c, i) => `<li><button type="button" data-pk-go="${esc(c.path)}" ${i === d.crumbs.length - 1 ? 'aria-current="page"' : ""}>${esc(c.name)}</button></li>`)).join("");
+  let body;
+  if (pk.loading && !(root && pk.roots) && !d) body = `<div class="pk-note muted">${spin} Opening…</div>`;
+  else if (root) {
+    const rows = (pk.roots || []).map((r) => `<li><button type="button" class="pk-row" data-pk-go="${esc(r.path)}" ${r.error ? "disabled" : ""}>${r.kind === "home" ? IC.home : IC.drive}
+      <span class="nm"><b>${esc(r.label)}${r.letter ? ` (${r.letter}:)` : ""}</b><span class="mono small muted">${esc(r.path)}</span>
+        <span class="tags">${pkFsBadge(r)}${r.total ? `<span class="chip neutral">${fmt(r.free ?? 0)} free of ${fmt(r.total)}</span>` : ""}${r.holdsData ? `<span class="chip ok">Data is here now</span>` : ""}</span>
+        ${r.error ? `<span class="small">${esc(r.error)}</span>` : r.warning ? `<span class="small muted">${esc(r.warning)}</span>` : ""}</span>${r.error ? "" : IC.go}</button></li>`).join("");
+    body = `${pk.err ? `<div class="pk-info bad" role="alert">${esc(pk.err)}</div>` : ""}${rows ? `<ul class="pk-list" aria-label="Drives and places">${rows}</ul>` : `<div class="pk-note muted">No drives found. Close this and use “Type a path instead”.</div>`}`;
+  } else {
+    const r = d.root;
+    const info = r.error ? `<div class="pk-info bad" role="alert">${esc(r.error)}</div>` : `<div class="pk-info">${r.fsName ? `<span class="chip neutral">${esc(r.fsName)}</span>` : ""}${r.total ? `<span>${fmt(r.free ?? 0)} free of ${fmt(r.total)} on ${esc(r.label)}</span>` : ""}${r.warning ? `<span class="muted">${esc(r.warning)}</span>` : ""}</div>`;
+    const rows = d.entries.map((e) => `<li><button type="button" class="pk-row" data-pk-go="${esc(e.path)}">${IC.folder}<span class="nm"><b>${esc(e.name)}</b></span>${IC.go}</button></li>`).join("");
+    body = `${pk.err ? `<div class="pk-info bad" role="alert">${esc(pk.err)}</div>` : ""}${info}${rows ? `<ul class="pk-list" aria-label="Folders in ${esc(d.path)}">${rows}</ul>` : `<div class="pk-note muted">${pk.loading ? `${spin} Opening…` : "No folders in here."}</div>`}
+      ${d.truncated ? `<div class="pk-note muted small">Showing the first ${d.entries.length} folders. Use “Type a path instead” for others.</div>` : ""}
+      ${d.hiddenCount && !pk.hidden ? `<div class="pk-note muted small">${d.hiddenCount} hidden folder${d.hiddenCount === 1 ? "" : "s"} not shown.</div>` : ""}`;
+  }
+  const mk = pk.mk;
+  const hint = root ? "Pick a drive or place to start." : d.choose.ok ? `${d.empty ? "Empty folder." : "This folder has things in it; make a new folder inside it if you want a clean place."} Spot Solutions' data would go in <span class="mono">${esc(d.path)}</span>.` : esc(d.choose.error || "");
+  host.innerHTML = `<div class="pk" role="dialog" aria-modal="true" aria-labelledby="pk-t">
+    <div class="pk-h"><h2 id="pk-t" tabindex="-1">Choose a folder</h2><button type="button" class="text pk-x" data-pk-close aria-label="Close">${IC.x}</button></div>
+    <nav class="pk-crumbs" aria-label="Folder path"><ol>${crumbs}</ol></nav>
+    <div class="pk-body" id="pk-body" ${pk.loading ? 'aria-busy="true"' : ""}>${body}</div>
+    <div class="pk-f">
+      <div class="opts"><label class="chk"><input type="checkbox" data-pk-hidden ${pk.hidden ? "checked" : ""} ${root ? "disabled" : ""}> Show hidden folders</label>
+        ${mk ? "" : `<button type="button" class="tonal sm" data-pk-new ${root || pk.loading ? "disabled" : ""}>New folder</button>`}</div>
+      ${mk ? `<form class="pk-mk" data-pk-mkform><label class="sr" for="pk-name" style="position:absolute;left:-9999px">Name of the new folder</label><input type="text" id="pk-name" placeholder="New folder name" value="${esc(mk.name)}" maxlength="100" autocomplete="off" spellcheck="false" autocapitalize="off" ${mk.busy ? "disabled" : ""}><button type="submit" class="tonal sm" ${mk.busy ? "disabled" : ""}>${mk.busy ? "Creating…" : "Create"}</button><button type="button" class="text sm" data-pk-mkcancel>Cancel</button></form>${mk.err ? `<div class="small err-text" role="alert">${esc(mk.err)}</div>` : ""}` : ""}
+      <div class="hint muted" aria-live="polite">${hint}</div>
+      <div class="btns"><button type="button" class="text" data-pk-close>Cancel</button><button type="button" data-pk-choose ${root || pk.loading || !d?.choose.ok ? "disabled" : ""}>Choose this folder</button></div>
+    </div></div>`;
+  const nav = host.querySelector(".pk-crumbs"); if (nav) nav.scrollLeft = nav.scrollWidth;
+  if (mk && !mk.busy) { const i = $("#pk-name"); if (i) { i.focus(); if (mk.sel) { i.setSelectionRange(i.value.length, i.value.length); } } }
+  else if (focus === "title") $("#pk-t")?.focus();
+  else if (focus === "first") ($(".pk-row:not(:disabled)") || $("#pk-t"))?.focus();
+}
+function pkClick(e) {
+  if (!pk) return;
+  if (e.target.id === "pk") return closePicker(); // the dimmed area
+  const t = e.target.closest("button, input"); if (!t) return;
+  if (t.hasAttribute("data-pk-close")) return closePicker();
+  if (t.hasAttribute("data-pk-roots")) return pkRoots();
+  if (t.dataset.pkGo) return pkGo(t.dataset.pkGo);
+  if (t.hasAttribute("data-pk-new")) { pk.mk = { name: "", busy: false, err: null }; pkRender(); return; }
+  if (t.hasAttribute("data-pk-mkcancel")) { pk.mk = null; pkRender(); $("[data-pk-new]")?.focus(); return; }
+  if (t.hasAttribute("data-pk-choose") && pk.dir?.choose.ok) { const p = pk.dir.path; closePicker(); pickedFolder(p); }
+}
+function pkChange(e) {
+  if (!pk || !e.target.matches("[data-pk-hidden]")) return;
+  pk.hidden = e.target.checked;
+  if (pk.view === "dir") { const keep = pk.dir.path; pkGo(keep).then(() => $("[data-pk-hidden]")?.focus()); }
+}
+async function pkSubmit(e) {
+  if (!pk || !e.target.matches("[data-pk-mkform]")) return;
+  e.preventDefault();
+  const name = $("#pk-name").value, parent = pk.dir.path;
+  pk.mk = { name, busy: true, err: null }; pkRender();
+  try {
+    const r = await api("/api/fs/mkdir", { parent, name });
+    if (!pk) return;
+    if (!r.created) toast("Spot Solutions will make that folder when the move starts.");
+    if (r.created) { pk.mk = null; await pkGo(r.path); return; }
+    closePicker(); pickedFolder(r.path); return;
+  } catch (err) { if (!pk) return; pk.mk = { name, busy: false, err: err.message, sel: true }; }
+  pkRender();
+}
+function pkKey(e) {
+  if (!pk) return;
+  const host = $("#pk");
+  const typing = e.target.matches?.("input[type=text]");
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (pk.mk && !pk.mk.busy) { pk.mk = null; pkRender(); $("[data-pk-new]")?.focus(); } else closePicker(); return; }
+  if (e.key === "Tab") {
+    const f = [...host.querySelectorAll("button:not(:disabled), input:not(:disabled)")].filter((x) => x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === $("#pk-t"))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    return;
+  }
+  if (typing) return;
+  const rows = [...host.querySelectorAll(".pk-row:not(:disabled)")], i = rows.indexOf(document.activeElement);
+  if (e.key === "ArrowDown") { e.preventDefault(); (rows[i + 1] || rows[0])?.focus(); }
+  else if (e.key === "ArrowUp" && !e.altKey) { e.preventDefault(); (i > 0 ? rows[i - 1] : rows[rows.length - 1])?.focus(); }
+  else if (e.key === "Home" && i >= 0) { e.preventDefault(); rows[0].focus(); }
+  else if (e.key === "End" && i >= 0) { e.preventDefault(); rows[rows.length - 1].focus(); }
+  else if (e.key === "ArrowRight" && i >= 0) { e.preventDefault(); rows[i].click(); }
+  else if (e.key === "Backspace" || e.key === "ArrowLeft" || (e.key === "ArrowUp" && e.altKey)) {
+    if (e.target.matches?.("input,textarea")) return;
+    e.preventDefault();
+    if (pk.view === "dir") { if (pk.dir.parent) pkGo(pk.dir.parent); else pkRoots(); }
+  }
+}
+/** A folder was chosen, in the picker or in Finder: fill the box and run the same check as the button. */
+async function pickedFolder(p) {
+  moveInput = p; moveCheck = null; typeOpen = false;
+  await runCheck();
+  $("[data-pick]")?.focus({ preventScroll: true });
+  $("#moveblk")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+// The Mac app (WKWebView) answers here after the Finder sheet closes; null means it was cancelled.
+window.spotFolderChosen = (p) => { if (typeof p === "string" && p) pickedFolder(p); };
+async function runCheck() {
+  checking = true; moveCheck = null; editing = false; render();
+  try { moveCheck = await post("/api/storage/check", { path: moveInput, models: moveModels }); if (moveCheck.ok) moveInput = moveCheck.path; } catch (err) { moveCheck = { ok: false, error: err.message }; }
+  checking = false; render();
+}
+
 async function run(label, fn) {
   try { await fn(); } catch (e) { toast(e.message); }
   await refresh(true);

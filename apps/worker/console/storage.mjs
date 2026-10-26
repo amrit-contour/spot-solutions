@@ -48,6 +48,19 @@ const WIN_SYSTEM_DIRS = new Set(["windows", "program files", "program files (x86
 const POSIX_SYSTEM_ROOTS = new Set(["bin", "boot", "dev", "etc", "lib", "lib32", "lib64", "proc", "root", "run", "sbin", "sys", "usr"]);
 const MAC_SYSTEM_ROOTS = new Set(["system", "library", "applications", "private", "cores", "bin", "sbin", "usr", "dev", "etc", "var"]);
 
+/** True when the first folder under the drive root is one of the operating system's own (the same sets validatePath refuses). */
+export function isSystemPath(p, platform = process.platform) {
+  const m = modFor(platform);
+  const win = platform === "win32";
+  const root = m.parse(p).root;
+  const segs = p.slice(root.length).split(win ? /\\+/ : /\/+/).filter(Boolean);
+  const first = segs[0]?.toLowerCase();
+  if (!first) return false;
+  if (win) return WIN_SYSTEM_DIRS.has(first);
+  if (platform === "darwin") return MAC_SYSTEM_ROOTS.has(first) && !(first === "var" && segs[1] === "lib");
+  return POSIX_SYSTEM_ROOTS.has(first);
+}
+
 /**
  * Checks the text of a folder path, without touching the disk. Returns { ok: true, path } with the cleaned path, or
  * { ok: false, error } with a sentence for the owner. `forbidden` is [{ path, label }]: folders the new data may not sit in.
