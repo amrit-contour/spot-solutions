@@ -472,12 +472,25 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
 
 function Confidence({ value }: { value: number }) {
   const pct = Math.round(value * 100);
+  const title = `Gemma is ${pct}% sure this is a spot request`;
+  // Phones: a small ring with the number inside. Wider: the bar.
+  const r = 15;
+  const c = 2 * Math.PI * r;
   return (
-    <span className="hidden items-center gap-2 type-label-s text-on-surface-variant sm:inline-flex" title={`Gemma is ${pct}% sure this is a spot request`}>
-      <span className="relative h-1 w-12 overflow-hidden rounded-full bg-surface-highest">
-        <motion.span className="absolute inset-y-0 left-0 rounded-full bg-primary" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }} />
+    <>
+      <span className="relative grid size-9 flex-none place-items-center sm:hidden" title={title} role="img" aria-label={title}>
+        <svg viewBox="0 0 36 36" className="absolute inset-0 size-9 -rotate-90" aria-hidden>
+          <circle cx="18" cy="18" r={r} fill="none" strokeWidth="3" className="stroke-surface-highest" />
+          <motion.circle cx="18" cy="18" r={r} fill="none" strokeWidth="3" strokeLinecap="round" className="stroke-primary" strokeDasharray={c} initial={{ strokeDashoffset: c }} animate={{ strokeDashoffset: c * (1 - value) }} transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }} />
+        </svg>
+        <span className="relative text-[0.625rem] leading-none font-medium text-on-surface-variant tabular">{pct}</span>
       </span>
-      <span className="tabular">{pct}%</span>
-    </span>
+      <span className="hidden items-center gap-2 type-label-s text-on-surface-variant sm:inline-flex" title={title}>
+        <span className="relative h-1 w-12 overflow-hidden rounded-full bg-surface-highest">
+          <motion.span className="absolute inset-y-0 left-0 rounded-full bg-primary" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }} />
+        </span>
+        <span className="tabular">{pct}%</span>
+      </span>
+    </>
   );
 }
