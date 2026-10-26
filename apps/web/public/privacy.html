@@ -15,7 +15,7 @@
 <header><a class="brand" href="/"><img src="/brand/logo-120.png" alt="" width="36" height="36" /><span>Spot Solutions<small>by Amrit Dash</small></span></a></header>
 <main>
 <h1>Privacy Policy</h1>
-<p class="meta">Effective 26 October 2026 · Updated 26 October 2026 (Your voice)</p>
+<p class="meta">Effective 26 October 2026 · Updated 26 October 2026 (Google Contacts kept connected)</p>
 
 <p>Spot Solutions is an open-source tool that helps open-mic comedy curators manage spot requests that arrive on WhatsApp. Spot Solutions is made by Amrit Dash. This policy explains what the hosted app at <b>spot-solutions.web.app</b> stores, where it is stored, and what it never does. The source code is public at <a href="https://github.com/amrit-contour/spot-solutions">github.com/amrit-contour/spot-solutions</a>, so every statement here can be checked.</p>
 
@@ -37,6 +37,7 @@
   <tr><td>Contacts you choose to import (from WhatsApp, a file, or a group)</td><td>To add comics to your roster</td><td>Cloud Firestore</td></tr>
   <tr><td>Push notification tokens for your devices</td><td>To send you alerts you turned on</td><td>Cloud Firestore</td></tr>
   <tr><td>If you turn on "Your voice": a short description of how you write and up to 15 messages you sent, picked as examples</td><td>So messages to comics are written the way you write</td><td>Cloud Firestore. You can read, edit or remove them in Settings → Messages</td></tr>
+  <tr><td>If you press "Keep connected" for Google Contacts: a long-lived Google access token (a "refresh token"), stored encrypted, and the email address of the Google account you connected with, plus the date</td><td>So names can be saved to your Google Contacts when you add or rename a comic, even when the app is closed</td><td>Cloud Firestore (asia-south1), in documents no app user can read or write. The token is encrypted (AES-256-GCM) with a key held in Google Cloud Secret Manager. Only the email and date are shown back to you</td></tr>
   <tr><td>An optional Gemini API key you add</td><td>To use Google's Gemini models if you allow them</td><td>Cloud Firestore, readable only by the server</td></tr>
 </table>
 <p>Messages that are not spot requests or related to your shows (personal chats, bank alerts, OTPs and so on) are read only to decide that they are not relevant, and are <b>not stored</b>. Chats from before you linked WhatsApp are only read when you run "Scan past messages" yourself. That scan runs on your own server, sends nothing to anyone, and messages that are not spot requests are not stored.</p>
@@ -56,7 +57,14 @@
   <li>read the names and phone numbers in your contacts, to find a contact with the same phone number as a comic;</li>
   <li>create a contact (name and phone number) for a comic you add, or update that contact's name when you rename the comic.</li>
 </ul>
-<p>It never deletes contacts and never changes anything other than names and phone numbers. Bulk changes are shown to you for confirmation first. This runs in your browser while you use the app. The access token is kept in memory only and is never stored on our servers, and your Google contact list is not copied to our database.</p>
+<p>It never deletes contacts and never changes anything other than names and phone numbers. Bulk changes (for example "Sync all comics now") are shown to you for confirmation first, and an import of many comics at once is never saved automatically.</p>
+<p>There are two ways to connect:</p>
+<ul>
+  <li><b>Keep connected</b> (recommended). You approve once in Google's own popup. Spot Solutions then stores a long-lived access token for your Google account, so your comic names are saved to Google Contacts even when the app is closed. We store: (1) that token, <b>encrypted</b> with AES-256-GCM, with the key held in Google Cloud Secret Manager and not in the database; and (2) the email address of the Google account you connected, and the date. They live in Cloud Firestore in the asia-south1 (Mumbai) region, in documents that no signed-in user, including you, can read or write through the app: the token is never sent back to your browser. Only the app's Cloud Functions, acting for you, can decrypt it, and only to exchange it with Google for a short-lived access token. We check that the Google account you pick has the same verified email as the one you signed in with, and refuse it otherwise.</li>
+  <li><b>For this visit only.</b> The access token is kept in your browser's memory for about an hour and is never stored on our servers.</li>
+</ul>
+<p>In both cases your Google contact list is not copied to our database. When names are saved from the server, the list of your contacts' phone numbers and names is read into the function's memory for the few seconds it takes to match numbers and write names, and is then discarded.</p>
+<p><b>Disconnecting.</b> Press <b>Disconnect</b> under Settings, Google Contacts. The app revokes the token with Google and deletes the stored copy straight away. You can also remove access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>; the app notices the next time it tries to save a name, marks Google Contacts as disconnected and leaves a note in Updates.</p>
 <p><b>Spot Solutions' use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</b> We do not use Google user data for advertising, do not sell it, do not transfer it to third parties except as needed to provide the feature you asked for, and do not allow humans to read it except with your consent, for security purposes, or as required by law.</p>
 
 <h2>What we never do</h2>
@@ -70,6 +78,7 @@
 <ul>
   <li><b>You</b>, through the app.</li>
   <li><b>The people who run the servers</b> your account uses. Servers are ordinary computers run by the project's administrators; whoever holds a server's credentials can technically read the project's data, as with any self-hosted software.</li>
+  <li><b>Cloud Functions acting for you</b>, for Google Contacts: if you pressed Keep connected, the app's own server code uses your stored token, and only for your account, to save the names you add or rename. No person reads it. The people who run the project's Google Cloud could technically reach the encrypted token and its key, as with any hosted service.</li>
   <li><b>Google</b>, as the provider of Firebase, Google Cloud and (only if you allow it) the Gemini API, under its own terms.</li>
 </ul>
 
@@ -77,10 +86,10 @@
 <p>The demo signs you in anonymously and gives you a private copy of sample data. Nothing you do there touches real WhatsApp accounts, and demo sandboxes may be deleted at any time.</p>
 
 <h2>Keeping and deleting data</h2>
-<p>Your data is kept while you use the app. You can unlink WhatsApp at any time in Settings, which deletes the login session and its encrypted backup. To have your account and all of its data deleted, ask an administrator or open a request on <a href="https://github.com/amrit-contour/spot-solutions/issues">GitHub</a>; the app has tools to delete everything for an account. You can also revoke the app's Google access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+<p>Your data is kept while you use the app. You can unlink WhatsApp at any time in Settings, which deletes the login session and its encrypted backup. To have your account and all of its data deleted, ask an administrator or open a request on <a href="https://github.com/amrit-contour/spot-solutions/issues">GitHub</a>; the app has tools to delete everything for an account. You can also revoke the app's Google access, and so stop it saving names to your contacts, at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
 
 <h2>Security</h2>
-<p>Access to data is enforced by Firestore security rules: each curator can read only their own data, and server-only data (such as encryption keys and login backups) is not readable by any app user. WhatsApp login backups are encrypted before upload. See <a href="https://github.com/amrit-contour/spot-solutions/blob/main/SECURITY.md">SECURITY.md</a> for details and how to report a problem.</p>
+<p>Access to data is enforced by Firestore security rules: each curator can read only their own data, and server-only data (such as encryption keys, login backups and the encrypted Google Contacts token) is not readable by any app user. WhatsApp login backups are encrypted before upload. See <a href="https://github.com/amrit-contour/spot-solutions/blob/main/SECURITY.md">SECURITY.md</a> for details and how to report a problem.</p>
 
 <h2>Children</h2>
 <p>Spot Solutions is not intended for anyone under 18.</p>

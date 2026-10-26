@@ -1,5 +1,13 @@
 # Changelog
 
+## 26 October 2026 (Google Contacts)
+
+### Google Contacts
+- **Keep connected.** Approve once in Google's popup and names are saved to your Google Contacts even when the app is closed. Settings shows "Connected as you@gmail.com · always on" with Disconnect. The old one-hour browser connection stays as "Connect for this visit only".
+- The long-lived Google access is stored encrypted (AES-256-GCM, key in Secret Manager) in a server-only document and never returned to the browser. Disconnect revokes it at Google and deletes it. If access is removed at Google, Spot Solutions marks it disconnected and adds a notice to Updates.
+- Adding or renaming a comic is saved to Google in the background after a minute of quiet, in batches. A big import is left for the reviewed "Sync all comics now", which now runs through the server when connected.
+- New Cloud Functions `connectGoogleContacts`, `disconnectGoogleContacts`, `planGoogleContacts`, `runGoogleContacts`, `queueGoogleContact` (Firestore trigger) and `syncGoogleContacts` (every 2 minutes). New secrets `GOOGLE_OAUTH_CLIENT_SECRET` and `GOOGLE_TOKEN_KEY`; see docs/multi-server.md. Privacy policy updated.
+
 ## 26 October 2026 (servers)
 
 ### Servers

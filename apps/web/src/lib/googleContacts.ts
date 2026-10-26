@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { indexGoogleContact, normalizePhone, planContactSync, splitName, type Comic, type ContactCreate, type ContactPlan, type ContactUpdate, type GoogleIndex } from "@spot/shared";
 import { auth } from "./firebase";
 import { isDemoUser } from "./demo";
+import { serverLinkActive } from "./googleServer";
 
 const SCOPE = "https://www.googleapis.com/auth/contacts";
 const API = "https://people.googleapis.com/v1";
@@ -248,8 +249,11 @@ export function reportGoogleError(e: unknown, what = "Couldn't save to Google Co
 /**
  * After a comic is saved: if the curator turned this on, write the name to Google Contacts. Fire and forget.
  * Not connected yet (a reload forgets the token) means the Reconnect toast, not a popup.
+ * When the curator chose "Keep connected", the server saves it (a Cloud Function watches comic edits), so this stays out.
  */
 export function saveComicToGoogle(comic: SyncComic, enabled: boolean) {
   if (!enabled || isDemoUser() || !comic.phone || !normalizePhone(comic.phone)) return;
-  void upsertGoogleContact(comic).catch((e) => reportGoogleError(e));
+  void serverLinkActive()
+    .then((server) => (server ? undefined : upsertGoogleContact(comic)))
+    .catch((e) => reportGoogleError(e));
 }

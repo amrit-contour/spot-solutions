@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { connectGoogleContacts, googleTokenExpiry, hasGoogleToken, onGoogleToken } from "../lib/googleContacts";
+import { callableMessage, disconnectGoogleServer, keepGoogleConnected, useServerLink, wasCancelled } from "../lib/googleServer";
 import { useGoogleSync } from "./GoogleContactsSync";
 import { IconUserCheck } from "./icons";
 import { Button, Switch, cx } from "./ui";
@@ -15,6 +16,10 @@ export function GoogleContactsCard() {
   const until = useSyncExternalStore(onGoogleToken, googleTokenExpiry);
   const [connecting, setConnecting] = useState(false);
   const sync = useGoogleSync();
+  const link = useServerLink();
+  const [keeping, setKeeping] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const server = link.state === "connected";
   const enabled = settings.googleContacts.enabled;
 
   const connect = async () => {
@@ -32,9 +37,36 @@ export function GoogleContactsCard() {
     }
   };
 
+  // One consent, then the server keeps access (encrypted) and saves names whether or not this app is open.
+  const keep = async () => {
+    setKeeping(true);
+    try {
+      const r = await keepGoogleConnected();
+      await saveSettings({ googleContacts: { enabled: true } });
+      toast.success(`Google Contacts is connected as ${r.email}`);
+    } catch (e) {
+      if (!wasCancelled(e)) toast.error(callableMessage(e));
+    } finally {
+      setKeeping(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setLeaving(true);
+    try {
+      await disconnectGoogleServer();
+      await saveSettings({ googleContacts: { enabled: false } });
+      toast.success("Google Contacts disconnected");
+    } catch (e) {
+      toast.error(callableMessage(e));
+    } finally {
+      setLeaving(false);
+    }
+  };
+
   const toggle = async (on: boolean) => {
-    // Turning it on needs access, and this click is the one place a popup is allowed.
-    if (on && !hasGoogleToken() && !(await connect())) return;
+    // Turning it on needs access, and this click is the one place a popup is allowed. A kept connection needs neither.
+    if (on && !server && !hasGoogleToken() && !(await connect())) return;
     await saveSettings({ googleContacts: { enabled: on } });
   };
 
@@ -54,27 +86,49 @@ export function GoogleContactsCard() {
 
       <div className={cx("mt-4 flex flex-col gap-4", demo && "pointer-events-none opacity-50")} aria-disabled={demo}>
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant={connected ? "outlined" : "tonal"} onClick={() => void connect()} loading={connecting} disabled={demo}>
-              {connected || enabled ? "Reconnect Google" : "Connect Google Contacts"}
-            </Button>
-            <span className={cx("type-label-m", !connected && enabled ? "text-error" : "text-on-surface-variant")}>
-              {connected && until
-                ? `Connected until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-                : enabled
-                  ? "Paused: reconnect to keep saving names"
-                  : "Not connected"}
-            </span>
-          </div>
-          <p className="type-body-s text-on-surface-variant">
-            Google lets apps in your browser in for one hour at a time, and this app never keeps that access on a server. So after an hour, or when you reload the page, it shows Paused. Nothing is lost: tap Reconnect (a quick popup, no new consent screen) and the switch below carries on.
-          </p>
+          {server ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="type-label-l text-on-surface">Connected as {link.email} · always on</span>
+              <Button variant="outlined" onClick={() => void disconnect()} loading={leaving} disabled={demo}>
+                Disconnect
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="tonal" onClick={() => void keep()} loading={keeping} disabled={demo || connecting}>
+                  Keep connected
+                </Button>
+                <span className={cx("type-label-m", link.state === "revoked" ? "text-error" : "text-on-surface-variant")}>
+                  {link.state === "revoked" ? "Disconnected: access was removed from your Google account" : "Not connected"}
+                </span>
+              </div>
+              <p className="type-body-s text-on-surface-variant">
+                Say yes once and names keep saving to your Google Contacts even when this app is closed. Spot Solutions keeps the access encrypted on its server, and you can disconnect here or at myaccount.google.com/permissions any time.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button variant="text" onClick={() => void connect()} loading={connecting} disabled={demo || keeping}>
+                  {connected || enabled ? "Reconnect for this visit only" : "Connect for this visit only"}
+                </Button>
+                <span className={cx("type-label-m", !connected && enabled ? "text-error" : "text-on-surface-variant")}>
+                  {connected && until
+                    ? `Connected until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                    : enabled
+                      ? "Paused: keep connected, or reconnect to keep saving names"
+                      : ""}
+                </span>
+              </div>
+              <p className="type-body-s text-on-surface-variant">
+                A visit-only connection lasts an hour and is forgotten when you reload the page, and nothing is saved while the app is closed.
+              </p>
+            </>
+          )}
           <p className="type-body-s text-on-surface-variant">The first time, Google may say “Google hasn't verified this app”. Choose Advanced, then continue. Only names and phone numbers are used, and nothing is ever deleted.</p>
         </div>
 
         <div className="flex min-h-12 items-center gap-4">
           <span className="min-w-0 flex-1 type-title-s">Save names to Google Contacts when I add or rename a comic</span>
-          <Switch checked={enabled} onChange={(v) => void toggle(v)} label="Save names to Google Contacts when I add or rename a comic" disabled={demo || connecting} />
+          <Switch checked={enabled} onChange={(v) => void toggle(v)} label="Save names to Google Contacts when I add or rename a comic" disabled={demo || connecting || keeping || leaving} />
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

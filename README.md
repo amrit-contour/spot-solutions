@@ -214,6 +214,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 - **Your voice reads only what you sent**, keeps a short description and up to 15 examples, and never stores the chats. Off until you turn it on.
 - **No cloud model reads your chats** unless you allow Gemini as a backup. "Local only" turns it off entirely.
 - Chats from before you linked are only read when you run **Scan past messages** yourself (Requests, ⋯ menu). It runs on your own server, sends nothing to anyone, and saves only the spot requests it finds.
+- **Google Contacts is names and phone numbers only, and never deletes.** Press **Keep connected** once and names are saved even when the app is closed. The long-lived Google access is stored **encrypted** (AES-256-GCM, key in Secret Manager) in a document no app user can read, and is revoked and deleted when you press Disconnect (or remove it at myaccount.google.com/permissions). Imports and "Sync all" are always reviewed by you first.
 - Security details and how to report a problem: [SECURITY.md](SECURITY.md).
 
 > [!NOTE]

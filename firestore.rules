@@ -78,6 +78,8 @@ service cloud.firestore {
     match /joinAttempts/{key} { allow read, write: if false; }
     // Device links (a console asking an admin to approve it): functions only, like join codes.
     match /deviceLinks/{hash} { allow read, write: if false; }
+    // Comic edits waiting to be saved to Google Contacts (functions/src/googleContacts.ts). Functions only.
+    match /googleSyncQueue/{uid} { allow read, write: if false; }
 
     // The demo account is a read-only template: demo visitors copy it into their own sandbox.
     // Only the user doc and the collections the clone copies (apps/web/src/lib/demo.ts COLLECTIONS). Never
@@ -140,6 +142,11 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['pinned'])
           && (request.resource.data.get('pinned', null) == null || request.resource.data.pinned is string);
       }
+
+      // Google Contacts, kept connected. The encrypted refresh token is users/{uid}/private/google: no rule below names
+      // `private`, so no client can read or write it (the catch-all at the end only lists the curator's own collections).
+      // The status (connected email, since) is written only by the functions; the owner reads it.
+      match /googleLink/{doc} { allow read: if isOwner(uid); }
 
       // Push tokens, one doc per browser. The app registers and removes its own.
       match /devices/{token} {
