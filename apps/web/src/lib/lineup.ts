@@ -1,5 +1,5 @@
-import { arrayRemove, arrayUnion, getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
-import { dateInWeek, lineupId, planReconcilePlace, sentSnapshot, shiftWeek, withHistory, type Comic, type GroupMember, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
+import { arrayRemove, arrayUnion, doc, getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
+import { dateInWeek, lineupId, movesOffOtherShows, planReconcilePlace, type RuleSettings, sentSnapshot, shiftWeek, withHistory, type Comic, type GroupMember, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
 import { db } from "@spot/ui/firebase";
 import { userDoc } from "./data";
 
@@ -50,10 +50,17 @@ async function ensureComic(uid: string, week: string, comicId: string, fallback?
   await setDoc(ref, c, { merge: true });
 }
 
+/** The curator's request rules, read fresh (placing is rare, and the rule must be current). */
+async function readRules(uid: string): Promise<Pick<RuleSettings, "onePerWeek">> {
+  return { onePerWeek: Boolean((await getDoc(doc(db, "users", uid))).data()?.settings?.rules?.onePerWeek) };
+}
+
 export async function placeComic(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], shows: Show[] = [], seed?: { name: string }) {
   await ensureComic(uid, week, comicId, seed);
-  // A comic sits in at most one show per week.
-  for (const l of lineups) {
+  // With "One show per week" on (Request rules), placing someone moves them off their other show; POCs, regulars and
+  // co-hosts never move. Off (the default): they can be on several shows.
+  const moveOff = movesOffOtherShows(await readRules(uid), show, comicId);
+  for (const l of moveOff ? lineups : []) {
     if (l.showId !== show.id && l.slots.some((s) => s.comicId === comicId) && l.status !== "cancelled" && l.status !== "canned") {
       const other = shows.find((s) => s.id === l.showId);
       const rest = l.slots.filter((s) => s.comicId !== comicId);
@@ -156,8 +163,9 @@ export async function seedDefaults(uid: string, week: string, show: Show, people
  * so Confirm & send and Send updates won't message them. Records the spot in their history like a confirmation.
  */
 export async function placeAsTold(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], name: string) {
-  // Off any other show this week first, the same way placeComic does.
-  for (const l of lineups) {
+  // Off any other show this week first, when the rules say one show a week (same as placeComic).
+  const moveOff = movesOffOtherShows(await readRules(uid), show, comicId);
+  for (const l of moveOff ? lineups : []) {
     if (l.showId !== show.id && l.slots.some((s) => s.comicId === comicId) && l.status !== "cancelled" && l.status !== "canned") {
       await updateDoc(lineupRef(uid, week, l.showId), { slots: l.slots.filter((s) => s.comicId !== comicId) });
     }

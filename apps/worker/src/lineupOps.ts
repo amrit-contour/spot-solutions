@@ -1,7 +1,8 @@
 // Putting a comic on a lineup (or taking them off) from the worker, with the same rules as the app's own placing
 // (apps/web/src/lib/lineup.ts placeComic / unplaceComic): one show per week, an edit to a confirmed lineup records what was
 // already sent first, the request moves to "assigned" and back. The agent number uses these; nothing here messages anyone.
-import { dateInWeek, lineupId, planReconcilePlace, sentSnapshot, type Comic, type Lineup, type Show, type SpotRequest } from "@spot/shared";
+import { dateInWeek, lineupId, movesOffOtherShows, planReconcilePlace, sentSnapshot, type Comic, type Lineup, type Show, type SpotRequest } from "@spot/shared";
+import { watchUser } from "./userData.ts";
 import { col, db } from "./firebase.ts";
 
 const blank = (week: string, show: Show): Lineup => ({ id: lineupId(week, show.id), weekOf: week, showId: show.id, date: dateInWeek(week, show.weekday), slots: [], status: "draft", sentAt: null, groupSync: null });
@@ -37,8 +38,9 @@ export async function placeOnLineup(uid: string, week: string, show: Show, shows
     const plan = planReconcilePlace({ lineup: cur ?? null, show, comicId: person.id, markTold: false, now });
     if (plan.outcome === "full" || plan.outcome === "called_off") return { outcome: plan.outcome } as PlaceResult;
     let movedFrom: string | undefined;
-    // A comic sits in at most one show per week.
-    for (const l of lineups) {
+    // With "One show per week" on, they come off their other show (POCs, regulars and co-hosts never do).
+    const moveOff = movesOffOtherShows(watchUser(uid).settings.rules, show, person.id);
+    for (const l of moveOff ? lineups : []) {
       if (l.showId === show.id || l.status === "cancelled" || l.status === "canned" || !l.slots.some((s) => s.comicId === person.id)) continue;
       const other = shows.find((s) => s.id === l.showId);
       const record = l.status === "confirmed" && !l.sent && other ? { sent: sentSnapshot(l.slots, other, l.sentAt ?? now) } : {};

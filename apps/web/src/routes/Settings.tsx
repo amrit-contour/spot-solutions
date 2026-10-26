@@ -394,6 +394,9 @@ function RulesSection() {
             </div>
           )}
         </div>
+        <SettingRow label="One show per week per comic" info={<>Off by default: anyone can be on several shows in the same week. When on, putting someone on a show takes them off their other show that week. POCs, regulars and co-hosts can always be on several shows.</>}>
+          <Switch checked={Boolean(r.onePerWeek)} onChange={(v) => saveSettings({ rules: { ...r, onePerWeek: v } })} label="One show per week per comic" />
+        </SettingRow>
         <SettingRow label="Hold recent comics" info={<>Hold requests from anyone who did a spot in the last few weeks, so newer faces get a shot. Ad hoc spots (offers you sent, or spots added after confirming) never count.</>}>
             <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Hold recent comics" />
           </SettingRow>

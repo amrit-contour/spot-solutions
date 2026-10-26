@@ -5,6 +5,7 @@ import {
   RECONCILE_MEMBERS_MAX_AGE_MS,
   dateInWeek,
   isGroupMember,
+  movesOffOtherShows,
   planReconcilePlace,
   suggestReconcile,
   waitingRequests,
@@ -186,7 +187,7 @@ export async function applyReconcile(uid: string, payload: Record<string, unknow
         const req = reqs[i].data() as SpotRequest | undefined;
         if (!req) return void out.skipped.push({ requestId: it.requestId, comicId, reason: "no_request" });
         if (!["new", "acked"].includes(req.status)) return void out.skipped.push({ requestId: it.requestId, comicId, reason: "not_waiting" });
-        const elsewhere = [...lineups.entries()].some(([id, l]) => id !== `${week}_${show.id}` && l.status !== "cancelled" && l.status !== "canned" && l.slots.some((s) => s.comicId === comicId));
+        const elsewhere = movesOffOtherShows(watchUser(uid).settings.rules, show, comicId) && [...lineups.entries()].some(([id, l]) => id !== `${week}_${show.id}` && l.status !== "cancelled" && l.status !== "canned" && l.slots.some((s) => s.comicId === comicId));
         if (elsewhere) return void out.skipped.push({ requestId: it.requestId, comicId, reason: "elsewhere" });
         const plan = planReconcilePlace({ lineup: { slots, status, sent, sentAt: mine?.sentAt }, show, comicId, markTold: Boolean(it.markTold), now });
         if (plan.outcome === "full" || plan.outcome === "called_off") return void out.skipped.push({ requestId: it.requestId, comicId, reason: plan.outcome === "full" ? "full" : "called_off" });

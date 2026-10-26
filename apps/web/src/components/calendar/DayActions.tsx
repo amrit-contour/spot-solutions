@@ -54,7 +54,7 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
   const mic = past && lineup?.status === "confirmed" && !lineup.outcome ? lineup : null;
   const baseline = lineup?.status === "confirmed" ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
 
-  // Same as Lineup > "Add regulars and co-hosts": read the group again, then add whoever is missing.
+  // Same as Lineup > "Add POCs, regulars and co-hosts": read the group again, then add whoever is missing.
   const addRegulars = async () => {
     setBusy(true);
     try {
@@ -66,7 +66,7 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
       }
       if (show.groupId) members = withSelf(members, session);
       const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
-      const people = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
+      const people = [...new Set([...(show.pocs ?? []), ...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
       const n = await addDefaults(uid, week, show, people.map((id) => ({ id, name: nameOf(id) })));
       toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on, or the lineup is full");
     } catch (e) {
@@ -84,7 +84,7 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
         {!off && !past && pending > 0 && baseline && <li><ActionRow icon={IconSend} label="Send updates" hint={`${pending} change${pending > 1 ? "s" : ""} not told yet`} onClick={() => setUpdates(true)} accent /></li>}
         <li><ActionRow icon={IconMic} label="Open lineup" hint={`${lineup?.slots.length ?? 0}/${show.slotCount} slots filled`} to="/lineup" /></li>
         {!off && !past && <li><ActionRow icon={IconUserPlus} label="Offer a spot" hint={full ? "Lineup is full" : "Ask someone to take a slot"} onClick={() => setOffer(true)} disabled={full} /></li>}
-        {!off && <li><ActionRow icon={IconRefresh} label="Add regulars and co-hosts" hint="Reads the group again, adds anyone missing" onClick={() => void addRegulars()} busy={busy} disabled={full} /></li>}
+        {!off && <li><ActionRow icon={IconRefresh} label="Add POCs, regulars and co-hosts" hint="Reads the group again, adds anyone missing" onClick={() => void addRegulars()} busy={busy} disabled={full} /></li>}
       </ul>
       <OfferSheet open={offer} onClose={() => setOffer(false)} show={show} exclude={lineup?.slots.map((s) => s.comicId) ?? []} />
       {lineup && baseline && <SendUpdatesSheet open={updates} onClose={() => setUpdates(false)} show={show} lineup={lineup} baseline={baseline} onSent={() => undefined} />}

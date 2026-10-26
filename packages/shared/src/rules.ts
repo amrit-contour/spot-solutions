@@ -1,5 +1,5 @@
 import { cooldownWeeks, recentSpot } from "./adhoc.ts";
-import type { Comic, HoldReason, RuleSettings, SpotHistoryEntry, Weekday } from "./types.ts";
+import type { Comic, HoldReason, RuleSettings, Show, SpotHistoryEntry, Weekday } from "./types.ts";
 import { DAY_NAMES, formatTime } from "./week.ts";
 
 const toMin = (day: Weekday, hhmm: string) => {
@@ -70,4 +70,13 @@ export function localNow(at: Date, timeZone: string) {
 /** "Saturday 3:00 PM": when the request window opens, for the held-request reply. */
 export function windowOpensLabel(w: RuleSettings["window"]) {
   return `${DAY_NAMES[w.startDay]} ${formatTime(w.startTime)}`;
+}
+
+/**
+ * Placing someone on `show`: should they come off the other shows this week? Only with "One show per week" on,
+ * and never for the show's POCs, regulars or co-hosts (they're often on several nights).
+ */
+export function movesOffOtherShows(rules: Pick<RuleSettings, "onePerWeek">, show: Pick<Show, "pocs" | "regulars" | "protected"> | undefined, comicId: string): boolean {
+  if (!rules.onePerWeek) return false;
+  return !(show?.pocs?.includes(comicId) || show?.regulars?.includes(comicId) || show?.protected?.includes(comicId));
 }
