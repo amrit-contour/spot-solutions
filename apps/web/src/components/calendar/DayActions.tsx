@@ -9,7 +9,7 @@ import { useApp } from "../../lib/app";
 import { runCommand } from "../../lib/data";
 import { db } from "../../lib/firebase";
 import { weekdayOf } from "../../lib/calendarDates";
-import { addDefaults, placeComic } from "../../lib/lineup";
+import { addDefaults, placeComic, withSelf } from "../../lib/lineup";
 import { answerMicCheck } from "../../lib/updates";
 import { OfferSheet } from "../OfferSheet";
 import { Popover } from "../Popover";
@@ -64,9 +64,9 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
         const fresh = (await getDoc(doc(db, "users", uid, "shows", show.id))).data() as Show | undefined;
         if (fresh?.groupMembers?.groupId === show.groupId) members = fresh.groupMembers.members;
       }
-      const me = session?.phone ? `${session.phone}@c.us` : null;
+      if (show.groupId) members = withSelf(members, session);
       const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
-      const people = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])].filter((id) => id !== me);
+      const people = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
       const n = await addDefaults(uid, week, show, people.map((id) => ({ id, name: nameOf(id) })));
       toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on, or the lineup is full");
     } catch (e) {

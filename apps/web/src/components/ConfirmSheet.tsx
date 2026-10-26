@@ -9,7 +9,7 @@ import { IconChatCross, IconMic, IconSend } from "./icons";
 
 /** Preview and send a show's confirmations. Shared by the Lineup board and the Calendar dashboard. */
 export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regretsAfter }: { open: boolean; onClose: () => void; onSending: () => void; show: Show; ids: string[]; lineup?: Lineup; regretsAfter: number }) {
-  const { uid, week, settings, venues, comicsById } = useApp();
+  const { uid, week, settings, venues, comicsById, session } = useApp();
   const [sending, setSending] = useState(false);
   const venue = venues.find((v) => v.id === show.venueId);
   const minutesOf = new Map(lineup?.slots.map((s) => [s.comicId, s.minutes]));
@@ -26,7 +26,8 @@ export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regr
     });
 
   // Already told, or already in the show's group: they keep their spot but get no message.
-  const skipOf = (cid: string) => confirmSkipReason(comicsById.get(cid) ?? { id: cid }, lineup, show);
+  const me = session?.phone ? `${session.phone}@c.us` : null;
+  const skipOf = (cid: string) => (cid === me ? "you" : confirmSkipReason(comicsById.get(cid) ?? { id: cid }, lineup, show));
   const toSend = ids.filter((cid) => !skipOf(cid));
   const skipped = ids.filter((cid) => skipOf(cid));
 
@@ -91,7 +92,7 @@ export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regr
             {skipped.map((cid) => (
               <li key={cid} className="inline-flex h-7 items-center gap-1.5 rounded-sm bg-surface-container px-2.5 type-label-m">
                 {comicsById.get(cid)?.name ?? cid}
-                <span className="text-on-surface-variant">· {skipOf(cid) === "told" ? "already told" : "in the group"}</span>
+                <span className="text-on-surface-variant">· {skipOf(cid) === "you" ? "that's you" : skipOf(cid) === "told" ? "already told" : "in the group"}</span>
               </li>
             ))}
           </ul>

@@ -1,5 +1,5 @@
 import { arrayRemove, arrayUnion, getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
-import { dateInWeek, lineupId, planReconcilePlace, sentSnapshot, shiftWeek, withHistory, type Comic, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
+import { dateInWeek, lineupId, planReconcilePlace, sentSnapshot, shiftWeek, withHistory, type Comic, type GroupMember, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
 import { db } from "./firebase";
 import { userDoc } from "./data";
 
@@ -195,4 +195,15 @@ export async function addDefaults(uid: string, week: string, show: Show, people:
   });
   await Promise.all(added.map((p) => ensureComic(uid, week, p.id, { name: p.name })));
   return added.length;
+}
+
+/**
+ * The server leaves you out of a group's member list (you run the group). You're a comic too, so for the
+ * lineup you count as a member and admin: you can be dragged in, and you're added with the regulars.
+ */
+export function withSelf(members: GroupMember[], session: { phone?: string | null; pushName?: string | null } | null | undefined): GroupMember[] {
+  if (!session?.phone) return members;
+  const id = `${session.phone}@c.us`;
+  if (members.some((m) => m.id === id)) return members;
+  return [...members, { id, name: session.pushName ? `${session.pushName} (you)` : "You", isAdmin: true }];
 }

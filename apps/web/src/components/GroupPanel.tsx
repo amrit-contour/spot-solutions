@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { formatTime, groupModeOf, groupPanel, type GroupRow, type GroupTag, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useNow } from "../lib/data";
-import { setGroupLeaving, tagMember, untagMember } from "../lib/lineup";
+import { setGroupLeaving, tagMember, untagMember, withSelf } from "../lib/lineup";
 import { Menu, MenuItem } from "./Menu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Popover, ToolButton } from "./Popover";
@@ -29,8 +29,9 @@ const rankOf = (r: GroupRow) => (r.tags.includes("leaving") ? 6 : Math.min(...r.
 
 /** The cached WhatsApp members of a show, tagged against its lineup. Shared by the column popover and the Waiting "Group" tab. */
 export function useGroupRows(show: Show, ids: string[], lineup?: Lineup) {
-  const { comicsById } = useApp();
-  const cache = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers : null;
+  const { comicsById, session } = useApp();
+  const raw = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers : null;
+  const cache = useMemo(() => (raw ? { ...raw, members: withSelf(raw.members, session) } : null), [raw, session]);
   const names = useMemo(() => new Map((cache?.members ?? []).map((m) => [m.id, m.name])), [cache]);
   const nameOf = (id: string) => comicsById.get(id)?.name ?? names.get(id) ?? `+${id.split("@")[0]}`;
   const leaving = lineup?.groupLeaving ?? [];

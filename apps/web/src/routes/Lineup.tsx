@@ -51,7 +51,7 @@ import { useApp } from "../lib/app";
 import { runCommand, useCollection, useDocument } from "../lib/data";
 import { OfferSheet } from "../components/OfferSheet";
 import { ConfirmSheet } from "../components/ConfirmSheet";
-import { markCanned, markRequest, addDefaults, placeAsTold, placeComic, repeatLastWeek, seedDefaults, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
+import { markCanned, markRequest, addDefaults, placeAsTold, withSelf, placeComic, repeatLastWeek, seedDefaults, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
 import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
@@ -463,10 +463,9 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current || !lineupsLoaded || lineup?.defaultsSeeded || (lineup && lineup.status !== "draft") || past || week < currentWeek) return;
-    const me = session?.phone ? `${session.phone}@c.us` : null;
-    const members = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.members : [];
+    const members = show.groupId && show.groupMembers?.groupId === show.groupId ? withSelf(show.groupMembers.members, session) : [];
     const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
-    const ids = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])].filter((id) => id !== me);
+    const ids = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
     if (!ids.length) return;
     seeded.current = true;
     void seedDefaults(uid, week, show, ids.map((id) => ({ id, name: nameOf(id) })))
@@ -485,9 +484,9 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
         const fresh = (await getDoc(doc(db, "users", uid, "shows", show.id))).data() as Show | undefined;
         if (fresh?.groupMembers?.groupId === show.groupId) members = fresh.groupMembers.members;
       }
-      const me = session?.phone ? `${session.phone}@c.us` : null;
+      members = show.groupId ? withSelf(members, session) : members;
       const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
-      const people = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])].filter((id) => id !== me);
+      const people = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
       const n = await addDefaults(uid, week, show, people.map((id) => ({ id, name: nameOf(id) })));
       toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on, or the lineup is full");
     } catch (e) {
