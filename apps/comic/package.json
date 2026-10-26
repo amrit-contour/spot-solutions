@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:emulator": "vite --mode emulator --port 5175 --strictPort",
+    "emulators": "firebase emulators:start --config ../../firebase.emulators.json --only auth,firestore --project demo-nbot"
   },
   "dependencies": {
     "@spot/shared": "workspace:^",
