@@ -15,7 +15,6 @@ import {
   newGroupPost,
   nextRun,
   normalizeMessage,
-  renderRich,
   storeMessage,
   whenLabel,
   type GroupPost,
@@ -109,7 +108,6 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pic
   const own = post.template === "custom" || (post.message != null && post.message !== "");
   const next = nextRun(show, post, today);
   const showDate = next.date;
-  const sample = renderRich(msg, groupPostVars(show, venue, showDate, needsLineup(msg) ? ["Rohan", "Priya", "Karthik"] : null));
   const voiceReady = Boolean(settings.voice?.enabled && settings.voice.profile?.summary);
   const setMessage = (m: RichMessage | null) => onChange({ message: m ? storeMessage(m) : null });
   const nextLabel = `${DAY_SHORT[new Date(`${next.date}T00:00:00Z`).getUTCDay()]} ${formatDate(next.date)}, ${formatTime(next.time)}`;
@@ -154,7 +152,7 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pic
               <div className="flex justify-end">
                 <SnippetMenu vars={groupPostVars(show, venue, showDate, null)} messages={["groupLineup", "groupVenue", "groupReminder"]} onPick={(m) => setMessage(m)} />
               </div>
-              <MessageComposer value={normalizeMessage(post.message, msg)} onChange={setMessage} variables={VARIABLES} extraVars={{ ...sample, lineup: "1. Rohan\n2. Priya\n3. Karthik", count: 3 }} idPrefix={`post-${post.id}`} attachLabel="Also send the venue pin" />
+              <MessageComposer value={normalizeMessage(post.message, msg)} onChange={setMessage} variables={VARIABLES} extraVars={groupPostVars(show, venue, showDate, ["Rohan", "Priya", "Karthik"])} idPrefix={`post-${post.id}`} attachLabel="Also send the venue pin" />
             </div>
           ) : (
             <div className="rounded-md bg-surface-container p-3">
