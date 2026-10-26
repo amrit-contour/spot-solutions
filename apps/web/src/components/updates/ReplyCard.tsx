@@ -2,11 +2,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { DAY_NAMES, type ComicAction, type Lineup, type Show } from "@spot/shared";
+import { DAY_NAMES, hasPin, pollProblem, type ComicAction, type Lineup, type RichMessage, type Show } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
-import { Avatar, Bubble, Button, Chip, TextArea } from "../ui";
+import { Avatar, Bubble, Button, Chip } from "../ui";
+import { MessageComposer } from "../rich/MessageComposer";
 import { SnippetMenu } from "../SnippetMenu";
 import { IconArrowRight, IconCancel, IconChat, IconChatCheck, IconClock, IconMap, IconMic, IconSkip } from "../icons";
 import { UpdateItem } from "./shared";
@@ -29,8 +30,12 @@ function cancelEffect(a: ComicAction, lineups: Lineup[], shows: Show[]) {
 }
 
 export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] }) {
-  const { uid, shows } = useApp();
-  const [draft, setDraft] = useState(a.draft);
+  const { uid, shows, venues } = useApp();
+  const [msg, setMsg] = useState<RichMessage>({ kind: a.rich?.kind ?? "text", body: a.draft, poll: a.rich?.poll, attachLocation: a.rich?.attachLocation });
+  // The venue a pin would point at: the one named on the draft, else the show this comic is on.
+  const venueId = a.rich?.venueId ?? shows.find((s) => s.id === lineups.find((l) => l.id === a.lineupId)?.showId)?.venueId ?? null;
+  const pinned = hasPin(venues.find((v) => v.id === venueId));
+  const ready = msg.kind === "poll" ? !pollProblem(msg.poll) : msg.kind === "location" ? pinned : Boolean(msg.body.trim()) || (Boolean(msg.attachLocation) && pinned);
   const [busy, setBusy] = useState(false);
   const kind = KIND[a.kind] ?? KIND.status_query;
   const cancel = a.kind === "cancel_spot";
@@ -38,7 +43,7 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
   const send = async () => {
     setBusy(true);
     try {
-      await runCommand(uid, "send_action", { actionId: a.id, body: draft }, 120_000);
+      await runCommand(uid, "send_action", { actionId: a.id, body: msg.body, rich: { kind: msg.kind, ...(msg.poll && msg.kind === "poll" && { poll: msg.poll }), attachLocation: Boolean(msg.attachLocation), venueId } }, 120_000);
       toast.success(cancel && a.lineupId ? `${a.comicName.split(" ")[0]}'s spot is freed and they've been told` : "Reply sent");
     } catch (e) {
       toast.error((e as Error).message);
@@ -66,10 +71,11 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
           </div>
           <div className="mt-3">
             <div className="-mt-1.5 mb-0.5 flex items-center justify-between gap-2">
-              <label htmlFor={`reply-${a.id}`} className="type-label-m text-on-surface-variant">Your reply</label>
-              <SnippetMenu name={a.comicName} onPick={setDraft} />
+              <label htmlFor={`reply-${a.id}-body`} className="type-label-m text-on-surface-variant">Your reply</label>
+              <SnippetMenu name={a.comicName} onPick={setMsg} />
             </div>
-            <TextArea id={`reply-${a.id}`} value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} className="min-h-0" />
+            <MessageComposer value={msg} onChange={setMsg} compact preview={false} canPin={pinned} idPrefix={`reply-${a.id}`} />
+            {msg.kind === "location" && !pinned && <p className="mt-1.5 type-body-s text-error">This venue has no map pin yet, so nothing would be sent. Add one under Shows → Venues.</p>}
           </div>
           {cancel && (
             <p className="mt-2 type-body-s text-on-surface-variant">
@@ -90,7 +96,7 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
         <Button variant="text" icon={IconSkip} onClick={() => dismissAction(uid, a)}>
           Ignore
         </Button>
-        <Button icon={IconChatCheck} loading={busy} onClick={send} disabled={!draft.trim()} data-primary>
+        <Button icon={IconChatCheck} loading={busy} onClick={send} disabled={!ready} data-primary>
           Send
         </Button>
       </div>

@@ -4,6 +4,9 @@ import {
   dateInWeek,
   formatDate,
   localNow,
+  messageRich,
+  offerVote,
+  OFFER_POLL_OPTIONS,
   parseYesNo,
   renderMessage,
   sentWith,
@@ -16,8 +19,9 @@ import {
 } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 import { extractProfile } from "./gemma.ts";
-import { confirmBody, notice } from "./commands.ts";
+import { notice, sendConfirmation } from "./commands.ts";
 import { sendQueued } from "./sendQueue.ts";
+import { sendRich } from "./sendRich.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
@@ -35,12 +39,17 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
   }
   const answer = texts.map(parseYesNo).find((a) => a !== null) ?? null;
   if (answer === null) return false;
-  const reply = texts.join("\n").slice(0, 300);
+  await settleOffer(uid, client, doc.ref, offer, answer, texts.join("\n").slice(0, 300));
+  return true;
+}
 
+/** Book or decline an offer. Shared by typed replies and poll votes, so both run the same booking transaction. */
+async function settleOffer(uid: string, client: WAWebJS.Client, offerRef: FirebaseFirestore.DocumentReference, offer: SpotOffer, answer: boolean, reply: string) {
+  const comicId = offer.comicId;
   if (!answer) {
-    await doc.ref.update({ status: "declined", reply });
+    await offerRef.update({ status: "declined", reply });
     await notice(uid, "info", `${offer.comicName} passed on the ${showName(uid, offer.showId)} spot.`, "offer");
-    return true;
+    return;
   }
 
   const { shows, settings } = watchUser(uid);
@@ -63,17 +72,17 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
   });
 
   if (!booked || !show) {
-    await doc.ref.update({ status: "full", reply });
+    await offerRef.update({ status: "full", reply });
     const who = (await col(uid, "comics").doc(comicId).get()).data() as Comic | undefined;
     const name = await greetFor(client, who ?? { id: comicId, name: offer.comicName });
-    await sendQueued(client, await chatOf(uid, comicId), await inVoice(uid, "offerFull", renderMessage(settings, "offerFull", { name }), { name }));
+    await sendRich(client, await chatOf(uid, comicId), messageRich(settings, "offerFull"), { name }, null, { rewrite: (t) => inVoice(uid, "offerFull", t, { name }) });
     await notice(uid, "warn", `${offer.comicName} said yes, but ${show?.name ?? "the show"} was already full. They've been told.`, "offer");
-    return true;
+    return;
   }
 
-  await doc.ref.update({ status: "accepted", reply });
+  await offerRef.update({ status: "accepted", reply });
   const comic = (await comicRef.get()).data() as Comic;
-  await sendQueued(client, comic.chatId ?? comicId, await confirmBody(uid, client, show, comic, booked.weekOf));
+  await sendConfirmation(uid, client, show, comic, booked.weekOf);
   // On a confirmed lineup this counts as told, so "Send updates" doesn't confirm them a second time.
   if (booked.status === "confirmed") {
     const fresh = (await lineupRef.get()).data() as Lineup;
@@ -85,7 +94,6 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
     await group.addParticipants([comicId], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) }).catch(() => undefined);
   }
   await notice(uid, "info", `${offer.comicName} took the ${show.name} spot and got the confirmation.`, "offer");
-  return true;
 }
 
 /** Reply to the onboarding question: fill in their profile. Returns true when handled. */
@@ -116,7 +124,7 @@ export async function handleVote(uid: string, client: WAWebJS.Client, vote: WAWe
   if (!msgId) return;
   const snap = await col(uid, "polls").where("messageId", "==", msgId).limit(1).get();
   const doc = snap.docs[0];
-  if (!doc) return;
+  if (!doc) return handleOfferVote(uid, client, vote, msgId);
   const poll = doc.data() as HostPoll;
   let voter = vote.voter;
   if (voter.endsWith("@lid")) voter = (await client.getContactLidAndPhone([voter]).catch(() => []))[0]?.pn ?? voter;
@@ -124,6 +132,19 @@ export async function handleVote(uid: string, client: WAWebJS.Client, vote: WAWe
   const name = (contact?.isMyContact && contact.name) || contact?.pushname || `+${voter.split("@")[0]}`;
   const showIds = vote.selectedOptions.map((o) => poll.options.find((x) => x.name === o.name)?.showId).filter(Boolean) as string[];
   await doc.ref.update({ [`votes.${voter.replace(/\./g, "_")}`]: showIds, [`voterNames.${voter.replace(/\./g, "_")}`]: name });
+}
+
+/** A vote on a spot-offer poll: the first option books the spot, the second passes. Taking a vote back does nothing. */
+async function handleOfferVote(uid: string, client: WAWebJS.Client, vote: WAWebJS.PollVote, msgId: string) {
+  const snap = await col(uid, "offers").where("pollMessageId", "==", msgId).where("status", "==", "pending").limit(1).get();
+  const doc = snap.docs[0];
+  if (!doc) return;
+  const offer = { ...(doc.data() as SpotOffer), id: doc.id };
+  if (offer.expiresAt < Date.now()) return void (await doc.ref.update({ status: "expired" }));
+  const picked = vote.selectedOptions.map((o) => o.name);
+  const answer = offerVote(picked, offer.pollOptions ?? OFFER_POLL_OPTIONS);
+  if (answer === null) return;
+  await settleOffer(uid, client, doc.ref, offer, answer, `Poll: ${picked.join(", ")}`.slice(0, 300));
 }
 
 /** Curator replied "yes"/"no" to a mic check in their own chat (Message yourself). */

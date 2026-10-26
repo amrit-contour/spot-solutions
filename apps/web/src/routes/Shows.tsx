@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
+import { VenuePin } from "../components/rich/VenuePin";
 import { DAY_SHORT, formatTime, groupModeOf, type GroupInfo, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
@@ -365,7 +366,9 @@ function VenueEditor({ value, onClose }: { value: Partial<Venue> | null; onClose
     if (!draft.name?.trim()) return toast.error("Venue needs a name");
     const { id, ...rest } = draft as Venue;
     const aliases = (rest.aliases ?? []).map((a) => a.trim()).filter(Boolean);
-    const data = { ...rest, aliases };
+    const { lat, lng, ...base } = rest;
+    // Firestore refuses undefined, so a venue with no pin simply has no lat/lng.
+    const data = { ...base, aliases, ...(typeof lat === "number" && typeof lng === "number" && { lat, lng }) };
     if (id) await setDoc(userDoc(uid, "venues", id), data);
     else await addDoc(userCol(uid, "venues"), data);
     onClose();
@@ -383,6 +386,7 @@ function VenueEditor({ value, onClose }: { value: Partial<Venue> | null; onClose
           />
         </Field>
         <Field label="Google Maps link" hint="Shared in confirmations through {{mapsLink}}"><TextInput value={draft.mapsLink ?? ""} onChange={(e) => setDraft({ ...draft, mapsLink: e.target.value })} placeholder="https://maps.app.goo.gl/…" /></Field>
+        <VenuePin key={draft.id ?? "new"} lat={draft.lat} lng={draft.lng} onChange={(pin) => setDraft((d) => ({ ...d, lat: pin?.lat, lng: pin?.lng }))} />
       </div>
     </Sheet>
   );

@@ -3,23 +3,25 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import type { ComicAction } from "@spot/shared";
+import { pollProblem, type ComicAction, type RichMessage } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction, dismissNotice, type Introduction } from "../../lib/updates";
-import { Avatar, Bubble, Button, Chip, TextArea, buttonClass } from "../ui";
+import { Avatar, Bubble, Button, Chip, buttonClass } from "../ui";
+import { MessageComposer } from "../rich/MessageComposer";
 import { SnippetMenu } from "../SnippetMenu";
 import { IconChatCheck, IconSkip, IconUserCheck, IconUserPlus } from "../icons";
 import { UpdateItem } from "./shared";
 
 export function OnboardCard({ a }: { a: ComicAction }) {
   const { uid } = useApp();
-  const [draft, setDraft] = useState(a.draft);
+  const [msg, setMsg] = useState<RichMessage>({ kind: a.rich?.kind ?? "text", body: a.draft, poll: a.rich?.poll });
+  const ready = msg.kind === "poll" ? !pollProblem(msg.poll) : msg.kind === "text" && Boolean(msg.body.trim());
   const [busy, setBusy] = useState(false);
   const send = async () => {
     setBusy(true);
     try {
-      await runCommand(uid, "send_action", { actionId: a.id, body: draft }, 120_000);
+      await runCommand(uid, "send_action", { actionId: a.id, body: msg.body, rich: { kind: msg.kind, ...(msg.poll && msg.kind === "poll" && { poll: msg.poll }) } }, 120_000);
       toast.success("Reply sent");
     } catch (e) {
       toast.error((e as Error).message);
@@ -46,10 +48,10 @@ export function OnboardCard({ a }: { a: ComicAction }) {
           </div>
           <div className="mt-3">
             <div className="-mt-1.5 mb-0.5 flex items-center justify-between gap-2">
-              <label htmlFor={`face-${a.id}`} className="type-label-m text-on-surface-variant">Ask who they are</label>
-              <SnippetMenu name={a.comicName} onPick={setDraft} />
+              <label htmlFor={`face-${a.id}-body`} className="type-label-m text-on-surface-variant">Ask who they are</label>
+              <SnippetMenu name={a.comicName} onPick={setMsg} kinds={["text", "poll"]} />
             </div>
-            <TextArea id={`face-${a.id}`} value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="min-h-0" />
+            <MessageComposer value={msg} onChange={setMsg} kinds={["text", "poll"]} compact preview={false} idPrefix={`face-${a.id}`} />
           </div>
         </div>
       </div>
@@ -57,7 +59,7 @@ export function OnboardCard({ a }: { a: ComicAction }) {
         <Button variant="text" icon={IconSkip} onClick={() => dismissAction(uid, a)}>
           Ignore
         </Button>
-        <Button icon={IconChatCheck} loading={busy} onClick={send} disabled={!draft.trim()} data-primary>
+        <Button icon={IconChatCheck} loading={busy} onClick={send} disabled={!ready} data-primary>
           Send
         </Button>
       </div>

@@ -1,14 +1,16 @@
 // "Templates" button for any reply box: drops one of the curator's saved snippets in, filled for this comic.
 import { Link } from "react-router-dom";
-import { greetName, renderTemplate, type TemplateVars } from "@spot/shared";
+import { greetName, renderRich, snippetRich, type MessageKind, type RichMessage, type TemplateVars } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { Menu, MenuItem } from "./Menu";
 import { Button } from "./ui";
 import { IconTemplate } from "./icons";
+import { messageSummary } from "./rich/MessageComposer";
 
-export function SnippetMenu({ name, vars, onPick }: { name: string; vars?: TemplateVars; onPick: (text: string) => void }) {
+/** `kinds` limits the list to snippets this box can send (an offer can't send a bare pin, for one). */
+export function SnippetMenu({ name, vars, onPick, kinds }: { name: string; vars?: TemplateVars; onPick: (m: RichMessage) => void; kinds?: MessageKind[] }) {
   const { settings } = useApp();
-  const snippets = settings.snippets ?? [];
+  const snippets = (settings.snippets ?? []).filter((s) => !kinds || kinds.includes(snippetRich(s).kind));
   return (
     <Menu
       align="right"
@@ -24,12 +26,12 @@ export function SnippetMenu({ name, vars, onPick }: { name: string; vars?: Templ
             <MenuItem
               key={s.id}
               onClick={() => {
-                onPick(renderTemplate(s.body, { ...vars, name: greetName(name) }));
+                onPick(renderRich(snippetRich(s), { ...vars, name: greetName(name) }));
                 close();
               }}
             >
               <span className="block truncate">{s.title || "Untitled"}</span>
-              <span className="block truncate type-body-s text-on-surface-variant">{s.body}</span>
+              <span className="block truncate type-body-s text-on-surface-variant">{messageSummary(snippetRich(s))}</span>
             </MenuItem>
           ))}
           {!snippets.length && <p className="px-4 py-2 type-body-s text-on-surface-variant">No saved templates yet.</p>}

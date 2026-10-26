@@ -17,6 +17,10 @@ import {
   confirmSkipReason,
   renderMessage,
   renderTemplate,
+  normalizeMessage,
+  pollProblem,
+  OFFER_POLL_OPTIONS,
+  type RichMessage,
   TTL_DAYS,
   resendCandidates,
   sentSnapshot,
@@ -42,6 +46,8 @@ import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
 import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
+import { sendRich } from "./sendRich.ts";
+import { deliverDraft } from "./deliver.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice, learnVoice, previewVoice } from "./voice.ts";
 import { applyFollowUpAction } from "./followUp.ts";
@@ -134,7 +140,7 @@ const handlers: Record<Command["type"], Handler> = {
         continue;
       }
       try {
-        await sendQueued(client, comic.chatId ?? comic.id, await confirmBody(uid, client, show, comic, lineup.weekOf, slot.minutes));
+        await sendConfirmation(uid, client, show, comic, lineup.weekOf, slot.minutes);
         results[comic.id] = "sent";
       } catch (e) {
         results[comic.id] = `failed: ${(e as Error).message}`;
@@ -285,11 +291,11 @@ const handlers: Record<Command["type"], Handler> = {
     const date = dateInWeek(lineup.weekOf, show.weekday);
     const messaged: string[] = [];
     const failed: string[] = [];
-    const send = async (id: string, body: (c: Comic) => Promise<string>) => {
+    const send = async (id: string, deliver: (c: Comic) => Promise<unknown>) => {
       const comic = comics.get(id);
       try {
         if (!comic) throw new Error("Comic not found");
-        await sendQueued(client, comic.chatId ?? comic.id, await body(comic));
+        await deliver(comic);
         messaged.push(id);
       } catch (e) {
         console.error(`[lineup-update] ${id} failed`, e);
@@ -297,9 +303,9 @@ const handlers: Record<Command["type"], Handler> = {
       }
     };
     for (const slot of lineup.slots) {
-      if (toAdd.has(slot.comicId) || toResend.has(slot.comicId)) await send(slot.comicId, (c) => confirmBody(uid, client, show, c, lineup.weekOf, slot.minutes));
+      if (toAdd.has(slot.comicId) || toResend.has(slot.comicId)) await send(slot.comicId, (c) => sendConfirmation(uid, client, show, c, lineup.weekOf, slot.minutes));
     }
-    for (const id of changes.removed) if (toRemove.has(id)) await send(id, (c) => cancelBody(uid, client, show, c, lineup.weekOf));
+    for (const id of changes.removed) if (toRemove.has(id)) await send(id, async (c) => sendQueued(client, c.chatId ?? c.id, await cancelBody(uid, client, show, c, lineup.weekOf)));
 
     // Settle the records: people who were told are done. Failed sends, and adds or removals the curator
     // unticked, stay pending, so nobody ends up on (or off) a lineup without knowing.
@@ -332,23 +338,27 @@ const handlers: Record<Command["type"], Handler> = {
   },
 
   /** Curator approved a drafted reply (and for cancellations, the drop-out itself). */
-  async send_action(uid, { actionId, body }) {
+  async send_action(uid, { actionId, body, rich }) {
     const client = sessions.require(uid);
     const ref = col(uid, "actions").doc(String(actionId));
     const action = (await ref.get()).data() as ComicAction | undefined;
     if (!action || action.status !== "pending") throw new Error("Nothing to send");
     if (action.kind === "cancel_spot" && action.lineupId) await dropFromLineup(uid, client, action.comicId, action.lineupId);
     const comic = (await col(uid, "comics").doc(action.comicId).get()).data() as Comic | undefined;
-    await sendQueued(client, comic?.chatId ?? action.comicId, String(body ?? action.draft));
+    await deliverDraft(uid, client, comic?.chatId ?? action.comicId, String(body ?? action.draft), (rich as ComicAction["rich"] | undefined) ?? action.rich);
     // Their next message is read as the answer to the onboarding question.
     if (action.kind === "onboard") await col(uid, "comics").doc(action.comicId).set({ onboarding: "asked" }, { merge: true });
     await ref.update({ status: "sent", sentAt: Date.now() });
   },
 
-  /** Curator offers an open slot. A "yes" reply books it (see replies.ts). */
-  async send_offer(uid, { comicId, lineupId, body }) {
+  /**
+   * Curator offers an open slot. By default a poll ("Yes, I'll take it" / "Pass"): voting is handled in replies.ts
+   * (handleVote), and a typed yes or no is still understood (handleOfferReply). `rich` carries what the curator
+   * edited in the sheet; without it the offer goes out as the text in `body`.
+   */
+  async send_offer(uid, { comicId, lineupId, body, rich }) {
     const client = sessions.require(uid);
-    const { settings, shows } = watchUser(uid);
+    const { settings, shows, venues } = watchUser(uid);
     const lineup = (await col(uid, "lineups").doc(String(lineupId)).get()).data() as Lineup | undefined;
     if (!lineup) throw new Error("Lineup not found");
     const show = shows.find((s) => s.id === lineup.showId);
@@ -358,7 +368,18 @@ const handlers: Record<Command["type"], Handler> = {
     // One live offer per comic: the newest replaces any older one.
     const old = await col(uid, "offers").where("comicId", "==", comic.id).where("status", "==", "pending").get();
     for (const d of old.docs) await d.ref.update({ status: "expired" });
-    await sendQueued(client, comic.chatId ?? comic.id, String(body));
+
+    const asPoll = rich ? normalizeMessage(rich).kind === "poll" : false;
+    const msg: RichMessage = rich ? normalizeMessage(rich, { kind: "text", body: String(body ?? "") }) : { kind: "text", body: String(body ?? "") };
+    let pollOptions: string[] | undefined;
+    if (asPoll && msg.poll) {
+      // The first option books the spot and the second passes, so those two are fixed.
+      pollOptions = [...OFFER_POLL_OPTIONS];
+      msg.poll = { question: msg.poll.question, options: pollOptions, multi: false };
+      const problem = pollProblem(msg.poll);
+      if (problem) throw new Error(problem);
+    } else if (msg.kind !== "text") throw new Error("An offer goes out as a poll or as text.");
+    const sent = await sendRich(client, comic.chatId ?? comic.id, msg, {}, venues.find((v) => v.id === show.venueId), { prerendered: true });
     const now = Date.now();
     const offer: Omit<SpotOffer, "id"> = {
       comicId: comic.id,
@@ -370,6 +391,7 @@ const handlers: Record<Command["type"], Handler> = {
       sentAt: now,
       expiresAt: now + settings.offers.expiryHours * 3600_000,
       reply: null,
+      ...(pollOptions && sent && { pollMessageId: sent.id._serialized, pollOptions }),
     };
     await col(uid, "offers").add(offer);
   },
@@ -452,15 +474,25 @@ const handlers: Record<Command["type"], Handler> = {
     return out;
   },
 
-  async send_message(uid, { to, body }) {
-    await sendQueued(sessions.require(uid), String(to), String(body));
+  async send_message(uid, { to, body, rich }) {
+    await deliverDraft(uid, sessions.require(uid), String(to), String(body ?? ""), rich as ComicAction["rich"] | undefined);
   },
 };
 
-export async function confirmBody(uid: string, client: WAWebJS.Client | null, show: Show, comic: Comic, week: string, minutes?: number | null) {
+/** The confirmation as the curator set it up: the text (in their voice), then the venue pin if that's on. */
+export async function sendConfirmation(uid: string, client: WAWebJS.Client, show: Show, comic: Comic, week: string, minutes?: number | null) {
   const { settings, venues } = watchUser(uid);
   const venue = venues.find((v) => v.id === show.venueId);
-  const facts = {
+  const facts = await confirmFacts(uid, client, show, comic, week, minutes);
+  return sendRich(client, comic.chatId ?? comic.id, { kind: "text", body: settings.confirm.template, attachLocation: settings.confirm.attachLocation }, facts, venue, {
+    rewrite: (text) => inVoice(uid, "confirm", text, facts),
+  });
+}
+
+async function confirmFacts(uid: string, client: WAWebJS.Client | null, show: Show, comic: Comic, week: string, minutes?: number | null) {
+  const { venues } = watchUser(uid);
+  const venue = venues.find((v) => v.id === show.venueId);
+  return {
     name: await greetFor(client, comic),
     show: show.name,
     venue: venue?.name,
@@ -470,7 +502,6 @@ export async function confirmBody(uid: string, client: WAWebJS.Client | null, sh
     time: formatTime(show.startTime),
     minutes: show.includeSlotTime ? (minutes ?? show.defaultMinutes) : null,
   };
-  return inVoice(uid, "confirm", renderTemplate(settings.confirm.template, facts), facts);
 }
 
 export async function cancelBody(uid: string, client: WAWebJS.Client | null, show: Show, comic: Comic, week: string) {

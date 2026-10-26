@@ -13,6 +13,7 @@ import {
   holdFor,
   lastSpot,
   localNow,
+  messageRich,
   renderMessage,
   renderTemplate,
   windowOpensLabel,
@@ -30,6 +31,8 @@ import { classify } from "./gemma.ts";
 import { classifyContext, countPriorRequests } from "./classifyContext.ts";
 import { watchUser } from "./userData.ts";
 import { sendQueued } from "./sendQueue.ts";
+import { sendRich } from "./sendRich.ts";
+import { composeDraft, deliverDraft } from "./deliver.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice } from "./voice.ts";
 import { counters, live } from "./stats.ts";
@@ -227,8 +230,7 @@ async function explainHold(uid: string, client: WAWebJS.Client, r: SpotRequest, 
   const name = await greetFor(client, comic ?? { id: r.comicId, name: r.comicName });
   const kind = hold === "midweek" ? "heldWindow" : "heldLastWeek";
   const facts = { name, opens: windowOpensLabel(settings.rules.window) };
-  const body = await inVoice(uid, kind, renderMessage(settings, kind, facts), facts);
-  await sendQueued(client, comic?.chatId ?? r.comicId, body);
+  await sendRich(client, comic?.chatId ?? r.comicId, messageRich(settings, kind), facts, null, { rewrite: (t) => inVoice(uid, kind, t, facts) });
   await col(uid, "requests").doc(r.id).update({ heldRepliedAt: Date.now() });
   console.log(`[held] told ${comic?.name ?? r.comicName} (${hold})`);
 }
@@ -236,7 +238,7 @@ async function explainHold(uid: string, client: WAWebJS.Client, r: SpotRequest, 
 async function draftOnboarding(uid: string, client: WAWebJS.Client, p: Pending, week: string) {
   const { settings } = watchUser(uid);
   const name = await greetFor(client, { id: p.contact.id, chatId: p.contact.chatId, name: p.contact.nameSource === "number" ? "" : p.contact.name, nameSource: p.contact.nameSource });
-  const draft = await inVoice(uid, "onboard", renderMessage(settings, "onboard", { name }), { name });
+  const { draft, rich } = await composeDraft(uid, "onboard", { name });
   const ref = col(uid, "actions").doc(actionId(p, "onboard"));
   const created = await ref.create({
     kind: "onboard",
@@ -245,6 +247,7 @@ async function draftOnboarding(uid: string, client: WAWebJS.Client, p: Pending, 
     weekOf: week,
     message: p.messages.map((m) => m.body).join("\n"),
     draft,
+    ...(rich && { rich }),
     lineupId: null,
     status: "pending",
     createdAt: Date.now(),
@@ -252,7 +255,7 @@ async function draftOnboarding(uid: string, client: WAWebJS.Client, p: Pending, 
   if (!created) return;
   const fresh = Date.now() - Math.max(...p.messages.map((m) => m.at)) < AUTO_ACK_MAX_AGE_MS;
   if (settings.selfService.autoSend && fresh && !p.quiet) {
-    await sendQueued(client, p.contact.chatId, draft);
+    await deliverDraft(uid, client, p.contact.chatId, draft, rich);
     await ref.update({ status: "sent", sentAt: Date.now() });
     await col(uid, "comics").doc(p.contact.id).set({ onboarding: "asked" }, { merge: true });
   }
@@ -263,8 +266,7 @@ async function acknowledge(uid: string, client: WAWebJS.Client, r: SpotRequest) 
   if (!settings.ack.enabled) return;
   const comic = (await col(uid, "comics").doc(r.comicId).get()).data() as Comic | undefined;
   const name = await greetFor(client, comic ?? { id: r.comicId, name: r.comicName });
-  const body = await inVoice(uid, "ack", renderTemplate(settings.ack.template, { name }), { name });
-  await sendQueued(client, comic?.chatId ?? r.comicId, body);
+  await sendRich(client, comic?.chatId ?? r.comicId, { kind: "text", body: settings.ack.template }, { name }, null, { rewrite: (t) => inVoice(uid, "ack", t, { name }) });
   await col(uid, "requests").doc(r.id).update({ ackedAt: Date.now(), status: "acked" });
   console.log(`[ack] sent to ${comic?.name ?? r.comicName}`);
 }
@@ -280,15 +282,14 @@ async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, inte
   const venue = venues.find((v) => v.id === show?.venueId);
   const vars = { name, ...(show && { show: show.name, venue: venue?.name, day: DAY_NAMES[show.weekday], date: formatDate(dateInWeek(week, show.weekday)), time: formatTime(show.startTime) }) };
   const say = (key: Parameters<typeof renderMessage>[1], extra: Record<string, string | null | undefined> = {}) => {
-    const facts = { ...vars, ...extra };
-    return inVoice(uid, key as Exclude<typeof key, "groupWelcome">, renderMessage(settings, key, facts), facts);
+    return composeDraft(uid, key as Exclude<typeof key, "groupWelcome">, { ...vars, ...extra }, venue);
   };
 
-  let draft: string;
+  let drafted: Awaited<ReturnType<typeof say>>;
   if (intent.kind === "cancel_spot") {
-    draft = await (mine && show ? say("cancelDone") : say("cancelNone"));
+    drafted = await (mine && show ? say("cancelDone") : say("cancelNone"));
   } else if (intent.kind === "status_query") {
-    draft = await (mine && show ? say(mine.status === "confirmed" ? "statusConfirmed" : "statusPencilled") : say("statusNone"));
+    drafted = await (mine && show ? say(mine.status === "confirmed" ? "statusConfirmed" : "statusPencilled") : say("statusNone"));
   } else if (intent.kind === "show_info") {
     const lines = shows
       .filter((s) => s.active)
@@ -296,11 +297,12 @@ async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, inte
         const v = venues.find((x) => x.id === s.venueId);
         return `• ${s.name}: ${DAY_NAMES[s.weekday]}s at ${formatTime(s.startTime)}${v ? `, ${v.name}${v.area ? ` (${v.area})` : ""}` : ""}${v?.mapsLink ? `\n  ${v.mapsLink}` : ""}`;
       });
-    draft = await say("showInfo", { shows: lines.join("\n") });
+    drafted = await say("showInfo", { shows: lines.join("\n") });
   } else {
     const last = lastSpot(comic?.history, localNow(new Date(), settings.timezone).date);
-    draft = await say("lastSpot", { lastShow: last?.showName, lastDate: last ? formatDate(last.date) : null });
+    drafted = await say("lastSpot", { lastShow: last?.showName, lastDate: last ? formatDate(last.date) : null });
   }
+  const { draft, rich } = drafted;
 
   const action: Omit<ComicAction, "id"> = {
     kind: intent.kind as ComicAction["kind"],
@@ -309,6 +311,7 @@ async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, inte
     weekOf: week,
     message: p.messages.map((m) => m.body).join("\n"),
     draft,
+    ...(rich && { rich }),
     lineupId: intent.kind === "cancel_spot" && mine && mine.status !== "cancelled" ? `${week}_${mine.showId}` : null,
     status: "pending",
     createdAt: Date.now(),
@@ -321,7 +324,7 @@ async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, inte
   if (settings.selfService.autoSend && fresh && !p.quiet && !p.contact.isBusiness) {
     const { dropFromLineup } = await import("./commands.ts");
     if (action.lineupId) await dropFromLineup(uid, client, p.contact.id, action.lineupId);
-    await sendQueued(client, comic?.chatId ?? p.contact.chatId, draft);
+    await deliverDraft(uid, client, comic?.chatId ?? p.contact.chatId, draft, rich);
     await ref.update({ status: "sent", sentAt: Date.now() });
   }
 }

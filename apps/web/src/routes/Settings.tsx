@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -8,17 +8,21 @@ import {
   DEFAULT_CANCEL_SPOT_TEMPLATE,
   DEFAULT_CONFIRM_TEMPLATE,
   DEFAULT_REJECT_TEMPLATE,
-  SAMPLE_VARS,
   TEMPLATE_VARIABLES,
   closedRequestsWeeks,
   clampScanDays,
   SCAN_DAYS_MAX,
   SCAN_DAYS_MIN,
-  renderTemplate,
   MESSAGE_GROUPS,
   MESSAGE_TYPES,
-  messageTemplate,
+  messageRich,
+  OFFER_POLL_OPTIONS,
+  snippetRich,
+  storeMessage,
+  pollProblem,
   type GroupInfo,
+  type RichMessage,
+  type MessageKind,
   type MessageKey,
   type Snippet,
   type VoiceKind,
@@ -37,6 +41,7 @@ import { FleetCard } from "../components/FleetCard";
 import { NotifyCard } from "../components/NotifyCard";
 import { GoogleContactsCard } from "../components/GoogleContactsCard";
 import { AppearanceCard } from "../components/AppearanceCard";
+import { MessageComposer } from "../components/rich/MessageComposer";
 import { Bubble, Button, Field, Info, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "../components/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose } from "../components/icons";
 
@@ -112,67 +117,56 @@ const EXTRA_VARIABLES = [
 ];
 const ALL_VARIABLES: { key: string; label: string }[] = [...TEMPLATE_VARIABLES, ...EXTRA_VARIABLES];
 
-function TemplateEditor({ value, onSave, fallback, extraVars, disabled, keys, savedLabel = "Template saved" }: { value: string; onSave: (v: string) => Promise<void>; fallback: string; extraVars?: Record<string, string | number | null | undefined>; disabled?: boolean; keys?: readonly string[]; savedLabel?: string }) {
+const asText = (body: string): RichMessage => ({ kind: "text", body });
+
+/** Edits one message: text with formatting, or (where allowed) a poll or a venue pin, with a live WhatsApp preview. */
+function TemplateEditor({ value, onSave, fallback, extraVars, disabled, keys, kinds = ["text"], attach, offer, savedLabel = "Template saved" }: { value: RichMessage; onSave: (v: RichMessage) => Promise<void>; fallback: RichMessage; extraVars?: Record<string, string | number | null | undefined>; disabled?: boolean; keys?: readonly string[]; kinds?: MessageKind[]; attach?: boolean; offer?: boolean; savedLabel?: string }) {
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => setDraft(value), [value]);
-  const dirty = draft !== value;
-
-  const insert = (key: string) => {
-    const el = ref.current;
-    const token = key === "minutes" ? "{{#minutes}}⏱ {{minutes}} min{{/minutes}}" : `{{${key}}}`;
-    if (!el) return setDraft((d) => d + token);
-    const { selectionStart: s, selectionEnd: e } = el;
-    const next = draft.slice(0, s) + token + draft.slice(e);
-    setDraft(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(s + token.length, s + token.length);
-    });
-  };
+  const stamp = JSON.stringify(value);
+  useEffect(() => setDraft(value), [stamp]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = JSON.stringify(draft) !== stamp;
+  const problem = draft.kind === "poll" ? pollProblem(draft.poll) : null;
 
   return (
-    <div className={cx("grid items-start gap-5 lg:grid-cols-2", disabled && "pointer-events-none opacity-50")}>
-      <div className="flex flex-col gap-3">
-        <TextArea ref={ref} value={draft} onChange={(e) => setDraft(e.target.value)} rows={5} spellCheck={false} className="min-h-0 font-mono text-sm" />
-        <div className="flex flex-wrap gap-1.5">
-          {(keys ? ALL_VARIABLES.filter((v) => keys.includes(v.key)) : TEMPLATE_VARIABLES).map((v) => (
-            <button key={v.key} onClick={() => insert(v.key)} className="state-layer pressable h-7 rounded-sm bg-surface-high px-2.5 font-mono text-xs text-on-surface-variant" title={`Insert ${v.label}`}>
-              {`{{${v.key}}}`}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="text" className="-ml-3" onClick={() => setDraft(fallback)} disabled={draft === fallback}>
-            Reset to default
+    <div className={cx("flex flex-col gap-3", disabled && "pointer-events-none opacity-50")}>
+      <MessageComposer
+        value={draft}
+        onChange={(m) => setDraft(offer && m.kind === "poll" ? { ...m, poll: { question: m.poll?.question ?? "", options: [...OFFER_POLL_OPTIONS], multi: false } } : m)}
+        kinds={kinds}
+        attach={attach}
+        offer={offer}
+        variables={keys ? ALL_VARIABLES.filter((v) => keys.includes(v.key)) : TEMPLATE_VARIABLES}
+        extraVars={extraVars}
+        idPrefix={`tpl-${stamp.length}`}
+      />
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="text" className="-ml-3" onClick={() => setDraft(fallback)} disabled={JSON.stringify(draft) === JSON.stringify(fallback)}>
+          Reset to default
+        </Button>
+        <div className="flex-1" />
+        {dirty && (
+          <Button size="sm" variant="text" onClick={() => setDraft(value)}>
+            Discard
           </Button>
-          <div className="flex-1" />
-          {dirty && (
-            <Button size="sm" variant="text" onClick={() => setDraft(value)}>
-              Discard
-            </Button>
-          )}
-          <Button
-            size="sm"
-            disabled={!dirty}
-            loading={saving}
-            onClick={async () => {
-              setSaving(true);
+        )}
+        <Button
+          size="sm"
+          disabled={!dirty}
+          loading={saving}
+          onClick={async () => {
+            if (problem) return void toast.error(problem);
+            setSaving(true);
+            try {
               await onSave(draft);
-              setSaving(false);
               toast.success(savedLabel);
-            }}
-          >
-            Save
-          </Button>
-        </div>
-      </div>
-      <div className="flex flex-col rounded-lg bg-surface-container p-4">
-        <span className="mb-3 type-label-m text-on-surface-variant">Preview</span>
-        <Bubble outgoing meta="9:41 PM">
-          {renderTemplate(draft, { ...SAMPLE_VARS, ...extraVars }) || <span className="opacity-50">Empty message</span>}
-        </Bubble>
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          Save
+        </Button>
       </div>
     </div>
   );
@@ -232,7 +226,7 @@ export function SettingsPage() {
           }
           aside={<Switch checked={settings.ack.enabled} onChange={(v) => saveSettings({ ack: { ...settings.ack, enabled: v } })} label="Auto-acknowledge" />}
         >
-          <TemplateEditor value={settings.ack.template} fallback={DEFAULT_ACK_TEMPLATE} disabled={!settings.ack.enabled} onSave={(t) => saveSettings({ ack: { ...settings.ack, template: t } })} />
+          <TemplateEditor value={asText(settings.ack.template)} fallback={asText(DEFAULT_ACK_TEMPLATE)} disabled={!settings.ack.enabled} onSave={(m) => saveSettings({ ack: { ...settings.ack, template: m.body } })} />
         </Section>
         )}
 
@@ -252,7 +246,7 @@ export function SettingsPage() {
             </label>
           }
         >
-          <TemplateEditor value={settings.confirm.template} fallback={DEFAULT_CONFIRM_TEMPLATE} extraVars={{ minutes: withMinutes ? 5 : null }} onSave={(t) => saveSettings({ confirm: { template: t } })} />
+          <TemplateEditor value={{ kind: "text", body: settings.confirm.template, attachLocation: settings.confirm.attachLocation }} fallback={asText(DEFAULT_CONFIRM_TEMPLATE)} attach extraVars={{ minutes: withMinutes ? 5 : null }} onSave={(m) => saveSettings({ confirm: { template: m.body, attachLocation: Boolean(m.attachLocation) } })} />
         </Section>
         )}
 
@@ -262,7 +256,7 @@ export function SettingsPage() {
           icon={IconChatCross}
           description="Sent when you take someone off a lineup you already confirmed, and you tick them in Send updates. Nothing goes out without that review."
         >
-          <TemplateEditor value={settings.cancelSpot.template} fallback={DEFAULT_CANCEL_SPOT_TEMPLATE} onSave={(t) => saveSettings({ cancelSpot: { template: t } })} />
+          <TemplateEditor value={asText(settings.cancelSpot.template)} fallback={asText(DEFAULT_CANCEL_SPOT_TEMPLATE)} onSave={(m) => saveSettings({ cancelSpot: { template: m.body } })} />
         </Section>
         )}
 
@@ -276,7 +270,7 @@ export function SettingsPage() {
           description="When every show for the week is confirmed or cancelled, anyone who asked but wasn't placed gets this. Dismissed requests are skipped."
           aside={<Switch checked={settings.reject.enabled} onChange={(v) => saveSettings({ reject: { ...settings.reject, enabled: v } })} label="Send regret messages" />}
         >
-          <TemplateEditor value={settings.reject.template} fallback={DEFAULT_REJECT_TEMPLATE} disabled={!settings.reject.enabled} onSave={(t) => saveSettings({ reject: { ...settings.reject, template: t } })} />
+          <TemplateEditor value={asText(settings.reject.template)} fallback={asText(DEFAULT_REJECT_TEMPLATE)} disabled={!settings.reject.enabled} onSave={(m) => saveSettings({ reject: { ...settings.reject, template: m.body } })} />
         </Section>
         )}
 
@@ -520,12 +514,14 @@ function MessageSection({ type }: { type: MessageKey }) {
       aside={held ? <Switch checked={!off} onChange={(v) => saveSettings({ heldReplies: { enabled: v } })} label="Tell held comics why" /> : undefined}
     >
       <TemplateEditor
-        value={messageTemplate(settings, type)}
-        fallback={m.default}
+        value={messageRich(settings, type)}
+        fallback={{ kind: m.defaultKind ?? "text", body: m.default, ...(m.defaultPoll && { poll: m.defaultPoll }) }}
         keys={["name", ...m.vars]}
         extraVars={m.sample}
         disabled={off}
-        onSave={(t) => saveSettings({ messages: { ...settings.messages, [type]: t } })}
+        kinds={type === "groupWelcome" ? ["text"] : type === "offer" ? ["text", "poll"] : ["text", "poll", "location"]}
+        offer={type === "offer"}
+        onSave={(msg) => saveSettings({ messages: { ...settings.messages, [type]: storeMessage(msg) } })}
       />
     </Section>
   );
@@ -539,7 +535,8 @@ function SnippetsSection() {
   const list = settings.snippets ?? [];
   const [open, setOpen] = useState<string | null>(list[0]?.id ?? null);
   const current = list.find((s) => s.id === open) ?? null;
-  const save = (next: Snippet[]) => saveSettings({ snippets: next });
+  // JSON round trip drops the undefined fields Firestore refuses.
+  const save = (next: Snippet[]) => saveSettings({ snippets: JSON.parse(JSON.stringify(next)) as Snippet[] });
   const add = async () => {
     const s: Snippet = { id: newId(), title: "New template", body: "Hey {{name}}! " };
     await save([...list, s]);
@@ -597,7 +594,13 @@ function SnippetEditor({ snippet, onSave, onDelete }: { snippet: Snippet; onSave
           Delete
         </Button>
       </div>
-      <TemplateEditor value={snippet.body} fallback={snippet.body} keys={["name", "show", "venue", "day", "date", "time", "mapsLink"]} onSave={(body) => onSave({ body, title: title.trim() || "Untitled" })} />
+      <TemplateEditor
+        value={snippetRich(snippet)}
+        fallback={snippetRich(snippet)}
+        kinds={["text", "poll", "location"]}
+        keys={["name", "show", "venue", "day", "date", "time", "mapsLink"]}
+        onSave={(m) => onSave({ title: title.trim() || "Untitled", body: m.body, kind: m.kind, poll: m.poll, attachLocation: m.kind === "text" && m.attachLocation ? true : undefined })}
+      />
     </div>
   );
 }

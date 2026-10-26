@@ -17,7 +17,8 @@ export interface SessionState {
 
 export interface Settings {
   ack: { enabled: boolean; template: string };
-  confirm: { template: string };
+  /** attachLocation: send the venue pin after the confirmation. */
+  confirm: { template: string; attachLocation?: boolean };
   /** Sent to a comic taken off a lineup that was already confirmed. */
   cancelSpot: { template: string };
   reject: { enabled: boolean; template: string };
@@ -39,7 +40,7 @@ export interface Settings {
   /** Write comic names to the curator's Google Contacts (done in the browser, with the curator's own Google token). */
   googleContacts: { enabled: boolean };
   /** Curator's rewrites of the other messages (see MESSAGE_TYPES). Missing keys use the default. */
-  messages?: Partial<Record<import("./messages.ts").MessageKey, string>>;
+  messages?: Partial<Record<import("./messages.ts").MessageKey, import("./messages.ts").MessageOverride>>;
   /** Write outgoing messages in the curator's own voice (see voice.ts). Off by default. */
   voice?: import("./voice.ts").VoiceSettings;
   /** Saved replies the curator can drop into any message box. */
@@ -94,6 +95,9 @@ export interface SpotOffer {
   sentAt: number;
   expiresAt: number;
   reply?: string | null;
+  /** Sent as a poll: the poll message's id and its options (first books the spot, second passes). */
+  pollMessageId?: string;
+  pollOptions?: string[];
 }
 
 /** Host availability poll for one week. */
@@ -137,6 +141,8 @@ export interface ComicAction {
   weekOf: string;
   message: string;
   draft: string;
+  /** The draft goes out as more than text: a poll, a pin, or a pin after the text. */
+  rich?: { kind: import("./messages.ts").MessageKind; poll?: import("./messages.ts").PollSpec; attachLocation?: boolean; venueId?: string | null };
   /** For cancel_spot: which lineup the comic is in. */
   lineupId?: string | null;
   status: "pending" | "sent" | "dismissed";
@@ -181,6 +187,9 @@ export interface Venue {
   name: string;
   area?: string;
   mapsLink?: string;
+  /** Pin for location messages, in decimal degrees. Both or neither. */
+  lat?: number;
+  lng?: number;
   /** Other names comics use for this place ("bloom", "indira nagar"). Shown to the model. */
   aliases?: string[];
 }

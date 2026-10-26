@@ -38,18 +38,23 @@ export async function deliverableId(client: WAWebJS.Client, to: string) {
   }
 }
 
-export function sendQueued(client: WAWebJS.Client, to: string, body: string) {
+export type Sendable = string | WAWebJS.Poll | WAWebJS.Location;
+
+/** Send one message (text, poll or pin) through the queue: typing pause, id fallbacks, counters. */
+export function sendContent(client: WAWebJS.Client, to: string, content: Sendable, typeMs = 0) {
   return enqueueTask(client, async () => {
     const target = await deliverableId(client, to);
-    const chat = await client.getChatById(target).catch(() => null);
-    await chat?.sendStateTyping().catch(() => undefined);
-    await sleep(Math.min(4000, 600 + body.length * 25));
+    if (typeMs > 0) {
+      const chat = await client.getChatById(target).catch(() => null);
+      await chat?.sendStateTyping().catch(() => undefined);
+      await sleep(Math.min(4000, 600 + typeMs * 25));
+    }
     // Try the resolved id, then the raw id, then the raw digits as a lid (older records stored lids as @c.us).
     const candidates = [...new Set([target, to, to.replace(/@c\.us$/, "@lid")])];
     let last: unknown;
     for (const id of candidates) {
       try {
-        const m = await client.sendMessage(id, body);
+        const m = await client.sendMessage(id, content);
         counters.sent++;
         live.noteSent(client);
         return m;
@@ -60,4 +65,8 @@ export function sendQueued(client: WAWebJS.Client, to: string, body: string) {
     live.noteError(client);
     throw last;
   });
+}
+
+export function sendQueued(client: WAWebJS.Client, to: string, body: string) {
+  return sendContent(client, to, body, body.length);
 }
