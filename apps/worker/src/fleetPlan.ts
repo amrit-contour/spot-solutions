@@ -102,10 +102,15 @@ export function pendingCommandAction(o: { type: string; firstSeenAt: number; now
 /**
  * A server.json written on another machine and copied here (disk clone, restored image) carries that machine's
  * fingerprint. A mismatch means this is a different machine: it must not reuse the id (two servers would share one
- * identity) or the install time. A missing fingerprint (older file, or none readable) is never treated as a clone.
+ * identity) or the install time. A missing fingerprint (older file, or none readable) is never treated as a clone, and
+ * neither is one that came from the hostname/MAC fallback: a container's MAC changes on every recreate, so a mismatch
+ * there says nothing about the disk.
  */
-export const isClonedDisk = (storedFingerprint: string | null | undefined, currentFingerprint: string | null | undefined) =>
-  Boolean(storedFingerprint && currentFingerprint && storedFingerprint !== currentFingerprint);
+export const isClonedDisk = (
+  storedFingerprint: string | null | undefined,
+  currentFingerprint: string | null | undefined,
+  sources: { stored?: string | null; current?: string | null } = {},
+) => sources.stored !== "fallback" && sources.current !== "fallback" && Boolean(storedFingerprint && currentFingerprint && storedFingerprint !== currentFingerprint);
 
 /**
  * Server id: an explicit env value wins; then the persisted one; otherwise a new random id. The one migration: a
@@ -135,3 +140,48 @@ export const leaseKey = (l: Lease | null | undefined) => (l ? `${l.server}:${l.e
 export function moveText(from: string, to: string, crashed: boolean) {
   return crashed ? `Your WhatsApp moved from ${from} to ${to} because ${from} stopped responding.` : `Your WhatsApp moved from ${from} to ${to}.`;
 }
+
+/** Notices for the pre-fleet guard: one per (old server, user), so a long-running old server doesn't spam. */
+export const preFleetNoticeKey = (oldId: string, uid: string) => `${oldId}:${uid}`;
+export const preFleetText = (hostname: string) =>
+  `Another Spot Solutions server ("${hostname}") is running an old version. Your WhatsApp is paused on the newer servers until that one is stopped or updated, so two servers never answer the same chats.`;
+
+/**
+ * Sessions.stop() on an account whose launch is still in flight (`starting`) can't stop a client that doesn't exist yet.
+ * It sets an abort flag; launch() asks this twice: before creating the Client and again immediately before registering it.
+ * Abort when stop() was called meanwhile, or when we no longer hold the lease.
+ */
+export const launchDecision = (o: { aborted: boolean; canRun: boolean }): "proceed" | "abort" => (o.aborted || !o.canRun ? "abort" : "proceed");
+
+/** stop() flags an abort only for an account that is mid-launch. */
+export const shouldFlagAbort = (o: { starting: boolean }) => o.starting;
+
+/**
+ * Lines of `ps -axo pid=,command=` (or "pid command" lines from PowerShell): pids of processes whose command line carries
+ * `--user-data-dir=<profile>` exactly (a prefix of a longer directory name, e.g. session-ab vs session-abc, does not count).
+ */
+export function orphanPids(lines: string[], profileDir: string, selfPid: number): number[] {
+  const needle = `--user-data-dir=${profileDir}`;
+  const out: number[] = [];
+  for (const line of lines) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const pid = Number(m[1]);
+    if (pid === selfPid) continue;
+    let from = 0;
+    for (;;) {
+      const i = m[2].indexOf(needle, from);
+      if (i < 0) break;
+      const next = m[2][i + needle.length];
+      if (next === undefined || /[\s"']/.test(next)) {
+        out.push(pid);
+        break;
+      }
+      from = i + 1;
+    }
+  }
+  return out;
+}
+
+/** adoptCloudGen retries: 1, 2, 4, 8, 16, 32, 32 s (about 95 s in all, then the upload path adopts instead). */
+export const ADOPT_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 32_000];

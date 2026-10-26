@@ -3,8 +3,8 @@
 // packages/shared/src/fleet.ts so they can be tested.
 import os from "node:os";
 import {
-  DEFAULT_AI_POLICY, LEASE_FENCE_MS, LEASE_RENEW_MS, SERVER_ONLINE_MS, VAULT_UPLOAD_EVERY_MS, defaultMaxAccounts, rankCandidates,
-  type AiPolicy, type CandidateServer, type FleetCapacity, type FleetPrefs, type FleetServerSummary, type Lease,
+  DEFAULT_AI_POLICY, LEASE_FENCE_MS, LEASE_RENEW_MS, SERVER_ONLINE_MS, VAULT_UPLOAD_EVERY_MS, defaultMaxAccounts, preFleetServers, rankCandidates,
+  type AiPolicy, type CandidateServer, type FleetCapacity, type FleetPrefs, type FleetServerSummary, type Lease, type ServerBeat,
 } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
@@ -13,7 +13,7 @@ import { INSTALLED_AT, SERVER_ID } from "./serverIdentity.ts";
 import { notify } from "./notify.ts";
 import { adoptCloudGen, uploadLogin } from "./vault.ts";
 import {
-  PENDING_COMMAND_ERROR, type PeerObservation, claimDelayMs, claimReason, claimableHere, handoffStuck, isDesignatedNotifier, jumpOutcome, leaseEventAction, leaseKey, moveText,
+  ADOPT_BACKOFF_MS, PENDING_COMMAND_ERROR, preFleetNoticeKey, preFleetText, type PeerObservation, claimDelayMs, claimReason, claimableHere, handoffStuck, isDesignatedNotifier, jumpOutcome, leaseEventAction, leaseKey, moveText,
   observePeer, pendingCommandAction, peerLastSeen, pickShed, shouldFence, shouldUploadOnRelease, slept,
 } from "./fleetPlan.ts";
 
@@ -63,11 +63,16 @@ const known = new Map<string, Known>();
 const claimTimers = new Map<string, NodeJS.Timeout>();
 const rateLimit = new Map<string, number>();
 const offlineNotified = new Set<string>();
+const serverBeats = new Map<string, ServerBeat>(); // every servers/{id} doc: the pre-fleet guard looks for ones with no `fleet` field
+const oldLogged = new Set<string>(); // pre-fleet servers already logged
+const oldNoticed = new Set<string>(); // preFleetNoticeKey(old server, uid) already told
+const freshReady = new Set<string>(); // sessions that reached ready from a fresh QR link under the current claim (see resolveMarker)
 let hooks: { onAcquire(uid: string): void; retryPending?(uid: string): void } = { onAcquire: () => undefined };
 let draining = false;
 let started = false;
 let leasesReady = false;
 let peersReady = false;
+let serversReady = false;
 let localModel = false;
 let evalTimer: NodeJS.Timeout | undefined;
 
@@ -119,10 +124,18 @@ export const hasRemoteHolder = (uid: string) => !held.has(uid) && live(uid);
 export const holds = (uid: string) => Boolean(held.get(uid) && !held.get(uid)!.handingOff);
 export const heldUids = () => [...held.keys()];
 
+/**
+ * Servers running the previous release (no fleet logic): they start every approved account and ignore leases, so while one
+ * is online (lastSeen within SERVER_ONLINE_MS) this server must not claim or start anything.
+ */
+const preFleet = (now = Date.now()) => preFleetServers([...serverBeats.values()], ME, now);
+const oldServerRunning = () => !serversReady || preFleet().length > 0;
+
 // ---- claim ----
 async function claim(uid: string, opts: { requireWanted: boolean }): Promise<boolean> {
   claimTimers.delete(uid);
   if (draining || held.has(uid)) return held.has(uid);
+  if (oldServerRunning()) return false;
   if (opts.requireWanted && !known.get(uid)?.enabled) return false;
   if (held.size >= capacity().maxAccounts) return false;
   const res = await db.runTransaction(async (tx) => {
@@ -148,6 +161,7 @@ async function claim(uid: string, opts: { requireWanted: boolean }): Promise<boo
   const h: Held = { epoch: next.epoch, claimedAt: Date.now(), lastOkMono: mono(), lastOkWall: Date.now(), handingOff: false, handingOffAt: null, renewing: false, timers: [] };
   h.timers.push(setInterval(() => void uploadNow(uid), VAULT_UPLOAD_EVERY_MS).unref());
   held.set(uid, h);
+  freshReady.delete(uid);
   leases.set(uid, next);
   console.log(`[fleet] ${uid} claimed (epoch ${next.epoch}, ${next.reason})`);
   publish();
@@ -291,7 +305,7 @@ function uploadNow(uid: string) {
     if (!h || h.handingOff || !sessions.get(uid)) return;
     try {
       if (!(await touch(uid, h))) return; // not ours any more: the lease watcher will stop the session
-      const meta = await within(uploadLogin(uid, ME, { sessionReady: true, epoch: h.epoch }), UPLOAD_TIMEOUT_MS);
+      const meta = await within(uploadLogin(uid, ME, { sessionReady: true, epoch: h.epoch, freshLink: freshReady.has(uid) }), UPLOAD_TIMEOUT_MS);
       if (meta === TIMED_OUT) console.warn(`[fleet] ${uid} vault upload timed out; will retry`);
       else if (!meta) console.log(`[fleet] ${uid} vault upload skipped (not ready, behind the cloud, or another writer won)`);
     } catch (e) {
@@ -318,7 +332,7 @@ async function finishRelease(uid: string, h: Held, o: { upload: boolean; moveTo:
     try {
       const res = await enqueueUpload(uid, async () => {
         if (!(await touch(uid, h))) return undefined;
-        return within(uploadLogin(uid, ME, { sessionReady: wasReady, epoch: h.epoch }), UPLOAD_TIMEOUT_MS);
+        return within(uploadLogin(uid, ME, { sessionReady: wasReady, epoch: h.epoch, freshLink: freshReady.has(uid) }), UPLOAD_TIMEOUT_MS);
       });
       if (res === TIMED_OUT) console.warn(`[fleet] ${uid} handoff upload timed out; releasing anyway`);
       else if (res === null) console.warn(`[fleet] ${uid} handoff upload returned nothing; peer falls back to its local copy or a QR`);
@@ -480,10 +494,43 @@ function schedule() {
   evalTimer.unref();
 }
 
+/** Log once per old server and tell each affected curator once; forget them when the old server is gone. */
+function guardAgainstOldServers(now: number) {
+  const old = preFleet(now);
+  const ids = new Set(old.map((s) => s.id));
+  for (const id of [...oldLogged]) if (!ids.has(id)) {
+    oldLogged.delete(id);
+    console.log(`[fleet] old server "${id}" is gone; resuming`);
+  }
+  for (const k of [...oldNoticed]) if (!ids.has(k.split(":")[0])) oldNoticed.delete(k);
+  for (const s of old) {
+    const name = serverBeats.get(s.id)?.hostname ?? s.id;
+    if (!oldLogged.has(s.id)) {
+      oldLogged.add(s.id);
+      console.warn(`[fleet] old server "${name}" is running: stop it, two servers would answer the same chats`);
+    }
+    for (const [uid, k] of known) {
+      const key = preFleetNoticeKey(s.id, uid);
+      if (!k.enabled || oldNoticed.has(key)) continue;
+      oldNoticed.add(key);
+      void col(uid, "notices").add({ level: "warn", text: preFleetText(name), createdAt: Date.now(), read: false }).catch(() => oldNoticed.delete(key));
+    }
+  }
+  return old.length > 0;
+}
+
 function evaluate() {
-  if (!started || !leasesReady || !peersReady || draining) return;
+  if (!started || !leasesReady || !peersReady || !serversReady || draining) return;
   const now = Date.now();
   const cap = capacity();
+  const blocked = guardAgainstOldServers(now);
+
+  // A session that isn't ours to run (lease lost or released, a launch that raced a stop) is stopped, never left to answer chats.
+  for (const uid of sessions.activeUids()) {
+    if (held.has(uid)) continue;
+    console.warn(`[fleet] ${uid} has a session but this server doesn't hold the account; stopping it`);
+    void sessions.stop(uid);
+  }
 
   for (const [uid, h] of held) {
     if (!known.get(uid)?.enabled && now - h.claimedAt > NEW_CLAIM_GRACE_MS && !h.handingOff) {
@@ -502,6 +549,10 @@ function evaluate() {
   }
 
   for (const [uid, k] of known) {
+    if (blocked) {
+      cancelClaim(uid); // an old (pre-fleet) server is online: claim nothing until it's gone
+      continue;
+    }
     if (!k.enabled || held.has(uid)) continue;
     const lease = leases.get(uid) ?? null;
     if (!claimableHere(lease, { now, me: ME, heldLocally: false, observedStaleMs: staleFor(uid, lease) })) {
@@ -563,14 +614,29 @@ function onLease(uid: string, lease: Lease | null) {
 export function start(h: { onAcquire(uid: string): void; retryPending?(uid: string): void }) {
   hooks = h;
   started = true;
-  sessions.hooks.canRun = (uid) => holds(uid);
+  sessions.hooks.canRun = (uid) => holds(uid) && !oldServerRunning();
   sessions.hooks.onReady = (uid, source) => {
+    if (source === "fresh") freshReady.add(uid);
+    else freshReady.delete(uid);
     if (source === "cloud") return; // just downloaded: the cloud is already current; the periodic upload follows
     const held1 = held.get(uid);
     if (!held1) return;
     void (async () => {
       // A new QR link starts below the cloud gen (a wipe leaves a tombstone): adopt it so the first upload may go out.
-      if (source === "fresh") await Promise.resolve(adoptCloudGen(uid)).catch((e) => console.warn(`[fleet] ${uid} adoptCloudGen failed:`, (e as Error).message));
+      // Retry for about 2 minutes; if it never succeeds, the upload path adopts it itself (freshLink in resolveMarker).
+      if (source === "fresh") {
+        for (let i = 0; ; i++) {
+          if (held.get(uid) !== held1) return;
+          try {
+            await adoptCloudGen(uid);
+            break;
+          } catch (e) {
+            console.warn(`[fleet] ${uid} adoptCloudGen failed${i < ADOPT_BACKOFF_MS.length ? ", retrying" : ", leaving it to the upload"}:`, (e as Error).message);
+            if (i >= ADOPT_BACKOFF_MS.length) break;
+            await new Promise((r) => setTimeout(r, ADOPT_BACKOFF_MS[i]));
+          }
+        }
+      }
       if (held.get(uid) === held1) held1.timers.push(setTimeout(() => void uploadNow(uid), FIRST_UPLOAD_MS).unref());
     })();
   };
@@ -604,6 +670,18 @@ export function start(h: { onAcquire(uid: string): void; retryPending?(uid: stri
       schedule();
     },
     (e) => console.error("[fleet] servers listener", e.message),
+  );
+  db.collection("servers").onSnapshot(
+    (q) => {
+      serverBeats.clear();
+      q.docs.forEach((d) => {
+        const v = d.data();
+        serverBeats.set(d.id, { id: d.id, lastSeen: typeof v.lastSeen === "number" ? v.lastSeen : undefined, fleet: v.fleet, hostname: typeof v.hostname === "string" ? v.hostname : undefined });
+      });
+      serversReady = true;
+      schedule();
+    },
+    (e) => console.error("[fleet] servers (guard) listener", e.message),
   );
   setInterval(() => {
     if (!checkSlept()) held.forEach((_, uid) => void renew(uid));

@@ -7,7 +7,7 @@ import type { VaultMeta } from "@spot/shared";
 import { VAULT_OBJECT_MIN_AGE_MS, vaultObjectPath } from "@spot/shared";
 import { packFolders, unpackInto } from "./vault-archive.ts";
 import { decrypt, encrypt, newKey, sha256 } from "./vault-crypto.ts";
-import { createVault, type VaultDeps } from "./vault.ts";
+import { VaultFailure, createVault, type VaultDeps } from "./vault.ts";
 
 const DIRS = ["Default/IndexedDB", "Default/Local Storage"];
 let tmp: string;
@@ -529,5 +529,61 @@ describe("vault gen logic", () => {
   it("uploadLogin returns null when there is no local login", async () => {
     const { deps } = mockDeps(A);
     expect(await createVault(deps).uploadLogin("nobody", "A", up)).toBeNull();
+  });
+});
+
+describe("vault: marker lag, transient errors, fresh links", () => {
+  let A: string, B: string;
+  beforeEach(async () => {
+    A = path.join(tmp, "A");
+    B = path.join(tmp, "B");
+    await mkdir(A);
+    await mkdir(B);
+  });
+
+  it("a marker that lags the cloud is adopted when the cloud meta is ours under this epoch; other epochs stay blocked", async () => {
+    const m = mockDeps(A);
+    const v = createVault(m.deps);
+    await fakeProfile(path.join(A, "session-u1"));
+    expect((await v.uploadLogin("u1", "A", { sessionReady: true, epoch: 3 }))?.epoch).toBe(3);
+    await writeFile(path.join(A, "vault-u1.json"), JSON.stringify({ gen: 0 })); // the marker write after the commit was lost
+    expect(await v.uploadLogin("u1", "A", { sessionReady: true, epoch: 4 })).toBeNull(); // a different lease epoch: not provably ours
+    expect((await v.uploadLogin("u1", "A", { sessionReady: true, epoch: 3 }))?.gen).toBe(2);
+    expect(await v.localGen("u1")).toBe(2);
+  });
+
+  it("a fresh link with no marker uploads over a tombstone without adoptCloudGen; a plain session does not", async () => {
+    const m = mockDeps(A);
+    const v = createVault(m.deps);
+    await m.deps.writeTombstone("u1", "x");
+    await fakeProfile(path.join(A, "session-u1"));
+    await rm(path.join(A, "vault-u1.json"), { force: true });
+    expect(await v.uploadLogin("u1", "A", { sessionReady: true, epoch: 1 })).toBeNull();
+    expect((await v.uploadLogin("u1", "A", { sessionReady: true, epoch: 1, freshLink: true }))?.gen).toBe(2);
+  });
+
+  it("a transient download error with a local copy throws (no silent stale start) until allowStaleLocal", async () => {
+    const m = mockDeps(A);
+    const vA = createVault(m.deps);
+    await fakeProfile(path.join(A, "session-u1"));
+    await vA.uploadLogin("u1", "A", up);
+    m.s.meta.set("u1", { ...m.s.meta.get("u1")!, gen: 5 }); // another server is ahead
+    const flaky = createVault({ ...m.deps, getObject: async () => { throw new Error("ETIMEDOUT"); } });
+    await expect(flaky.prepareLogin("u1")).rejects.toThrow(/ETIMEDOUT/);
+    expect(await flaky.prepareLogin("u1", { allowStaleLocal: true })).toBe("local");
+    expect(await vA.localGen("u1")).toBe(1); // untouched
+  });
+
+  it("an object is only 'missing' after a second read; the failure is a deterministic VaultFailure", async () => {
+    const m = mockDeps(A);
+    const vA = createVault(m.deps);
+    await fakeProfile(path.join(A, "session-u1"));
+    await vA.uploadLogin("u1", "A", up);
+    let reads = 0;
+    const vB = createVault({ ...m.deps, dataDir: B, getObject: async (p) => (++reads === 1 ? null : m.s.objects.get(p) ?? null) }, { missingRecheckMs: 0 });
+    expect(await vB.prepareLogin("u1")).toBe("cloud"); // the first read was a blip
+    m.s.objects.clear();
+    reads = 10;
+    await expect(createVault({ ...m.deps, dataDir: path.join(tmp, "C") }, { missingRecheckMs: 0 }).prepareLogin("u1")).rejects.toBeInstanceOf(VaultFailure);
   });
 });

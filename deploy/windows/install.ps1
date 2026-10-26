@@ -168,6 +168,17 @@ icacls $EnvFile /inheritance:r /grant:r "SYSTEM:F" "Administrators:F" | Out-Null
 Ok "Config at $EnvFile"
 
 Step "Start at boot"
+# Re-install over a running copy: stop the old task, its worker and the browsers it left behind, so nothing keeps
+# a lock on the files below and the new worker never runs next to an old one on the same WhatsApp profiles.
+Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+# (The Server Console's node is spared: it may be what started this install.)
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -like '*SpotSolutions*' -and $_.CommandLine -notlike '*console*server.mjs*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.ExecutablePath -and $_.ExecutablePath -like "$ChromeDir\*" } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 2
 # Launcher: start Ollama if needed, then keep the worker running. Full paths, so it works as SYSTEM.
 $Launcher = "$Root\run-worker.ps1"
 @"

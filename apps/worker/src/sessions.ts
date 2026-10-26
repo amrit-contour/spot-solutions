@@ -1,7 +1,9 @@
 // One whatsapp-web.js client per signed-in curator. Sessions persist on disk (LocalAuth),
 // so a reboot reconnects without a new QR scan.
+import { execFile } from "node:child_process";
 import { cp, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import WAWebJS from "whatsapp-web.js";
 import type { SessionState } from "@spot/shared";
 import { FieldValue, col, sessionRef, userRef } from "./firebase.ts";
@@ -11,11 +13,15 @@ import { unwatchUser, watchUser } from "./userData.ts";
 import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
 import { wipeLogin } from "./vault.ts";
 import { prepareLoginSafe } from "./vaultCalls.ts";
+import { launchDecision, orphanPids, shouldFlagAbort } from "./fleetPlan.ts";
 
 const { Client, LocalAuth } = WAWebJS;
 export { DATA_DIR };
 
 const BACKUP_EVERY_MS = 6 * 3600_000;
+const MAX_PREPARE_FAILS = 5; // failed login restores (each already retried 4 times) before a stale local copy is allowed
+const PREPARE_RETRY_MS = 30_000;
+const run = promisify(execFile);
 const profileDir = (uid: string) => path.join(DATA_DIR, `session-${uid}`);
 const backupDir = (uid: string) => path.join(DATA_DIR, `backup-${uid}`);
 // Caches are rebuilt by Chromium; the login itself lives in IndexedDB / Local Storage.
@@ -41,6 +47,35 @@ async function restoreSession(uid: string) {
   await stat(backupDir(uid));
   await rm(profileDir(uid), { recursive: true, force: true });
   await cp(backupDir(uid), profileDir(uid), { recursive: true });
+}
+
+/**
+ * Kill any process still running on this profile (a Chromium orphaned by a crashed worker, a SIGKILLed parent, or a destroy()
+ * that hung): its `--user-data-dir=<profile>` is the only reliable link. Only then are the Singleton* lock files safe to delete.
+ */
+async function killOrphanChromium(uid: string) {
+  const profile = path.resolve(profileDir(uid));
+  try {
+    let lines: string[];
+    if (process.platform === "win32") {
+      const ps = `Get-CimInstance Win32_Process -Filter "CommandLine like '%--user-data-dir=%'" | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }`;
+      lines = (await run("powershell", ["-NoProfile", "-Command", ps], { timeout: 15_000, maxBuffer: 8 * 1024 * 1024 })).stdout.split(/\r?\n/);
+    } else {
+      lines = (await run("ps", ["-axo", "pid=,command="], { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 })).stdout.split("\n");
+    }
+    const pids = orphanPids(lines, profile, process.pid);
+    for (const pid of pids) {
+      console.warn(`[session] ${uid} killing leftover browser process ${pid} on its profile`);
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    }
+    if (pids.length) await new Promise((r) => setTimeout(r, 1_000)); // let the OS release the profile files
+  } catch (e) {
+    console.warn(`[session] ${uid} couldn't look for leftover browser processes:`, (e as Error).message);
+  }
 }
 
 const notice = (uid: string, level: "info" | "warn", text: string) => col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false }).catch(() => undefined);
@@ -82,26 +117,54 @@ class SessionManager {
   }
 
   private starting = new Set<string>();
+  private aborted = new Set<string>(); // stop() was called while launch() was still preparing; launch() must not register a client
+  private prepareFails = new Map<string, number>();
+
+  /** Uids with a client, or one on its way (a launch in flight): everything stop() has to deal with. */
+  activeUids() {
+    return new Set([...this.clients.keys(), ...this.starting]);
+  }
 
   async start(uid: string) {
     // Claim synchronously: the connect command and the users listener can both call this in the same tick.
     if (this.clients.has(uid) || this.starting.has(uid)) return;
     if (this.hooks.canRun && !this.hooks.canRun(uid)) return;
     this.starting.add(uid);
+    this.aborted.delete(uid);
     try {
       await this.launch(uid);
+    } catch (e) {
+      console.error(`[session] ${uid} launch failed`, e);
+      this.scheduleRestart(uid, PREPARE_RETRY_MS);
     } finally {
       this.starting.delete(uid);
+      // stop() hit us mid-launch, but the lease may be ours again by now (stop, then re-claim): don't strand the account.
+      if (this.aborted.delete(uid) && this.hooks.canRun?.(uid)) this.scheduleRestart(uid, 2_000);
     }
   }
 
   private async launch(uid: string) {
-    // Newest login copy wins (docs/fleet.md): may download the cloud copy over a stale local profile.
-    this.sources.set(uid, await prepareLoginSafe(uid));
-    if (this.hooks.canRun && !this.hooks.canRun(uid)) return; // lease lost while downloading
+    // Newest login copy wins (docs/fleet.md): may download the cloud copy over a stale local profile. A transient failure
+    // (retried inside) never becomes a QR: wait and try again; only after MAX_PREPARE_FAILS rounds fall back to the local copy.
+    const fails = this.prepareFails.get(uid) ?? 0;
+    let source: "local" | "cloud" | "fresh";
+    try {
+      source = await prepareLoginSafe(uid, { allowStaleLocal: fails >= MAX_PREPARE_FAILS });
+    } catch (e) {
+      this.prepareFails.set(uid, fails + 1);
+      console.warn(`[session] ${uid} can't read its login backup yet (attempt ${fails + 1}); retrying in ${PREPARE_RETRY_MS / 1000}s:`, (e as Error).message);
+      if (fails + 1 === MAX_PREPARE_FAILS) void notice(uid, "warn", "Spot Solutions can't read the saved copy of your WhatsApp login right now. It keeps trying; if this server has an older copy it will use that next.");
+      this.scheduleRestart(uid, PREPARE_RETRY_MS);
+      return;
+    }
+    this.prepareFails.delete(uid);
+    if (fails >= MAX_PREPARE_FAILS && source === "local") void notice(uid, "warn", "The saved copy of your WhatsApp login couldn't be read, so this server started from its own older copy. It may ask for a scan.");
+    this.sources.set(uid, source);
+    if (launchDecision({ aborted: this.aborted.has(uid), canRun: this.hooks.canRun?.(uid) ?? true }) === "abort") return; // stopped or lease lost while downloading
     watchUser(uid);
-    // A crashed worker can leave Chromium's profile lock behind; clear it so the session reopens.
+    // A crashed worker can leave Chromium orphaned on this profile (and its lock files behind): kill it first, then clear the locks.
     const profile = path.join(DATA_DIR, `session-${uid}`);
+    await killOrphanChromium(uid);
     await Promise.all(["SingletonLock", "SingletonCookie", "SingletonSocket"].map((f) => rm(path.join(profile, f), { force: true })));
     // Was this account linked before the server went down? Then a QR now means the saved login broke.
     const prev = (await sessionRef(uid).get()).data() as SessionState | undefined;
@@ -109,6 +172,11 @@ class SessionManager {
     const offlineSince = prev?.aliveAt ?? prev?.lastSeen ?? Date.now();
     let sawQr = false;
     await setState(uid, { status: "starting", qr: null, error: null });
+    // The awaits above gave stop() and the lease watcher time to act; check again before building the client.
+    if (launchDecision({ aborted: this.aborted.has(uid), canRun: this.hooks.canRun?.(uid) ?? true }) === "abort") {
+      unwatchUser(uid);
+      return;
+    }
 
     const client = new Client({
       authStrategy: new LocalAuth({ clientId: uid, dataPath: DATA_DIR }),
@@ -116,8 +184,18 @@ class SessionManager {
         headless: true,
         executablePath: process.env.CHROME_PATH || undefined,
         args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-zygote"],
+        // Our own shutdown drain (index.ts) must run first: puppeteer's handlers would close Chromium before the final upload.
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false,
       },
     });
+    // Last check, with no await between it and the registration: stop() or a lost lease must not leave an untracked client.
+    if (launchDecision({ aborted: this.aborted.has(uid), canRun: this.hooks.canRun?.(uid) ?? true }) === "abort") {
+      void client.destroy().catch(() => undefined); // never initialised: nothing to close, but release anything it allocated
+      unwatchUser(uid);
+      return;
+    }
     this.clients.set(uid, client);
 
     client.on("qr", async (qr) => {
@@ -208,6 +286,7 @@ class SessionManager {
   }
 
   async stop(uid: string, opts: { backup?: boolean } = {}) {
+    if (shouldFlagAbort({ starting: this.starting.has(uid) })) this.aborted.add(uid);
     const c = this.clients.get(uid);
     const wasReady = this.ready.has(uid);
     this.clients.delete(uid);

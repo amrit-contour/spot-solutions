@@ -53,7 +53,44 @@ export interface VaultMeta {
   object: string | null;
   bytes: number;
   sha256: string; // of the encrypted object; "" when wiped
+  /** Lease epoch of the uploader (not set on tombstones or on metas written by older servers). */
+  epoch?: number;
 }
+
+/**
+ * The local gen to use for an upload decision. The marker file (vault-{uid}.json) can lag the cloud while this server
+ * holds the lease: an upload committed but the marker write failed, or a fresh link never managed to adopt the cloud
+ * gen. Two cases where the cloud's gen is provably ours, so the marker is raised to it (`adopt`: write it back):
+ * - the cloud meta was written by this server under this very lease epoch;
+ * - there is no marker, and this session reached ready from a fresh QR link (its profile is newer than any tombstone).
+ */
+export function resolveMarker(o: {
+  marker: number | null;
+  cloud: Pick<VaultMeta, "gen" | "server" | "epoch" | "wiped"> | null;
+  server: string;
+  epoch: number;
+  freshLink?: boolean;
+}): { gen: number; adopt: boolean } {
+  const cur = o.marker ?? 0;
+  if (o.cloud && !o.cloud.wiped && o.cloud.server === o.server && o.cloud.epoch === o.epoch && o.cloud.gen > cur) return { gen: o.cloud.gen, adopt: true };
+  if (o.marker === null && o.freshLink) return { gen: o.cloud?.gen ?? 0, adopt: true };
+  return { gen: cur, adopt: false };
+}
+
+/** servers/{id} fields the pre-fleet guard looks at. */
+export interface ServerBeat {
+  id: string;
+  lastSeen?: number;
+  fleet?: unknown;
+  hostname?: string;
+}
+
+/**
+ * Servers running a release without fleet logic: they heartbeat (lastSeen fresh) but write no `fleet` field. Such a
+ * server starts every approved account and ignores leases, so no fleet server may claim or start anything while one is online.
+ */
+export const preFleetServers = (servers: ServerBeat[], me: string, now: number) =>
+  servers.filter((s) => s.id !== me && !s.fleet && typeof s.lastSeen === "number" && now - s.lastSeen < SERVER_ONLINE_MS);
 
 /**
  * Cloud Storage object holding the encrypted login (IndexedDB + Local Storage), AES-256-GCM. Every upload attempt

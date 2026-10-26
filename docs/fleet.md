@@ -87,3 +87,15 @@ leases), `new_request` (optional, off by default).
   locally, so a skewed clock (renewedAt is written with the holder's `Date.now()`) cannot steal a live lease.
 - A restarted server may reclaim its own stale lease after `LEASE_RENEW_MS + 5 s`.
 - Servers publish `fleetServers/{id}` (curator-readable summary) and `servers/{id}.fleet`; placement reads `fleetServers`.
+
+## Safety guards (added after review)
+
+- **Old servers:** a `servers/*` doc that is online (lastSeen < 75 s) but has no `fleet` field is a pre-fleet worker,
+  which ignores leases. While one is online, fleet servers claim and start nothing, log
+  `[fleet] old server "<hostname>" is running`, and notify affected curators. They resume on their own once it is gone.
+- **Vault epoch:** `VaultMeta.epoch` records the lease epoch of the upload. A holder whose marker lags a meta it wrote
+  itself (same server and epoch) adopts that gen instead of stalling.
+- **Server identity:** `server.json` holds `id`, `installedAt`, a machine fingerprint and its source. A changed
+  fingerprint from a real machine id means a cloned disk (new id). Hostname/MAC fallbacks never trigger that.
+- **Transient errors never become a QR:** downloads retry with backoff; only deterministic failures (bad hash, failed
+  decrypt, object missing twice, no key) fall back to a fresh link.

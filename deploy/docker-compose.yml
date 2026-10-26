@@ -30,6 +30,10 @@ services:
       context: ..
       dockerfile: deploy/worker.Dockerfile
     restart: unless-stopped
+    # A fixed hostname keeps the server's identity stable when the container is recreated, and the drain
+    # (final login upload and lease release for every account) needs longer than Docker's default 10 s.
+    hostname: spot-worker
+    stop_grace_period: 90s
     depends_on:
       ollama:
         condition: service_healthy
@@ -38,6 +42,7 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - FIREBASE_SERVICE_ACCOUNT=/secrets/service-account.json
       - WWEBJS_DATA=/data/wwebjs
+      - SPOT_SERVER_ID=${SPOT_SERVER_ID:-spot-worker}
     volumes:
       - wwebjs:/data
       - ../apps/worker/service-account.json:/secrets/service-account.json:ro

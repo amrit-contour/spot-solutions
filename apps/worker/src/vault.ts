@@ -4,13 +4,24 @@ import { randomBytes } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { VAULT_OBJECT_MIN_AGE_MS, mayUpload, pickLoginSource, vaultObjectPath, vaultObjectPrefix, type VaultMeta } from "@spot/shared";
+import { VAULT_OBJECT_MIN_AGE_MS, mayUpload, pickLoginSource, resolveMarker, vaultObjectPath, vaultObjectPrefix, type VaultMeta } from "@spot/shared";
 import { decrypt, encrypt, newKey, sha256 } from "./vault-crypto.ts";
 import { packFolders, unpackInto } from "./vault-archive.ts";
 
 /** The only parts of the Chromium profile that hold the login (what RemoteAuth copies too). */
 const LOGIN_DIRS = ["Default/IndexedDB", "Default/Local Storage"];
 const SKIP = /^(Singleton\w*|LOCK|lockfile)$/;
+
+/**
+ * Why a login restore failed. Everything except "io" is deterministic (retrying cannot help): the cloud copy is
+ * corrupt, gone or undecryptable. Plain errors (network, disk, Firestore) carry no kind and count as "io": retry.
+ */
+export type VaultFailureKind = "sha" | "decrypt" | "missing" | "nokey" | "noobject";
+export class VaultFailure extends Error {
+  constructor(readonly kind: VaultFailureKind, message: string) {
+    super(message);
+  }
+}
 
 export interface VaultDeps {
   dataDir: string;
@@ -117,9 +128,17 @@ function firebaseDeps(): VaultDeps {
 export interface UploadOpts {
   sessionReady: boolean;
   epoch: number;
+  /** This session reached ready from a fresh QR link: with no marker yet, the cloud's current gen is its base (resolveMarker). */
+  freshLink?: boolean;
 }
 
-export function createVault(deps: VaultDeps) {
+export interface PrepareOpts {
+  /** Fall back to a stale local profile when the cloud copy can't be read (instead of throwing). */
+  allowStaleLocal?: boolean;
+}
+
+export function createVault(deps: VaultDeps, o: { missingRecheckMs?: number } = {}) {
+  const missingRecheckMs = o.missingRecheckMs ?? 1_000;
   const profileDir = (uid: string) => path.join(deps.dataDir, `session-${uid}`);
   const markerFile = (uid: string) => path.join(deps.dataDir, `vault-${uid}.json`);
   const exists = (p: string) => stat(p).then(() => true, () => false);
@@ -152,14 +171,24 @@ export function createVault(deps: VaultDeps) {
 
   async function downloadVerified(uid: string, meta: VaultMeta): Promise<Buffer> {
     // The object is written before its meta commits, and never overwritten, so one read is enough.
-    if (!meta.object) throw new Error(`vault download failed for ${uid}: meta has no object`);
-    const obj = await deps.getObject(meta.object);
-    if (!obj) throw new Error(`vault download failed for ${uid}: missing object`);
-    if (sha256(obj) !== meta.sha256) throw new Error(`vault download failed for ${uid}: sha256 mismatch`);
+    if (!meta.object) throw new VaultFailure("noobject", `vault download failed for ${uid}: meta has no object`);
+    let obj = await deps.getObject(meta.object);
+    if (!obj) {
+      // Only "missing" once it is confirmed by a second read; a flaky listing must not look like a lost login.
+      await new Promise((r) => setTimeout(r, missingRecheckMs));
+      obj = await deps.getObject(meta.object);
+    }
+    if (!obj) throw new VaultFailure("missing", `vault download failed for ${uid}: missing object`);
+    if (sha256(obj) !== meta.sha256) throw new VaultFailure("sha", `vault download failed for ${uid}: sha256 mismatch`);
     return obj;
   }
 
-  async function prepareLogin(uid: string): Promise<"local" | "cloud" | "fresh"> {
+  /**
+   * With no local profile, throws a VaultFailure when the cloud copy is unusable for good (the caller then starts fresh) and a
+   * plain Error for anything transient (network, disk, Firestore) so the caller can retry. With a local profile, a permanent
+   * failure keeps it, and a transient one throws unless `allowStaleLocal` (the caller has retried enough).
+   */
+  async function prepareLogin(uid: string, opts: PrepareOpts = {}): Promise<"local" | "cloud" | "fresh"> {
     const [local, meta] = await Promise.all([localGen(uid), deps.getMeta(uid)]);
     const pick = pickLoginSource(local, meta);
     if (pick === "fresh" && local !== null) {
@@ -170,26 +199,31 @@ export function createVault(deps: VaultDeps) {
     if (pick !== "cloud") return pick;
     const m = meta!;
 
+    // The cloud copy is newer than our local one, so the local profile is stale. Two different failures:
+    // - the cloud copy is gone or corrupt for good (VaultFailure: sha, missing, no object, no key): keep the local profile
+    //   as before (the caller never gets a QR for a login that may still work);
+    // - the cloud copy is only unreachable right now (anything else): never silently use the stale profile while the lease
+    //   is ours. Throw so the caller retries, unless it says it has retried enough (`allowStaleLocal`).
     let object: Buffer;
+    let key: Buffer | null;
     try {
       object = await downloadVerified(uid, m);
+      key = await deps.getKey(uid);
+      if (!key) throw new VaultFailure("nokey", `vault key missing for ${uid}`);
     } catch (e) {
-      if (local !== null) return "local"; // keep what we have; the cloud copy is unusable right now
+      if (local !== null && (e instanceof VaultFailure || opts.allowStaleLocal)) return "local";
       throw e;
     }
-    const key = await deps.getKey(uid);
-    if (!key) {
-      if (local !== null) return "local";
-      throw new Error(`vault key missing for ${uid}`);
-    }
+    let plain: Buffer;
     try {
-      await restore(uid, decrypt(object, key, uid), m.gen);
+      plain = decrypt(object, key, uid);
     } catch (e) {
-      // The cloud copy is newer than our local one, so the local profile is stale: never fall back to it. Remove it
-      // so the caller starts fresh (a QR) instead of running an old login that could be rejected or overwrite newer state.
+      // Newer cloud copy that can't be decrypted: the local profile is stale, so remove it and let the caller start fresh (a QR)
+      // instead of running an old login that could be rejected or overwrite newer state.
       if (local !== null) await removeLocal(uid).catch(() => undefined);
-      throw e;
+      throw new VaultFailure("decrypt", `vault decrypt failed for ${uid}: ${(e as Error).message}`);
     }
+    await restore(uid, plain, m.gen); // atomic swap: a disk error leaves the local profile intact and is retried as "io"
     return "cloud";
   }
 
@@ -240,7 +274,11 @@ export function createVault(deps: VaultDeps) {
     const profile = profileDir(uid);
     if (!(await exists(path.join(profile, LOGIN_DIRS[0])))) return null;
     const cloud = await deps.getMeta(uid);
-    const marker = (await readMarker(uid)) ?? 0;
+    const stored = await readMarker(uid);
+    // The marker can lag the cloud while we hold the lease (see resolveMarker): raise it, since the gen is provably ours.
+    const resolved = resolveMarker({ marker: stored, cloud, server, epoch: opts.epoch, freshLink: opts.freshLink });
+    const marker = resolved.gen;
+    if (resolved.adopt) await writeMarker(uid, marker);
     if (!mayUpload({ sessionReady: opts.sessionReady, localGen: marker, cloudGen: cloud?.gen ?? null })) return null;
     const expected = cloud?.gen ?? 0;
     const gen = expected + 1;
@@ -264,7 +302,7 @@ export function createVault(deps: VaultDeps) {
       try {
         wrote = await deps.putObject(objectPath, object);
         if (!wrote) return null; // names are random, so this is a storage anomaly: leave the object alone and retry next time
-        const meta: VaultMeta = { gen, savedAt: Date.now(), server, object: objectPath, bytes: object.length, sha256: sha256(object) };
+        const meta: VaultMeta = { gen, savedAt: Date.now(), server, object: objectPath, bytes: object.length, sha256: sha256(object), epoch: opts.epoch };
         let committed: boolean;
         try {
           // Also checked inside the transaction: this server must still hold the lease at `opts.epoch`, or a slow
@@ -339,7 +377,7 @@ const vault = () => (shared ??= createVault(firebaseDeps()));
 export const localGen = (uid: string): Promise<number | null> => vault().localGen(uid);
 
 /** Make the local profile the newest available copy (download + decrypt if the cloud is newer). */
-export const prepareLogin = (uid: string): Promise<"local" | "cloud" | "fresh"> => vault().prepareLogin(uid);
+export const prepareLogin = (uid: string, opts?: PrepareOpts): Promise<"local" | "cloud" | "fresh"> => vault().prepareLogin(uid, opts);
 
 /**
  * Upload the local login as gen+1. Call only while holding the lease (`epoch` is re-checked inside the commit).

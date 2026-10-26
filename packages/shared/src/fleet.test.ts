@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  CLAIM_STAGGER_MS, LEASE_EXPIRE_MS, SERVER_ONLINE_MS, defaultMaxAccounts, leaseClaimable, mayUpload, pickLoginSource, rankCandidates,
+  CLAIM_STAGGER_MS, LEASE_EXPIRE_MS, SERVER_ONLINE_MS, defaultMaxAccounts, leaseClaimable, mayUpload, pickLoginSource, preFleetServers, rankCandidates, resolveMarker,
   type CandidateServer, type Lease,
 } from "./fleet.ts";
 
@@ -102,5 +102,45 @@ describe("defaultMaxAccounts", () => {
   it("scales with memory and reserves room for a local model", () => {
     expect(defaultMaxAccounts(16 * GB, false)).toBe(Math.floor((14.5 * GB) / (450 * 1024 ** 2)));
     expect(defaultMaxAccounts(16 * GB, true)).toBeLessThan(defaultMaxAccounts(16 * GB, false));
+  });
+});
+
+describe("preFleetServers (pre-fleet guard)", () => {
+  const beat = (id: string, o: { lastSeen?: number; fleet?: unknown } = {}) => ({ id, lastSeen: NOW - 5_000, ...o });
+  it("a fresh heartbeat with no fleet field is an old server", () => {
+    expect(preFleetServers([beat("old")], "me", NOW).map((s) => s.id)).toEqual(["old"]);
+  });
+  it("ignores fleet servers, ourselves, and servers that went quiet", () => {
+    const cap = { installedAt: 1 };
+    expect(preFleetServers([beat("peer", { fleet: cap }), beat("me"), beat("gone", { lastSeen: NOW - SERVER_ONLINE_MS }), beat("zeroed", { lastSeen: 0 }), { id: "never" }], "me", NOW)).toEqual([]);
+  });
+  it("is clear once the old server stops heartbeating", () => {
+    const old = beat("old", { lastSeen: NOW });
+    expect(preFleetServers([old], "me", NOW + SERVER_ONLINE_MS - 1)).toHaveLength(1);
+    expect(preFleetServers([old], "me", NOW + SERVER_ONLINE_MS)).toHaveLength(0);
+  });
+});
+
+describe("resolveMarker", () => {
+  const cloud = { gen: 7, server: "a", epoch: 4, wiped: false };
+  it("cloud written by this server under this epoch: the lagging marker is raised to the cloud gen", () => {
+    expect(resolveMarker({ marker: 6, cloud, server: "a", epoch: 4 })).toEqual({ gen: 7, adopt: true });
+    expect(resolveMarker({ marker: null, cloud, server: "a", epoch: 4 })).toEqual({ gen: 7, adopt: true });
+  });
+  it("another epoch, another server, an old meta without epoch or a tombstone: the marker stands", () => {
+    expect(resolveMarker({ marker: 6, cloud, server: "a", epoch: 5 })).toEqual({ gen: 6, adopt: false });
+    expect(resolveMarker({ marker: 6, cloud, server: "b", epoch: 4 })).toEqual({ gen: 6, adopt: false });
+    expect(resolveMarker({ marker: 6, cloud: { ...cloud, epoch: undefined }, server: "a", epoch: 4 })).toEqual({ gen: 6, adopt: false });
+    expect(resolveMarker({ marker: 6, cloud: { ...cloud, wiped: true }, server: "a", epoch: 4 })).toEqual({ gen: 6, adopt: false });
+  });
+  it("a marker at or above the cloud is left alone", () => {
+    expect(resolveMarker({ marker: 7, cloud, server: "a", epoch: 4 })).toEqual({ gen: 7, adopt: false });
+  });
+  it("a fresh link with no marker adopts the cloud gen (tombstone included); with a marker it does not", () => {
+    const tomb = { gen: 9, server: "b", wiped: true };
+    expect(resolveMarker({ marker: null, cloud: tomb, server: "a", epoch: 4, freshLink: true })).toEqual({ gen: 9, adopt: true });
+    expect(resolveMarker({ marker: null, cloud: null, server: "a", epoch: 4, freshLink: true })).toEqual({ gen: 0, adopt: true });
+    expect(resolveMarker({ marker: 2, cloud: tomb, server: "a", epoch: 4, freshLink: true })).toEqual({ gen: 2, adopt: false });
+    expect(resolveMarker({ marker: null, cloud: tomb, server: "a", epoch: 4 })).toEqual({ gen: 0, adopt: false });
   });
 });

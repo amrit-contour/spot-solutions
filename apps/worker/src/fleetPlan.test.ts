@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLAIM_STAGGER_MS, LEASE_EXPIRE_MS, LEASE_FENCE_MS, SERVER_ONLINE_MS, rankCandidates, type CandidateServer, type Lease } from "@spot/shared";
 import {
-  HANDOFF_MAX_MS, OWN_RECLAIM_MS, PENDING_COMMAND_EXPIRE_MS, SLEEP_GAP_MS, claimDelayMs, claimReason, claimableHere, handoffStuck, isClonedDisk, isDesignatedNotifier, jumpOutcome,
+  HANDOFF_MAX_MS, OWN_RECLAIM_MS, PENDING_COMMAND_EXPIRE_MS, SLEEP_GAP_MS, claimDelayMs, claimReason, claimableHere, handoffStuck, isClonedDisk, isDesignatedNotifier, jumpOutcome, launchDecision, orphanPids, shouldFlagAbort,
   leaseEventAction, leaseKey, moveText, observePeer, observedLastSeen, pendingCommandAction, peerLastSeen, pickServerId, pickShed, shouldFence, shouldUploadOnRelease, slept,
 } from "./fleetPlan.ts";
 
@@ -215,9 +215,49 @@ describe("cloned disk", () => {
     expect(isClonedDisk(undefined, "bbb")).toBe(false); // older server.json: keep the id, record the fingerprint
     expect(isClonedDisk("aaa", null)).toBe(false); // fingerprint unreadable now
   });
+  it("a hostname/MAC fallback fingerprint never proves a clone (a container's MAC changes on every recreate)", () => {
+    expect(isClonedDisk("aaa", "bbb", { stored: "fallback", current: "fallback" })).toBe(false);
+    expect(isClonedDisk("aaa", "bbb", { stored: "machine", current: "fallback" })).toBe(false);
+    expect(isClonedDisk("aaa", "bbb", { stored: "fallback", current: "machine" })).toBe(false);
+    expect(isClonedDisk("aaa", "bbb", { stored: "machine", current: "machine" })).toBe(true);
+    expect(isClonedDisk("aaa", "bbb", { current: "machine" })).toBe(true); // older server.json without a source
+  });
   it("a clone gets a new id (fresh install time, no persisted id)", () => {
     const o = { hostnameId: "vm", random: "abc123" };
     // what serverIdentity does on a mismatch: drop the stored id and installedAt, so the host record can't match either
     expect(pickServerId({ ...o, persisted: null, hostDocInstalledAt: 100, installedAt: 200 })).toEqual({ id: "vm-abc123", persist: true });
+  });
+});
+
+describe("start/stop race", () => {
+  it("launch proceeds only when not aborted and the lease is still ours", () => {
+    expect(launchDecision({ aborted: false, canRun: true })).toBe("proceed");
+    expect(launchDecision({ aborted: true, canRun: true })).toBe("abort"); // stop() came in before the client was registered
+    expect(launchDecision({ aborted: false, canRun: false })).toBe("abort"); // lease lost
+    expect(launchDecision({ aborted: true, canRun: false })).toBe("abort");
+  });
+  it("stop() flags an abort only for an account that is mid-launch", () => {
+    expect(shouldFlagAbort({ starting: true })).toBe(true);
+    expect(shouldFlagAbort({ starting: false })).toBe(false);
+  });
+});
+
+describe("orphanPids", () => {
+  const profile = "/data/wwebjs/session-abc";
+  const ps = [
+    `  101 /usr/bin/chrome --headless --user-data-dir=${profile} --no-sandbox`,
+    `  102 /usr/bin/chrome --user-data-dir=${profile}`,
+    `  103 /usr/bin/chrome --user-data-dir=${profile}def --no-sandbox`, // another account whose id starts the same
+    `  104 /usr/bin/chrome --user-data-dir=/data/wwebjs/session-xyz`,
+    `  105 node worker.js --user-data-dir=${profile}`, // us
+    `  106 /usr/bin/chrome --headless`,
+    "garbage",
+  ];
+  it("finds browsers on exactly this profile, never ourselves or a longer directory name", () => {
+    expect(orphanPids(ps, profile, 105)).toEqual([101, 102]);
+  });
+  it("handles Windows paths and quoted values", () => {
+    const win = "C:\\SpotSolutions\\data\\wwebjs\\session-abc";
+    expect(orphanPids([`7 "C:\\chrome.exe" --user-data-dir=${win} --x`, `8 chrome.exe --user-data-dir="${win}"`, `9 chrome.exe --user-data-dir=${win}2`], win, 1)).toEqual([7]);
   });
 });
