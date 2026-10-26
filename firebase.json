@@ -9,6 +9,7 @@
   },
   "hosting": {
     "public": "apps/web/dist",
+    "cleanUrls": true,
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [

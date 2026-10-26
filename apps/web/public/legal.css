@@ -1,0 +1,24 @@
+/* Shared styles for the static legal pages (privacy, terms). Brand colours match the app's marigold theme. */
+:root { --bg: #fff8f4; --surface: #fbeee3; --ink: #221a12; --muted: #5e5246; --line: #e3d3c3; --accent: #7a5416; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #17120d; --surface: #221b14; --ink: #efe0d0; --muted: #b5a491; --line: #3b3026; --accent: #f3c47c; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 "Roboto Flex", system-ui, -apple-system, "Segoe UI", sans-serif; }
+header, main, footer { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+header { padding-top: 28px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 650; font-size: 17px; }
+.brand img { border-radius: 9px; }
+h1 { font-size: clamp(30px, 6vw, 40px); line-height: 1.15; margin: 36px 0 4px; letter-spacing: -0.01em; }
+.meta { color: var(--muted); margin: 0 0 28px; }
+h2 { font-size: 20px; margin: 34px 0 8px; }
+p, li { color: var(--ink); }
+ul { padding-left: 22px; }
+li { margin: 6px 0; }
+a { color: var(--accent); text-underline-offset: 3px; }
+code { font-size: 0.88em; background: var(--surface); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 15px; display: block; overflow-x: auto; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+footer { padding: 40px 20px 48px; color: var(--muted); font-size: 14px; }
+footer a { color: var(--muted); }

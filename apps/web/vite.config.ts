@@ -38,7 +38,7 @@ export default defineConfig({
         // App shell only. Firestore traffic is live data and must never be served stale.
         navigateFallback: "/index.html",
         // Installer downloads must reach the network, never the app shell.
-        navigateFallbackDenylist: [/^\/dl\//, /^\/install(-mac)?\.(sh|ps1)$/],
+        navigateFallbackDenylist: [/^\/dl\//, /^\/install(-mac)?\.(sh|ps1)$/, /^\/(privacy|terms)(\.html)?$/, /^\/brand\//, /^\/press\//],
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         // Push (FCM) handlers live in public/fcm-sw.js and run inside this same service worker.
         // Loaded with importScripts, so it stays out of the precache and the browser re-checks it on its own.

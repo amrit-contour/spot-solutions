@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Policy · Spot Solutions</title>
+<meta name="description" content="How Spot Solutions handles your data: what it stores, where, and what it never does." />
+<link rel="icon" href="/favicon.svg" />
+<link rel="stylesheet" href="/legal.css" />
+</head>
+<body>
+<header><a class="brand" href="/"><img src="/brand/logo-120.png" alt="" width="36" height="36" />Spot Solutions</a></header>
+<main>
+<h1>Privacy Policy</h1>
+<p class="meta">Effective 26 October 2026</p>
+
+<p>Spot Solutions is an open-source tool that helps open-mic comedy curators manage spot requests that arrive on WhatsApp. This policy explains what the hosted app at <b>spot-solutions.web.app</b> stores, where it is stored, and what it never does. The source code is public at <a href="https://github.com/amrit-contour/spot-solutions">github.com/amrit-contour/spot-solutions</a>, so every statement here can be checked.</p>
+
+<h2>Who this applies to</h2>
+<ul>
+  <li><b>Curators</b>: people who sign in to the app and link their WhatsApp.</li>
+  <li><b>People who message a curator</b> (for example comics asking for a spot). They never use the app, but some of their messages are processed on the curator's behalf, as described below.</li>
+  <li><b>Demo visitors</b>: people who try the demo without signing in.</li>
+</ul>
+
+<h2>What we collect and why</h2>
+<table>
+  <tr><th>Data</th><th>Why</th><th>Where it lives</th></tr>
+  <tr><td>Your Google account name, email address and profile photo</td><td>To sign you in and decide who may use the app (access is invite-only)</td><td>Firebase Authentication and Cloud Firestore</td></tr>
+  <tr><td>Your WhatsApp phone number and display name</td><td>To show which WhatsApp account is linked</td><td>Cloud Firestore</td></tr>
+  <tr><td>Messages that are spot requests, cancellations or questions about your shows, plus the sender's name and phone number</td><td>So you can review requests, build lineups and reply</td><td>Cloud Firestore</td></tr>
+  <tr><td>Your roster of comics, shows, venues, lineups, message templates and settings</td><td>The core function of the app</td><td>Cloud Firestore</td></tr>
+  <tr><td>Your WhatsApp Web login session, encrypted</td><td>So another of your servers can take over without a new QR scan</td><td>On the server computer(s) you run, and an encrypted copy (AES-256-GCM, a separate key per account) in Google Cloud Storage</td></tr>
+  <tr><td>Contacts you choose to import (from WhatsApp, a file, or a group)</td><td>To add comics to your roster</td><td>Cloud Firestore</td></tr>
+  <tr><td>Push notification tokens for your devices</td><td>To send you alerts you turned on</td><td>Cloud Firestore</td></tr>
+  <tr><td>An optional Gemini API key you add</td><td>To use Google's Gemini models if you allow them</td><td>Cloud Firestore, readable only by the server</td></tr>
+</table>
+<p>Messages that are not spot requests or related to your shows (personal chats, bank alerts, OTPs and so on) are read only to decide that they are not relevant, and are <b>not stored</b>. Chats from before you linked WhatsApp are never read.</p>
+<p>Firestore and Cloud Storage data is hosted by Google Cloud in the asia-south1 (Mumbai) region.</p>
+
+<h2>How messages are processed by AI</h2>
+<p>By default, messages are read by an open-weight Gemma model running on the curator's own computer, through Ollama. No cloud AI service sees them.</p>
+<p>If a curator adds a Gemini API key and chooses "Local first, Gemini as backup", messages may be sent to Google's Gemini API when the local model is unavailable. That processing is covered by <a href="https://ai.google.dev/gemini-api/terms">Google's Gemini API terms</a>. Curators who choose "Local only" never have messages sent to a cloud model.</p>
+
+<h2>Google Contacts</h2>
+<p>If you turn on "Save names to Google Contacts", the app asks Google for permission to manage your contacts (<code>https://www.googleapis.com/auth/contacts</code>). It uses that permission only to:</p>
+<ul>
+  <li>read the names and phone numbers in your contacts, to find a contact with the same phone number as a comic;</li>
+  <li>create a contact (name and phone number) for a comic you add, or update that contact's name when you rename the comic.</li>
+</ul>
+<p>It never deletes contacts and never changes anything other than names and phone numbers. Bulk changes are shown to you for confirmation first. This runs in your browser while you use the app. The access token is kept in memory only and is never stored on our servers, and your Google contact list is not copied to our database.</p>
+<p><b>Spot Solutions' use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</b> We do not use Google user data for advertising, do not sell it, do not transfer it to third parties except as needed to provide the feature you asked for, and do not allow humans to read it except with your consent, for security purposes, or as required by law.</p>
+
+<h2>What we never do</h2>
+<ul>
+  <li>Sell or rent your data, or use it for advertising.</li>
+  <li>Send WhatsApp messages without your action. Replies, confirmations and regrets go out when you press send. The optional auto-acknowledgement is off by default.</li>
+  <li>Use your data to train AI models.</li>
+</ul>
+
+<h2>Who can access your data</h2>
+<ul>
+  <li><b>You</b>, through the app.</li>
+  <li><b>The people who run the servers</b> your account uses. Servers are ordinary computers run by the project's administrators; whoever holds a server's credentials can technically read the project's data, as with any self-hosted software.</li>
+  <li><b>Google</b>, as the provider of Firebase, Google Cloud and (only if you allow it) the Gemini API, under its own terms.</li>
+</ul>
+
+<h2>Demo visitors</h2>
+<p>The demo signs you in anonymously and gives you a private copy of sample data. Nothing you do there touches real WhatsApp accounts, and demo sandboxes may be deleted at any time.</p>
+
+<h2>Keeping and deleting data</h2>
+<p>Your data is kept while you use the app. You can unlink WhatsApp at any time in Settings, which deletes the login session and its encrypted backup. To have your account and all of its data deleted, ask an administrator or open a request on <a href="https://github.com/amrit-contour/spot-solutions/issues">GitHub</a>; the app has tools to delete everything for an account. You can also revoke the app's Google access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+
+<h2>Security</h2>
+<p>Access to data is enforced by Firestore security rules: each curator can read only their own data, and server-only data (such as encryption keys and login backups) is not readable by any app user. WhatsApp login backups are encrypted before upload. See <a href="https://github.com/amrit-contour/spot-solutions/blob/main/SECURITY.md">SECURITY.md</a> for details and how to report a problem.</p>
+
+<h2>Children</h2>
+<p>Spot Solutions is not intended for anyone under 18.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, the new version will be posted here with a new effective date.</p>
+
+<h2>Contact</h2>
+<p>Questions or requests: open an issue at <a href="https://github.com/amrit-contour/spot-solutions/issues">github.com/amrit-contour/spot-solutions/issues</a>.</p>
+</main>
+<footer><a href="/">Home</a> · <a href="/terms">Terms of Service</a> · <a href="https://github.com/amrit-contour/spot-solutions">GitHub</a></footer>
+</body>
+</html>

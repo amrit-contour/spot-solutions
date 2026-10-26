@@ -393,6 +393,8 @@ export function Landing() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-5 py-8 type-body-s text-on-surface-variant sm:px-8">
           <span>Spot Solutions · open source (MIT) · built for Hacktoberfest 2026 with Gemma</span>
           <div className="flex-1" />
+          <a className="hover:text-on-surface" href="/privacy">Privacy</a>
+          <a className="hover:text-on-surface" href="/terms">Terms</a>
           <a className="hover:text-on-surface" href="https://github.com/amrit-contour/spot-solutions" target="_blank" rel="noreferrer">GitHub</a>
         </div>
       </footer>
