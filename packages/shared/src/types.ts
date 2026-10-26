@@ -537,7 +537,7 @@ export interface Invite {
   expireAt: unknown;
 }
 
-/** config/access: written by the worker from SPOT_ADMIN_EMAILS; maxCurators editable by admins. */
+/** config/access: written by the worker from NBS_ADMIN_EMAILS; maxCurators editable by admins. */
 export interface AccessConfig {
   admins: string[];
   maxCurators: number;

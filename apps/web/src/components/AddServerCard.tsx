@@ -121,7 +121,7 @@ export function AddServerCard() {
               </Button>
             </div>
             <ol className="list-decimal pl-5 type-body-s text-on-surface-variant">
-              <li>On the new computer, open the server console (Mac: inside Nothing BOT Server. Windows: the Nothing BOT Server Console shortcut. Ubuntu: run sudo spot-console-url).</li>
+              <li>On the new computer, open the server console (Mac: inside Nothing BOT Server. Windows: the Nothing BOT Server Console shortcut. Ubuntu: run sudo nbs-console-url).</li>
               <li>Type the code under Enter join code and click Join.</li>
               <li>The server appears here within a minute.</li>
             </ol>

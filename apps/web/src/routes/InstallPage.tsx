@@ -7,7 +7,7 @@ import { Logo } from "@spot/ui";
 import { Card, Segmented, buttonClass } from "@spot/ui";
 
 type Os = "mac" | "windows" | "linux";
-const BASE = "https://spot-solutions.web.app";
+const BASE = "https://nothingbotcurating.web.app";
 
 function detect(): Os {
   const ua = navigator.userAgent;
@@ -71,14 +71,14 @@ export function InstallPage() {
               <p className="mt-3 type-body-m">Open Terminal and run:</p>
               <Cmd>{`curl -fsSL ${BASE}/install.sh | bash`}</Cmd>
               <p className="type-body-s text-on-surface-variant">
-                It installs the Nothing BOT Server app, sets the Mac up and opens it. Prefer to click? Download <a className="text-primary underline-offset-4 hover:underline" href="/dl/SpotServer-mac.zip" download>SpotServer-mac.zip</a>, drag the app to Applications, open it and click Set up this Mac (macOS may ask you to allow it under Privacy &amp; Security).
+                It installs the Nothing BOT Server app, sets the Mac up and opens it. Prefer to click? Download <a className="text-primary underline-offset-4 hover:underline" href="/dl/NothingBotServer-mac.zip" download>NothingBotServer-mac.zip</a>, drag the app to Applications, open it and click Set up this Mac (macOS may ask you to allow it under Privacy &amp; Security).
               </p>
             </>
           )}
           {os === "windows" && (
             <>
               <div className="mt-3">
-                <a className={buttonClass({})} href="/dl/SpotSolutions-Windows.zip" download>
+                <a className={buttonClass({})} href="/dl/NothingBotServer-Windows.zip" download>
                   Download for Windows
                 </a>
               </div>

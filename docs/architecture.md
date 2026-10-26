@@ -151,7 +151,7 @@ flowchart TD
 - `local_only`: only Ollama routes. Gemini is never called. Only servers with a local model may host the account.
 - `local_first` (default): primary, then fallback. If a Gemini key is available and no route uses Gemini, Gemini (`gemini-2.5-flash`) is added last.
 
-Gemini keys are stored write-only in `users/{uid}/secrets/ai`. The worker uses the curator's key, or the server's `GEMINI_API_KEY` if they have none. A server started with `SPOT_NO_LOCAL_MODEL=1` skips Ollama entirely.
+Gemini keys are stored write-only in `users/{uid}/secrets/ai`. The worker uses the curator's key, or the server's `GEMINI_API_KEY` if they have none. A server started with `NBS_NO_LOCAL_MODEL=1` skips Ollama entirely.
 
 ## Firestore data model
 
@@ -172,7 +172,7 @@ Types are in `packages/shared/src/types.ts` and `packages/shared/src/fleet.ts`. 
 | `users/{uid}/fleet/prefs` | `pinned`: the server to keep the account on | Owner and admins read and write (only the `pinned` key) | App |
 | `users/{uid}/devices/{token}` | Push tokens, one per browser | Owner reads, creates, updates, deletes | App |
 | `access/{uid}` | Invite-only access: `pending`, `approved`, `removed` | Owner and admins read. Owner creates a `pending` entry. Admins change `status`, `decidedAt`, `decidedBy`. | App, worker (auto-approves admins) |
-| `config/access` | `admins` (emails) and `maxCurators` | Signed-in, non-anonymous users read. Admins change `maxCurators` (1 to 100). | Worker writes `admins` from `SPOT_ADMIN_EMAILS` |
+| `config/access` | `admins` (emails) and `maxCurators` | Signed-in, non-anonymous users read. Admins change `maxCurators` (1 to 100). | Worker writes `admins` from `NBS_ADMIN_EMAILS` |
 | `servers/{id}` | Full heartbeat: health, Ollama, sessions, logs, admin emails, `fleet` capacity | Admins listed in that doc read | Server |
 | `servers/{id}/commands/{id}` | Admin actions: `restart_worker`, `restart_ollama`, `delete_user_data`, `remove_user`, `wipe_demo` | That server's admins read and create | Admin creates, server updates |
 | `fleetServers/{id}` | Public summary of a server: hostname, platform, capacity (no logs or emails) | Approved curators and admins read | Server |

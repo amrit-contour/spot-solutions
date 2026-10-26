@@ -1,4 +1,4 @@
-// The latest published server release (dl/version.json, written by deploy/build-dist.sh), for the Server page.
+// The latest published server release (dl/nothing-bot-server.json, written by deploy/build-dist.sh), for the Server page.
 import { useEffect, useState } from "react";
 
 export interface Release {
@@ -11,7 +11,7 @@ export function useLatestRelease(): Release | null {
   useEffect(() => {
     let live = true;
     const load = () =>
-      fetch(`/dl/version.json?t=${Date.now()}`, { cache: "no-store" })
+      fetch(`/dl/nothing-bot-server.json?t=${Date.now()}`, { cache: "no-store" })
         .then((x) => (x.ok ? x.json() : null))
         .then((j) => {
           if (live && j && typeof j.version === "string") setR({ version: j.version, builtAt: typeof j.builtAt === "number" ? j.builtAt : undefined });

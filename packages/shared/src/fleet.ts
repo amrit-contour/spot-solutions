@@ -110,7 +110,7 @@ export const VAULT_OBJECT_MIN_AGE_MS = 10 * 60_000;
 export interface FleetCapacity {
   /** First time this server ever ran (persisted on disk); newer installs rank higher on ties. */
   installedAt: number;
-  /** Accounts this server will host at most (memory-derived, overridable by SPOT_MAX_ACCOUNTS). */
+  /** Accounts this server will host at most (memory-derived, overridable by NBS_MAX_ACCOUNTS). */
   maxAccounts: number;
   /** Accounts whose lease this server currently holds. */
   hosting: number;

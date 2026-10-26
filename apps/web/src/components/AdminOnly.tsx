@@ -4,7 +4,7 @@ import { useApp } from "../lib/app";
 import { isAdmin, useAccessConfig } from "../lib/access";
 import { Spinner } from "@spot/ui";
 
-/** Renders children only for server admins (SPOT_ADMIN_EMAILS); everyone else goes home. */
+/** Renders children only for server admins (NBS_ADMIN_EMAILS); everyone else goes home. */
 export function AdminOnly({ children }: { children: ReactNode }) {
   const { user } = useApp();
   const cfg = useAccessConfig();

@@ -17,7 +17,7 @@ cp apps/web/.env.example apps/web/.env
 cp apps/worker/.env.example apps/worker/.env
 ```
 
-Fill in `apps/web/.env` with your Firebase web app config (`VITE_FIREBASE_*`). For `apps/worker/.env`, put a service-account key for your project at the path in `FIREBASE_SERVICE_ACCOUNT` and set `FIREBASE_PROJECT_ID`. Set `SPOT_ADMIN_EMAILS` to your own email so you are approved automatically and can see the Server page. The optional settings are commented out and fall back to sensible defaults. If you use your own project, set `SPOT_STORAGE_BUCKET` to its bucket, because the default is the production one. Deploy the rules to your project too: `firebase deploy --only firestore:rules,storage --project <your-project>`.
+Fill in `apps/web/.env` with your Firebase web app config (`VITE_FIREBASE_*`). For `apps/worker/.env`, put a service-account key for your project at the path in `FIREBASE_SERVICE_ACCOUNT` and set `FIREBASE_PROJECT_ID`. Set `NBS_ADMIN_EMAILS` to your own email so you are approved automatically and can see the Server page. The optional settings are commented out and fall back to sensible defaults. If you use your own project, set `NBS_STORAGE_BUCKET` to its bucket, because the default is the production one. Deploy the rules to your project too: `firebase deploy --only firestore:rules,storage --project <your-project>`.
 
 Then run both apps in two terminals:
 

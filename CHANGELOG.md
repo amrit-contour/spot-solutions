@@ -1,5 +1,13 @@
 # Changelog
 
+## 27 October 2026 (Nothing BOT Server)
+
+### Servers
+- **One name: Nothing BOT Server.** The Mac app, Windows folder and tasks, Linux services and paths, downloads and settings (`SPOT_*` is now `NBS_*`, old names still work) all use the new name, with one documented scheme: see docs/migrate-to-nothing-bot-server.md. `spotctl` and `spot-task` are now `nbsctl`.
+- **New servers update from nothingbotcurating.web.app** (`dl/nothing-bot-server.json`, `dl/nothing-bot-server.tar.gz`). Servers installed before the rename are frozen on their last release: `deploy/build-dist.sh` keeps serving their old files (from the gitignored `deploy/legacy-dl/`) and fails if they are missing. The old install addresses serve the new installers.
+- **Safe move for your own server.** `deploy/migrate/migrate-mac.sh` checks the account lease, stops the server cleanly so the login is uploaded to the vault, verifies the upload, and makes a local backup; `restore-backup.sh` puts the backup back on the new install if the vault restore ever fails. A new server that joins the same account restores the login from the vault with no QR code.
+- **Uninstallers remove both old and new.** `uninstall.sh` (Ubuntu), `uninstall.ps1` / `Uninstall.cmd` (Windows) and `nbsctl uninstall` (Mac) keep your data unless you pass an explicit flag, and say what they kept. The new installers stop an old server on the same machine first.
+
 ## 27 October 2026 (rename)
 
 - **Renamed to Nothing BOT Curating; servers are Nothing BOT Server.** New names across the app, installers, the server console and notices. Nothing under the hood changed: addresses, data folders, services and commands keep their old ids, so installed servers update as normal. The Windows installer is now "Install Nothing BOT Server.cmd" and replaces the old shortcuts. A comic-side app, Nothing BOT Comedy, is planned.

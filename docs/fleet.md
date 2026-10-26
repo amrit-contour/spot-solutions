@@ -63,6 +63,10 @@ over-capacity server sheds its most recently claimed accounts.
   `PATCH https://storage.googleapis.com/storage/v1/b/<bucket>` with `{"softDeletePolicy":{"retentionDurationSeconds":"0"}}`.
 - Logout: delete the local profile, marker, cloud object, vault meta and key.
 
+## Moving a login to a new install
+
+A new server install (for example after the rename to Nothing BOT Server, see [migrate-to-nothing-bot-server.md](migrate-to-nothing-bot-server.md)) has an empty data folder. Once connected to the same account it finds `users/{uid}/fleet/vault` newer than its (missing) local copy, so `pickLoginSource` returns `cloud`: download, decrypt, verify, start, no QR. For that the vault must be newer than the old server's last login change. A clean stop of the old worker always uploads (`gen + 1`) and releases the lease, so the migration script stops the worker, then waits until `gen` is higher and `savedAt` is later than the start of the run (for `vault` and, if an agent number is linked, `vault_agent`). A local backup of `session-*`, `vault-*.json` and `server.json` is the fallback if the restore fails; putting it back leaves a marker `gen` that is at most the cloud's, so the newest copy still wins.
+
 ## The agent number rides on the lease
 
 An account may have a second WhatsApp login, its **agent number** ([agent.md](agent.md)). It is not a second account in the fleet: it has

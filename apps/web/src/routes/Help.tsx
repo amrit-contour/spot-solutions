@@ -100,7 +100,7 @@ function Section({ id, title, children }: { id: string; title: string; children:
   );
 }
 
-const MAC_CTL = '"/Applications/Spot Server.app/Contents/Resources/spotctl"';
+const MAC_CTL = '"/Applications/Nothing BOT Server.app/Contents/Resources/nbsctl"';
 
 export function HelpPage() {
   const [os, setOs] = useState<Platform>(detectPlatform);
@@ -174,32 +174,32 @@ export function HelpPage() {
           </Section>
 
           <Section id="install" title="Install the server">
-            <P>One install for every computer, and the same console afterwards. There is also a download page that picks the right one for you: <Link className="text-primary underline-offset-4 hover:underline" to="/install">spot-solutions.web.app/install</Link>. Whether the server runs a local model or Gemini only is chosen later, in the console, and can be switched any time. The installer starts with a local model on computers with about 8 GB of memory or more.</P>
+            <P>One install for every computer, and the same console afterwards. There is also a download page that picks the right one for you: <Link className="text-primary underline-offset-4 hover:underline" to="/install">nothingbotcurating.web.app/install</Link>. Whether the server runs a local model or Gemini only is chosen later, in the console, and can be switched any time. The installer starts with a local model on computers with about 8 GB of memory or more.</P>
             {os === "mac" && (
               <>
                 <P>Open <B>Terminal</B> and run:</P>
-                <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | bash</Cmd>
-                <P>This puts <B>Nothing BOT Server</B> in Applications, sets the Mac up (a few minutes the first time) and opens the app. The older <Code>install-mac.sh</Code> address still works. Or download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/SpotServer-mac.zip?v=${__BUILD_ID__}`} download>SpotServer-mac.zip</a>, double-click it and drag the app into Applications.</P>
+                <Cmd>curl -fsSL https://nothingbotcurating.web.app/install.sh | bash</Cmd>
+                <P>This puts <B>Nothing BOT Server</B> in Applications, sets the Mac up (a few minutes the first time) and opens the app. The older <Code>install-mac.sh</Code> address still works. Or download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/NothingBotServer-mac.zip?v=${__BUILD_ID__}`} download>NothingBotServer-mac.zip</a>, double-click it and drag the app into Applications.</P>
                 <Callout>Downloaded through a browser, macOS says it can't check the developer the first time. Open <B>System Settings → Privacy & Security</B> and click <B>Open Anyway</B>. The Terminal install avoids this.</Callout>
               </>
             )}
             {os === "windows" && (
               <>
                 <Steps>
-                  <li>Download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/SpotSolutions-Windows.zip?v=${__BUILD_ID__}`} download>SpotSolutions-Windows.zip</a> and unzip it.</li>
+                  <li>Download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/NothingBotServer-Windows.zip?v=${__BUILD_ID__}`} download>NothingBotServer-Windows.zip</a> and unzip it.</li>
                   <li>Double-click <B>Install Nothing BOT Server.cmd</B> and click <B>Yes</B> on the admin prompt.</li>
                   <li>Wait while it installs Node.js and, on a PC with about 8 GB of memory or more, Ollama and Gemma (about 3.5 GB).</li>
                 </Steps>
                 <P>Or, in PowerShell as Administrator:</P>
-                <Cmd>{"Set-ExecutionPolicy -Scope Process Bypass -Force\nirm https://spot-solutions.web.app/install.ps1 | iex"}</Cmd>
+                <Cmd>{"Set-ExecutionPolicy -Scope Process Bypass -Force\nirm https://nothingbotcurating.web.app/install.ps1 | iex"}</Cmd>
                 <P>When it finishes you'll have <B>Nothing BOT Server Console</B> and <B>Nothing BOT Curating</B> on the desktop and in the Start menu.</P>
               </>
             )}
             {os === "linux" && (
               <>
                 <P>In a terminal on the server (or over SSH):</P>
-                <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash</Cmd>
-                <P>It asks nothing, installs Node and (with about 8 GB of memory or more) Ollama and Gemma, and sets up services that start at boot and restart on crash: <Code>ollama</Code>, <Code>spot-worker</Code> and <Code>spot-console</Code>. At the end it prints the console link.</P>
+                <Cmd>curl -fsSL https://nothingbotcurating.web.app/install.sh | sudo bash</Cmd>
+                <P>It asks nothing, installs Node and (with about 8 GB of memory or more) Ollama and Gemma, and sets up services that start at boot and restart on crash: <Code>ollama</Code>, <Code>nothing-bot-server-worker</Code> and <Code>nothing-bot-server-console</Code>. At the end it prints the console link.</P>
                 <Callout>Want a pocket server? Install Ubuntu Server onto a USB stick (a full install, not a live USB) and boot the laptop from it. See the <a className="underline" href="#always-on">always-on</a> tips below.</Callout>
               </>
             )}
@@ -210,7 +210,7 @@ export function HelpPage() {
               {os === "mac" && <li>If the install command didn't already set the Mac up, click <B>Set up this Mac</B> in Nothing BOT Server. You can watch the progress in the window.</li>}
               <li>
                 Open the <B>server console</B>
-                {os === "mac" ? " (it's inside the Nothing BOT Server window)" : os === "windows" ? " (the Nothing BOT Server Console shortcut; it opens by itself after installing)" : <> from a phone or laptop on the same Wi-Fi, using the link the installer printed. Lost it? Run <Code>sudo spot-console-url</Code></>}
+                {os === "mac" ? " (it's inside the Nothing BOT Server window)" : os === "windows" ? " (the Nothing BOT Server Console shortcut; it opens by itself after installing)" : <> from a phone or laptop on the same Wi-Fi, using the link the installer printed. Lost it? Run <Code>sudo nbs-console-url</Code></>}
                 .
               </li>
               <li>Click <B>Connect with Nothing BOT Curating</B>, open the link (or scan the QR with your phone), sign in with Google and approve. The worker starts by itself, and your email is added as an admin so the server shows in the app under <B>Account → Server</B>. A join code from the app works too; see <a className="underline" href="#get-code">above</a>.</li>
@@ -274,12 +274,12 @@ export function HelpPage() {
                 head={["Do this", "How"]}
                 rows={[
                   ["Restart the worker", <>Double-click <B>Restart Worker.cmd</B> (in the folder you unzipped)</>],
-                  ["Stop everything", <>PowerShell as admin: <Code>Stop-ScheduledTask SpotSolutionsWorker</Code></>],
-                  ["Start again", <><Code>Start-ScheduledTask SpotSolutionsWorker</Code>, or just restart the PC</>],
+                  ["Stop everything", <>PowerShell as admin: <Code>Stop-ScheduledTask NothingBotServerWorker</Code></>],
+                  ["Start again", <><Code>Start-ScheduledTask NothingBotServerWorker</Code>, or just restart the PC</>],
                 ]}
               />
             )}
-            {os === "linux" && <Cmd>{"sudo systemctl status spot-worker\nsudo systemctl stop spot-worker\nsudo systemctl start spot-worker\nsudo systemctl restart spot-worker ollama"}</Cmd>}
+            {os === "linux" && <Cmd>{"sudo systemctl status nothing-bot-server-worker\nsudo systemctl stop nothing-bot-server-worker\nsudo systemctl start nothing-bot-server-worker\nsudo systemctl restart nothing-bot-server-worker ollama"}</Cmd>}
             <Callout>Stopping is safe. WhatsApp closes cleanly and a backup of the login is saved. When you start again it reconnects without a QR, and reads (without auto-replying to) DMs from the last 3 days that arrived while it was off.</Callout>
           </Section>
 
@@ -309,9 +309,9 @@ export function HelpPage() {
 
           <Section id="logs" title="Logs and health">
             <P>From anywhere: <B>Account → Server</B> in the app shows CPU, memory, disk, services, connected curators and the latest worker log.</P>
-            {os === "mac" && <Cmd>{`tail -f ~/Library/Application\\ Support/SpotSolutions/logs/worker.log`}</Cmd>}
-            {os === "windows" && <P>Double-click <B>View Logs.cmd</B>, or open <Code>C:\SpotSolutions\data\worker.log</Code>.</P>}
-            {os === "linux" && <Cmd>journalctl -u spot-worker -f</Cmd>}
+            {os === "mac" && <Cmd>{`tail -f ~/Library/Application\\ Support/NothingBotServer/logs/worker.log`}</Cmd>}
+            {os === "windows" && <P>Double-click <B>View Logs.cmd</B>, or open <Code>C:\NothingBotServer\data\worker.log</Code>.</P>}
+            {os === "linux" && <Cmd>journalctl -u nothing-bot-server-worker -f</Cmd>}
             <P>The console (port 7420) shows the same health, plus a live log and restart buttons.</P>
           </Section>
 
@@ -320,7 +320,7 @@ export function HelpPage() {
             <P>A server installed before automatic updates needs one manual update first. After that it takes care of itself:</P>
             {os === "mac" && <P>In Nothing BOT Server: <B>More → Update Nothing BOT Server</B>, or run the install command again.</P>}
             {os === "windows" && <P>Run <B>Install Nothing BOT Server.cmd</B> again from a freshly downloaded zip (or the PowerShell line above). It keeps your key, WhatsApp link and settings.</P>}
-            {os === "linux" && <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash</Cmd>}
+            {os === "linux" && <Cmd>curl -fsSL https://nothingbotcurating.web.app/install.sh | sudo bash</Cmd>}
             <P>Updates never touch your data, key or WhatsApp link.</P>
           </Section>
 
@@ -343,7 +343,7 @@ export function HelpPage() {
             <Table
               head={["You see", "Try this"]}
               rows={[
-                [<B>“Server offline” in the app</B>, os === "mac" ? "Open Nothing BOT Server and check it says Running; press Start server. Make sure the Mac is awake and online." : os === "windows" ? "Check the PC is on and online. Double-click Restart Worker.cmd, then View Logs.cmd." : "sudo systemctl status spot-worker; check the laptop is awake and online."],
+                [<B>“Server offline” in the app</B>, os === "mac" ? "Open Nothing BOT Server and check it says Running; press Start server. Make sure the Mac is awake and online." : os === "windows" ? "Check the PC is on and online. Double-click Restart Worker.cmd, then View Logs.cmd." : "sudo systemctl status nothing-bot-server-worker; check the laptop is awake and online."],
                 [<B>Show QR code does nothing</B>, "Wait a minute after starting; check the worker log for errors, then restart the worker."],
                 [<B>Asked to scan again</B>, "Scan it. It happens after long phone downtime or a corrupted link the backup couldn't fix."],
                 [<B>Server page empty</B>, "Your email isn't in Admins. Add it in the server console."],
@@ -362,8 +362,8 @@ export function HelpPage() {
                 <Cmd>{`${MAC_CTL} uninstall --all`}</Cmd>
               </>
             )}
-            {os === "windows" && <P>Double-click <B>Uninstall.cmd</B>. It removes the startup tasks, shortcuts and firewall rule, and keeps <Code>C:\SpotSolutions\data</Code>. Delete that folder too to remove everything.</P>}
-            {os === "linux" && <Cmd>{"sudo systemctl disable --now spot-worker spot-console\nsudo rm -rf /opt/spot-solutions /etc/systemd/system/spot-*.service /etc/sudoers.d/spot-console\n# also removes the WhatsApp link and key:\nsudo rm -rf /var/lib/spot-solutions"}</Cmd>}
+            {os === "windows" && <P>Double-click <B>Uninstall.cmd</B>. It removes the startup tasks, shortcuts, firewall rule and program files (and the same for an old Spot Solutions server), and keeps <Code>C:\NothingBotServer\data</Code>. To delete that folder too, run <Code>.\uninstall.ps1 -DeleteData</Code> in PowerShell as Administrator.</P>}
+            {os === "linux" && <Cmd>{"curl -fsSL https://nothingbotcurating.web.app/uninstall.sh | sudo bash\n# keeps your data. To delete it too:\ncurl -fsSL https://nothingbotcurating.web.app/uninstall.sh | sudo bash -s -- --delete-data"}</Cmd>}
             <P>On your phone, also remove the old entry under <B>WhatsApp → Linked devices</B>.</P>
           </Section>
 

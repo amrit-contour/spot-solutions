@@ -26,7 +26,7 @@ These numbers come from `packages/shared/src/fleet.ts`.
 
 A hard crash means a gap of a few minutes before the account is back (150 seconds, then the restore and the WhatsApp start). A clean stop is quicker: the server uploads the login and releases its accounts first, so another server can claim them straight away (still staggered by rank).
 
-Which server gets an account, best first: the pinned server, then servers with a local model, then the least loaded, then the newest install. A server stops taking accounts when it reaches its limit. The limit is (memory minus 5.5 GB) / 450 MB with a local model, and (memory minus 1.5 GB) / 450 MB without one. Set `SPOT_MAX_ACCOUNTS` in the worker's `.env` to override it.
+Which server gets an account, best first: the pinned server, then servers with a local model, then the least loaded, then the newest install. A server stops taking accounts when it reaches its limit. The limit is (memory minus 5.5 GB) / 450 MB with a local model, and (memory minus 1.5 GB) / 450 MB without one. Set `NBS_MAX_ACCOUNTS` in the worker's `.env` to override it.
 
 ## Connect a server with your account
 
@@ -69,7 +69,7 @@ deploy/new-server-key.sh <device-name> [--dry-run]
 deploy/new-server-key.sh studio-mac
 ```
 
-It makes the same account with the same roles, and saves the key to `~/.spot-keys/spot-<device-name>.json` (folder mode 700; set `SPOT_KEY_DIR` to change it). The device name is lower-cased, anything but letters, digits and dashes becomes a dash, and the full account name must be 6 to 30 characters. Running it again adds a fresh key. `--dry-run` prints the `gcloud` commands. `SPOT_PROJECT` and `SPOT_BUCKET` override the project (default `spot-solutions`) and bucket (default `spot-solutions.firebasestorage.app`). The script is also served at `https://spot-solutions.web.app/new-server-key.sh`.
+It makes the same account with the same roles, and saves the key to `~/.spot-keys/spot-<device-name>.json` (folder mode 700; set `NBS_KEY_DIR` to change it). The device name is lower-cased, anything but letters, digits and dashes becomes a dash, and the full account name must be 6 to 30 characters. Running it again adds a fresh key. `--dry-run` prints the `gcloud` commands. `NBS_PROJECT` and `NBS_BUCKET` override the project (default `spot-solutions`) and bucket (default `spot-solutions.firebasestorage.app`). The script is also served at `https://nothingbotcurating.web.app/new-server-key.sh`.
 
 In that server's console, open **First server ever? Use a key file** and drop `spot-<device-name>.json` onto it (this is also where the very first server of a brand-new project goes, when nobody is an admin yet). The worker restarts by itself. Delete the file from the machine you made it on. It is a password.
 
@@ -112,11 +112,11 @@ Curators keep their data. Each account's login backup stays in the cloud, so the
 
 ## Local model or Gemini only
 
-A computer without room for Gemma (under about 8 GB of memory) can still be a server and answer with Gemini. There is one installer per system, and the choice is made in the console, under **AI models**: **Local model on this computer** turns Ollama and Gemma on (it installs and downloads them, with progress) or off, at any time. The installer starts you off by memory: a local model at about 8 GB or more, Gemini otherwise. To force it, set `SPOT_NO_LOCAL_MODEL=1` (or `0`) when running the installer; re-running keeps the last choice.
+A computer without room for Gemma (under about 8 GB of memory) can still be a server and answer with Gemini. There is one installer per system, and the choice is made in the console, under **AI models**: **Local model on this computer** turns Ollama and Gemma on (it installs and downloads them, with progress) or off, at any time. The installer starts you off by memory: a local model at about 8 GB or more, Gemini otherwise. To force it, set `NBS_NO_LOCAL_MODEL=1` (or `0`) when running the installer; re-running keeps the last choice.
 
 Gemini receives the text of the messages it reads. A Gemini-only server cannot host an account set to **Local only** (see below).
 
-**AI models** in the console also has: the server's **Gemini key** (masked, kept only on that server), **Fetch models** and **Test** for a Gemini model, the installed local models with **Test**, **Make default** and a **Download** box with progress, and **Default routing**: local first with Gemini as backup, Gemini first with local as backup, Gemini only, or local only. The routing and models apply to curators who have never saved AI settings of their own; anyone who has (Settings, AI models) keeps their choice. They are stored in the worker's `.env` as `SPOT_AI_MODE`, `SPOT_LOCAL_MODEL` and `SPOT_GEMINI_MODEL`.
+**AI models** in the console also has: the server's **Gemini key** (masked, kept only on that server), **Fetch models** and **Test** for a Gemini model, the installed local models with **Test**, **Make default** and a **Download** box with progress, and **Default routing**: local first with Gemini as backup, Gemini first with local as backup, Gemini only, or local only. The routing and models apply to curators who have never saved AI settings of their own; anyone who has (Settings, AI models) keeps their choice. They are stored in the worker's `.env` as `NBS_AI_MODE`, `NBS_LOCAL_MODEL` and `NBS_GEMINI_MODEL`.
 
 ## Local only vs Local first
 
@@ -177,12 +177,12 @@ To update a server by hand, run its installer again (see the guide for [Mac](mac
 
 ## Updates
 
-`deploy/build-dist.sh` publishes `dl/version.json` (`version`, `builtAt`, `sha256` of the tarball, `size`, default `model`) next to `dl/spot-solutions.tar.gz`. Each console checks it at start and every 30 minutes.
+`deploy/build-dist.sh` publishes `dl/nothing-bot-server.json` (`version`, `builtAt`, `sha256` of the tarball, `size`, default `model`) next to `dl/nothing-bot-server.tar.gz`. Each console checks it at start and every 30 minutes.
 
 - **Update now** in the console, or **Update** on a server in **Account, Server** (the app sends an `update_server` command; the worker asks its console to run the updater and the server shows "Updating..." until its new version reports in). The Server page shows each server's version against the latest.
 - **Install updates automatically** (on by default, in the console under **Updates**): a few minutes after a release appears, at a stable per-server offset of 0 to 10 minutes so servers in a fleet don't all restart together. After a failed update, automatic ones wait 6 hours.
 - What an update does: download, check the sha256 (refuses a mismatch, a bad archive or unsafe paths), put the files in place keeping `.env`, keys and WhatsApp logins, reinstall packages only if the lockfile changed, restart the worker and the console on the new code, and `ollama pull` the model (a no-op when current). WhatsApp reconnects without a QR within a minute.
-- Per system: **macOS** `spotctl update`, run as its own launch agent so it outlives the restarts; **Ubuntu** `spot-task@update.service`, a root-owned oneshot (`/usr/local/sbin/spot-task`) that the console's user may start through sudoers and that never runs anything from the app folder as root; **Windows** the scheduled task `SpotSolutionsUpdate` (SYSTEM, started on demand).
+- Per system: **macOS** `nbsctl update`, run as its own launch agent so it outlives the restarts; **Ubuntu** `nothing-bot-server-task@update.service`, a root-owned oneshot (`/usr/local/sbin/nbsctl`) that the console's user may start through sudoers and that never runs anything from the app folder as root; **Windows** the scheduled task `NothingBotServerUpdate` (SYSTEM, started on demand).
 - The checksum guards against corrupt or truncated downloads and a tampered file in transit. It comes from the same host as the download, so it is not a signature.
 
 ## If something is off

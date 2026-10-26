@@ -25,14 +25,14 @@ You need:
 2. Go through the installer:
    - **Network:** connect Wi-Fi or Ethernet now. It's much easier than doing it later.
    - **Storage:** choose *Custom storage layout* or *Use an entire disk*, and **select the big USB drive**. Check the size and model carefully. **Do not pick the laptop's internal disk.**
-   - **Profile:** hostname `spot-server` and a username of your choice.
+   - **Profile:** hostname `nbs-server` and a username of your choice.
    - **SSH:** tick **Install OpenSSH server**.
    - Skip the featured snaps.
 3. When it finishes, remove the installer stick and reboot. In the BIOS, set **USB first** in the boot order, so the laptop boots the server whenever the stick is in.
 
 ## 3. Make it behave like a server
 
-SSH in from your main computer (`ssh you@spot-server.local`, or use the IP from `ip a`), then:
+SSH in from your main computer (`ssh you@nbs-server.local`, or use the IP from `ip a`), then:
 
 ```bash
 # Keep running with the lid closed, and never sleep
@@ -61,20 +61,20 @@ Optional, but handy: install [Tailscale](https://tailscale.com/download/linux) (
 On the server (in its own terminal, or over SSH):
 
 ```bash
-curl -fsSL https://spot-solutions.web.app/install.sh | sudo ADMIN_EMAILS=you@gmail.com bash
+curl -fsSL https://nothingbotcurating.web.app/install.sh | sudo ADMIN_EMAILS=you@gmail.com bash
 ```
 
-It installs Node 22, Chrome's libraries, Ollama and Gemma (about a 3.5 GB download), and three services that start on boot and restart on crash. If you run it in a terminal on a first install, it asks one question: run AI on this machine with Ollama and Gemma? (30 seconds, then yes). Set `SPOT_NO_LOCAL_MODEL=1` to skip the question and the download:
+It installs Node 22, Chrome's libraries, Ollama and Gemma (about a 3.5 GB download), and three services that start on boot and restart on crash. If you run it in a terminal on a first install, it asks one question: run AI on this machine with Ollama and Gemma? (30 seconds, then yes). Set `NBS_NO_LOCAL_MODEL=1` to skip the question and the download:
 
 | Service | What it does |
 |---|---|
 | `ollama` | Local AI |
-| `spot-worker` | WhatsApp + curation. Idle until a Firebase key is added. |
-| `spot-console` | Local web console on port **7420** |
+| `nothing-bot-server-worker` | WhatsApp + curation. Idle until a Firebase key is added. |
+| `nothing-bot-server-console` | Local web console on port **7420** |
 
-**Local model or Gemini only.** A machine under about 8 GB of memory starts on Gemini with no Ollama or Gemma. You can switch either way in the console under **AI models**, any time. A Gemini-only server can't host accounts set to **Local only**. To force it at install time, set `SPOT_NO_LOCAL_MODEL=1` (or `--no-local-model`, or `=0`). See [multi-server.md](multi-server.md).
+**Local model or Gemini only.** A machine under about 8 GB of memory starts on Gemini with no Ollama or Gemma. You can switch either way in the console under **AI models**, any time. A Gemini-only server can't host accounts set to **Local only**. To force it at install time, set `NBS_NO_LOCAL_MODEL=1` (or `--no-local-model`, or `=0`). See [multi-server.md](multi-server.md).
 
-The installer also puts `spot-task` in `/usr/local/sbin` (root-owned) with the unit `spot-task@.service`, and lets the `spot` user start only `spot-task@update`, `spot-task@local-on` and `spot-task@local-off` (and restart the worker and Ollama). That is how the console updates the server and turns the local model on or off without being root.
+The installer also puts `nbsctl` in `/usr/local/sbin` (root-owned) with the unit `nothing-bot-server-task@.service`, and lets the `spot` user start only `nothing-bot-server-task@update`, `nothing-bot-server-task@local-on` and `nothing-bot-server-task@local-off` (and restart the worker and Ollama). That is how the console updates the server and turns the local model on or off without being root.
 
 At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it from your phone or Mac on the same Wi-Fi. The console is served from the laptop itself, so it's only reachable on your home network, and you only need it once, for the key.
 
@@ -88,7 +88,7 @@ The console shows services, CPU/RAM/disk, installed models and live worker logs,
 2. **Admins:** signing in adds your email. It opens **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere. Add other admins in the console's **Admin emails**.
 3. **Server Gemini key:** optional on a server with Gemma. Leave it blank; each curator adds their own in the app under **Settings → AI models**, where they can test it, browse models and pick a primary and a fallback. On a Gemini-only server, add one here or have each curator add theirs.
 
-Lost the link? `sudo spot-console-url`.
+Lost the link? `sudo nbs-console-url`.
 
 ## 6. Link WhatsApp
 
@@ -98,7 +98,7 @@ Open **spot-solutions.web.app → Settings → Show QR code** on a computer and 
 
 Every approved curator gets their own WhatsApp session on this server. Each session is one headless Chromium, using roughly 300 to 450 MB. Gemma is shared and handles one message burst at a time.
 
-The server stops taking accounts at a limit worked out from its memory: (RAM minus 5.5 GB) / 450 MB with Gemma, (RAM minus 1.5 GB) / 450 MB without it. Set `SPOT_MAX_ACCOUNTS` in `/opt/spot-solutions/apps/worker/.env` to change it.
+The server stops taking accounts at a limit worked out from its memory: (RAM minus 5.5 GB) / 450 MB with Gemma, (RAM minus 1.5 GB) / 450 MB without it. Set `NBS_MAX_ACCOUNTS` in `/opt/nothing-bot-server/apps/worker/.env` to change it.
 
 | RAM | Default limit with Gemma | Gemini-only |
 |---|---|---|
@@ -109,29 +109,34 @@ Add a second server and accounts spread across both, and move to the other if on
 
 ## Updating
 
-The server updates itself: the console checks every 30 minutes and installs a release a few minutes after it appears (switch off under **Updates**), or press **Update now** (or **Update** on the Server page of the app). A server installed before this release needs the install command run once more. Running it again always works: it pulls the latest code and restarts the worker. Your WhatsApp sessions, key and `.env` survive, because they live in `/var/lib/spot-solutions` and `/opt/spot-solutions/apps/worker/.env`. If you run several servers, stop any still on an older release first (see [multi-server.md](multi-server.md)).
+The server updates itself: the console checks every 30 minutes and installs a release a few minutes after it appears (switch off under **Updates**), or press **Update now** (or **Update** on the Server page of the app). A server installed before this release needs the install command run once more. Running it again always works: it pulls the latest code and restarts the worker. Your WhatsApp sessions, key and `.env` survive, because they live in `/var/lib/nothing-bot-server` and `/opt/nothing-bot-server/apps/worker/.env`. If you run several servers, stop any still on an older release first (see [multi-server.md](multi-server.md)).
 
 ## Moving the data to another disk
 
-In the console, **Storage**, type the new folder on the mounted disk (for example `/mnt/disk/SpotSolutions/data`; ext4, not NTFS or FAT), press **Check folder**, then **Move data**. The console runs as the unprivileged `spot` user, so it only asks systemd to start `spot-task@move-data`, which runs `/usr/local/lib/spot-solutions/move.mjs` as root. That helper is root-owned, validates the path again (absolute, no symlinks on the way, not inside the app folder, empty, writable, room for the data plus 1 GB) and copies without following symlinks. It then writes the choice to `/etc/spot-solutions/data-dir` (which the installer and `spot-task` read, so re-running the install command or updating keeps it), adds systemd drop-ins for `spot-console` and `spot-worker` (and `ollama` when the models move), restarts them and waits for WhatsApp. On any failure it puts everything back. **Delete the old copy** is a separate task and only removes the folder recorded by a verified move in `/etc/spot-solutions/move.json`. A server installed before this release needs the install command run once more to get the helper.
+In the console, **Storage**, type the new folder on the mounted disk (for example `/mnt/disk/NothingBotServer/data`; ext4, not NTFS or FAT), press **Check folder**, then **Move data**. The console runs as the unprivileged `spot` user, so it only asks systemd to start `nothing-bot-server-task@move-data`, which runs `/usr/local/lib/nothing-bot-server/move.mjs` as root. That helper is root-owned, validates the path again (absolute, no symlinks on the way, not inside the app folder, empty, writable, room for the data plus 1 GB) and copies without following symlinks. It then writes the choice to `/etc/nothing-bot-server/data-dir` (which the installer and `nbsctl` read, so re-running the install command or updating keeps it), adds systemd drop-ins for `nothing-bot-server-console` and `nothing-bot-server-worker` (and `ollama` when the models move), restarts them and waits for WhatsApp. On any failure it puts everything back. **Delete the old copy** is a separate task and only removes the folder recorded by a verified move in `/etc/nothing-bot-server/move.json`. A server installed before this release needs the install command run once more to get the helper.
 
 ## If something's off
 
 | Symptom | Fix |
 |---|---|
-| App says "Server offline" | `systemctl status spot-worker`; check the laptop is awake and online |
-| QR never appears | `journalctl -u spot-worker -n 100`; try `sudo systemctl restart spot-worker` |
+| App says "Server offline" | `systemctl status nothing-bot-server-worker`; check the laptop is awake and online |
+| QR never appears | `journalctl -u nothing-bot-server-worker -n 100`; try `sudo systemctl restart nothing-bot-server-worker` |
 | Very slow replies | Switch to `gemma3:1b` in Settings → AI models, or add a Gemini API key for fallback |
 | Laptop won't boot the stick | BIOS: USB first in boot order, Secure Boot off |
-| Console link lost | `sudo spot-console-url` |
+| Console link lost | `sudo nbs-console-url` |
 
 ## Uninstall
 
 ```bash
-sudo systemctl disable --now spot-worker spot-console
-sudo rm -rf /opt/spot-solutions /etc/systemd/system/spot-*.service /usr/local/sbin/spot-task /etc/sudoers.d/spot-console
-# also removes the WhatsApp link and key:
-sudo rm -rf /var/lib/spot-solutions
+curl -fsSL https://nothingbotcurating.web.app/uninstall.sh | sudo bash
 ```
+
+Removes the services, code, helper scripts, sudo rule and the `nbs` account, for this server **and** for the old "Spot Solutions" server (`spot-worker`, `/opt/spot-solutions`) if it is still there. It **keeps** your data (`/var/lib/nothing-bot-server`, and `/var/lib/spot-solutions` from the old server), a data folder you moved to another disk, and Ollama with its models, and prints what it kept. To delete the data too:
+
+```bash
+curl -fsSL https://nothingbotcurating.web.app/uninstall.sh | sudo bash -s -- --delete-data
+```
+
+(A data folder on another disk is never deleted by the script; delete it yourself.)
 
 On your phone, also remove the old entry under **WhatsApp → Linked devices**.

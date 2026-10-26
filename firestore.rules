@@ -44,7 +44,7 @@ service cloud.firestore {
       return isAdmin() || exists(/databases/$(database)/documents/publishers/$(request.auth.uid));
     }
 
-    // Worker machines' health. Visible to the admins that server lists in SPOT_ADMIN_EMAILS.
+    // Worker machines' health. Visible to the admins that server lists in NBS_ADMIN_EMAILS.
     function isServerAdmin(id) {
       return request.auth != null && email() != ""
         && email() in get(/databases/$(database)/documents/servers/$(id)).data.admins;
