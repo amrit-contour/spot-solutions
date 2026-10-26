@@ -8,7 +8,7 @@ import { auth } from "../lib/firebase";
 import { savedMode, setMode, type ThemeMode } from "../lib/theme";
 import { Menu } from "./Menu";
 import { Avatar, Segmented, cx } from "./ui";
-import { IconLightbulb, IconLogout, IconMoon, IconServer, IconSun } from "./icons";
+import { IconLightbulb, IconLogout, IconMoon, IconServer, IconSettings, IconSun } from "./icons";
 
 export function AccountMenu({ align = "right" }: { align?: "left" | "right" }) {
   const { user } = useApp();
@@ -52,6 +52,17 @@ export function AccountMenu({ align = "right" }: { align?: "left" | "right" }) {
               ]}
             />
           </div>
+          <button
+            role="menuitem"
+            onClick={() => {
+              close();
+              nav("/settings");
+            }}
+            className="state-layer flex w-full items-center gap-3 border-t border-outline-variant/60 px-4 py-3 text-left type-label-l sm:hidden"
+          >
+            <IconSettings className="icon size-5 text-primary" />
+            Settings
+          </button>
           {(admin || (servers && servers.length > 0)) && (
             <button
               role="menuitem"

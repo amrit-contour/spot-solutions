@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { deleteDoc, setDoc, writeBatch } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
@@ -14,8 +14,8 @@ import { StickyBar } from "../components/StickyBar";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Menu, MenuItem } from "../components/Menu";
 import { ImportContactsSheet, ImportFileSheet } from "../components/ImportSheets";
-import { Avatar, Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, cx } from "../components/ui";
-import { IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "../components/icons";
+import { Avatar, Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "../components/ui";
+import { IconChat, IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "../components/icons";
 
 const LIST_LABEL: Record<ComicList, string> = { host: "Host", ignored: "Ignored", banned: "Banned" };
 
@@ -144,8 +144,8 @@ export function Comics() {
           )}
           <motion.ul className="overflow-hidden rounded-xl bg-surface-low" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.02 } } }}>
             {list.map((c, i) => (
-              <motion.li key={c.id} variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }} className={cx(i > 0 && "border-t border-outline-variant/50")}>
-                <button onClick={() => (selecting ? toggle(c.id) : setEditing(c))} aria-pressed={selecting ? sel.has(c.id) : undefined} className={cx("state-layer flex w-full items-center gap-4 px-4 py-3 text-left sm:px-5", selecting && sel.has(c.id) && "bg-secondary-container/40")}>
+              <motion.li key={c.id} variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }} className={cx("flex items-center", i > 0 && "border-t border-outline-variant/50")}>
+                <button onClick={() => (selecting ? toggle(c.id) : setEditing(c))} aria-pressed={selecting ? sel.has(c.id) : undefined} className={cx("state-layer flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left sm:px-5", selecting && sel.has(c.id) && "bg-secondary-container/40")}>
                   {selecting && <input type="checkbox" tabIndex={-1} readOnly checked={sel.has(c.id)} className="pointer-events-none size-5 flex-none accent-[var(--md-sys-color-primary)]" aria-label={`Select ${c.name}`} />}
                   <Avatar name={c.name} size={40} tone={c.tier === "featured" ? "tertiary" : c.tier === "regular" ? "secondary" : "primary"} />
                   <span className="min-w-0 flex-1">
@@ -170,6 +170,11 @@ export function Comics() {
                   </span>
                   {!selecting && <IconPen className="icon size-5 text-on-surface-variant" />}
                 </button>
+                {!selecting && (
+                  <Link to={`/messages?c=${encodeURIComponent(c.id)}`} aria-label={`Chat with ${c.name}`} title={`Chat with ${c.name}`} className="state-layer pressable mr-2 grid size-10 flex-none place-items-center rounded-full text-primary sm:mr-3">
+                    <IconChat className="icon size-5" />
+                  </Link>
+                )}
               </motion.li>
             ))}
           </motion.ul>
@@ -248,7 +253,13 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
       title={isNew ? "Add comic" : d.name}
       footer={
         <>
-          {!isNew && <IconButton icon={IconTrash} label="Remove" onClick={remove} className="mr-auto text-error" />}
+          {!isNew && <IconButton icon={IconTrash} label="Remove" onClick={remove} className="text-error" />}
+          {!isNew && d.id && (
+            <Link to={`/messages?c=${encodeURIComponent(d.id)}`} onClick={onClose} className={buttonClass({ variant: "tonal", size: "md", className: "mr-auto" })}>
+              <IconChat className="icon size-5" /> Chat
+            </Link>
+          )}
+          {isNew && <span className="mr-auto" />}
           <Button variant="text" onClick={onClose}>Cancel</Button>
           <Button onClick={save}>Save</Button>
         </>

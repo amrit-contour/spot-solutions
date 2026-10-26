@@ -112,7 +112,8 @@ function ShellFrame({ children }: { children: ReactNode }) {
 
       {/* Bottom bar < 600px */}
       <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(5rem+env(safe-area-inset-bottom))] items-center bg-surface-container px-1 pb-[env(safe-area-inset-bottom)] sm:hidden">
-        {NAV.map((n) => (
+        {/* Settings lives in the account menu (top right) on phones, so the bar keeps six roomy items. */}
+        {NAV.filter((n) => n.to !== "/settings").map((n) => (
           <NavItem key={n.to} {...n} />
         ))}
       </nav>
