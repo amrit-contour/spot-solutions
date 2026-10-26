@@ -86,3 +86,43 @@ a pasted curator list per venue, and screenshots of the Bangalore Comics WhatsAp
   NBC wording. Files: Amrit's zip (four PNGs: nbc and "Nothing but comedy." on black and on white).
 - **Order** (my call): split first (shared UI package + comic app shell + the new sites), then the rooms page in the comic
   app. Building rooms inside the curator app and moving it later would be double work.
+
+## Data model (built)
+
+Code: `packages/shared/src/rooms.ts` (types, ask/limit/clash/curator/closure rules, `shareable`), `rosterMerge.ts` (`diffRosters`,
+`applyMerge`), `rosterIO.ts` (JSON and CSV), `fixtures/blrRooms.ts` (Amrit's Bangalore sheets as a test seed), tests in `rooms.test.ts`.
+Rules in `firestore.rules`. Dates are ISO strings in the comic's time zone; times are `HH:MM`.
+
+**Storage.** Per user: `rooms/{roomId}` with **shows embedded** (a room has a handful; one read, atomic edits, a published snapshot is
+the same shape; closures and per-day curator plans live in the show), `curators/{id}`, `asks`, `mySpots`, `spotAlerts` (the worker writes,
+the comic clears), `watchedGroups`, `rosterFollows/{rosterId}` (last version seen, for "update available"). All owner-only. Top level:
+`publishedRosters/{id}` (rooms + curators embedded, `version`, `ownerUid`, `coMaintainers[]`) with a `suggestions` subcollection, and
+`publishers/{uid}`. Published data is readable by signed-in, approved (or admin), non-anonymous users only; the owner and co-maintainers
+write it (only the owner changes `coMaintainers`); only a publisher or the admin can create one; anyone allowed can add a pending
+suggestion; maintainers approve or reject; `publishers` is writable by admins only. A very large roster would hit the 1 MiB doc limit
+(Bangalore is about 100 KB); split by city then.
+
+**Shapes.**
+- *Room*: id (slug of name + area), name, `brand` (shared by locations of a chain: Comedy Theatre, Glen's, Bloom, GoStops are separate rooms), area, city, `pin`, aliases, tags
+  (suggested set + custom), `notes[]` (instagram / website / walk_in / check_bms / fcfs / other: never actions), `limits[]`, shows. Private: `myNotes`, `pausedUntil`.
+- *Show*: name, type (mic/show/both), cadence (daily/weekly/monthly, `monthlyWeeks` 1..5 or -1 for last), default `times`, `askRule`, tags, and
+  `days[]`: weekday, optional `times` and `askRule` overrides, `curatorIds` (first = who to ask, rest = co-curators), `theyReachOut`, `note`. Private: `myRole`, `closures[]`, `pausedUntil`, `myNotes`, `standIn` (on a day).
+- *AskRule*: same_day / day_before (+`morning`), weekday X, start_of_week (`day`, Sunday = the Sunday before the week), start_of_month, they_reach_out; fcfs / walk_in / website / instagram are notes (no ping date).
+- *Limit*: scope room or show, per day / week / month, or `unlimited`. *Curator*: name, phone, instagram (private: notes, comicId).
+- *Ask* (planned / sent / got_it / declined / no_reply / expired, with `evidence`), *MySpot* (source ask / adhoc / group_offer / regular, happened, status, notes, reserved `audio`), *SpotAlert*, *WatchedGroup*.
+- *PublishedRoster*, *RosterSuggestion* (target room/show/field, before/after), *Publisher*.
+
+**Rules.** `nextAskWindow(rule, showDate, now, tz)` gives the ping date, a label ("Ping Monday morning") and whether the window is
+upcoming / open / passed (open until the show is over, so a missed ping is "overdue"); `asksOpen` is the morning list (skips full, paused,
+note-only, they-reach-out and already-asked dates; flags `blocked`). `limitsBlock` enforces only set limits; ad hoc and group-offer
+spots are never blocked **and do not count** toward limits. `clashes` is the only spot-alert filter (default buffer 90 minutes between
+starts, across midnight; spots without a time never clash); an alert clashes only if every time it offers does. `curatorFor`, `isFull`, `isPaused`.
+`shareable*` is a whitelist (never a blacklist) so a new private field can't leak. Limits themselves are shared (they are rules); usage, closures and stand-ins are not.
+
+**Merge with review.** Rooms/shows/curators match by id, then by name (+ area), so independently made rosters line up. `diffRosters`
+returns changes with stable ids (`room:<key>`, `show:<room>/<show>#<field>`, `…#days.<weekday>`, `curator:<name>#phone`); `applyMerge(mine,
+published, pickedIds)` takes only those, adds missing curators, and never touches my private fields. Picking everything is "replace all". A published curator with no number never wipes mine.
+
+**Files.** `toRosterJson` / `fromRosterJson` (`format: "nbc-roster"`, `version: 1`; a newer version is refused; `full: true` is a private backup).
+CSV is one row per show-day (`CSV_COLUMNS`); room and show columns repeat; notes and limits are JSON cells; headers match by name, so a hand-made sheet works.
+Curators that no day uses are not in a CSV.

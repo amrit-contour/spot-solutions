@@ -22,3 +22,6 @@ export * from "./threads.ts";
 export * from "./groupPosts.ts";
 export * from "./groupCleanup.ts";
 export * from "./adhoc.ts";
+export * from "./rooms.ts";
+export * from "./rosterMerge.ts";
+export * from "./rosterIO.ts";

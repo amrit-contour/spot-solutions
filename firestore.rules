@@ -29,6 +29,21 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'decidedBy']);
     }
 
+    // Signed-in, approved (or admin) and not an anonymous demo visitor: who may see published rosters, their curators' numbers and
+    // suggestions. Nothing about rosters is public on the web (docs/plans/comic-app.md).
+    function isAllowedUser() {
+      return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && (isAdmin() || isApproved(request.auth.uid));
+    }
+    function rosterData(id) { return get(/databases/$(database)/documents/publishedRosters/$(id)).data; }
+    function isMaintainer(id) {
+      return request.auth != null
+        && (rosterData(id).ownerUid == request.auth.uid || request.auth.uid in rosterData(id).coMaintainers);
+    }
+    function canPublish() {
+      return isAdmin() || exists(/databases/$(database)/documents/publishers/$(request.auth.uid));
+    }
+
     // Worker machines' health. Visible to the admins that server lists in SPOT_ADMIN_EMAILS.
     function isServerAdmin(id) {
       return request.auth != null && email() != ""
@@ -80,6 +95,47 @@ service cloud.firestore {
     match /deviceLinks/{hash} { allow read, write: if false; }
     // Comic edits waiting to be saved to Google Contacts (functions/src/googleContacts.ts). Functions only.
     match /googleSyncQueue/{uid} { allow read, write: if false; }
+
+    // Published rosters (rooms only, shareable fields only). Readable by signed-in allowed users; written by the owner and
+    // co-maintainers; only a publisher (or the admin) can create one. Only the owner changes who owns / co-maintains it.
+    match /publishedRosters/{id} {
+      allow read: if isAllowedUser();
+      allow create: if isAllowedUser() && canPublish()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.coMaintainers is list
+        && request.resource.data.version is int
+        && request.resource.data.rooms is list;
+      allow update: if isAllowedUser() && isMaintainer(id)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.version is int && request.resource.data.version >= resource.data.version
+        && (resource.data.ownerUid == request.auth.uid
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['coMaintainers']));
+      allow delete: if isOwner(resource.data.ownerUid);
+
+      // Suggestions: anyone allowed can make one (as themselves, pending); the proposer and the maintainers read them;
+      // maintainers approve or reject; the proposer can withdraw a pending one.
+      match /suggestions/{sid} {
+        allow read: if isAllowedUser() && (resource.data.byUid == request.auth.uid || isMaintainer(id));
+        allow create: if isAllowedUser()
+          && request.resource.data.byUid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.keys().hasOnly(['byUid', 'byName', 'target', 'kind', 'before', 'after', 'note', 'baseVersion', 'status', 'createdAt'])
+          && request.resource.data.target is map
+          && request.resource.data.kind in ['add', 'change', 'remove'];
+        allow update: if isAllowedUser() && isMaintainer(id)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedBy', 'decidedAt'])
+          && request.resource.data.status in ['approved', 'rejected'];
+        allow delete: if isAllowedUser() && ((resource.data.byUid == request.auth.uid && resource.data.status == 'pending') || isMaintainer(id));
+      }
+    }
+
+    // Who may publish: edited by admins only, readable by allowed users (the app shows who publishes).
+    match /publishers/{uid} {
+      allow read: if isAllowedUser();
+      allow create, update: if isAdmin() && request.resource.data.uid == uid
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'name', 'addedBy', 'addedAt']);
+      allow delete: if isAdmin();
+    }
 
     // The demo account is a read-only template: demo visitors copy it into their own sandbox.
     // Only the user doc and the collections the clone copies (apps/web/src/lib/demo.ts COLLECTIONS). Never
@@ -162,6 +218,9 @@ service cloud.firestore {
 
       match /{coll}/{id} {
         allow read, write: if isOwner(uid) && coll in ['venues', 'shows', 'comics', 'requests', 'lineups', 'actions', 'notices'];
+        // Nothing BOT Comedy (the comic's own data, owner only; shows are embedded in the room doc): rooms, curators, asks,
+        // mySpots, spotAlerts (the worker writes new ones; the comic clears them), watchedGroups, rosterFollows.
+        allow read, write: if isOwner(uid) && coll in ['rooms', 'curators', 'asks', 'mySpots', 'spotAlerts', 'watchedGroups', 'rosterFollows'];
       }
     }
   }
