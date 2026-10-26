@@ -40,6 +40,7 @@ async function ensureComic(uid: string, week: string, comicId: string, fallback?
   const req = (await getDoc(userDoc(uid, "requests", `${week}_${comicId}`))).data() as SpotRequest | undefined;
   if (!req) {
     if (!fallback) return;
+    // @lid members have no number WhatsApp will share; they're still messaged through that id.
     const phone = comicId.endsWith("@c.us") ? comicId.split("@")[0] : "";
     const c: Comic = { id: comicId, chatId: comicId, name: fallback.name || (phone ? `+${phone}` : "Group member"), nameSource: "whatsapp", phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
     await setDoc(ref, c, { merge: true });
@@ -134,15 +135,18 @@ export async function markCanned(uid: string, lineup: Lineup, show: Show, comics
 export async function seedDefaults(uid: string, week: string, show: Show, people: { id: string; name: string }[]) {
   if (!people.length) return 0;
   const ref = lineupRef(uid, week, show.id);
-  const picked = people.slice(0, show.slotCount);
-  const created = await runTransaction(db, async (tx) => {
-    if ((await tx.get(ref)).exists()) return false;
-    tx.set(ref, { ...blank(week, show), defaultsSeeded: true, slots: picked.map((p) => ({ comicId: p.id, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null })) });
-    return true;
+  const slotOf = (id: string) => ({ comicId: id, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null });
+  const added = await runTransaction(db, async (tx) => {
+    const cur = (await tx.get(ref)).data() as Lineup | undefined;
+    // Once per lineup. A lineup started before this existed gets the missing ones added (never removes anyone).
+    if (cur && (cur.defaultsSeeded || cur.status !== "draft")) return [];
+    const have = new Set((cur?.slots ?? []).map((s) => s.comicId));
+    const pick = people.filter((p) => !have.has(p.id)).slice(0, Math.max(0, show.slotCount - have.size));
+    tx.set(ref, { ...(cur ?? blank(week, show)), defaultsSeeded: true, slots: [...(cur?.slots ?? []), ...pick.map((p) => slotOf(p.id))] });
+    return pick;
   });
-  if (!created) return 0;
-  await Promise.all(picked.map((p) => ensureComic(uid, week, p.id, { name: p.name })));
-  return picked.length;
+  await Promise.all(added.map((p) => ensureComic(uid, week, p.id, { name: p.name })));
+  return added.length;
 }
 
 /**
@@ -159,12 +163,13 @@ export async function placeAsTold(uid: string, week: string, show: Show, comicId
   await ensureComic(uid, week, comicId, { name });
   const ref = lineupRef(uid, week, show.id);
   const outcome = await runTransaction(db, async (tx) => {
+    // Firestore transactions: every read before any write.
+    const comicRef = userDoc(uid, "comics", comicId);
     const cur = (await tx.get(ref)).data() as Lineup | undefined;
+    const comic = (await tx.get(comicRef)).data() as Comic | undefined;
     const plan = planReconcilePlace({ lineup: cur ?? null, show, comicId, markTold: true, now: Date.now() });
     if (plan.outcome === "full" || plan.outcome === "called_off") return plan.outcome;
     tx.set(ref, { ...(cur ?? blank(week, show)), slots: plan.slots, ...(plan.sent ? { sent: plan.sent } : {}) });
-    const comicRef = userDoc(uid, "comics", comicId);
-    const comic = (await tx.get(comicRef)).data() as Comic | undefined;
     tx.set(comicRef, { lastPerformedWeek: week, history: withHistory(comic?.history, { date: dateInWeek(week, show.weekday), showId: show.id, showName: show.name, status: "confirmed" }) }, { merge: true });
     return plan.outcome;
   });

@@ -426,11 +426,11 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
   // A week's lineup starts with the show's regulars, co-hosts and group admins (not you). Once; removals stick.
   const seeded = useRef(false);
   useEffect(() => {
-    if (seeded.current || !lineupsLoaded || lineup || past || week < currentWeek) return;
+    if (seeded.current || !lineupsLoaded || lineup?.defaultsSeeded || (lineup && lineup.status !== "draft") || past || week < currentWeek) return;
     const me = session?.phone ? `${session.phone}@c.us` : null;
     const members = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.members : [];
     const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
-    const ids = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])].filter((id) => id !== me && !id.endsWith("@lid"));
+    const ids = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])].filter((id) => id !== me);
     if (!ids.length) return;
     seeded.current = true;
     void seedDefaults(uid, week, show, ids.map((id) => ({ id, name: nameOf(id) })))
