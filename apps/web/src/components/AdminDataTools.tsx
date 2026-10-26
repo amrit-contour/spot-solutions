@@ -5,10 +5,10 @@ import { toast } from "sonner";
 import { SCOPE_LABEL, type AccessEntry, type AdminDataPayload, type AdminDataResult, type DataScope, type ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { pickServer, runAdminData } from "../lib/adminData";
-import { ConfirmDialog } from "./ConfirmDialog";
-import { Button, Field, Select } from "./ui";
-import { Collapsible } from "./Collapsible";
-import { IconTrash } from "./icons";
+import { ConfirmDialog } from "@spot/ui";
+import { Button, Field, Select } from "@spot/ui";
+import { Collapsible } from "@spot/ui";
+import { IconTrash } from "@spot/ui";
 
 type Servers = ServerStatus[] | null;
 type Type = "delete_user_data" | "remove_user" | "wipe_demo";

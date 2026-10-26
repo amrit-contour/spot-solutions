@@ -1,7 +1,7 @@
 // Admin data tools: write a command to servers/{id}/commands and wait for the worker's result.
 import { addDoc, collection, onSnapshot } from "firebase/firestore";
 import { TTL_DAYS, type AdminDataPayload, type AdminDataResult, type ServerCommand, type ServerStatus } from "@spot/shared";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 import { expireAt } from "./data";
 
 const ONLINE_MS = 90_000;

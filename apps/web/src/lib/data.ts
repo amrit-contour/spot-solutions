@@ -10,7 +10,7 @@ import {
   type QueryConstraint,
 } from "firebase/firestore";
 import { TTL_DAYS, ttlMs, type Command, type CommandType } from "@spot/shared";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 import { isDemoUser } from "./demo";
 
 /** Firestore TTL field: a Timestamp (not a number), `days` from now. See deploy/setup-cost-controls.sh. */
@@ -97,12 +97,3 @@ export function timeAgo(ms: number, now = Date.now()) {
   const d = Math.round(h / 24);
   return d === 1 ? "yesterday" : `${d}d ago`;
 }
-
-export const initials = (name: string) =>
-  name
-    .replace(/[^\p{L}\p{N} ]/gu, "")
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join("") || "?";

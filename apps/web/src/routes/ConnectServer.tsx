@@ -6,12 +6,12 @@ import { Link } from "react-router-dom";
 import { signInWithPopup, signOut, type User } from "firebase/auth";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { auth, google } from "../lib/firebase";
+import { auth, google } from "@spot/ui/firebase";
 import { useNow } from "../lib/data";
 import { approveDeviceLink, getDeviceLink, joinError, type DeviceLink } from "../lib/joinServer";
-import { Logo } from "../components/Logo";
-import { Button, Card, Chip, Spinner, buttonClass } from "../components/ui";
-import { IconCheck, IconLogout, IconServer, IconShield } from "../components/icons";
+import { Logo } from "@spot/ui";
+import { Button, Card, Chip, Spinner, buttonClass } from "@spot/ui";
+import { IconCheck, IconLogout, IconServer, IconShield } from "@spot/ui";
 
 const fmtLeft = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`;
 

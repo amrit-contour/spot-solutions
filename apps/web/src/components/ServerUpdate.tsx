@@ -6,11 +6,11 @@ import { addDoc, collection, onSnapshot } from "firebase/firestore";
 import { toast } from "sonner";
 import { TTL_DAYS, type ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { db } from "../lib/firebase";
+import { db } from "@spot/ui/firebase";
 import { expireAt } from "../lib/data";
 import { isReleaseVersion, shortVersion, useLatestRelease } from "../lib/release";
-import { Chip, CompactButton, Spinner } from "./ui";
-import { IconCheck, IconRefresh, IconWarn } from "./icons";
+import { Chip, CompactButton, Spinner } from "@spot/ui";
+import { IconCheck, IconRefresh, IconWarn } from "@spot/ui";
 
 const STALE_MS = 30 * 60_000;
 

@@ -5,7 +5,7 @@ import { SCAN_DAYS_MAX, SCAN_DAYS_MIN, TTL_DAYS, clampScanDays, type Command } f
 import { useApp } from "../lib/app";
 import { expireAt, runCommand, userCol, userDoc } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
-import { Button, Segmented, Sheet } from "./ui";
+import { Button, Segmented, Sheet } from "@spot/ui";
 
 interface ScanResult {
   chatsScanned: number;

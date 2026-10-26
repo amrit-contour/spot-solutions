@@ -2,8 +2,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { toast } from "sonner";
-import { Segmented, cx } from "../components/ui";
-import { IconCheck, IconCpu, IconServer, IconShield, IconWarn } from "../components/icons";
+import { Segmented, cx } from "@spot/ui";
+import { IconCheck, IconCpu, IconServer, IconShield, IconWarn } from "@spot/ui";
 
 type Platform = "mac" | "windows" | "linux";
 const PLATFORMS: { value: Platform; label: string }[] = [

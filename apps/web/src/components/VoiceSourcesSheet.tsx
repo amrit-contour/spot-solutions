@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import { toggleVoiceChats, type VoiceSourceChat, type VoiceSourceItem } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo } from "../lib/data";
-import { Avatar, Button, Segmented, Sheet, Spinner, cx } from "./ui";
-import { IconCheck, IconSearch } from "./icons";
+import { Avatar, Button, Segmented, Sheet, Spinner, cx } from "@spot/ui";
+import { IconCheck, IconSearch } from "@spot/ui";
 
 export function VoiceSourcesSheet({ open, onClose, value, onSave }: { open: boolean; onClose: () => void; value: VoiceSourceChat[]; onSave: (chats: VoiceSourceChat[]) => void | Promise<void> }) {
   const { uid } = useApp();

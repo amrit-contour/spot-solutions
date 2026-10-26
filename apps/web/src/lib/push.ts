@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { deleteDoc, doc, setDoc } from "firebase/firestore";
 import { getApp } from "firebase/app";
 import { toast } from "sonner";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 import { isDemoUser } from "./demo";
 import { isIOS, isStandalone } from "./install";
 

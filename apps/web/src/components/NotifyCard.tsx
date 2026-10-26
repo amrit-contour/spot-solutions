@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { disablePush, enablePush, usePushState } from "../lib/push";
-import { IconPhone } from "./icons";
-import { Switch } from "./ui";
+import { IconPhone } from "@spot/ui";
+import { Switch } from "@spot/ui";
 
 export function NotifyCard() {
   const { uid } = useApp();

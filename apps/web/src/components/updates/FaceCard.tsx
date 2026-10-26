@@ -7,10 +7,10 @@ import { pollProblem, type ComicAction, type RichMessage } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction, dismissNotice, type Introduction } from "../../lib/updates";
-import { Avatar, Bubble, Button, Chip, buttonClass } from "../ui";
-import { MessageComposer } from "../rich/MessageComposer";
+import { Avatar, Bubble, Button, Chip, buttonClass } from "@spot/ui";
+import { MessageComposer } from "@spot/ui";
 import { SnippetMenu } from "../SnippetMenu";
-import { IconChatCheck, IconSkip, IconUserCheck, IconUserPlus } from "../icons";
+import { IconChatCheck, IconSkip, IconUserCheck, IconUserPlus } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
 export function OnboardCard({ a }: { a: ComicAction }) {

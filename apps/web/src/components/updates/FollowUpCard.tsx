@@ -7,8 +7,8 @@ import type { ComicAction, SpotRequest } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand, timeAgo, useDocument, userDoc } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
-import { Avatar, Bubble, Button, Chip } from "../ui";
-import { IconChat, IconCheck, IconGroup, IconSkip, IconUserCheck, IconUserMinus } from "../icons";
+import { Avatar, Bubble, Button, Chip } from "@spot/ui";
+import { IconChat, IconCheck, IconGroup, IconSkip, IconUserCheck, IconUserMinus } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
 export function FollowUpCard({ a }: { a: ComicAction }) {

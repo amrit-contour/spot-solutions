@@ -16,11 +16,11 @@ import {
   type Show,
   type Venue,
 } from "@spot/shared";
-import { auth, db } from "./firebase";
+import { auth, db } from "@spot/ui/firebase";
 import { useCollection, useDocument, useNow } from "./data";
 import { cloneDemo, needsDemoClone } from "./demo";
 import { useForegroundPush } from "./push";
-import { setBrand } from "./theme";
+import { setBrand } from "@spot/ui";
 
 interface UserDoc {
   settings?: Partial<Settings>;

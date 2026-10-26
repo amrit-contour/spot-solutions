@@ -14,10 +14,18 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
-import { initials } from "../lib/data";
 import { IconClose } from "./icons";
 
 export type Icon = ComponentType<SVGProps<SVGSVGElement>>;
+
+export const initials = (name: string) =>
+  name
+    .replace(/[^\p{L}\p{N} ]/gu, "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join("") || "?";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 

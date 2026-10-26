@@ -6,8 +6,8 @@ import { isDemoUser } from "../lib/demo";
 import { connectGoogleContacts, googleTokenExpiry, hasGoogleToken, onGoogleToken } from "../lib/googleContacts";
 import { callableMessage, disconnectGoogleServer, keepGoogleConnected, useServerLink, wasCancelled } from "../lib/googleServer";
 import { useGoogleSync } from "./GoogleContactsSync";
-import { IconUserCheck } from "./icons";
-import { Button, Switch, cx } from "./ui";
+import { IconUserCheck } from "@spot/ui";
+import { Button, Switch, cx } from "@spot/ui";
 
 export function GoogleContactsCard() {
   const { settings, saveSettings, comics, comicsLoaded } = useApp();

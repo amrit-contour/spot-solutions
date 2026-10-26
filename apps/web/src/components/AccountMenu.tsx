@@ -1,107 +1,48 @@
-import { useState } from "react";
 import { signOut } from "firebase/auth";
-import { useNavigate } from "react-router-dom";
+import { AccountMenu as BaseAccountMenu, AccountMenuItem, IconLightbulb, IconServer, cx } from "@spot/ui";
+import { auth } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
 import { useServers } from "../routes/Server";
 import { isAdmin, useAccessConfig } from "../lib/access";
-import { auth } from "../lib/firebase";
-import { savedMode, setMode, type ThemeMode } from "../lib/theme";
-import { Menu } from "./Menu";
-import { Avatar, Segmented, cx } from "./ui";
-import { IconLightbulb, IconLogout, IconMoon, IconServer, IconSettings, IconSun } from "./icons";
 
+/** The shared account menu plus the curator-only rows: Server and the admin Server guide. */
 export function AccountMenu({ align = "right" }: { align?: "left" | "right" }) {
   const { user } = useApp();
-  const [mode, setModeState] = useState<ThemeMode>(savedMode());
-  const name = user.displayName ?? user.email ?? "You";
   const servers = useServers();
-  const nav = useNavigate();
   const anyDown = servers?.some((s) => Date.now() - s.lastSeen > 90_000);
   const admin = isAdmin(useAccessConfig(), user.email);
   return (
-    <Menu
+    <BaseAccountMenu
+      user={user}
       align={align}
-      trigger={(toggle, open) => (
-        <button onClick={toggle} aria-label="Account" aria-expanded={open} className={cx("state-layer pressable rounded-full p-0.5", open && "ring-2 ring-primary")}>
-          {user.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
-        </button>
-      )}
-    >
-      {(close) => (
-        <div className="w-72">
-          <div className="flex items-center gap-3 px-4 pt-2 pb-3">
-            {user.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
-            <div className="min-w-0">
-              <div className="truncate type-title-s">{name}</div>
-              {user.email && <div className="truncate type-body-s text-on-surface-variant">{user.email}</div>}
-            </div>
-          </div>
-          <div className="border-t border-outline-variant/60 px-4 py-3">
-            <div className="mb-2 type-label-m text-on-surface-variant">Theme</div>
-            <Segmented
-              size="sm"
-              value={mode}
-              onChange={(m) => {
-                setMode(m);
-                setModeState(m);
-              }}
-              options={[
-                { value: "system", label: "Auto" },
-                { value: "light", label: "Light", icon: IconSun },
-                { value: "dark", label: "Dark", icon: IconMoon },
-              ]}
-            />
-          </div>
-          <button
-            role="menuitem"
-            onClick={() => {
-              close();
-              nav("/settings");
-            }}
-            className="state-layer flex w-full items-center gap-3 border-t border-outline-variant/60 px-4 py-3 text-left type-label-l sm:hidden"
-          >
-            <IconSettings className="icon size-5 text-primary" />
-            Settings
-          </button>
+      onSignOut={() => void signOut(auth)}
+      extra={(close, nav) => (
+        <>
           {(admin || (servers && servers.length > 0)) && (
-            <button
-              role="menuitem"
+            <AccountMenuItem
+              icon={IconServer}
               onClick={() => {
                 close();
                 nav("/server");
               }}
-              className="state-layer flex w-full items-center gap-3 border-t border-outline-variant/60 px-4 py-3 text-left type-label-l"
             >
-              <IconServer className="icon size-5 text-primary" />
               <span className="flex-1">Server</span>
               {servers && servers.length > 0 && <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : "bg-ok")} />}
-            </button>
+            </AccountMenuItem>
           )}
           {admin && (
-            <button
-              role="menuitem"
+            <AccountMenuItem
+              icon={IconLightbulb}
               onClick={() => {
                 close();
                 nav("/help");
               }}
-              className="state-layer flex w-full items-center gap-3 border-t border-outline-variant/60 px-4 py-3 text-left type-label-l"
             >
-              <IconLightbulb className="icon size-5 text-primary" />
               Server guide
-            </button>
+            </AccountMenuItem>
           )}
-          <button
-            role="menuitem"
-            onClick={() => {
-              close();
-              void signOut(auth);
-            }}
-            className="state-layer flex w-full items-center gap-3 border-t border-outline-variant/60 px-4 py-3 text-left type-label-l text-error"
-          >
-            <IconLogout className="icon size-5" /> Sign out
-          </button>
-        </div>
+        </>
       )}
-    </Menu>
+    />
   );
 }

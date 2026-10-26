@@ -5,20 +5,20 @@ import { Link } from "react-router-dom";
 import { motion } from "motion/react";
 import { TTL_DAYS, type ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { db } from "../lib/firebase";
+import { db } from "@spot/ui/firebase";
 import { expireAt, timeAgo, useNow } from "../lib/data";
-import { PageHeader } from "../components/Shell";
+import { PageHeader } from "@spot/ui";
 import { Curators } from "../components/Curators";
 import { FleetView } from "../components/FleetView";
-import { Collapsible } from "../components/Collapsible";
+import { Collapsible } from "@spot/ui";
 import { AddServerCard } from "../components/AddServerCard";
-import { Menu, MenuItem } from "../components/Menu";
+import { Menu, MenuItem } from "@spot/ui";
 import { RemoveServerButton } from "../components/RemoveServerButton";
 import { ServerUpdate } from "../components/ServerUpdate";
 import { WipeDemoCard } from "../components/AdminDataTools";
 import { isAdmin, useAccessConfig } from "../lib/access";
-import { Avatar, Card, Chip, CompactButton, Empty, cx } from "../components/ui";
-import { IconComics, IconCpu, IconLightbulb, IconRefresh, IconServer } from "../components/icons";
+import { Avatar, Card, Chip, CompactButton, Empty, cx } from "@spot/ui";
+import { IconComics, IconCpu, IconLightbulb, IconRefresh, IconServer } from "@spot/ui";
 
 const ONLINE_MS = 90_000;
 

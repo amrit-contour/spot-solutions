@@ -6,12 +6,12 @@ import { formatTime, groupModeOf, groupPanel, type GroupRow, type GroupTag, type
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useNow } from "../lib/data";
 import { setGroupLeaving, tagMember, untagMember, withSelf } from "../lib/lineup";
-import { Menu, MenuItem } from "./Menu";
-import { ConfirmDialog } from "./ConfirmDialog";
-import { Popover, ToolButton } from "./Popover";
+import { Menu, MenuItem } from "@spot/ui";
+import { ConfirmDialog } from "@spot/ui";
+import { Popover, ToolButton } from "@spot/ui";
 import { Pill, PillRow, type PillSpec } from "./Pills";
-import { Avatar, Button, IconButton, Select, Spinner, TextInput, cx } from "./ui";
-import { IconAdd, IconCrown, IconGroup, IconMenuDots, IconMic, IconRefresh, IconSearch, IconShield, IconStar, IconUserMinus } from "./icons";
+import { Avatar, Button, IconButton, Select, Spinner, TextInput, cx } from "@spot/ui";
+import { IconAdd, IconCrown, IconGroup, IconMenuDots, IconMic, IconRefresh, IconSearch, IconShield, IconStar, IconUserMinus } from "@spot/ui";
 
 /** Who they are to this show, and what the next sync does with them. */
 const TAGS: Record<GroupTag, Omit<PillSpec, "key">> = {

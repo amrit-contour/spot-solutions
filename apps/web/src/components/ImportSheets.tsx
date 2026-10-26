@@ -7,9 +7,9 @@ import { isDemoUser } from "../lib/demo";
 import { runCommand, userDoc } from "../lib/data";
 import { importPeople, rosterLookup } from "../lib/people";
 import { useGoogleSync } from "./GoogleContactsSync";
-import { Avatar, Button, Chip, Empty, Spinner, cx } from "./ui";
-import { Sheet } from "./ui";
-import { IconCheck, IconPhone, IconSearch, IconUserPlus, IconWarn } from "./icons";
+import { Avatar, Button, Chip, Empty, Spinner, cx } from "@spot/ui";
+import { Sheet } from "@spot/ui";
+import { IconCheck, IconPhone, IconSearch, IconUserPlus, IconWarn } from "@spot/ui";
 
 interface Row {
   key: string;

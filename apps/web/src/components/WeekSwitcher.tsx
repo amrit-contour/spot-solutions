@@ -1,7 +1,7 @@
 import { formatDate, shiftWeek, dateInWeek } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { IconArrowLeft, IconArrowRight } from "./icons";
-import { IconButton, cx } from "./ui";
+import { IconArrowLeft, IconArrowRight } from "@spot/ui";
+import { IconButton, cx } from "@spot/ui";
 
 export function WeekSwitcher() {
   const { week, setWeek, currentWeek } = useApp();

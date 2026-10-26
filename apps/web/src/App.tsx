@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppProvider, useAuthUser } from "./lib/app";
 import { Shell } from "./components/Shell";
-import { Spinner } from "./components/ui";
+import { Spinner } from "@spot/ui";
 import { Landing } from "./routes/Landing";
 import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/standalone";

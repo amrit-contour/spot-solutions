@@ -3,7 +3,7 @@
 import { signInAnonymously } from "firebase/auth";
 import { collection, doc, getDocFromServer, getDocsFromServer, writeBatch } from "firebase/firestore";
 import { DEFAULT_SETTINGS, rolloverDayFor, shiftDemoData, weekOf, type DemoData, type Show } from "@spot/shared";
-import { auth, db } from "./firebase";
+import { auth, db } from "@spot/ui/firebase";
 
 export const DEMO_SOURCE = "demo-curator";
 const COLLECTIONS = ["venues", "shows", "comics", "requests", "lineups", "actions", "notices"] as const;

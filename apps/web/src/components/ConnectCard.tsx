@@ -4,8 +4,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
-import { Button, cx } from "./ui";
-import { IconCheck, IconLogout, IconPhone, IconQr, IconServer, IconWarn } from "./icons";
+import { Button, cx } from "@spot/ui";
+import { IconCheck, IconLogout, IconPhone, IconQr, IconServer, IconWarn } from "@spot/ui";
 
 const QR_SIZE = 216;
 

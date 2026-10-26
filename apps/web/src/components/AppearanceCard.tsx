@@ -2,10 +2,10 @@
 import { toast } from "sonner";
 import { motion } from "motion/react";
 import { useApp } from "../lib/app";
-import { NBC_GREEN, useBrand, type Brand } from "../lib/theme";
-import { Logo } from "./Logo";
-import { IconCheck, IconPalette } from "./icons";
-import { cx } from "./ui";
+import { NBC_GREEN, useBrand, type Brand } from "@spot/ui";
+import { Logo } from "@spot/ui";
+import { IconCheck, IconPalette } from "@spot/ui";
+import { cx } from "@spot/ui";
 
 // Each option previews itself in its own fixed colours (light face), whatever brand is active now.
 const OPTIONS: { id: Brand; name: string; note: string; bg: string; fg: string; swatches: string[] }[] = [

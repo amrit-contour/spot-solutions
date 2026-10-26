@@ -2,7 +2,7 @@
 // and each show as a tinted block sitting at its start time. Days without shows stay in the grid, just empty.
 import { DAY_SHORT, formatTime } from "@spot/shared";
 import { dayNum, fmtDayLong, fmtHour, weekDates, weekdayOf } from "../../lib/calendarDates";
-import { cx } from "../ui";
+import { cx } from "@spot/ui";
 import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal, type CalEvent } from "./shared";
 
 const HOUR = 72; // px per hour

@@ -25,8 +25,8 @@ import { SendUpdatesSheet } from "../SendUpdatesSheet";
 import { OfferSheet } from "../OfferSheet";
 import { GroupSyncSheet } from "../GroupSyncSheet";
 import { PillRow, comicPills, type TellState } from "../Pills";
-import { Avatar, Button, Chip, buttonClass, cx } from "../ui";
-import { IconArrowRight, IconCheck, IconClock, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "../icons";
+import { Avatar, Button, Chip, buttonClass, cx } from "@spot/ui";
+import { IconArrowRight, IconCheck, IconClock, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "@spot/ui";
 import { laneOf } from "../../routes/Requests";
 
 const first = (name: string) => name.split(" ")[0];

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { LEASE_EXPIRE_MS, SERVER_ONLINE_MS, type FleetPrefs, type Lease, type FleetServerSummary, type VaultMeta } from "@spot/shared";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 import { runCommand, useDocument } from "./data";
 import { isDemoUser } from "./demo";
 

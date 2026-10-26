@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import { DAY_NAMES, confirmSkipReason, dateInWeek, formatDate, formatTime, greetName, renderTemplate, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
-import { Bubble, Button, Empty, Sheet } from "./ui";
-import { IconChatCross, IconMic, IconSend } from "./icons";
+import { Bubble, Button, Empty, Sheet } from "@spot/ui";
+import { IconChatCross, IconMic, IconSend } from "@spot/ui";
 
 /** Preview and send a show's confirmations. Shared by the Lineup board and the Calendar dashboard. */
 export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regretsAfter }: { open: boolean; onClose: () => void; onSending: () => void; show: Show; ids: string[]; lineup?: Lineup; regretsAfter: number }) {

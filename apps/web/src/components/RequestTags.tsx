@@ -1,8 +1,8 @@
 // Pills on a request card: what the app knows (solid) and what Gemma read from the message (dashed).
 import { motion } from "motion/react";
 import { INTENT_TAG_LABEL, type FactTagId, type IntentTag, type Comic, type SpotRequest, type Show, factTags } from "@spot/shared";
-import { Chip } from "./ui";
-import { IconCrown, IconFlag, IconGroup, IconHistory, IconLightbulb, IconMap, IconMic, IconRepeat, IconStopwatch, IconSuitcase, IconUserPlus, IconCalendar, IconClock } from "./icons";
+import { Chip } from "@spot/ui";
+import { IconCrown, IconFlag, IconGroup, IconHistory, IconLightbulb, IconMap, IconMic, IconRepeat, IconStopwatch, IconSuitcase, IconUserPlus, IconCalendar, IconClock } from "@spot/ui";
 
 type Icon = typeof IconMic;
 

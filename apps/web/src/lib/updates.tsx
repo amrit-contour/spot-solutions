@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { localNow, type AppNotice, type ComicAction, type Lineup, type SpotOffer } from "@spot/shared";
 import { useApp } from "./app";
 import { useCollection, userDoc } from "./data";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 
 export interface Introduction {
   notice: AppNotice;

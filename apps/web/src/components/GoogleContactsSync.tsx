@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import type { Comic, ContactPlan } from "@spot/shared";
 import { connectGoogleContacts, hasGoogleToken, planGoogleSync, reportGoogleError, runGoogleSync } from "../lib/googleContacts";
 import { callableMessage, planGoogleServer, runGoogleServer, useServerLink } from "../lib/googleServer";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "@spot/ui";
 
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 

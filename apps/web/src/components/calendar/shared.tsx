@@ -2,10 +2,10 @@
 // button that opens an event's full card in a popover (a bottom sheet on phones).
 import { createContext, useContext, type CSSProperties, type ReactNode } from "react";
 import { diffLineup, formatTime, sentSnapshot, type Comic, type Lineup, type Show, type SpotRequest } from "@spot/shared";
-import { Popover } from "../Popover";
+import { Popover } from "@spot/ui";
 import { EventCard } from "./EventCard";
-import { cx } from "../ui";
-import { IconChatCross } from "../icons";
+import { cx } from "@spot/ui";
+import { IconChatCross } from "@spot/ui";
 import { fmtDayShort, toMinutes } from "../../lib/calendarDates";
 
 export interface CalEvent {

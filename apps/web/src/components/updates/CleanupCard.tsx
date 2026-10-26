@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import { formatDate, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand } from "../../lib/data";
-import { Button } from "../ui";
-import { IconGroup } from "../icons";
+import { Button } from "@spot/ui";
+import { IconGroup } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
 export function CleanupCard({ lineup: l, show }: { lineup: Lineup; show: Show }) {

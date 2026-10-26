@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import type { SpotOffer } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand } from "../../lib/data";
-import { Avatar, Button } from "../ui";
-import { IconUserPlus } from "../icons";
+import { Avatar, Button } from "@spot/ui";
+import { IconUserPlus } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
 export function AdhocCard({ offers }: { offers: SpotOffer[] }) {

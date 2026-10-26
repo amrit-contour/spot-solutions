@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import type { Lineup, Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
-import { Avatar, Button, Chip, Sheet, Spinner, cx } from "./ui";
-import { IconCheck, IconRefresh, IconShield, IconUserMinus, IconUserPlus } from "./icons";
+import { Avatar, Button, Chip, Sheet, Spinner, cx } from "@spot/ui";
+import { IconCheck, IconRefresh, IconShield, IconUserMinus, IconUserPlus } from "@spot/ui";
 
 const RESULT_LABEL = { added: "Added", removed: "Removed", invited: "Invite sent", failed: "Failed" } as const;
 

@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import { DAY_NAMES, dateInWeek, diffLineup, formatDate, formatTime, greetName, renderTemplate, resendCandidates, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
-import { Bubble, Button, Sheet, cx } from "./ui";
-import { IconCheck, IconSend, IconUserMinus, IconUserPlus, IconRepeat } from "./icons";
+import { Bubble, Button, Sheet, cx } from "@spot/ui";
+import { IconCheck, IconSend, IconUserMinus, IconUserPlus, IconRepeat } from "@spot/ui";
 
 const Tick = ({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) => (
   <input type="checkbox" className="size-5 flex-none accent-[var(--md-sys-color-primary)]" checked={checked} onChange={onChange} aria-label={label} />

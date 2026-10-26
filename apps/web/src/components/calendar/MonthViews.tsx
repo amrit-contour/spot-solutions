@@ -1,7 +1,7 @@
 // Month: a full grid with event chips on desktop, a compact dotted month plus the chosen day's shows on phones.
 import { DAY_SHORT } from "@spot/shared";
 import { dayNum, fmtDayLong, fmtHour, monthKey, monthWeeks, weekDates, type CalView } from "../../lib/calendarDates";
-import { cx } from "../ui";
+import { cx } from "@spot/ui";
 import { DayEvents } from "./DayView";
 import { DayNumber } from "./WeekGrid";
 import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal } from "./shared";

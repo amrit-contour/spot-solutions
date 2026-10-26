@@ -5,8 +5,8 @@ import { useApp } from "../../lib/app";
 import { userDoc } from "../../lib/data";
 import { markCanned } from "../../lib/lineup";
 import { answerMicCheck } from "../../lib/updates";
-import { Button } from "../ui";
-import { IconCheck, IconMic } from "../icons";
+import { Button } from "@spot/ui";
+import { IconCheck, IconMic } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
 export function MicCard({ lineup: l, show }: { lineup: Lineup; show: Show }) {

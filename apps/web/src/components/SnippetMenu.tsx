@@ -3,10 +3,10 @@
 import { Link } from "react-router-dom";
 import { greetName, messageRich, messageType, renderRich, snippetRich, type MessageKey, type MessageKind, type RichMessage, type TemplateVars } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { Menu, MenuItem } from "./Menu";
-import { Button } from "./ui";
-import { IconTemplate } from "./icons";
-import { messageSummary } from "./rich/MessageComposer";
+import { Menu, MenuItem } from "@spot/ui";
+import { Button } from "@spot/ui";
+import { IconTemplate } from "@spot/ui";
+import { messageSummary } from "@spot/ui";
 
 /** Messages worth sending by hand from a comic's chat. */
 export const COMIC_MESSAGE_KEYS: MessageKey[] = ["statusConfirmed", "statusPencilled", "statusNone", "showInfo", "lastSpot", "cancelDone", "offerFull", "onboard"];

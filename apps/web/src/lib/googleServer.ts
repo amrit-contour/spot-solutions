@@ -7,7 +7,7 @@ import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useSyncExternalStore } from "react";
 import type { ContactPlan } from "@spot/shared";
-import { auth, db } from "./firebase";
+import { auth, db } from "@spot/ui/firebase";
 
 const fns = () => getFunctions(getApp(), "asia-south1");
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as string | undefined;

@@ -6,10 +6,10 @@ import { DAY_NAMES, hasPin, pollProblem, type ComicAction, type Lineup, type Ric
 import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
-import { Avatar, Bubble, Button, Chip } from "../ui";
-import { MessageComposer } from "../rich/MessageComposer";
+import { Avatar, Bubble, Button, Chip } from "@spot/ui";
+import { MessageComposer } from "@spot/ui";
 import { SnippetMenu } from "../SnippetMenu";
-import { IconArrowRight, IconCancel, IconChat, IconChatCheck, IconClock, IconMap, IconMic, IconSkip } from "../icons";
+import { IconArrowRight, IconCancel, IconChat, IconChatCheck, IconClock, IconMap, IconMic, IconSkip } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
 const KIND: Record<string, { label: string; icon: typeof IconChat }> = {

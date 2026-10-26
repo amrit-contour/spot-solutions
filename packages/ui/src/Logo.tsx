@@ -1,4 +1,4 @@
-import { useBrand, NBC_GREEN, type Brand } from "../lib/theme";
+import { useBrand, NBC_GREEN, type Brand } from "./theme";
 
 const NBC_BLACK = "#000000";
 

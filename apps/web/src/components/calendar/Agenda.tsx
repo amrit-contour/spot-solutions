@@ -2,8 +2,8 @@
 import { formatTime } from "@spot/shared";
 import { fmtDayShort } from "../../lib/calendarDates";
 import { useApp } from "../../lib/app";
-import { cx } from "../ui";
-import { IconMap } from "../icons";
+import { cx } from "@spot/ui";
+import { IconMap } from "@spot/ui";
 import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal } from "./shared";
 
 export function Agenda({ dates, label }: { dates: string[]; label: string }) {

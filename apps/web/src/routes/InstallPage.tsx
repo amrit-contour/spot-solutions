@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Logo } from "../components/Logo";
-import { Card, Segmented, buttonClass } from "../components/ui";
+import { Logo } from "@spot/ui";
+import { Card, Segmented, buttonClass } from "@spot/ui";
 
 type Os = "mac" | "windows" | "linux";
 const BASE = "https://spot-solutions.web.app";

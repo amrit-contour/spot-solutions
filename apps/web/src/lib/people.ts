@@ -1,7 +1,7 @@
 import { writeBatch } from "firebase/firestore";
 import { shouldUpdateName, type Comic, type ImportPerson } from "@spot/shared";
 import { userDoc } from "./data";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 
 export interface PersonToImport extends ImportPerson {
   id: string;

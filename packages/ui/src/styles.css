@@ -1,0 +1,169 @@
+/* Shared design tokens and utilities for every Spot app. Each app imports tailwindcss first, then this file:
+   @import "tailwindcss"; @import "@spot/ui/styles.css"; */
+
+/* Scan this package for class names so Tailwind never purges what the shared components use. */
+@source "./";
+
+/* Phone bottom bar: 4rem of tabs plus the home-indicator area, trimmed (the indicator overlaps the bar's own padding). */
+:root {
+  --nav-pad: max(0.375rem, calc(env(safe-area-inset-bottom) - 0.75rem));
+  --nav-h: calc(4.25rem + var(--nav-pad));
+}
+
+/* Material 3 roles (written by lib/theme.ts) exposed as Tailwind colours. */
+@theme inline {
+  --color-primary: var(--md-sys-color-primary);
+  --color-on-primary: var(--md-sys-color-on-primary);
+  --color-primary-container: var(--md-sys-color-primary-container);
+  --color-on-primary-container: var(--md-sys-color-on-primary-container);
+  --color-secondary: var(--md-sys-color-secondary);
+  --color-on-secondary: var(--md-sys-color-on-secondary);
+  --color-secondary-container: var(--md-sys-color-secondary-container);
+  --color-on-secondary-container: var(--md-sys-color-on-secondary-container);
+  --color-tertiary: var(--md-sys-color-tertiary);
+  --color-on-tertiary: var(--md-sys-color-on-tertiary);
+  --color-tertiary-container: var(--md-sys-color-tertiary-container);
+  --color-on-tertiary-container: var(--md-sys-color-on-tertiary-container);
+  --color-error: var(--md-sys-color-error);
+  --color-on-error: var(--md-sys-color-on-error);
+  --color-error-container: var(--md-sys-color-error-container);
+  --color-on-error-container: var(--md-sys-color-on-error-container);
+  --color-surface: var(--md-sys-color-surface);
+  --color-on-surface: var(--md-sys-color-on-surface);
+  --color-on-surface-variant: var(--md-sys-color-on-surface-variant);
+  --color-surface-dim: var(--md-sys-color-surface-dim);
+  --color-surface-bright: var(--md-sys-color-surface-bright);
+  --color-surface-lowest: var(--md-sys-color-surface-container-lowest);
+  --color-surface-low: var(--md-sys-color-surface-container-low);
+  --color-surface-container: var(--md-sys-color-surface-container);
+  --color-surface-high: var(--md-sys-color-surface-container-high);
+  --color-surface-highest: var(--md-sys-color-surface-container-highest);
+  --color-outline: var(--md-sys-color-outline);
+  --color-outline-variant: var(--md-sys-color-outline-variant);
+  --color-inverse-surface: var(--md-sys-color-inverse-surface);
+  --color-inverse-on-surface: var(--md-sys-color-inverse-on-surface);
+  --color-inverse-primary: var(--md-sys-color-inverse-primary);
+  --color-scrim: var(--md-sys-color-scrim);
+  --color-ok: var(--md-sys-color-ok);
+  --color-nav-active: var(--md-sys-color-nav-active);
+  --color-on-nav-active: var(--md-sys-color-on-nav-active);
+
+  --font-sans: "Roboto Flex", system-ui, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-lg-plus: 20px;
+  --radius-xl: 28px;
+  --radius-xl-plus: 32px;
+  --radius-2xl: 48px;
+
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emphasized-accel: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* M3 type scale. Emphasized headlines lean on Roboto Flex's width axis. */
+@utility type-display-m { font-size: 2.8125rem; line-height: 3.25rem; font-weight: 500; letter-spacing: -0.02em; font-variation-settings: "wdth" 118, "opsz" 72; }
+@utility type-display-s { font-size: 2.25rem; line-height: 2.75rem; font-weight: 500; letter-spacing: -0.015em; font-variation-settings: "wdth" 115, "opsz" 48; }
+@utility type-headline-m { font-size: 1.75rem; line-height: 2.25rem; font-weight: 550; letter-spacing: -0.01em; font-variation-settings: "wdth" 112, "opsz" 32; }
+@utility type-headline-s { font-size: 1.5rem; line-height: 2rem; font-weight: 550; font-variation-settings: "wdth" 110, "opsz" 28; }
+@utility type-title-l { font-size: 1.375rem; line-height: 1.75rem; font-weight: 500; font-variation-settings: "wdth" 105; }
+@utility type-title-m { font-size: 1rem; line-height: 1.5rem; font-weight: 600; letter-spacing: 0.01em; }
+@utility type-title-s { font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; letter-spacing: 0.01em; }
+@utility type-body-l { font-size: 1rem; line-height: 1.5rem; font-weight: 400; }
+@utility type-body-m { font-size: 0.875rem; line-height: 1.25rem; font-weight: 400; letter-spacing: 0.0125em; }
+@utility type-body-s { font-size: 0.75rem; line-height: 1rem; font-weight: 400; letter-spacing: 0.025em; }
+@utility type-label-l { font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; letter-spacing: 0.01em; }
+@utility type-label-m { font-size: 0.75rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.04em; }
+@utility type-label-s { font-size: 0.6875rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.05em; }
+
+/* NBC brand: a heavy geometric face for headings only; body copy keeps Roboto Flex. */
+:root[data-brand="nbc"] :is(.type-display-m, .type-display-s, .type-headline-m, .type-headline-s, .type-title-l) {
+  font-family: "Poppins", var(--font-sans);
+  font-weight: 800;
+  font-variation-settings: normal;
+  letter-spacing: -0.025em;
+}
+:root[data-brand="nbc"] .type-display-m { font-size: 2.5rem; line-height: 3rem; }
+:root[data-brand="nbc"] .type-display-s { font-size: 2rem; line-height: 2.5rem; }
+:root[data-brand="nbc"] .type-headline-m { font-size: 1.5rem; line-height: 2rem; }
+:root[data-brand="nbc"] .type-headline-s { font-size: 1.3125rem; line-height: 1.75rem; }
+:root[data-brand="nbc"] .type-title-l { font-size: 1.1875rem; line-height: 1.625rem; letter-spacing: -0.015em; font-weight: 700; }
+
+/* Gentle colour cross-fade while the brand switches (added by setBrand, skipped for reduced motion). */
+:root.brand-fade, :root.brand-fade *, :root.brand-fade *::before, :root.brand-fade *::after {
+  transition: background-color 300ms ease, color 300ms ease, border-color 300ms ease, fill 300ms ease, stroke 300ms ease !important;
+}
+
+/* State layer: hover/pressed overlay in the content colour, per M3. */
+@utility state-layer {
+  position: relative;
+  isolation: isolate;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity 150ms ease;
+    pointer-events: none;
+    z-index: -1;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    &:hover::before { opacity: 0.08; }
+  }
+  &:active::before { opacity: 0.12; }
+  &:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+}
+
+/* Anything pressable gets a subtle squish. */
+@utility pressable {
+  transition: transform 160ms var(--ease-out-strong);
+  &:active:not(:disabled) { transform: scale(0.97); }
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    font-family: var(--font-sans);
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "tnum" 0;
+  }
+  ::selection { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  input, textarea, select { font: inherit; color: inherit; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  /* Solar duotone: secondary layer reads as a soft fill behind the glyph. */
+  svg.icon { flex: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+}
+
+/* Draw-in check mark for confirmed states */
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.draw-check path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw 420ms var(--ease-out-strong) 80ms forwards; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 900ms linear infinite; }
+
+@keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.6; } 100% { transform: scale(2.2); opacity: 0; } }
+.pulse-ring { animation: pulse-ring 1.8s var(--ease-out-strong) infinite; }
+
+/* Scanning line over the QR while we wait for the phone */
+@keyframes scan { 0% { transform: translateY(0); } 50% { transform: translateY(calc(var(--qr) - 2px)); } 100% { transform: translateY(0); } }
+.scanline { animation: scan 2.8s var(--ease-emphasized) infinite; }
+
+@keyframes page-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.page-enter { animation: page-enter 220ms var(--ease-out-strong) both; }

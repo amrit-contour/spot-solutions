@@ -18,8 +18,8 @@ import {
 import { useApp } from "../lib/app";
 import { expireAt, runCommand, userCol } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
-import { Bubble, Button, Chip, Sheet, cx } from "./ui";
-import { IconArrowDown, IconChatCheck, IconGroup } from "./icons";
+import { Bubble, Button, Chip, Sheet, cx } from "@spot/ui";
+import { IconArrowDown, IconChatCheck, IconGroup } from "@spot/ui";
 
 interface CheckResult {
   suggestions: ReconcileSuggestion[];

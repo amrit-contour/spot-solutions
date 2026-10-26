@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useSignIn } from "./Landing";
-import { Logo } from "../components/Logo";
-import { Bubble, Button, Chip } from "../components/ui";
-import { IconCpu, IconMic, IconShield, IconSofa } from "../components/icons";
+import { Logo } from "@spot/ui";
+import { Bubble, Button, Chip } from "@spot/ui";
+import { IconCpu, IconMic, IconShield, IconSofa } from "@spot/ui";
 
 // A tiny looping story: DMs arrive, Gemma tags the one that matters.
 const SCRIPT = [

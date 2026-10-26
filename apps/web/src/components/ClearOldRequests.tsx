@@ -3,8 +3,8 @@ import { toast } from "sonner";
 import { formatDate, shiftWeek } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { countClosedRequests, countOldRequests, deleteClosedRequests, deleteOldRequests } from "../lib/cleanup";
-import { ConfirmDialog } from "./ConfirmDialog";
-import { Field, Select } from "./ui";
+import { ConfirmDialog } from "@spot/ui";
+import { Field, Select } from "@spot/ui";
 
 const plural = (n: number) => `${n} request${n === 1 ? "" : "s"}`;
 

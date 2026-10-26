@@ -25,11 +25,11 @@ import {
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { useNow } from "../lib/data";
-import { Menu, MenuItem } from "./Menu";
+import { Menu, MenuItem } from "@spot/ui";
 import { SnippetMenu } from "./SnippetMenu";
-import { MessageComposer, MessagePreview, messageSummary } from "./rich/MessageComposer";
-import { Button, Chip, IconButton, Segmented, Select, Switch, TimePicker, cx } from "./ui";
-import { IconAdd, IconArrowDown, IconClock, IconSparkle, IconTrash } from "./icons";
+import { MessageComposer, MessagePreview, messageSummary } from "@spot/ui";
+import { Button, Chip, IconButton, Segmented, Select, Switch, TimePicker, cx } from "@spot/ui";
+import { IconAdd, IconArrowDown, IconClock, IconSparkle, IconTrash } from "@spot/ui";
 
 const TEMPLATE_OPTIONS: { value: GroupPost["template"]; label: string }[] = [
   { value: "groupLineup", label: messageType("groupLineup").label },

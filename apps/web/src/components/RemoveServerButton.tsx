@@ -6,9 +6,9 @@ import { useApp } from "../lib/app";
 import { isAdmin, useAccessConfig } from "../lib/access";
 import { isDemoUser } from "../lib/demo";
 import { isPrecondition, joinError, removeServer } from "../lib/joinServer";
-import { ConfirmDialog } from "./ConfirmDialog";
-import { CompactButton } from "./ui";
-import { IconTrash } from "./icons";
+import { ConfirmDialog } from "@spot/ui";
+import { CompactButton } from "@spot/ui";
+import { IconTrash } from "@spot/ui";
 
 export function RemoveServerButton({ server }: { server: Pick<ServerStatus, "id" | "hostname"> }) {
   const { user } = useApp();

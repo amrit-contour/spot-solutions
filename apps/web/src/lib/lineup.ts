@@ -1,6 +1,6 @@
 import { arrayRemove, arrayUnion, getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
 import { dateInWeek, lineupId, planReconcilePlace, sentSnapshot, shiftWeek, withHistory, type Comic, type GroupMember, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 import { userDoc } from "./data";
 
 const lineupRef = (uid: string, week: string, showId: string) => userDoc(uid, "lineups", lineupId(week, showId));

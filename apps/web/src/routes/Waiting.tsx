@@ -1,11 +1,11 @@
 import { signOut, type User } from "firebase/auth";
 import { motion } from "motion/react";
 import type { AccessEntry } from "@spot/shared";
-import { auth } from "../lib/firebase";
+import { auth } from "@spot/ui/firebase";
 import { isAdmin, useAccessConfig } from "../lib/access";
-import { Logo } from "../components/Logo";
-import { Button } from "../components/ui";
-import { IconClock, IconLogout, IconShield } from "../components/icons";
+import { Logo } from "@spot/ui";
+import { Button } from "@spot/ui";
+import { IconClock, IconLogout, IconShield } from "@spot/ui";
 
 export function Waiting({ user, entry }: { user: User; entry: AccessEntry | null }) {
   const cfg = useAccessConfig();

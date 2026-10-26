@@ -5,9 +5,9 @@ import { useApp } from "../lib/app";
 import { timeAgo, useNow } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
 import { leaseStale, moveAccount, pinAccount, serverName, serverOnline, useAllServers, useLease, usePrefs, useVault } from "../lib/fleet";
-import { Button, Chip } from "./ui";
-import { Menu, MenuItem } from "./Menu";
-import { IconArrowDown, IconServer } from "./icons";
+import { Button, Chip } from "@spot/ui";
+import { Menu, MenuItem } from "@spot/ui";
+import { IconArrowDown, IconServer } from "@spot/ui";
 
 export function FleetCard() {
   const { uid } = useApp();

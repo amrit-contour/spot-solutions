@@ -3,10 +3,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { AnimatePresence, motion, useInView, useScroll, useTransform } from "motion/react";
 import { toast } from "sonner";
-import { auth, google } from "../lib/firebase";
+import { auth, google } from "@spot/ui/firebase";
 import { startDemo } from "../lib/demo";
-import { Logo } from "../components/Logo";
-import { Button, cx } from "../components/ui";
+import { Logo } from "@spot/ui";
+import { Button, cx } from "@spot/ui";
 import {
   IconCalendarMark,
   IconChatCheck,
@@ -18,7 +18,7 @@ import {
   IconShield,
   IconSofa,
   IconSparkle,
-} from "../components/icons";
+} from "@spot/ui";
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 

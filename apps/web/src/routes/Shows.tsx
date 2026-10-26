@@ -4,14 +4,14 @@ import { GroupPostsEditor } from "../components/GroupPosts";
 import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { VenuePin } from "../components/rich/VenuePin";
+import { VenuePin } from "@spot/ui";
 import { DAY_SHORT, DEFAULT_CLEANUP, formatTime, groupModeOf, type GroupInfo, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
-import { PageHeader } from "../components/Shell";
-import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "../components/ui";
-import { IconAdd, IconBuilding, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "../components/icons";
+import { PageHeader } from "@spot/ui";
+import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
+import { IconAdd, IconBuilding, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "@spot/ui";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 

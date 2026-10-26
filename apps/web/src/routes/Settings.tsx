@@ -35,8 +35,8 @@ import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
 import { useCollection } from "../lib/data";
 import { useInstall } from "../lib/install";
-import { PageHeader } from "../components/Shell";
-import { StickyBar } from "../components/StickyBar";
+import { PageHeader } from "@spot/ui";
+import { StickyBar } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
 import { AgentCard } from "../components/AgentCard";
 import { AiModels } from "../components/AiModels";
@@ -47,9 +47,9 @@ import { GoogleContactsCard } from "../components/GoogleContactsCard";
 import { AppearanceCard } from "../components/AppearanceCard";
 import { VoiceSourcesSheet } from "../components/VoiceSourcesSheet";
 import { isDemoUser } from "../lib/demo";
-import { MessageComposer } from "../components/rich/MessageComposer";
-import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "../components/ui";
-import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose } from "../components/icons";
+import { MessageComposer } from "@spot/ui";
+import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
+import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose } from "@spot/ui";
 
 const TABS = [
   { id: "whatsapp", label: "WhatsApp", icon: IconChat },

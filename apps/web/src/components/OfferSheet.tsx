@@ -6,9 +6,9 @@ import { DAY_NAMES, dateInWeek, formatDate, formatTime, greetName, lineupId, mes
 import { useApp } from "../lib/app";
 import { SnippetMenu } from "./SnippetMenu";
 import { runCommand } from "../lib/data";
-import { Avatar, Button, Sheet, Stepper, Switch, TextInput, cx } from "./ui";
-import { MessageComposer, MessagePreview } from "./rich/MessageComposer";
-import { IconSend } from "./icons";
+import { Avatar, Button, Sheet, Stepper, Switch, TextInput, cx } from "@spot/ui";
+import { MessageComposer, MessagePreview } from "@spot/ui";
+import { IconSend } from "@spot/ui";
 
 export function OfferSheet({ open, onClose, show, exclude }: { open: boolean; onClose: () => void; show: Show; exclude: string[] }) {
   const { uid, week, comics, settings, venues } = useApp();

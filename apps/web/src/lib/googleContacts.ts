@@ -3,7 +3,7 @@
 import { GoogleAuthProvider, reauthenticateWithPopup } from "firebase/auth";
 import { toast } from "sonner";
 import { indexGoogleContact, normalizePhone, planContactSync, splitName, type Comic, type ContactCreate, type ContactPlan, type ContactUpdate, type GoogleIndex } from "@spot/shared";
-import { auth } from "./firebase";
+import { auth } from "@spot/ui/firebase";
 import { isDemoUser } from "./demo";
 import { serverLinkActive } from "./googleServer";
 

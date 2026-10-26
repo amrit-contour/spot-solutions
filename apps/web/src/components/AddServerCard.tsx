@@ -8,8 +8,8 @@ import { useNow } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
 import { useAllServers } from "../lib/fleet";
 import { createJoinCode, joinError, type JoinCode } from "../lib/joinServer";
-import { Button, Card, Chip, CompactButton, TextInput } from "./ui";
-import { IconAdd, IconCheck, IconServer } from "./icons";
+import { Button, Card, Chip, CompactButton, TextInput } from "@spot/ui";
+import { IconAdd, IconCheck, IconServer } from "@spot/ui";
 
 const fmtLeft = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`;
 

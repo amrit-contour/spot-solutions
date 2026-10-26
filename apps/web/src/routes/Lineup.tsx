@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { doc, getDoc, where } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db } from "@spot/ui/firebase";
 import { Link } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { LayoutGroup, motion } from "motion/react";
@@ -52,18 +52,18 @@ import { runCommand, useCollection, useDocument } from "../lib/data";
 import { OfferSheet } from "../components/OfferSheet";
 import { ConfirmSheet } from "../components/ConfirmSheet";
 import { markCanned, markRequest, addDefaults, placeAsTold, withSelf, placeComic, repeatLastWeek, seedDefaults, setLineupStatus, setMinutes, setSlots, unplaceComic } from "../lib/lineup";
-import { PageHeader } from "../components/Shell";
+import { PageHeader } from "@spot/ui";
 import { WeekSwitcher } from "../components/WeekSwitcher";
-import { Menu, MenuItem } from "../components/Menu";
+import { Menu, MenuItem } from "@spot/ui";
 import { GroupSyncSheet } from "../components/GroupSyncSheet";
 import { GroupPopover, GroupTab, MemberTileBody } from "../components/GroupPanel";
-import { Popover, ToolButton } from "../components/Popover";
+import { Popover, ToolButton } from "@spot/ui";
 import { PillRow, Pill, comicPills, type TellState } from "../components/Pills";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
-import { Avatar, Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "../components/ui";
-import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "../components/icons";
+import { Avatar, Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "@spot/ui";
+import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "@spot/ui";
 
 const BENCH = "bench";
 // Droppables that aren't lineup lists: a group member's leave zone (in the Waiting column's Group tab).

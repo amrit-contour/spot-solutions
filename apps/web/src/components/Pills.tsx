@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DAY_SHORT, type Comic, type Show, type SpotRequest } from "@spot/shared";
-import { cx, type Icon } from "./ui";
-import { IconArrowRight, IconCalendar, IconChatCross, IconCrown, IconHistory, IconPen, IconRepeat, IconUserCheck, IconUserPlus } from "./icons";
+import { cx, type Icon } from "@spot/ui";
+import { IconArrowRight, IconCalendar, IconChatCross, IconCrown, IconHistory, IconPen, IconRepeat, IconUserCheck, IconUserPlus } from "@spot/ui";
 
 export type PillTone = "fact" | "reading" | "told" | "warn" | "primary" | "secondary" | "joining" | "error" | "plain";
 

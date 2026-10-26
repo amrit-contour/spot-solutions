@@ -1,7 +1,7 @@
 // Reset and clean-up writes for the signed-in curator. Plain Firestore writes, all within what the rules allow.
 import { getCountFromServer, getDocs, query, where, writeBatch, type DocumentReference } from "firebase/firestore";
 import { CLOSED_STATUSES, type LineupResetPlan } from "@spot/shared";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 import { userCol, userDoc } from "./data";
 
 const BATCH = 450;

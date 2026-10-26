@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useApp } from "../lib/app";
 import { isAdmin, useAccessConfig } from "../lib/access";
-import { Spinner } from "./ui";
+import { Spinner } from "@spot/ui";
 
 /** Renders children only for server admins (SPOT_ADMIN_EMAILS); everyone else goes home. */
 export function AdminOnly({ children }: { children: ReactNode }) {

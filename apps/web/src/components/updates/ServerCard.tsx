@@ -4,8 +4,8 @@ import type { AppNotice } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { timeAgo } from "../../lib/data";
 import { dismissNotice } from "../../lib/updates";
-import { buttonClass, cx, IconButton } from "../ui";
-import { IconClose, IconHistory, IconWarn } from "../icons";
+import { buttonClass, cx, IconButton } from "@spot/ui";
+import { IconClose, IconHistory, IconWarn } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
 /** A notice that points at a fix gets one obvious button for it. */

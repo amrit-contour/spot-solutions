@@ -8,8 +8,8 @@ import { DEFAULT_SETTINGS, type AgentSettings, type SessionState } from "@spot/s
 import { useApp } from "../lib/app";
 import { runCommand, useDocument } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
-import { Button, Info, SettingRow, Switch, TimePicker, cx } from "./ui";
-import { IconChatCheck, IconCheck, IconLogout, IconPhone, IconQr, IconSend, IconServer, IconShield } from "./icons";
+import { Button, Info, SettingRow, Switch, TimePicker, cx } from "@spot/ui";
+import { IconChatCheck, IconCheck, IconLogout, IconPhone, IconQr, IconSend, IconServer, IconShield } from "@spot/ui";
 
 const QR_SIZE = 216;
 const DEFAULTS = DEFAULT_SETTINGS.agent as AgentSettings;

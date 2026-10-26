@@ -28,12 +28,12 @@ import {
   weekdayOf,
   type CalView,
 } from "../lib/calendarDates";
-import { PageHeader } from "../components/Shell";
-import { StickyBar } from "../components/StickyBar";
+import { PageHeader } from "@spot/ui";
+import { StickyBar } from "@spot/ui";
 import { Count } from "../components/updates/shared";
-import { Avatar, Button, Chip, Empty, IconButton, Segmented, cx } from "../components/ui";
-import { IconArrowLeft, IconArrowRight, IconCalendarMark, IconChat, IconInbox } from "../components/icons";
-import { ToolButton } from "../components/Popover";
+import { Avatar, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
+import { IconArrowLeft, IconArrowRight, IconCalendarMark, IconChat, IconInbox } from "@spot/ui";
+import { ToolButton } from "@spot/ui";
 import { Agenda } from "../components/calendar/Agenda";
 import { DayView } from "../components/calendar/DayView";
 import { MonthCompact, MonthGrid } from "../components/calendar/MonthViews";

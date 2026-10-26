@@ -7,15 +7,15 @@ import { cancellations, formatDate, localNow, shiftWeek, type Comic, type ComicL
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
-import { db } from "../lib/firebase";
+import { db } from "@spot/ui/firebase";
 import { saveComicToGoogle } from "../lib/googleContacts";
-import { PageHeader } from "../components/Shell";
-import { StickyBar } from "../components/StickyBar";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Menu, MenuItem } from "../components/Menu";
+import { PageHeader } from "@spot/ui";
+import { StickyBar } from "@spot/ui";
+import { ConfirmDialog } from "@spot/ui";
+import { Menu, MenuItem } from "@spot/ui";
 import { ImportContactsSheet, ImportFileSheet } from "../components/ImportSheets";
-import { Avatar, Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "../components/ui";
-import { IconChat, IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "../components/icons";
+import { Avatar, Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "@spot/ui";
+import { IconChat, IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "@spot/ui";
 
 const LIST_LABEL: Record<ComicList, string> = { host: "Host", ignored: "Ignored", banned: "Banned" };
 

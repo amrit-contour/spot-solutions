@@ -3,8 +3,8 @@ import { DEFAULT_AI_POLICY, type AiPolicy } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { serverOnline, useAllServers } from "../lib/fleet";
 import { useNow } from "../lib/data";
-import { cx } from "./ui";
-import { IconCheck, IconWarn } from "./icons";
+import { cx } from "@spot/ui";
+import { IconCheck, IconWarn } from "@spot/ui";
 
 const OPTIONS: { value: AiPolicy; title: string; body: string }[] = [
   { value: "local_only", title: "Local only — chats never leave your server", body: "Only a server with a local model runs your account." },

@@ -3,7 +3,7 @@ import type { LineupResetPlan, Show } from "@spot/shared";
 import { formatDate } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { applyResets } from "../lib/cleanup";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "@spot/ui";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 

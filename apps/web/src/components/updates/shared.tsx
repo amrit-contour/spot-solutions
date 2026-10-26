@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { cx } from "../ui";
+import { cx } from "@spot/ui";
 
 /** A number that rolls when it changes. */
 export function Count({ value, className }: { value: number; className?: string }) {

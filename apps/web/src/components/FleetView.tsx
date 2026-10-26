@@ -3,14 +3,14 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { toast } from "sonner";
 import type { AccessEntry, ServerStatus } from "@spot/shared";
-import { db } from "../lib/firebase";
+import { db } from "@spot/ui/firebase";
 import { timeAgo, useNow } from "../lib/data";
 import { REASON, leaseStale, moveAccount, pinAccount, platformName, serverName, serverOnline, useLease, usePrefs, useVault } from "../lib/fleet";
-import { Avatar, Chip, IconButton, cx } from "./ui";
-import { Menu, MenuItem } from "./Menu";
-import { Collapsible, CollapsibleBand } from "./Collapsible";
+import { Avatar, Chip, IconButton, cx } from "@spot/ui";
+import { Menu, MenuItem } from "@spot/ui";
+import { Collapsible, CollapsibleBand } from "@spot/ui";
 import { RemoveServerButton } from "./RemoveServerButton";
-import { IconCpu, IconMenuDots, IconServer } from "./icons";
+import { IconCpu, IconMenuDots, IconServer } from "@spot/ui";
 
 function ServerRow({ s, now }: { s: ServerStatus; now: number }) {
   const online = serverOnline(s, now);

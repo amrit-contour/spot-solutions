@@ -21,10 +21,10 @@ import {
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useCollection, useNow, userDoc } from "../lib/data";
 import { placeComic } from "../lib/lineup";
-import { PageHeader } from "../components/Shell";
+import { PageHeader } from "@spot/ui";
 import { WeekSwitcher } from "../components/WeekSwitcher";
-import { Menu, MenuItem } from "../components/Menu";
-import { Avatar, Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "../components/ui";
+import { Menu, MenuItem } from "@spot/ui";
+import { Avatar, Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
 import { ClearOldRequests } from "../components/ClearOldRequests";
 import { ScanHistorySheet } from "../components/ScanHistorySheet";
@@ -33,7 +33,7 @@ import { UpdatesPanel } from "../components/UpdatesPanel";
 import { Count } from "../components/updates/shared";
 import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
-import { IconArrowDown, IconSort, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
+import { IconArrowDown, IconSort, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "@spot/ui";
 
 export type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
 const LANES: { id: Lane; label: string }[] = [

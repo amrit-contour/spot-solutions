@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import type { AccessConfig, AccessEntry } from "@spot/shared";
-import { db } from "./firebase";
+import { db } from "@spot/ui/firebase";
 
 /** This user's access record; asks for access (status "pending") on first sign-in. */
 export function useAccess(user: User | null | undefined) {

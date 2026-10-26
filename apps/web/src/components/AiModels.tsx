@@ -4,10 +4,10 @@ import { deleteDoc, doc, setDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import type { AiKeyStatus, AiProvider, AiRoute } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { db } from "../lib/firebase";
+import { db } from "@spot/ui/firebase";
 import { runCommand, timeAgo, useDocument, userDoc } from "../lib/data";
-import { Button, Chip, IconButton, Info, Segmented, Select, Spinner, Switch, TextInput, cx } from "./ui";
-import { IconCheck, IconCpu, IconRefresh, IconShield, IconSparkle, IconTrash, IconWarn } from "./icons";
+import { Button, Chip, IconButton, Info, Segmented, Select, Spinner, Switch, TextInput, cx } from "@spot/ui";
+import { IconCheck, IconCpu, IconRefresh, IconShield, IconSparkle, IconTrash, IconWarn } from "@spot/ui";
 
 interface UserAiDoc {
   aiKeys?: AiKeyStatus;
