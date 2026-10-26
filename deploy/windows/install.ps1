@@ -95,6 +95,8 @@ if ((Node-Major) -lt 22) {
   [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $unpack)
   $exe = Get-ChildItem $unpack -Recurse -Filter node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
   if (-not $exe) { throw "Unpacking Node.js failed: node.exe isn't in the download. Run this again." }
+  # On a fresh install C:\SpotSolutions doesn't exist yet, and Move-Item won't create the parent folder.
+  New-Item -ItemType Directory -Force -Path $Root | Out-Null
   Move-Item $exe.Directory.FullName $NodeDir
 }
 $major = Node-Major
