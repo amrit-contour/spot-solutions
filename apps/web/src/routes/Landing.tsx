@@ -217,7 +217,10 @@ export function Landing() {
 
       <header className="relative z-10 mx-auto flex max-w-6xl items-center gap-3 px-5 py-5 sm:px-8">
         <Logo className="size-10" />
-        <span className="type-title-m">Spot Solutions</span>
+        <span className="flex flex-col leading-tight">
+          <span className="type-title-m">Spot Solutions</span>
+          <span className="type-label-s text-on-surface-variant">by Amrit Dash</span>
+        </span>
         <div className="flex-1" />
         <a href="#how" className="hidden type-label-l text-on-surface-variant hover:text-on-surface sm:inline">How it works</a>
         <a href="#open" className="hidden px-3 type-label-l text-on-surface-variant hover:text-on-surface sm:inline">Why open</a>
@@ -391,7 +394,7 @@ export function Landing() {
 
       <footer className="relative z-10 border-t border-outline-variant/50">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-5 py-8 type-body-s text-on-surface-variant sm:px-8">
-          <span>Spot Solutions · open source (MIT) · built for Hacktoberfest 2026 with Gemma</span>
+          <span>Spot Solutions by Amrit Dash · open source (MIT) · built for Hacktoberfest 2026 with Gemma</span>
           <div className="flex-1" />
           <a className="hover:text-on-surface" href="/privacy">Privacy</a>
           <a className="hover:text-on-surface" href="/terms">Terms</a>

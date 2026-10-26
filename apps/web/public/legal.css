@@ -9,6 +9,8 @@ header, main, footer { max-width: 760px; margin: 0 auto; padding: 0 20px; }
 header { padding-top: 28px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 650; font-size: 17px; }
 .brand img { border-radius: 9px; }
+.brand span { display: flex; flex-direction: column; line-height: 1.2; }
+.brand small { color: var(--muted); font-weight: 450; font-size: 12px; }
 h1 { font-size: clamp(30px, 6vw, 40px); line-height: 1.15; margin: 36px 0 4px; letter-spacing: -0.01em; }
 .meta { color: var(--muted); margin: 0 0 28px; }
 h2 { font-size: 20px; margin: 34px 0 8px; }

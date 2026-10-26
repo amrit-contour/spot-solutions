@@ -14,7 +14,7 @@ export default defineConfig({
       includeAssets: ["favicon.svg", "icons/apple-touch-icon.png"],
       manifest: {
         id: "/",
-        name: "Spot Solutions",
+        name: "Spot Solutions by Amrit Dash",
         short_name: "Spots",
         description: "Open-mic lineups sorted from your WhatsApp by a local Gemma model.",
         start_url: "/",
