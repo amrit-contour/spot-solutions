@@ -46,8 +46,11 @@ Missing a window means missing the spot. Remembering all of it in my head is the
 - Follow-up reader (`readDecision`-style prompt) for curator replies, scoped to chats with room curators only.
 - Send queue and notices; push (FCM) for window reminders, via the worker scheduler.
 
-## Questions to settle before building
+## Decided (26 Oct)
 
-- Do some rooms take asks in a group instead of a DM? (Changes what "reply" means.)
-- Should one tap send all of today's asks, or each one reviewed? (Default: review all, one Send.)
+- **DMs first.** Some rooms take asks in a group; that comes later.
+- **Sending is per room:** each room is set to "send automatically when the window opens" or "draft for my review". The morning list shows both; review ones need a tap.
+
+## Still open
+
 - When a curator confirms in a voice note or with an emoji only, is a "👍" a yes? (Default: yes, but shown for review.)
