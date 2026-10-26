@@ -12,6 +12,7 @@ import { Curators } from "../components/Curators";
 import { FleetView } from "../components/FleetView";
 import { Collapsible } from "../components/Collapsible";
 import { AddServerCard } from "../components/AddServerCard";
+import { Menu, MenuItem } from "../components/Menu";
 import { RemoveServerButton } from "../components/RemoveServerButton";
 import { WipeDemoCard } from "../components/AdminDataTools";
 import { isAdmin, useAccessConfig } from "../lib/access";
@@ -62,7 +63,7 @@ function Meter({ label, used, total, detail }: { label: string; used: number; to
 function Service({ name, up, detail, action }: { name: string; up: boolean; detail?: string; action?: React.ReactNode }) {
   return (
     <li className="flex items-center gap-3 px-4 py-3">
-      <span className={cx("size-2.5 flex-none rounded-full", up ? "bg-[#3fb950]" : "bg-error")} />
+      <span className={cx("size-2.5 flex-none rounded-full", up ? "bg-ok" : "bg-error")} />
       <div className="min-w-0 flex-1">
         <div className="type-body-l">{name}</div>
         <div className="truncate type-body-s text-on-surface-variant">{detail ?? (up ? "Running" : "Down")}</div>
@@ -128,7 +129,8 @@ function ServerCard({ s }: { s: ServerStatus }) {
       summaryTone={online ? "success" : "error"}
     >
       <div className="flex flex-col gap-4 pb-1">
-      <div className="flex justify-end empty:hidden">
+      <div className="flex flex-wrap items-center justify-end gap-2 empty:hidden">
+        <ConsoleLinks server={s} />
         <RemoveServerButton server={s} />
       </div>
 
@@ -238,5 +240,35 @@ export function ServerPage() {
         )}
       </div>
     </div>
+  );
+}
+
+
+/** Links to the server's own console. They only work on that server's Wi-Fi: consoles never face the internet. */
+function ConsoleLinks({ server }: { server: ServerStatus }) {
+  const c = server.console;
+  if (!c) return null;
+  const q = c.token ? `/?token=${encodeURIComponent(c.token)}` : "/";
+  const links = [c.host, ...c.ips].map((h) => ({ label: h, href: `http://${h}:${c.port}${q}` }));
+  return (
+    <Menu
+      align="right"
+      trigger={(open) => (
+        <Button size="sm" variant="tonal" icon={IconServer} onClick={open} title="Works when you're on the same Wi-Fi as this server">
+          Open console
+        </Button>
+      )}
+    >
+      {(close) => (
+        <>
+          <div className="px-4 pt-2 pb-1 type-label-s text-on-surface-variant">On the same Wi-Fi as {server.hostname}</div>
+          {links.map((l) => (
+            <MenuItem key={l.href} onClick={() => (close(), window.open(l.href, "_blank", "noopener"))}>
+              <span className="mono">{l.label}</span>
+            </MenuItem>
+          ))}
+        </>
+      )}
+    </Menu>
   );
 }

@@ -3,11 +3,12 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import type { DocumentReference } from "firebase-admin/firestore";
 import { LOGS_WANTED_FRESH_MS, type FleetCapacity, type FleetServerSummary, type ServerStatus } from "@spot/shared";
 import { SERVICE_ACCOUNT, db, FieldValue } from "./firebase.ts";
-import { SERVER_ID } from "./serverIdentity.ts";
+import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
 import { recentLogs } from "./logbuf.ts";
 import { ADMIN_DATA_COMMANDS, runAdminDataCommand } from "./adminData.ts";
 
@@ -101,6 +102,41 @@ async function sendLogs(ref: DocumentReference) {
   await ref.set({ logs }, { merge: true });
 }
 
+/** Memory that's actually available: os.freemem() counts file cache as used on macOS and Linux (reads ~100%). */
+async function availableMemory() {
+  try {
+    if (process.platform === "darwin") {
+      const { stdout } = await exec("vm_stat");
+      const page = Number(/page size of (\d+)/.exec(stdout)?.[1] ?? 4096);
+      const pages = (name: string) => Number(new RegExp(`Pages ${name}:\\s+(\\d+)`).exec(stdout)?.[1] ?? 0);
+      return Math.min(os.totalmem(), (pages("free") + pages("inactive") + pages("speculative") + pages("purgeable")) * page);
+    }
+    if (process.platform === "linux") {
+      const kb = Number(/MemAvailable:\s+(\d+)/.exec(readFileSync("/proc/meminfo", "utf8"))?.[1] ?? NaN);
+      if (Number.isFinite(kb)) return kb * 1024;
+    }
+  } catch {}
+  return os.freemem();
+}
+
+/**
+ * Where this server's console answers on the local network, plus its access code (from the console's token
+ * file next to the WhatsApp data). servers/{id} is readable only by this server's admins.
+ */
+function consoleInfo(): ServerStatus["console"] {
+  const port = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
+  const ips = Object.values(os.networkInterfaces())
+    .flat()
+    .filter((n) => n && n.family === "IPv4" && !n.internal && !n.address.startsWith("169.254."))
+    .map((n) => n!.address);
+  const host = `${os.hostname().replace(/\.local$/i, "").toLowerCase()}.local`;
+  let token: string | null = null;
+  try {
+    token = readFileSync(process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(path.dirname(DATA_DIR), "console-token"), "utf8").trim() || null;
+  } catch {}
+  return { port, ips, host, token };
+}
+
 export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "sessions" | "geminiServerKey">) {
   const cpus = os.cpus();
   const status: ServerStatus = {
@@ -114,7 +150,8 @@ export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "se
     startedAt,
     lastSeen: Date.now(),
     cpu: { model: cpus[0]?.model?.trim() ?? "unknown", cores: cpus.length, load1: os.loadavg()[0], usage: cpuUsage() },
-    memory: { total: os.totalmem(), free: os.freemem(), process: process.memoryUsage().rss },
+    memory: { total: os.totalmem(), free: await availableMemory(), process: process.memoryUsage().rss },
+    console: consoleInfo(),
     disk: await disk(),
     counters: { ...counters },
     admins: ADMINS,

@@ -22,6 +22,8 @@ const ENV_FILE = process.env.SPOT_ENV_FILE ?? (WIN ? "C:\\SpotSolutions\\app\\ap
 const WORKER_LOG = MAC ? path.join(DATA, "..", "logs", "worker.log") : path.join(DATA, "worker.log");
 const OLLAMA_EXE = process.env.SPOT_OLLAMA_EXE ?? "ollama";
 const PORT = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
+// Release this console belongs to (written by the installer's tarball), shown in the header.
+const VERSION = (() => { try { return readFileSync(new URL("../../../VERSION", import.meta.url), "utf8").trim(); } catch { return "dev"; } })();
 // Changes on every start, so an embedded view (the Mac app) knows to reload a stale page.
 const BOOT = Date.now();
 const TOKEN_FILE = process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(DATA, "console-token");
@@ -30,6 +32,7 @@ const KEY_FILE = path.join(DATA, "service-account.json");
 const JOIN_URL = process.env.SPOT_JOIN_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net/redeemJoinCode";
 const OLLAMA = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const HTML = readFileSync(new URL("./index.html", import.meta.url));
+const FAVICON = readFileSync(new URL("./favicon.svg", import.meta.url));
 
 if (!existsSync(TOKEN_FILE)) writeFileSync(TOKEN_FILE, randomBytes(18).toString("base64url"), { mode: 0o600 });
 // Lets the Windows "Open Server Console" shortcut and the installer print the remote link.
@@ -159,6 +162,24 @@ function keyInfo() {
   }
 }
 
+/** Memory that's actually available. os.freemem() counts file cache as used on macOS and Linux, so it reads ~100%. */
+async function memory() {
+  const total = os.totalmem();
+  try {
+    if (MAC) {
+      const { stdout } = await exec("vm_stat");
+      const page = Number(/page size of (\d+)/.exec(stdout)?.[1] ?? 4096);
+      const pages = (name) => Number(new RegExp(`Pages ${name}:\\s+(\\d+)`).exec(stdout)?.[1] ?? 0);
+      return { total, free: Math.min(total, (pages("free") + pages("inactive") + pages("speculative") + pages("purgeable")) * page) };
+    }
+    if (!WIN) {
+      const kb = Number(/MemAvailable:\s+(\d+)/.exec(readFileSync("/proc/meminfo", "utf8"))?.[1] ?? NaN);
+      if (Number.isFinite(kb)) return { total, free: kb * 1024 };
+    }
+  } catch {}
+  return { total, free: os.freemem() };
+}
+
 async function status() {
   const env = readEnv();
   const [worker, ollamaSvc, o, d, logs] = await Promise.all([
@@ -170,6 +191,7 @@ async function status() {
   ]);
   const gk = env.GEMINI_API_KEY ?? "";
   return {
+    version: VERSION,
     hostname: os.hostname(),
     os: `${os.type()} ${os.release()}`,
     distro: WIN ? (await ps("(Get-CimInstance Win32_OperatingSystem).Caption")) : (existsSync("/etc/os-release") && readFileSync("/etc/os-release", "utf8").match(/PRETTY_NAME="([^"]+)"/)?.[1]) || null,
@@ -178,7 +200,7 @@ async function status() {
     uptime: os.uptime(),
     ips: lanIps(),
     cpu: { model: os.cpus()[0]?.model?.trim(), cores: os.cpus().length, usage: cpu(), load: os.loadavg() },
-    memory: { total: os.totalmem(), free: os.freemem() },
+    memory: await memory(),
     disk: d,
     services: { worker, ollama: ollamaSvc },
     localModel: !noLocalModel(),
@@ -246,6 +268,10 @@ createServer(async (req, res) => {
     if (url.searchParams.get("token") === TOKEN) {
       res.writeHead(302, { "set-cookie": `spot_console=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, location: "/" });
       return res.end();
+    }
+    if (url.pathname === "/favicon.svg" || url.pathname === "/favicon.ico") {
+      res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" });
+      return res.end(FAVICON);
     }
     if (url.pathname === "/" && req.method === "GET") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
