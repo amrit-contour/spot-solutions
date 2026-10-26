@@ -6,11 +6,15 @@
   "license": "MIT",
   "scripts": {
     "dev:web": "pnpm --filter @spot/web dev",
+    "dev:comic": "pnpm --filter @spot/comic dev",
+    "build:web": "pnpm --filter @spot/web build",
+    "build:comic": "pnpm --filter @spot/comic build",
     "dev:worker": "pnpm --filter @spot/worker dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "deploy:web": "pnpm --filter @spot/web build && bash deploy/build-dist.sh && firebase deploy --only hosting,firestore:rules,storage"
+    "deploy:web": "pnpm --filter @spot/web build && bash deploy/build-dist.sh && firebase deploy --only hosting:curating,firestore:rules,storage",
+    "deploy:comic": "pnpm --filter @spot/comic build && firebase deploy --only hosting:comedy"
   },
   "packageManager": "pnpm@9.15.4"
 }
