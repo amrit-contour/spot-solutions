@@ -78,8 +78,10 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const conn = useConnection();
   return (
     <div className="flex min-h-dvh bg-surface">
+      {/* Installed app: the status bar / notch area is painted with the page colour, so scrolled content never shows through it. */}
+      <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-50 h-[env(safe-area-inset-top)] bg-surface" />
       {/* Rail ≥ 600px */}
-      <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-24 flex-none flex-col items-center gap-3 bg-surface py-5 sm:flex">
+      <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-24 flex-none flex-col items-center gap-3 bg-surface pt-[calc(1.25rem+env(safe-area-inset-top))] pb-5 sm:flex">
         <NavLink to="/" aria-label="Spot Solutions home" className="mb-5">
           <Logo className="size-11" />
         </NavLink>
@@ -99,7 +101,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
         </NavLink>
       </nav>
 
-      <main className="min-w-0 flex-1 pb-24 sm:pb-0">
+      <main className="min-w-0 flex-1 pt-[env(safe-area-inset-top)] pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-0">
         {isDemoUser() && <DemoBanner />}
         {/* CSS keyframes, not AnimatePresence: they always run to the end, so a route can never get stuck invisible. */}
         <div key={loc.pathname} className="page-enter">
@@ -108,7 +110,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
       </main>
 
       {/* Bottom bar < 600px */}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-20 items-center bg-surface-container px-2 pb-[env(safe-area-inset-bottom)] sm:hidden">
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(5rem+env(safe-area-inset-bottom))] items-center bg-surface-container px-2 pb-[env(safe-area-inset-bottom)] sm:hidden">
         {NAV.map((n) => (
           <NavItem key={n.to} {...n} />
         ))}

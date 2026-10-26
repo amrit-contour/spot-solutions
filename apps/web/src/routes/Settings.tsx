@@ -28,6 +28,7 @@ import { runCommand } from "../lib/data";
 import { useCollection } from "../lib/data";
 import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
+import { StickyBar } from "../components/StickyBar";
 import { ConnectCard } from "../components/ConnectCard";
 import { AiModels } from "../components/AiModels";
 import { AiPolicyPicker } from "../components/AiPolicy";
@@ -53,10 +54,10 @@ function useSettingsTab(): TabId {
   return (TABS.some((t) => t.id === id) ? id : "whatsapp") as TabId;
 }
 
-/** Side menu on desktop, scrolling tabs on phones. One topic on screen at a time. */
-function SettingsNav({ current }: { current: TabId }) {
+/** Side menu on desktop, scrolling tabs on phones. One topic on screen at a time. Both stay put while the page scrolls. */
+function SettingsLinks({ current, vertical }: { current: TabId; vertical?: boolean }) {
   return (
-    <nav aria-label="Settings sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 lg:sticky lg:top-6 lg:w-60 lg:flex-none lg:flex-col">
+    <nav aria-label="Settings sections" className={cx("flex gap-1", vertical ? "flex-col" : "-mx-4 overflow-x-auto px-4 py-2 [scrollbar-width:none] sm:-mx-8 sm:px-8")}>
       {TABS.map((t) => {
         const active = t.id === current;
         return (
@@ -66,11 +67,12 @@ function SettingsNav({ current }: { current: TabId }) {
             replace
             aria-current={active ? "page" : undefined}
             className={cx(
-              "state-layer relative flex h-10 flex-none items-center gap-2.5 rounded-full px-4 type-label-l whitespace-nowrap lg:h-12 lg:px-4",
+              "state-layer relative flex flex-none items-center gap-2.5 rounded-full px-4 type-label-l whitespace-nowrap",
+              vertical ? "h-12" : "h-10",
               active ? "text-on-secondary-container" : "text-on-surface-variant",
             )}
           >
-            {active && <motion.span layoutId="settings-tab" className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
+            {active && <motion.span layoutId={vertical ? "settings-tab-side" : "settings-tab"} className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
             <t.icon className="icon relative size-5" />
             <span className="relative">{t.label}</span>
           </Link>
@@ -187,7 +189,15 @@ export function SettingsPage() {
     <div className="w-full">
       <PageHeader title="Settings" subtitle="How Spot Solutions talks on your behalf" />
       <div className="flex flex-col gap-6 px-4 pb-12 sm:px-8 lg:flex-row lg:items-start lg:gap-8">
-        <SettingsNav current={tab} />
+        {/* Phones and tablets: a bar pinned under the top edge. `contents` keeps it a direct child of the page column, so it sticks for the whole page. */}
+        <div className="contents lg:hidden">
+          <StickyBar title="Settings" className="-mt-2">
+            <SettingsLinks current={tab} />
+          </StickyBar>
+        </div>
+        <div className="hidden w-60 flex-none lg:sticky lg:top-[calc(1.5rem+env(safe-area-inset-top))] lg:block">
+          <SettingsLinks current={tab} vertical />
+        </div>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
         {tab === "whatsapp" && (
           <>

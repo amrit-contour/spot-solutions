@@ -17,7 +17,7 @@ import { RemoveServerButton } from "../components/RemoveServerButton";
 import { ServerUpdate } from "../components/ServerUpdate";
 import { WipeDemoCard } from "../components/AdminDataTools";
 import { isAdmin, useAccessConfig } from "../lib/access";
-import { Avatar, Button, Card, Chip, Empty, cx } from "../components/ui";
+import { Avatar, Card, Chip, CompactButton, Empty, cx } from "../components/ui";
 import { IconComics, IconCpu, IconRefresh, IconServer } from "../components/icons";
 
 const ONLINE_MS = 90_000;
@@ -98,9 +98,7 @@ function RestartButton({ serverId, type, label, disabled }: { serverId: string; 
     }
   };
   return (
-    <Button size="sm" variant="tonal" icon={IconRefresh} loading={busy} disabled={disabled} onClick={go}>
-      {label}
-    </Button>
+    <CompactButton icon={IconRefresh} label={label} loading={busy} disabled={disabled} onClick={go} />
   );
 }
 
@@ -256,9 +254,7 @@ function ConsoleLinks({ server }: { server: ServerStatus }) {
     <Menu
       align="right"
       trigger={(open) => (
-        <Button size="sm" variant="tonal" icon={IconServer} onClick={open} title="Works when you're on the same Wi-Fi as this server">
-          Open console
-        </Button>
+        <CompactButton icon={IconServer} label="Open console" onClick={open} title="Works when you're on the same Wi-Fi as this server" />
       )}
     >
       {(close) => (

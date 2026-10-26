@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { signInWithPopup } from "firebase/auth";
 import { AnimatePresence, motion } from "motion/react";
-import { auth, google } from "../lib/firebase";
+import { useSignIn } from "./Landing";
 import { Logo } from "../components/Logo";
 import { Bubble, Button, Chip } from "../components/ui";
 import { IconCpu, IconMic, IconShield, IconSofa } from "../components/icons";
@@ -61,26 +60,19 @@ function Demo() {
 }
 
 export function SignIn() {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const go = async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      await signInWithPopup(auth, google);
-    } catch (e) {
-      setErr((e as Error).message.replace("Firebase: ", ""));
-      setBusy(false);
-    }
-  };
+  const { busy, run } = useSignIn();
   return (
-    <div className="grid min-h-dvh bg-surface lg:grid-cols-[1.1fr_1fr]">
-      <section className="flex flex-col justify-between px-6 py-8 sm:px-12 sm:py-12">
+    // Installed app: the page runs edge to edge, so every side pads past the notch, status bar and home indicator.
+    <div className="grid min-h-dvh bg-surface pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] lg:grid-cols-[1.1fr_1fr]">
+      <section className="flex flex-col justify-between px-6 pt-[max(2rem,calc(env(safe-area-inset-top)+1rem))] pb-[max(2rem,calc(env(safe-area-inset-bottom)+1rem))] sm:px-12 sm:pt-[max(3rem,calc(env(safe-area-inset-top)+1rem))] sm:pb-[max(3rem,calc(env(safe-area-inset-bottom)+1rem))]">
         <div className="flex items-center gap-3">
           <Logo className="size-10" />
-          <span className="type-title-m">Spot Solutions</span>
+          <span className="flex flex-col leading-tight">
+            <span className="type-title-m">Spot Solutions</span>
+            <span className="type-label-s text-on-surface-variant">by Amrit Dash</span>
+          </span>
         </div>
-        <div className="my-14 max-w-xl">
+        <div className="my-12 max-w-xl">
           <p className="mb-4 inline-flex items-center gap-2 type-label-l text-primary">
             <IconSofa className="icon size-5" /> For open-mic curators who'd rather be writing
           </p>
@@ -88,15 +80,18 @@ export function SignIn() {
           <p className="mt-5 max-w-md type-body-l text-on-surface-variant">
             Link your WhatsApp. A local Gemma model reads the DMs, picks out who's asking for a spot, and replies for you. You drag names into shows and hit send.
           </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Button size="lg" onClick={go} loading={busy}>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <Button size="lg" onClick={() => run("google")} loading={busy === "google"}>
               <svg viewBox="0 0 24 24" className="size-5" aria-hidden>
                 <path fill="currentColor" d="M21.35 11.1H12v2.98h5.35c-.23 1.4-1.66 4.1-5.35 4.1-3.22 0-5.85-2.67-5.85-5.96S8.78 6.26 12 6.26c1.83 0 3.06.78 3.76 1.45l2.56-2.47C16.68 3.7 14.55 2.75 12 2.75 6.9 2.75 2.75 6.9 2.75 12S6.9 21.25 12 21.25c6.92 0 9.2-4.86 9.2-7.36 0-.5-.05-.88-.12-1.27z" />
               </svg>
               Continue with Google
             </Button>
+            <Button size="lg" variant="outlined" icon={IconSofa} onClick={() => run("demo")} loading={busy === "demo"}>
+              Try the live demo
+            </Button>
           </div>
-          {err && <p className="mt-4 type-body-m text-error">{err}</p>}
+          <p className="mt-4 type-body-s text-on-surface-variant">The demo is your own sandbox of a curator's week. No sign-up.</p>
         </div>
         <ul className="grid gap-4 type-body-m text-on-surface-variant sm:grid-cols-2">
           <li className="flex gap-3">

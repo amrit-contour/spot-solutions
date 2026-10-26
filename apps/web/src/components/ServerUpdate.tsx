@@ -9,7 +9,7 @@ import { useApp } from "../lib/app";
 import { db } from "../lib/firebase";
 import { expireAt } from "../lib/data";
 import { isReleaseVersion, shortVersion, useLatestRelease } from "../lib/release";
-import { Button, Chip, Spinner } from "./ui";
+import { Chip, CompactButton, Spinner } from "./ui";
 import { IconCheck, IconRefresh, IconWarn } from "./icons";
 
 const STALE_MS = 30 * 60_000;
@@ -67,9 +67,7 @@ export function ServerUpdate({ server: s, online, now }: { server: ServerStatus;
         </Chip>
       )}
       {(available || failed) && latest && (
-        <Button size="sm" variant="tonal" icon={IconRefresh} loading={busy} disabled={!online} onClick={() => void go()} title={online ? undefined : "The server is offline"}>
-          {failed ? "Try again" : `Update to ${shortVersion(latest.version)}`}
-        </Button>
+        <CompactButton icon={IconRefresh} label={failed ? "Try again" : `Update to ${shortVersion(latest.version)}`} loading={busy} disabled={!online} onClick={() => void go()} title={online ? undefined : "The server is offline"} />
       )}
     </>
   );

@@ -8,7 +8,7 @@ import { timeAgo, useNow } from "../lib/data";
 import { REASON, leaseStale, moveAccount, pinAccount, platformName, serverName, serverOnline, useLease, usePrefs, useVault } from "../lib/fleet";
 import { Avatar, Chip, IconButton, cx } from "./ui";
 import { Menu, MenuItem } from "./Menu";
-import { Collapsible } from "./Collapsible";
+import { Collapsible, CollapsibleBand } from "./Collapsible";
 import { RemoveServerButton } from "./RemoveServerButton";
 import { IconCpu, IconMenuDots, IconServer } from "./icons";
 
@@ -127,19 +127,21 @@ export function FleetView({ servers }: { servers: ServerStatus[] | null }) {
   return (
     <Collapsible id="fleet" title="Fleet" icon={IconServer} summary={`${onlineCount} online`} summaryTone={onlineCount ? "success" : "error"}>
       <p className="px-4 pb-3 type-body-s text-on-surface-variant">Each WhatsApp account runs on one server and moves to another by itself if that one goes offline.</p>
-      <div className="bg-surface-container px-4 py-2 type-label-m text-on-surface-variant">Servers ({servers.length})</div>
-      <ul className="divide-y divide-outline-variant/40">
-        {sorted.map((s) => (
-          <ServerRow key={s.id} s={s} now={now} />
-        ))}
-      </ul>
-      <div className="bg-surface-container px-4 py-2 type-label-m text-on-surface-variant">Accounts ({accounts.length})</div>
-      <ul className="divide-y divide-outline-variant/40">
-        {accounts.map((a) => (
-          <AccountRow key={a.uid} e={a} servers={servers} now={now} />
-        ))}
-        {!accounts.length && <li className="px-4 py-4 type-body-s text-on-surface-variant">No approved curators yet.</li>}
-      </ul>
+      <CollapsibleBand id="fleet:servers" label="Servers" count={servers.length}>
+        <ul className="divide-y divide-outline-variant/40">
+          {sorted.map((s) => (
+            <ServerRow key={s.id} s={s} now={now} />
+          ))}
+        </ul>
+      </CollapsibleBand>
+      <CollapsibleBand id="fleet:accounts" label="Accounts" count={accounts.length}>
+        <ul className="divide-y divide-outline-variant/40">
+          {accounts.map((a) => (
+            <AccountRow key={a.uid} e={a} servers={servers} now={now} />
+          ))}
+          {!accounts.length && <li className="px-4 py-4 type-body-s text-on-surface-variant">No approved curators yet.</li>}
+        </ul>
+      </CollapsibleBand>
     </Collapsible>
   );
 }

@@ -8,8 +8,8 @@ import { useApp } from "../lib/app";
 import { db } from "../lib/firebase";
 import { useAccessConfig } from "../lib/access";
 import { expireAt, timeAgo } from "../lib/data";
-import { Avatar, Button, Chip, IconButton, Stepper, TextInput } from "./ui";
-import { Collapsible } from "./Collapsible";
+import { Avatar, Button, Chip, CompactButton, IconButton, Stepper, TextInput } from "./ui";
+import { Collapsible, CollapsibleBand } from "./Collapsible";
 import { Menu, MenuItem } from "./Menu";
 import { DeleteDataDialog, RemoveUserDialog } from "./AdminDataTools";
 import { IconArrowDown, IconCheck, IconClose, IconComics, IconMenuDots, IconUserPlus } from "./icons";
@@ -175,12 +175,8 @@ export function Curators({ servers }: { servers: ServerStatus[] | null }) {
             <AnimatePresence initial={false}>
               {pending.map((e) => (
                 <Row key={e.uid} e={e}>
-                  <Button size="sm" variant="text" onClick={() => void decide(e, "removed")}>
-                    Decline
-                  </Button>
-                  <Button size="sm" icon={IconCheck} onClick={() => void decide(e, "approved")} disabled={full}>
-                    Approve
-                  </Button>
+                  <CompactButton variant="text" icon={IconClose} label="Decline" onClick={() => void decide(e, "removed")} />
+                  <CompactButton variant="filled" icon={IconCheck} label="Approve" onClick={() => void decide(e, "approved")} disabled={full} />
                 </Row>
               ))}
             </AnimatePresence>
@@ -188,21 +184,20 @@ export function Curators({ servers }: { servers: ServerStatus[] | null }) {
         </>
       )}
 
-      <div className="bg-surface-container px-4 py-2 type-label-m text-on-surface-variant">Approved ({approved.length})</div>
-      <ul className="divide-y divide-outline-variant/40">
-        <AnimatePresence initial={false}>
-          {approved.map((e) => (
-            <Row key={e.uid} e={e}>
-              {e.uid !== user.uid && (
-                <Button size="sm" variant="text" icon={IconClose} className="text-error" onClick={() => void decide(e, "removed")}>
-                  Remove
-                </Button>
-              )}
-              {dataMenu(e, e.uid !== user.uid && !cfg?.admins.includes(e.email ?? ""))}
-            </Row>
-          ))}
-        </AnimatePresence>
-      </ul>
+      <CollapsibleBand id="curators:approved" label="Approved" count={approved.length}>
+        <ul className="divide-y divide-outline-variant/40">
+          <AnimatePresence initial={false}>
+            {approved.map((e) => (
+              <Row key={e.uid} e={e}>
+                {e.uid !== user.uid && (
+                  <CompactButton variant="text" icon={IconClose} label="Remove" className="text-error" onClick={() => void decide(e, "removed")} />
+                )}
+                {dataMenu(e, e.uid !== user.uid && !cfg?.admins.includes(e.email ?? ""))}
+              </Row>
+            ))}
+          </AnimatePresence>
+        </ul>
+      </CollapsibleBand>
 
       {removed.length > 0 && (
         <details className="group">

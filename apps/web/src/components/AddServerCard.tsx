@@ -8,7 +8,7 @@ import { useNow } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
 import { useAllServers } from "../lib/fleet";
 import { createJoinCode, joinError, type JoinCode } from "../lib/joinServer";
-import { Button, Card, Chip, TextInput } from "./ui";
+import { Button, Card, Chip, CompactButton, TextInput } from "./ui";
 import { IconAdd, IconCheck, IconServer } from "./icons";
 
 const fmtLeft = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`;
@@ -70,9 +70,7 @@ export function AddServerCard() {
           <p className="type-body-s text-on-surface-variant">Make a code, then enter it in the server console on the new computer. It gets its own key; nothing to copy around.</p>
         </div>
         {!open && (
-          <Button icon={IconAdd} onClick={() => setOpen(true)}>
-            Add a server
-          </Button>
+          <CompactButton variant="filled" size="md" icon={IconAdd} label="Add a server" onClick={() => setOpen(true)} />
         )}
       </div>
 

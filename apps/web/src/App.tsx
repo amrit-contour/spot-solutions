@@ -1,9 +1,12 @@
+import { useMemo } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppProvider, useAuthUser } from "./lib/app";
 import { Shell } from "./components/Shell";
 import { Spinner } from "./components/ui";
 import { Landing } from "./routes/Landing";
+import { SignIn } from "./routes/SignIn";
+import { isStandalone } from "./lib/standalone";
 import { Requests } from "./routes/Requests";
 import { Home } from "./routes/Calendar";
 import { LineupBoard } from "./routes/Lineup";
@@ -23,6 +26,7 @@ export default function App() {
   const access = useAccess(user);
   // Public or sign-in-first pages that don't need an approved account.
   const { pathname } = useLocation();
+  const installed = useMemo(isStandalone, []);
   const standalone = pathname === "/connect-server" ? <ConnectServer user={user} /> : pathname === "/install" ? <InstallPage /> : null;
   return (
     <>
@@ -45,7 +49,8 @@ export default function App() {
           <Spinner className="size-8" />
         </div>
       ) : user === null ? (
-        <Landing />
+        // The installed app is already "the product": skip the marketing page and go straight to signing in.
+        installed ? <SignIn /> : <Landing />
       ) : access === undefined ? (
         <div className="grid min-h-dvh place-items-center text-primary">
           <Spinner className="size-8" />

@@ -10,10 +10,11 @@ import { userDoc } from "../lib/data";
 import { db } from "../lib/firebase";
 import { saveComicToGoogle } from "../lib/googleContacts";
 import { PageHeader } from "../components/Shell";
+import { StickyBar } from "../components/StickyBar";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Menu, MenuItem } from "../components/Menu";
 import { ImportContactsSheet, ImportFileSheet } from "../components/ImportSheets";
-import { Avatar, Button, Chip, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, cx } from "../components/ui";
+import { Avatar, Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, cx } from "../components/ui";
 import { IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "../components/icons";
 
 const LIST_LABEL: Record<ComicList, string> = { host: "Host", ignored: "Ignored", banned: "Banned" };
@@ -103,9 +104,7 @@ export function Comics() {
           <Menu
             align="right"
             trigger={(t) => (
-              <Button variant="tonal" icon={IconImport} onClick={t}>
-                Import
-              </Button>
+              <CompactButton size="md" variant="tonal" icon={IconImport} label="Import" onClick={t} />
             )}
           >
             {(close) => (
@@ -115,21 +114,22 @@ export function Comics() {
               </>
             )}
           </Menu>
-          {!selecting && comics.length > 0 && <Button variant="outlined" icon={IconCheck} onClick={() => setSelecting(true)}>Select</Button>}
+          {!selecting && comics.length > 0 && <CompactButton size="md" variant="outlined" icon={IconCheck} label="Select" onClick={() => setSelecting(true)} />}
           <Button icon={IconUserPlus} onClick={() => setEditing({ tier: "open" })}>Add comic</Button>
         </>
       }
-    >
-        <div className="mt-6 flex flex-wrap items-center gap-3">
+    />
+
+      <div className={cx("px-4 sm:px-8", selecting ? "pb-6" : "pb-12")}>
+        <StickyBar className="mb-1">
+        <div className="flex flex-wrap items-center gap-2 py-2 sm:gap-3 sm:py-3">
           <div className="relative min-w-60 flex-1">
             <IconSearch className="icon pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-on-surface-variant" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or number" className="h-12 w-full rounded-full bg-surface-high pr-4 pl-12 type-body-l outline-none placeholder:text-on-surface-variant focus:shadow-[inset_0_0_0_2px_var(--md-sys-color-primary)]" />
           </div>
           <Segmented size="sm" value={tier} onChange={setTier} options={[{ value: "all", label: "All" }, ...TIERS]} />
         </div>
-      </PageHeader>
-
-      <div className={cx("px-4 sm:px-8", selecting ? "pb-6" : "pb-12")}>
+        </StickyBar>
         {!list.length ? (
           <Empty icon={IconComics} title={comics.length ? "No matches" : "No comics yet"}>
             {comics.length ? "Try a different search." : "Once someone asks for a spot, they're added here automatically. You can also add people by hand."}
@@ -176,7 +176,7 @@ export function Comics() {
           </>
         )}
         {selecting && (
-          <div className="sticky bottom-24 z-30 mt-4 flex items-center gap-2 rounded-full bg-inverse-surface py-2 pr-2 pl-5 text-inverse-on-surface shadow-lg sm:bottom-6">
+          <div className="sticky bottom-[calc(6rem+env(safe-area-inset-bottom))] z-30 mt-4 flex items-center gap-2 rounded-full bg-inverse-surface py-2 pr-2 pl-5 text-inverse-on-surface shadow-lg sm:bottom-6">
             <span className="min-w-0 flex-1 truncate type-label-l tabular">{chosen.length} selected</span>
             <Button variant="text" onClick={exitSelect} className="text-inverse-on-surface!">Cancel</Button>
             <Button variant="danger" icon={IconTrash} disabled={!chosen.length} onClick={() => setConfirming(true)}>Remove</Button>

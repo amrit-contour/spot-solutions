@@ -7,7 +7,7 @@ import { isAdmin, useAccessConfig } from "../lib/access";
 import { isDemoUser } from "../lib/demo";
 import { isPrecondition, joinError, removeServer } from "../lib/joinServer";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { Button } from "./ui";
+import { CompactButton } from "./ui";
 import { IconTrash } from "./icons";
 
 export function RemoveServerButton({ server }: { server: Pick<ServerStatus, "id" | "hostname"> }) {
@@ -34,9 +34,7 @@ export function RemoveServerButton({ server }: { server: Pick<ServerStatus, "id"
 
   return (
     <>
-      <Button variant="danger" size="sm" icon={IconTrash} onClick={() => setOpen(true)}>
-        Remove server
-      </Button>
+      <CompactButton variant="danger" icon={IconTrash} label="Remove server" onClick={() => setOpen(true)} />
       <ConfirmDialog open={open} onClose={() => setOpen(false)} title={`Remove ${server.hostname}?`} confirmLabel="Remove server" onConfirm={() => run(false)}>
         <p>This takes the server off the list. If Spot Solutions made its key (from a join code), the key and its Google Cloud account are deleted, so the computer can no longer reach your data.</p>
         <p>Servers set up with the project's default key (older installs) are only removed from the list. Their key is not revoked.</p>

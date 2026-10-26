@@ -158,7 +158,7 @@ export function Requests() {
       <ScanHistorySheet open={scanOpen} onClose={() => setScanOpen(false)} />
       <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className={cx("min-w-0", view === "updates" && "hidden lg:block")}>
-          <div className="sticky top-0 z-20 -mx-4 mb-4 border-b border-outline-variant bg-surface/95 px-4 pt-2 backdrop-blur sm:mx-0 sm:px-0">
+          <div className="sticky top-[env(safe-area-inset-top)] z-20 -mx-4 mb-4 border-b border-outline-variant bg-surface/95 px-4 pt-2 backdrop-blur sm:mx-0 sm:px-0">
             <div className="flex flex-col gap-2 2xl:flex-row-reverse 2xl:items-center">
               <label className="relative block 2xl:w-64 2xl:flex-none">
                 <IconSearch className="icon pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-on-surface-variant" />

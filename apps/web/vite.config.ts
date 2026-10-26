@@ -11,7 +11,7 @@ export default defineConfig({
     Icons({ compiler: "jsx", jsx: "react", scale: 1 }),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "icons/apple-touch-icon.png"],
+      includeAssets: ["favicon.svg", "favicon-nbc.svg", "icons/apple-touch-icon.png", "icons/nbc/*.png", "manifest-nbc.webmanifest"],
       manifest: {
         id: "/",
         name: "Spot Solutions by Amrit Dash",

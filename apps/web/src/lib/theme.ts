@@ -156,7 +156,20 @@ export function setBrand(brand: Brand, opts: { persist?: boolean; animate?: bool
     }
   }
   syncThemeColor();
+  syncBrandIcons(brand);
   listeners.forEach((l) => l());
+}
+
+/**
+ * Tab icon, home-screen icon and install manifest follow the brand. An app already on the home screen keeps
+ * the icon it was installed with (phones save it at install); a new install picks up the current brand.
+ */
+function syncBrandIcons(brand: Brand) {
+  const nbc = brand === "nbc";
+  const set = (sel: string, href: string) => document.querySelectorAll<HTMLLinkElement>(sel).forEach((l) => l.getAttribute("href") !== href && l.setAttribute("href", href));
+  set('link[rel="icon"]', nbc ? "/favicon-nbc.svg" : "/favicon.svg");
+  set('link[rel="apple-touch-icon"]', nbc ? "/icons/nbc/apple-touch-icon.png" : "/icons/apple-touch-icon.png");
+  set('link[rel="manifest"]', nbc ? "/manifest-nbc.webmanifest" : "/manifest.webmanifest");
 }
 
 export function useBrand(): Brand {

@@ -22,7 +22,7 @@ import {
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
-function useSignIn() {
+export function useSignIn() {
   const [busy, setBusy] = useState<"demo" | "google" | null>(null);
   const run = async (kind: "demo" | "google") => {
     setBusy(kind);
@@ -211,27 +211,42 @@ export function Landing() {
   );
 
   return (
-    <div className="relative min-h-dvh overflow-x-clip bg-surface">
+    <div id="top" className="relative min-h-dvh overflow-x-clip bg-surface">
       {/* Spotlight glow */}
       <motion.div aria-hidden style={{ y: glowY }} className="pointer-events-none absolute -top-40 left-1/2 h-[720px] w-[1100px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--md-sys-color-primary)_22%,transparent),transparent)] blur-2xl" />
 
-      <header className="relative z-10 mx-auto flex max-w-6xl items-center gap-3 px-5 py-5 sm:px-8">
-        <Logo className="size-10" />
-        <span className="flex flex-col leading-tight">
-          <span className="type-title-m">Spot Solutions</span>
-          <span className="type-label-s text-on-surface-variant">by Amrit Dash</span>
-        </span>
-        <div className="flex-1" />
-        <a href="#how" className="hidden type-label-l text-on-surface-variant hover:text-on-surface sm:inline">How it works</a>
-        <a href="#open" className="hidden px-3 type-label-l text-on-surface-variant hover:text-on-surface sm:inline">Why open</a>
-        <a href="https://github.com/amrit-contour/spot-solutions" target="_blank" rel="noreferrer" className="hidden type-label-l text-on-surface-variant hover:text-on-surface sm:inline">GitHub</a>
-        <Button size="sm" variant="tonal" onClick={() => run("google")} loading={busy === "google"} className="ml-2">
-          Sign in
-        </Button>
+      {/* Stays put while the page scrolls. The top padding is the status bar / notch when installed, so nothing sits under it. */}
+      <header className="sticky top-0 z-30 border-b border-outline-variant/40 bg-surface/80 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-5 sm:px-8">
+          <a href="#top" aria-label="Spot Solutions, back to top" className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:outline-2 focus-visible:outline-primary">
+            <Logo className="size-10 flex-none" />
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate type-title-m">Spot Solutions</span>
+              <span className="truncate type-label-s text-on-surface-variant">by Amrit Dash</span>
+            </span>
+          </a>
+          <div className="flex-1" />
+          <nav aria-label="Page" className="hidden items-center gap-1 md:flex">
+            {[
+              ["#how", "How it works"],
+              ["#open", "Why open"],
+              ["#faq", "FAQ"],
+            ].map(([href, label]) => (
+              <a key={href} href={href} className="state-layer rounded-full px-3 py-2 type-label-l text-on-surface-variant">{label}</a>
+            ))}
+            <a href="https://github.com/amrit-contour/spot-solutions" target="_blank" rel="noreferrer" className="state-layer rounded-full px-3 py-2 type-label-l text-on-surface-variant">GitHub</a>
+          </nav>
+          <Button size="sm" variant="text" onClick={() => run("demo")} loading={busy === "demo"} className="max-sm:hidden">
+            Live demo
+          </Button>
+          <Button size="sm" variant="tonal" onClick={() => run("google")} loading={busy === "google"}>
+            Sign in
+          </Button>
+        </div>
       </header>
 
       {/* Hero */}
-      <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 pt-8 pb-20 sm:px-8 lg:grid-cols-[1fr_1.1fr] lg:pt-14">
+      <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 pt-10 pb-20 sm:px-8 lg:grid-cols-[1fr_1.1fr] lg:pt-14">
         <div>
           <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="inline-flex items-center gap-2 rounded-full bg-surface-container px-3 py-1.5 type-label-l text-primary">
             <IconMic className="icon size-4" /> For open-mic curators who'd rather be writing
@@ -281,7 +296,7 @@ export function Landing() {
       </section>
 
       {/* How it works */}
-      <section id="how" className="relative z-10 mx-auto max-w-6xl scroll-mt-10 px-5 py-24 sm:px-8">
+      <section id="how" className="relative z-10 mx-auto max-w-6xl scroll-mt-[calc(5rem+env(safe-area-inset-top))] px-5 py-24 sm:px-8">
         <SectionHead kicker="How it works" title="Three steps, two of them yours." />
         <div className="mt-12 grid gap-4 md:grid-cols-3">
           {[
@@ -320,7 +335,7 @@ export function Landing() {
       </section>
 
       {/* Why open */}
-      <section id="open" className="relative z-10 scroll-mt-10 bg-inverse-surface text-inverse-on-surface">
+      <section id="open" className="relative z-10 scroll-mt-[calc(5rem+env(safe-area-inset-top))] bg-inverse-surface text-inverse-on-surface">
         <div className="mx-auto grid max-w-6xl gap-12 px-5 py-24 sm:px-8 lg:grid-cols-2">
           <Reveal>
             <p className="type-label-l text-inverse-primary">Why open-weight</p>
@@ -368,7 +383,7 @@ export function Landing() {
       </section>
 
       {/* FAQ */}
-      <section className="relative z-10 mx-auto max-w-3xl px-5 pb-24 sm:px-8">
+      <section id="faq" className="relative z-10 mx-auto max-w-3xl scroll-mt-[calc(5rem+env(safe-area-inset-top))] px-5 pb-24 sm:px-8">
         <SectionHead kicker="Questions" title="Fair questions." />
         <div className="mt-8 divide-y divide-outline-variant/60 rounded-xl bg-surface-low">
           {FAQ.map(([q, a]) => (
@@ -392,7 +407,7 @@ export function Landing() {
         </Reveal>
       </section>
 
-      <footer className="relative z-10 border-t border-outline-variant/50">
+      <footer className="relative z-10 border-t border-outline-variant/50 pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-5 py-8 type-body-s text-on-surface-variant sm:px-8">
           <span>Spot Solutions by Amrit Dash · open source (MIT) · built for Hacktoberfest 2026 with Gemma</span>
           <div className="flex-1" />

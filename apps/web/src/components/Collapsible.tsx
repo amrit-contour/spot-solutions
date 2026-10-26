@@ -113,3 +113,28 @@ export function Collapsible({
     </Card>
   );
 }
+
+/** A sub-list inside a Collapsible card: the grey band ("Accounts (4)") is the toggle, the rows animate open and shut. */
+export function CollapsibleBand({ id, label, count, defaultOpen = true, children }: { id: string; label: string; count?: number; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useSectionOpen(id, defaultOpen);
+  const reduce = useReducedMotion();
+  const panel = useId();
+  return (
+    <div>
+      <button type="button" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)} className="state-layer flex w-full items-center gap-2 bg-surface-container px-4 py-2 text-left type-label-m text-on-surface-variant">
+        <span className="min-w-0 flex-1 truncate">
+          {label}
+          {count != null && ` (${count})`}
+        </span>
+        <IconArrowDown className={cx("icon size-4 flex-none transition-transform duration-200", open && "rotate-180")} aria-hidden />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div id={panel} key="body" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: reduce ? 0 : 0.25, ease: [0.23, 1, 0.32, 1] }} style={{ overflow: "hidden" }}>
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
