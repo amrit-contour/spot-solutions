@@ -395,6 +395,33 @@ const handlers: Record<Command["type"], Handler> = {
   apply_follow_up: (uid, { actionId }) => applyFollowUpAction(uid, sessions.require(uid), String(actionId)),
   preview_voice: previewVoice,
 
+  /**
+   * What WhatsApp actually renders from this account: one sample of each rich message type, sent ONLY to the
+   * curator's own chat ("Message yourself"). Buttons and lists are deprecated by WhatsApp for non-API accounts;
+   * this shows whether they arrive at all. Returns which sends WhatsApp accepted.
+   */
+  async send_format_samples(uid) {
+    const client = sessions.require(uid);
+    const self = client.info?.wid?._serialized;
+    if (!self) throw new Error("WhatsApp isn't ready");
+    const out: Record<string, string> = {};
+    const tryOne = async (name: string, content: string | WAWebJS.Poll | WAWebJS.Location | WAWebJS.Buttons | WAWebJS.List, opts?: WAWebJS.MessageSendOptions) => {
+      try {
+        const m = await enqueueTask(client, () => client.sendMessage(self, content, opts));
+        out[name] = m ? "sent" : "refused";
+      } catch (e) {
+        out[name] = `failed: ${(e as Error).message.slice(0, 120)}`;
+      }
+    };
+    await tryOne("text", "🧪 Spot Solutions format test (only you see this)\n\n*bold* _italic_ ~strike~ ```mono```\n> a quote\n* a bullet\n1. a numbered line\n`inline code`");
+    await tryOne("poll", new WAWebJS.Poll("🧪 Poll test: want the Monday 8:30 PM spot?", ["Yes, I'll take it", "Pass"], { allowMultipleAnswers: false, messageSecret: undefined }));
+    await tryOne("location", new WAWebJS.Location(12.9784, 77.6408, { name: "Test venue pin", address: "Indiranagar, Bengaluru" }));
+    await tryOne("buttons", new WAWebJS.Buttons("🧪 Buttons test: do you see two buttons below?", [{ body: "Yes" }, { body: "No" }], "Buttons", "Deprecated by WhatsApp"));
+    await tryOne("list", new WAWebJS.List("🧪 List test: do you see a menu?", "Open menu", [{ title: "Shows", rows: [{ title: "Monday Mic" }, { title: "Tuesday Mic" }] }], "List"));
+    console.log(`[format-test] ${uid}`, out);
+    return out;
+  },
+
   async send_message(uid, { to, body }) {
     await sendQueued(sessions.require(uid), String(to), String(body));
   },

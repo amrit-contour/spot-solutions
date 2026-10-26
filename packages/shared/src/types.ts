@@ -355,6 +355,7 @@ export type CommandType =
   | "apply_reconcile"
   | "learn_voice"
   | "apply_follow_up"
+  | "send_format_samples"
   | "preview_voice"
   | "send_message";
 
