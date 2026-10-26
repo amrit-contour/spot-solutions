@@ -1,10 +1,25 @@
 {
-  "projects": { "default": "spot-solutions" },
+  "projects": {
+    "default": "spot-solutions"
+  },
   "targets": {
     "spot-solutions": {
       "hosting": {
-        "curating": ["spot-solutions", "nothingbotcurating", "nothing-bot-curating"],
-        "comedy": ["nothingbotcomedy", "nothing-bot-comedy"]
+        "curating": [
+          "spot-solutions"
+        ],
+        "curating-nbc": [
+          "nothingbotcurating"
+        ],
+        "curating-nbc-hyphen": [
+          "nothing-bot-curating"
+        ],
+        "comedy": [
+          "nothingbotcomedy"
+        ],
+        "comedy-hyphen": [
+          "nothing-bot-comedy"
+        ]
       }
     }
   }
