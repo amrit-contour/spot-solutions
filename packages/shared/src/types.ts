@@ -132,6 +132,9 @@ export interface RuleSettings {
   skipLastWeek: boolean;
   /** How far back "recently" goes, in weeks (1 = last week only, the old rule). Missing means 1. */
   cooldownWeeks?: number;
+  /** A comic sits on at most one show a week: placing them moves them off the other. Off (missing) by default.
+   * POCs, regulars and co-hosts can always be on several shows. */
+  onePerWeek?: boolean;
 }
 
 /** Why a request was held back instead of landing in Asked. */
@@ -425,6 +428,7 @@ export type CommandType =
   | "send_message"
   | "list_threads"
   | "get_thread"
+  | "get_media"
   | "summarize_thread"
   | "list_voice_sources"
   | "cleanup_group"

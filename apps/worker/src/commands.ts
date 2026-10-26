@@ -58,7 +58,7 @@ import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
-import { getThread, listThreads, summarizeThread } from "./chats.ts";
+import { getMedia, getThread, listThreads, summarizeThread } from "./chats.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { settleRound } from "./replies.ts";
 
@@ -518,15 +518,18 @@ const handlers: Record<Command["type"], Handler> = {
     const client = sessions.require(uid);
     let text = String(body ?? "");
     if (voice && text.trim() && (r?.kind ?? "text") === "text") text = await inVoice(uid, "reply", text, { name: String(name ?? "there") });
-    // "@Amrit" typed in a group becomes a real tag: WhatsApp needs "@<their id>" in the text and the id in mentions.
+    // "@Amrit" typed in a group becomes a real tag: WhatsApp needs "@<their id>" in the text and the id in mentions. A tag can be
+    // anyone in the group: `comicId` is a roster id, a member's phone id or their @lid. Longer names go first so "@Ravi Kumar"
+    // isn't eaten by "@Ravi".
     const mentions: string[] = [];
     if (String(to).endsWith("@g.us") && Array.isArray(tags)) {
-      const comics = await loadComics(uid, (tags as { comicId: string }[]).map((t) => String(t.comicId)));
-      for (const t of tags as { label: string; comicId: string }[]) {
+      const wanted = (tags as { label: string; comicId: string }[]).filter((t) => t?.label && t.comicId).sort((a, b) => b.label.length - a.label.length);
+      const comics = await loadComics(uid, [...new Set(wanted.map((t) => String(t.comicId)))]);
+      for (const t of wanted) {
         if (!text.includes(t.label)) continue;
         const id = await deliverableId(client, comics.get(t.comicId)?.chatId ?? t.comicId);
         text = text.split(t.label).join(`@${id.split("@")[0]}`);
-        mentions.push(id);
+        if (!mentions.includes(id)) mentions.push(id);
       }
     }
     await deliverDraft(uid, client, String(to), text, r, mentions);
@@ -548,13 +551,14 @@ const handlers: Record<Command["type"], Handler> = {
   // Messages page: read live from WhatsApp, returned as the (short-lived) command result, never stored elsewhere.
   list_threads: (uid) => listThreads(uid),
   get_thread: getThread,
+  get_media: getMedia,
   summarize_thread: summarizeThread,
   // "Your voice" → Choose chats: names of every chat, short-lived like the Messages results.
   list_voice_sources: (uid) => listVoiceSourceChats(uid),
 };
 
 /** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */
-const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "summarize_thread", "list_voice_sources"]);
+const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "get_media", "summarize_thread", "list_voice_sources"]);
 
 /** The confirmation as the curator set it up: the text (in their voice), then the venue pin if that's on. */
 /** Is this comic the curator's own WhatsApp? */

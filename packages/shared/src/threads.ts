@@ -23,6 +23,18 @@ export interface WaMessageLike {
   /** Groups: who wrote it (their id) and the name they go by on WhatsApp. */
   author?: string;
   authorName?: string;
+  /** Everyone tagged in the text (their ids: @c.us or @lid). The text holds "@<digits of the id>" for each. */
+  mentionedIds?: string[];
+  hasReaction?: boolean;
+  /** Reactions on this message, one entry per emoji. Only filled in where the worker asked WhatsApp for them. */
+  reactions?: WaReactionLike[];
+}
+
+export interface WaReactionLike {
+  emoji: string;
+  /** You reacted with this emoji. */
+  byMe: boolean;
+  count?: number;
 }
 
 /** The fields of a whatsapp-web.js Chat we use. */
@@ -35,9 +47,29 @@ export interface WaChatLike {
   timestamp: number;
   unreadCount: number;
   lastMessage?: WaMessageLike | null;
+  /**
+   * A comic's chat whose newest message is theirs: its last few messages (any order), with reactions filled in on theirs.
+   * Lets "needs reply" know you answered by reacting. Missing means only `lastMessage` is known.
+   */
+  recent?: WaMessageLike[];
 }
 
-export type ThreadMessageKind = "text" | "poll" | "location" | "media" | "deleted" | "other";
+export type ThreadMessageKind = "text" | "poll" | "location" | "media" | "sticker" | "deleted" | "other";
+
+/** An emoji under a bubble: how many people used it, and whether one of them is you. */
+export interface ReactionChip {
+  emoji: string;
+  count: number;
+  byMe: boolean;
+}
+
+/** A tag in a message's text: `token` is what the text holds ("@98870264598667"), `name` what to show instead. */
+export interface ThreadMention {
+  /** The raw WhatsApp id, kept so the tag can be sent again. */
+  id: string;
+  token: string;
+  name: string;
+}
 
 export interface ThreadMessage {
   id: string;
@@ -51,6 +83,8 @@ export interface ThreadMessage {
   pin?: { name: string; detail?: string };
   /** Groups: who wrote it, as you'd recognise them (your Comics name first). Missing for your own messages. */
   author?: string;
+  reactions?: ReactionChip[];
+  mentions?: ThreadMention[];
 }
 
 export interface ThreadItem {
@@ -98,12 +132,44 @@ const NOT_A_MESSAGE = new Set(["e2e_notification", "notification", "notification
 
 const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
 
-/** One message as the thread shows it, or null for rows that aren't messages. */
+/** Everyone tagged in a message, named from `names` (roster, group members, WhatsApp). Tags that aren't in the text are ignored. */
+export function mentionsOf(m: Pick<WaMessageLike, "body" | "mentionedIds">, names: Map<string, string> = new Map()): ThreadMention[] {
+  const out = new Map<string, ThreadMention>();
+  for (const id of m.mentionedIds ?? []) {
+    const user = id.split("@")[0];
+    const token = `@${user}`;
+    if (!user || out.has(token) || !(m.body ?? "").includes(token)) continue;
+    out.set(token, { id, token, name: names.get(id) || (id.endsWith("@c.us") ? `+${user}` : "Someone") });
+  }
+  return [...out.values()];
+}
+
+/** The text with each tag written as "@Name", for places that show plain text (the chat list, the AI prompt). */
+export function withMentionNames(text: string, mentions: ThreadMention[] | undefined): string {
+  return (mentions ?? []).reduce((t, x) => t.split(x.token).join(`@${x.name}`), text);
+}
+
+const reactionChips = (m: WaMessageLike): ReactionChip[] | undefined => {
+  const chips = (m.reactions ?? []).filter((r) => r.emoji).map((r) => ({ emoji: r.emoji, count: Math.max(1, r.count ?? 1), byMe: r.byMe }));
+  return chips.length ? chips : undefined;
+};
+
+/** One message as the thread shows it, or null for rows that aren't messages. `names` resolves group writers and tags. */
 export function toThreadMessage(m: WaMessageLike, names?: Map<string, string>): ThreadMessage | null {
   if (NOT_A_MESSAGE.has(m.type)) return null;
-  const base = { id: m.id, at: m.timestamp * 1000, fromMe: m.fromMe, ...(names && !m.fromMe && m.author && { author: authorOf(m, names) }) };
+  const reactions = reactionChips(m);
+  const mentions = m.mentionedIds?.length ? mentionsOf(m, names) : [];
+  const base = {
+    id: m.id,
+    at: m.timestamp * 1000,
+    fromMe: m.fromMe,
+    ...(names && !m.fromMe && m.author && { author: authorOf(m, names) }),
+    ...(reactions && { reactions }),
+    ...(mentions.length && { mentions }),
+  };
   if (m.type === "chat") return m.body?.trim() ? { ...base, kind: "text", text: m.body } : null;
   if (m.type === "revoked") return { ...base, kind: "deleted", text: "[deleted message]" };
+  if (m.type === "sticker") return { ...base, kind: "sticker", text: "[sticker]" };
   if (m.type === "poll_creation") {
     const options = (m.pollOptions ?? []).map(String);
     return { ...base, kind: "poll", text: `Poll: ${m.pollName ?? ""}`.trim(), poll: { question: m.pollName ?? "", options, multi: Boolean(m.allowMultipleAnswers) } };
@@ -118,11 +184,27 @@ export function toThreadMessage(m: WaMessageLike, names?: Map<string, string>): 
   return { ...base, kind: MEDIA_LABEL[m.type] || m.hasMedia ? "media" : "other", text: caption ? `${label} ${caption}` : label };
 }
 
+/**
+ * Is their newest message still waiting on you? No once you sent anything after it, or reacted to it (or to any of their
+ * messages after your last one). `recent` is the chat's last few messages; without it only the newest is known.
+ */
+export function isAwaitingYou(last: WaMessageLike | null | undefined, recent?: WaMessageLike[]): boolean {
+  if (!last || !toThreadMessage(last)) return false;
+  const byId = new Map<string, WaMessageLike>();
+  for (const m of [...(recent ?? []), last]) if (toThreadMessage(m)) byId.set(m.id, byId.get(m.id)?.reactions ? byId.get(m.id)! : m);
+  const rows = [...byId.values()].sort((a, b) => a.timestamp - b.timestamp);
+  let mine = -1;
+  rows.forEach((m, i) => m.fromMe && (mine = i));
+  const theirs = rows.slice(mine + 1);
+  if (!theirs.length) return false;
+  return !theirs.some((m) => m.reactions?.some((r) => r.byMe));
+}
+
 /** The one-line preview in the thread list: 80 characters at most, one line, "[photo]" for media. */
-export function snippetOf(m: WaMessageLike | null | undefined): string {
-  const t = m ? toThreadMessage(m) : null;
+export function snippetOf(m: WaMessageLike | null | undefined, names?: Map<string, string>): string {
+  const t = m ? toThreadMessage(m, names) : null;
   if (!t) return "";
-  const line = (t.kind === "poll" && t.poll ? `Poll: ${t.poll.question}` : t.text).replace(/\s+/g, " ").trim();
+  const line = (t.kind === "poll" && t.poll ? `Poll: ${t.poll.question}` : withMentionNames(t.text, t.mentions)).replace(/\s+/g, " ").trim();
   return clip(line, SNIPPET_MAX);
 }
 
@@ -158,7 +240,7 @@ export function matchThreads(chats: WaChatLike[], comics: Pick<Comic, "id" | "ch
       snippet: snippetOf(last),
       fromMe,
       unread: Math.max(0, chat.unreadCount || 0),
-      awaitingYou: Boolean(lastRow) && !fromMe,
+      awaitingYou: Boolean(lastRow) && !fromMe && isAwaitingYou(last, chat.recent),
     };
     const prev = best.get(comic.id);
     if (!prev || item.at > prev.at) best.set(comic.id, { ...item, unread: (prev?.unread ?? 0) + item.unread });
@@ -168,10 +250,11 @@ export function matchThreads(chats: WaChatLike[], comics: Pick<Comic, "id" | "ch
 }
 
 /** The show groups as chats: linked groups only, newest first. A group used by two shows is listed once. */
-export function matchGroupThreads(chats: WaChatLike[], shows: { id: string; name: string; groupId?: string | null }[], comics: Pick<Comic, "id" | "chatId" | "phone" | "name">[] = []): GroupThreadItem[] {
+export function matchGroupThreads(chats: WaChatLike[], shows: { id: string; name: string; groupId?: string | null }[], comics: Pick<Comic, "id" | "chatId" | "phone" | "name">[] = [], resolved?: Map<string, string>): GroupThreadItem[] {
   const linked = new Map<string, string[]>();
   for (const s of shows) if (s.groupId) linked.set(s.groupId, [...(linked.get(s.groupId) ?? []), s.id]);
-  const names = authorNames(comics);
+  // Names WhatsApp resolved (an @lid writer, say) win over the roster, which only knows the ids you saved.
+  const names = new Map([...authorNames(comics), ...(resolved ?? [])]);
   const out: GroupThreadItem[] = [];
   for (const chat of chats) {
     const showIds = linked.get(chat.id);
@@ -183,7 +266,7 @@ export function matchGroupThreads(chats: WaChatLike[], shows: { id: string; name
       name: chat.name || shows.find((s) => s.id === showIds[0])?.name || "Show group",
       showIds,
       at: (lastRow?.at ?? chat.timestamp * 1000) || 0,
-      snippet: snippetOf(last),
+      snippet: snippetOf(last, names),
       fromMe: Boolean(last?.fromMe),
       ...(last && !last.fromMe && { author: authorOf(last, names) }),
       unread: Math.max(0, chat.unreadCount || 0),
@@ -199,7 +282,10 @@ export function authorNames(comics: Pick<Comic, "id" | "chatId" | "phone" | "nam
   return m;
 }
 
-/** A group message's writer: your Comics name, else their WhatsApp name, else their number. */
+/**
+ * A group message's writer: your Comics name, else what the worker resolved for their id (an @lid is mapped to a phone, then
+ * a saved or profile name), else the name on the message, else their number. `names` can hold both the @lid and the phone id.
+ */
 export function authorOf(m: Pick<WaMessageLike, "author" | "authorName">, names: Map<string, string>): string {
   const id = m.author ?? "";
   return names.get(id) || m.authorName?.trim() || (id.endsWith("@c.us") ? `+${id.split("@")[0]}` : "Someone");
@@ -272,7 +358,23 @@ export interface GetThreadResult {
   chatId: string;
   messages: ThreadMessage[];
   hasMore: boolean;
+  /** A group: who is in it (you excluded), for the @ picker. `id` is what a tag is sent to. */
+  members?: ThreadMember[];
   at: number;
+}
+
+export interface ThreadMember {
+  id: string;
+  name: string;
+}
+
+/** The biggest sticker the app fetches (bytes of the file). Anything larger shows as a label instead. */
+export const STICKER_MAX_BYTES = 150_000;
+
+/** get_media: one sticker as a data URL, read from WhatsApp for this one request and returned, never stored. */
+export interface ThreadMediaResult {
+  dataUrl: string | null;
+  reason?: "too_big" | "unavailable";
 }
 
 export type ThreadActionKind = "place" | "close_request" | "none";

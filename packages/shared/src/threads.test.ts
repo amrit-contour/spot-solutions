@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SNIPPET_MAX, dayLabel, filterThreads, groupByDay, matchThreads, pageMessages, snippetOf, toThreadMessage, type WaChatLike, type WaMessageLike } from "./threads.ts";
+import { SNIPPET_MAX, authorOf, dayLabel, filterThreads, groupByDay, isAwaitingYou, matchGroupThreads, matchThreads, mentionsOf, pageMessages, snippetOf, toThreadMessage, withMentionNames, type WaChatLike, type WaMessageLike } from "./threads.ts";
 
 const msg = (o: Partial<WaMessageLike> & { id: string }): WaMessageLike => ({ type: "chat", body: "hi", fromMe: false, timestamp: 1_000, ...o });
 const chat = (o: Partial<WaChatLike> & { id: string }): WaChatLike => ({ isGroup: false, timestamp: 1_000, unreadCount: 0, lastMessage: msg({ id: "m" }), ...o });
@@ -108,5 +108,75 @@ describe("day separators", () => {
       tz,
     );
     expect(rows.map((r) => r.row)).toEqual(["day", "msg", "msg", "day", "msg"]);
+  });
+});
+
+describe("awaitingYou", () => {
+  const comics = [comic("919800000001@c.us", "Asha")];
+  const theirs = (id: string, t: number, extra: Partial<WaMessageLike> = {}) => msg({ id, timestamp: t, ...extra });
+  const mine = (id: string, t: number, extra: Partial<WaMessageLike> = {}) => msg({ id, timestamp: t, fromMe: true, ...extra });
+  const thread = (last: WaMessageLike, recent?: WaMessageLike[]) => matchThreads([chat({ id: "919800000001@c.us", timestamp: last.timestamp, lastMessage: last, recent })], comics)[0];
+
+  it("waits when their newest message has no answer", () => {
+    expect(thread(theirs("b", 20), [mine("a", 10), theirs("b", 20)]).awaitingYou).toBe(true);
+    expect(thread(theirs("b", 20)).awaitingYou).toBe(true);
+  });
+  it("is answered when you reacted to it", () => {
+    const b = theirs("b", 20, { hasReaction: true, reactions: [{ emoji: "👍", byMe: true }] });
+    expect(thread(b, [mine("a", 10), b]).awaitingYou).toBe(false);
+  });
+  it("is answered when you reacted to any of their messages after your last one", () => {
+    const b = theirs("b", 20, { reactions: [{ emoji: "❤️", byMe: true }] });
+    const c = theirs("c", 30);
+    expect(thread(c, [mine("a", 10), b, c]).awaitingYou).toBe(false);
+  });
+  it("ignores reactions that are theirs, or on messages you had already answered", () => {
+    const a = theirs("a", 10, { reactions: [{ emoji: "👍", byMe: true }] });
+    const c = theirs("c", 30, { reactions: [{ emoji: "👍", byMe: false }] });
+    expect(thread(c, [a, mine("m", 20), c]).awaitingYou).toBe(true);
+  });
+  it("is never waiting once you sent something after it", () => expect(isAwaitingYou(mine("z", 40), [theirs("c", 30), mine("z", 40)])).toBe(false));
+  it("uses the reactions the worker attached to the same message in `recent`", () => {
+    const last = theirs("b", 20);
+    expect(thread(last, [{ ...last, reactions: [{ emoji: "👌", byMe: true }] }]).awaitingYou).toBe(false);
+  });
+});
+
+describe("group writers and tags", () => {
+  const names = new Map([["98870264598667@lid", "Ravi Kumar"], ["919800000001@c.us", "Asha"]]);
+  it("resolves an @lid writer through the names the worker found", () => {
+    expect(authorOf({ author: "98870264598667@lid" }, names)).toBe("Ravi Kumar");
+    expect(toThreadMessage(msg({ id: "1", author: "98870264598667@lid" }), names)?.author).toBe("Ravi Kumar");
+  });
+  it("falls back to their WhatsApp name, then their number, then Someone", () => {
+    expect(authorOf({ author: "5551@lid", authorName: "Pat" }, names)).toBe("Pat");
+    expect(authorOf({ author: "919811111111@c.us" }, names)).toBe("+919811111111");
+    expect(authorOf({ author: "5551@lid" }, names)).toBe("Someone");
+  });
+  it("turns a tag's raw digits into a name, keeping the id", () => {
+    const m = msg({ id: "1", body: "hey @98870264598667 and @919800000001 and @555", mentionedIds: ["98870264598667@lid", "919800000001@c.us", "555@lid", "777@lid"] });
+    expect(mentionsOf(m, names)).toEqual([
+      { id: "98870264598667@lid", token: "@98870264598667", name: "Ravi Kumar" },
+      { id: "919800000001@c.us", token: "@919800000001", name: "Asha" },
+      { id: "555@lid", token: "@555", name: "Someone" },
+    ]);
+    const t = toThreadMessage(m, names)!;
+    expect(t.text).toContain("@98870264598667");
+    expect(t.mentions).toHaveLength(3);
+    expect(withMentionNames(t.text, t.mentions)).toBe("hey @Ravi Kumar and @Asha and @Someone");
+  });
+  it("shows the resolved name in the group list preview and writer", () => {
+    const last = msg({ id: "1", body: "@98870264598667 see you", author: "98870264598667@lid", mentionedIds: ["98870264598667@lid"] });
+    const g = matchGroupThreads([chat({ id: "g@g.us", isGroup: true, lastMessage: last })], [{ id: "s", name: "Mon", groupId: "g@g.us" }], [], names)[0];
+    expect(g).toMatchObject({ author: "Ravi Kumar", snippet: "@Ravi Kumar see you" });
+  });
+});
+
+describe("stickers and reactions", () => {
+  it("keeps stickers as their own kind", () => expect(toThreadMessage(msg({ id: "1", type: "sticker", body: "" }))).toMatchObject({ kind: "sticker", text: "[sticker]" }));
+  it("lists reactions as chips and marks yours", () => {
+    const t = toThreadMessage(msg({ id: "1", reactions: [{ emoji: "👍", byMe: false, count: 2 }, { emoji: "❤️", byMe: true }] }));
+    expect(t?.reactions).toEqual([{ emoji: "👍", count: 2, byMe: false }, { emoji: "❤️", count: 1, byMe: true }]);
+    expect(toThreadMessage(msg({ id: "1" }))?.reactions).toBeUndefined();
   });
 });
