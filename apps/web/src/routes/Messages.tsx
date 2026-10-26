@@ -21,10 +21,8 @@ import {
   messageType,
   nextShowDate,
   whenLabel,
-  hasPin,
   lastSpot,
   localNow,
-  pollProblem,
   type GetThreadResult,
   type GroupPost,
   type GroupThreadItem,
@@ -34,26 +32,28 @@ import {
   type Show,
   type SpotRequest,
   type SummarizeThreadResult,
+  type ThreadMediaResult,
   type ThreadAction,
+  type ThreadMember,
   type ThreadItem,
   type ThreadMessage,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { timeAgo, useCollection, useNow, userDoc } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
-import { demoSource, liveSource, type ChatSource } from "../lib/messages";
+import { demoSource, liveSource, type ChatSource, type MentionTag } from "../lib/messages";
 import { placeAsTold, placeComic } from "../lib/lineup";
 import { PageHeader } from "@spot/ui";
 import { Menu, MenuItem } from "@spot/ui";
 import { COMIC_MESSAGE_KEYS, SnippetMenu } from "../components/SnippetMenu";
 import { GroupPostsEditor } from "../components/GroupPosts";
 import { RequestPills, requestPills } from "../components/RequestTags";
-import { MessageComposer, messageSummary, withKind } from "@spot/ui";
+import { messageSummary } from "@spot/ui";
+import { ChatComposer, type Outgoing } from "../components/ChatComposer";
 import { PinCard, PollCard, WaText } from "@spot/ui";
-import { Avatar, Button, Chip, Empty, IconButton, Segmented, Select, Sheet, Spinner, Switch, cx } from "@spot/ui";
-import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconGroup, IconMic, IconRefresh, IconSearch, IconSend, IconServer, IconSkip, IconSparkle } from "@spot/ui";
+import { Avatar, Button, Chip, Empty, IconButton, Segmented, Select, Sheet, Spinner, cx } from "@spot/ui";
+import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconGroup, IconMic, IconRefresh, IconSearch, IconServer, IconSkip, IconSparkle } from "@spot/ui";
 
-const emptyText = (): RichMessage => ({ kind: "text", body: "" });
 const OPEN = ["new", "acked"];
 
 /** Data that loads on demand and refreshes while the tab is visible. A result never outlives its key (the open chat). */
@@ -152,14 +152,14 @@ export function Messages() {
         />
       </div>
 
-      <div className="px-4 pb-6 sm:px-8 lg:grid lg:h-[calc(100dvh-var(--page-header-h,0px)-1.5rem)] lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] lg:gap-6">
+      <div className={cx("px-4 sm:px-8 lg:grid lg:h-[calc(100dvh-var(--page-header-h,0px)-1.5rem)] lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] lg:gap-6", anyOpen ? "pb-0 lg:pb-6" : "pb-6")}>
         <section aria-label="Chats" className={cx("min-h-0 flex-col lg:flex", anyOpen ? "hidden" : "flex")}>
           {!ready ? (
             <Unavailable offline={!workerOnline} />
           ) : (
             <>
               {demo && <p className="mb-3 rounded-lg bg-tertiary-container px-4 py-3 type-body-s text-on-tertiary-container">Sample chats built from the demo's requests. A real account shows your WhatsApp conversations here.</p>}
-              <div className="sticky top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))] z-20 -mx-4 flex flex-col gap-2 bg-surface/95 px-4 pt-2 pb-2 backdrop-blur sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:px-0">
+              <div className="sticky top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))] z-20 -mx-4 flex flex-col gap-2 bg-surface px-4 pt-2 pb-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:px-0">
                 <label className="relative block">
                   <IconSearch className="icon pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-on-surface-variant" />
                   <input
@@ -377,7 +377,7 @@ function ThreadRow({ t, active, now, tz, onOpen }: { t: ThreadItem; active: bool
 
 interface Pending {
   id: string;
-  msg: RichMessage;
+  out: Outgoing;
   state: "sending" | "failed";
   at: number;
   error?: string;
@@ -408,7 +408,8 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
     <Conversation
       threadKey={comic.id}
       load={(before) => source.thread(comic.id, before)}
-      send={(msg, opts) => source.send({ id: comic.id, chatId: comic.chatId, name: comic.name }, msg, opts)}
+      media={(id) => source.media({ comicId: comic.id }, id)}
+      send={(msg, opts) => source.send({ id: comic.id, chatId: comic.chatId, name: comic.name, tags: opts.tags }, msg, opts)}
       onBack={onBack}
       onSent={onChanged}
       ariaLabel={`Chat with ${comic.name}`}
@@ -429,7 +430,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
       }
       context={<ThreadContext comic={comic} request={request} lineups={lineups} placedShow={placedShow} />}
       aboveComposer={<AssistCard source={source} comic={comic} request={request} lineups={lineups} onUseReply={(t) => setDraft({ kind: "text", body: t })} week={week} />}
-      templates={(pick) => <SnippetMenu name={comic.name} vars={vars} builtins={["confirm", "ack", "reject", "cancelSpot"]} messages={COMIC_MESSAGE_KEYS} onPick={pick} />}
+      templates={(pick, trigger) => <SnippetMenu name={comic.name} vars={vars} builtins={["confirm", "ack", "reject", "cancelSpot"]} messages={COMIC_MESSAGE_KEYS} onPick={pick} trigger={trigger} />}
     />
   );
 }
@@ -466,7 +467,11 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
     <Conversation
       threadKey={group.groupId}
       load={(before) => source.groupThread(group.groupId, before)}
-      send={(msg, opts) => source.send({ id: group.groupId, chatId: group.groupId, name: "everyone", tags: pocTags }, msg, opts)}
+      media={(id) => source.media({ groupId: group.groupId }, id)}
+      send={(msg, opts) => source.send({ id: group.groupId, chatId: group.groupId, name: "everyone", tags: opts.tags }, msg, opts)}
+      baseTags={pocTags}
+      memberHints={show?.groupMembers?.groupId === group.groupId ? show.groupMembers.members.map((m) => ({ id: m.id, name: m.name })) : undefined}
+      isGroup
       onBack={onBack}
       onSent={onChanged}
       ariaLabel={`${group.name} group`}
@@ -516,7 +521,7 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
           </section>
         )
       }
-      templates={(pick) => <SnippetMenu vars={vars} messages={[...GROUP_POST_KEYS]} onPick={pick} />}
+      templates={(pick, trigger) => <SnippetMenu vars={vars} messages={[...GROUP_POST_KEYS]} onPick={pick} trigger={trigger} />}
     />
   );
 }
@@ -525,7 +530,11 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
 function Conversation({
   threadKey,
   load,
+  media,
   send: sendMsg,
+  baseTags,
+  memberHints,
+  isGroup,
   onBack,
   onSent,
   header,
@@ -541,13 +550,20 @@ function Conversation({
 }: {
   threadKey: string;
   load: (before?: number) => Promise<GetThreadResult>;
-  send: (msg: RichMessage, opts: { voice: boolean; venueId: string | null }) => Promise<unknown>;
+  /** A sticker's image, read on demand. */
+  media: (messageId: string) => Promise<ThreadMediaResult>;
+  send: (msg: RichMessage, opts: { voice: boolean; venueId: string | null; tags: MentionTag[] }) => Promise<unknown>;
+  /** Groups: tags the text may already hold (the POCs a template fills in). */
+  baseTags?: MentionTag[];
+  /** Groups: members known from the show's cache, used when the chat itself didn't list them. */
+  memberHints?: ThreadMember[];
+  isGroup?: boolean;
   onBack: () => void;
   onSent: () => void;
   header: ReactNode;
   context?: ReactNode;
   aboveComposer?: ReactNode;
-  templates: (pick: (m: RichMessage) => void) => ReactNode;
+  templates: (pick: (m: RichMessage) => void, trigger: (toggle: () => void, open: boolean) => ReactNode) => ReactNode;
   /** The label over a run of their messages. */
   labelFor: (m: ThreadMessage) => string;
   defaultVenueId?: string;
@@ -557,7 +573,7 @@ function Conversation({
   draft?: RichMessage | null;
   onDraftUsed?: () => void;
 }) {
-  const { venues, settings } = useApp();
+  const { settings } = useApp();
   const now = useNow(30_000);
   const tz = settings.timezone;
 
@@ -589,23 +605,12 @@ function Conversation({
 
   // Messages you've just sent show at once, then give way to the real ones.
   const [pending, setPending] = useState<Pending[]>([]);
-  const [msg, setMsg] = useState<RichMessage>(emptyText);
-  useEffect(() => {
-    if (!draft) return;
-    setMsg(draft);
-    onDraftUsed?.();
-  }, [draft, onDraftUsed]);
-  const [voice, setVoice] = useState(false);
-  const pinVenues = venues.filter((v) => hasPin(v));
-  const [venueId, setVenueId] = useState<string>(() => (defaultVenueId && hasPin(venues.find((v) => v.id === defaultVenueId)) ? defaultVenueId : (pinVenues[0]?.id ?? "")));
-  const venue = venues.find((v) => v.id === venueId);
   const voiceReady = voiceAllowed && Boolean(settings.voice?.enabled && settings.voice.profile?.summary);
-  const ready = msg.kind === "poll" ? !pollProblem(msg.poll) : msg.kind === "location" ? hasPin(venue) : Boolean(msg.body.trim());
 
   const deliver = async (p: Pending) => {
     setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "sending", error: undefined } : y)));
     try {
-      await sendMsg(p.msg, { voice: voice && p.msg.kind === "text", venueId: p.msg.kind === "location" || p.msg.attachLocation ? venueId : null });
+      await sendMsg(p.out.msg, { voice: p.out.voice && p.out.msg.kind === "text", venueId: p.out.venueId, tags: p.out.tags });
       await newest.refresh();
       setPending((x) => x.filter((y) => y.id !== p.id));
       onSent();
@@ -613,13 +618,15 @@ function Conversation({
       setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "failed", error: (e as Error).message } : y)));
     }
   };
-  const send = () => {
-    if (!ready) return;
-    const p: Pending = { id: `p${Date.now()}`, msg, state: "sending", at: Date.now() };
-    setPending((x) => [...x, p]);
-    setMsg(emptyText());
-    void deliver(p);
+  // Several items (text, then a poll) go out one after the other, in order.
+  const sendAll = (items: Outgoing[]) => {
+    const queued = items.map((out, i): Pending => ({ id: `p${Date.now()}-${i}`, out, state: "sending", at: Date.now() + i }));
+    setPending((x) => [...x, ...queued]);
+    void queued.reduce((chain, p) => chain.then(() => deliver(p)), Promise.resolve());
   };
+
+  // Who the "@" picker offers: the chat's own list, else what the show remembers.
+  const members = isGroup ? (newest.data?.members?.length ? newest.data.members : memberHints) : undefined;
 
   // Scrolling: open at the newest message; stay at the bottom when new ones arrive only if you were already there.
   const scroller = useRef<HTMLDivElement>(null);
@@ -651,8 +658,8 @@ function Conversation({
   const who = (m: ThreadMessage) => (m.fromMe ? "me" : (m.author ?? "them"));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:overflow-hidden lg:rounded-lg lg:border lg:border-outline-variant">
-      <header className="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 flex flex-none items-center gap-2 border-b border-outline-variant bg-surface/95 px-2 py-2 backdrop-blur sm:-mx-8 sm:px-6 lg:static lg:mx-0 lg:bg-surface-low lg:px-3">
+    <div className="-mb-4 flex min-h-[calc(100dvh-env(safe-area-inset-top)-var(--nav-h))] flex-1 flex-col sm:mb-0 sm:min-h-[calc(100dvh-env(safe-area-inset-top))] lg:min-h-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-outline-variant">
+      <header className="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 flex flex-none items-center gap-2 border-b border-outline-variant bg-surface px-2 pt-3 pb-2 sm:-mx-8 sm:px-6 lg:static lg:mx-0 lg:bg-surface-low lg:px-3 lg:py-2">
         <IconButton icon={IconArrowLeft} label="Back to chats" onClick={onBack} className="lg:hidden" />
         {header}
         <IconButton icon={IconRefresh} label="Refresh this chat" onClick={() => void newest.refresh()} disabled={newest.loading} className={cx(newest.loading && "[&_svg]:animate-spin")} />
@@ -688,7 +695,7 @@ function Conversation({
               const firstOfRun = !prev || prev.row === "day" || who(prev.m) !== who(r.m);
               return (
                 <li key={r.m.id}>
-                  <Bubble m={r.m} label={firstOfRun ? (r.m.fromMe ? "You" : labelFor(r.m)) : undefined} tz={tz} />
+                  <Bubble m={r.m} label={firstOfRun ? (r.m.fromMe ? "You" : labelFor(r.m)) : undefined} tz={tz} media={media} />
                 </li>
               );
             })}
@@ -702,78 +709,118 @@ function Conversation({
         {newest.error && messages.length > 0 && <p role="status" className="pb-2 text-center type-body-s text-error">Couldn't refresh: {newest.error}</p>}
       </div>
 
-      <div className="sticky bottom-[var(--nav-h)] z-20 -mx-4 flex flex-none flex-col gap-2 border-t border-outline-variant bg-surface px-4 pt-3 pb-3 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:bg-surface-low lg:px-4">
+      <div className="sticky bottom-[var(--nav-h)] z-20 -mx-4 mt-auto flex flex-none flex-col gap-2 border-t border-outline-variant bg-surface px-3 pt-2 pb-2 sm:-mx-8 sm:bottom-0 sm:px-8 lg:static lg:mx-0 lg:bg-surface-low lg:px-3">
         {aboveComposer}
-        <div
-          className="flex flex-col gap-2"
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-              e.preventDefault();
-              send();
-            }
-          }}
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <Segmented
-              size="sm"
-              value={msg.kind}
-              onChange={(k) => setMsg(withKind(msg, k))}
-              options={[
-                { value: "text", label: "Text" },
-                { value: "poll", label: "Poll" },
-                { value: "location", label: "Pin" },
-              ]}
-            />
-            <div className="ml-auto">{templates(setMsg)}</div>
-          </div>
-          <MessageComposer value={msg} onChange={setMsg} compact preview={false} idPrefix={`chat-${threadKey}`} attachLabel="Also send the venue pin" />
-          {(msg.kind === "location" || msg.attachLocation) && (
-            <div className="flex flex-col gap-1.5">
-              {pinVenues.length ? (
-                <Select value={venueId} onChange={setVenueId} label="Venue to pin" options={pinVenues.map((v) => ({ value: v.id, label: v.name }))} />
-              ) : (
-                <p className="type-body-s text-error">None of your venues has a map pin yet. Add one under Shows → Venues.</p>
-              )}
-            </div>
+        <ChatComposer
+          key={threadKey}
+          idPrefix={`chat-${threadKey}`}
+          onSend={sendAll}
+          templates={templates}
+          voiceReady={voiceReady}
+          defaultVenueId={defaultVenueId}
+          members={members}
+          baseTags={baseTags}
+          draft={draft}
+          onDraftUsed={onDraftUsed}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Stickers already fetched this visit (the image only, by message id). A small cap keeps the page light; it clears when you leave. */
+const stickerCache = new Map<string, string | "none">();
+const STICKER_CACHE_MAX = 80;
+let stickersActive = 0;
+const stickerQueue: (() => void)[] = [];
+const MAX_STICKER_REQUESTS = 3;
+const withSlot = async <T,>(job: () => Promise<T>): Promise<T> => {
+  if (stickersActive >= MAX_STICKER_REQUESTS) await new Promise<void>((go) => stickerQueue.push(go));
+  stickersActive++;
+  try {
+    return await job();
+  } finally {
+    stickersActive--;
+    stickerQueue.shift()?.();
+  }
+};
+
+/** A sticker as an image. Fetched when it scrolls into view, one at a time per three, and remembered for this visit. */
+function Sticker({ id, media }: { id: string; media: (id: string) => Promise<ThreadMediaResult> }) {
+  const [src, setSrc] = useState<string | "none" | null>(() => stickerCache.get(id) ?? null);
+  const holder = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (src) return;
+    const el = holder.current;
+    if (!el) return;
+    let live = true;
+    const go = () =>
+      void withSlot(() => media(id))
+        .then((r) => {
+          const v = r.dataUrl ?? "none";
+          if (stickerCache.size >= STICKER_CACHE_MAX) stickerCache.delete(stickerCache.keys().next().value as string);
+          stickerCache.set(id, v);
+          if (live) setSrc(v);
+        })
+        .catch(() => live && setSrc("none"));
+    if (typeof IntersectionObserver === "undefined") return go();
+    const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && (io.disconnect(), go()), { rootMargin: "200px" });
+    io.observe(el);
+    return () => {
+      live = false;
+      io.disconnect();
+    };
+  }, [id, media, src]);
+  if (src && src !== "none") return <img src={src} alt="Sticker" width={144} height={144} className="size-36 object-contain" draggable={false} />;
+  return (
+    <span ref={holder} className="grid size-36 place-items-center rounded-md bg-on-surface/5 type-label-m text-on-surface-variant">
+      {src === "none" ? "Sticker" : <Spinner className="size-5" />}
+    </span>
+  );
+}
+
+function Bubble({ m, label, tz, media }: { m: ThreadMessage; label?: string; tz: string; media: (id: string) => Promise<ThreadMediaResult> }) {
+  const out = m.fromMe;
+  const plain = m.kind === "media" || m.kind === "deleted" || m.kind === "other";
+  const sticker = m.kind === "sticker";
+  const photo = m.kind === "media" && /^\[photo\]/.test(m.text);
+  const mentions = m.mentions ?? [];
+  return (
+    <div className={cx("flex flex-col", out ? "items-end" : "items-start")}>
+      {label && <span className="mt-1.5 mb-0.5 px-1 type-label-s text-on-surface-variant">{label}</span>}
+      <div className={cx("max-w-[88%] sm:max-w-[80%]", Boolean(m.reactions?.length) && "mb-2")}>
+        <div className={cx("relative rounded-lg type-body-m", sticker ? "px-0.5 py-0.5" : "px-3.5 py-2", out ? "rounded-br-xs" : "rounded-bl-xs", sticker ? "" : out ? "bg-primary-container text-on-primary-container" : "bg-surface-highest text-on-surface")}>
+          {sticker ? (
+            <Sticker id={m.id} media={media} />
+          ) : m.kind === "poll" && m.poll ? (
+            <PollCard poll={m.poll} />
+          ) : m.kind === "location" && m.pin ? (
+            <PinCard name={m.pin.name} detail={m.pin.detail ?? "Map pin"} />
+          ) : plain ? (
+            <span className="italic opacity-80">{photo ? m.text.replace(/^\[photo\]/, "Photo") : m.text}</span>
+          ) : (
+            <WaText text={m.text} mentions={mentions} />
           )}
-          <div className="flex items-center gap-3">
-            {voiceReady && msg.kind === "text" ? (
-              <label className="flex min-w-0 flex-1 items-center gap-2.5 type-body-m">
-                <Switch checked={voice} onChange={setVoice} label="Write it in my voice" />
-                <span className="min-w-0">
-                  <span className="block truncate">Write it in my voice</span>
-                  {voice && <span className="block type-body-s text-on-surface-variant">Reworded when sent; your own words go if it changes a fact.</span>}
+          <div className={cx("mt-0.5 text-right type-label-s tabular", sticker ? "text-on-surface-variant" : "opacity-60")}>{clock(m.at, tz)}</div>
+          {m.reactions?.length ? (
+            <div className={cx("absolute -bottom-3.5 flex gap-1", out ? "right-2" : "left-2")}>
+              {m.reactions.map((r) => (
+                <span key={r.emoji} className={cx("inline-flex h-6 items-center gap-0.5 rounded-full px-1.5 text-sm leading-none shadow-sm ring-1", r.byMe ? "bg-primary-container text-on-primary-container ring-primary" : "bg-surface text-on-surface ring-outline-variant")} title={r.byMe ? "You reacted" : undefined}>
+                  <span aria-hidden>{r.emoji}</span>
+                  {r.count > 1 && <span className="type-label-s tabular">{r.count}</span>}
+                  <span className="sr-only">{r.byMe ? "reaction from you" : "reaction"}</span>
                 </span>
-              </label>
-            ) : (
-              <span className="flex-1" />
-            )}
-            <Button icon={IconSend} onClick={send} disabled={!ready} data-primary>
-              Send
-            </Button>
-          </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function Bubble({ m, label, tz }: { m: ThreadMessage; label?: string; tz: string }) {
-  const out = m.fromMe;
-  const plain = m.kind === "media" || m.kind === "deleted" || m.kind === "other";
-  return (
-    <div className={cx("flex flex-col", out ? "items-end" : "items-start")}>
-      {label && <span className="mt-1.5 mb-0.5 px-1 type-label-s text-on-surface-variant">{label}</span>}
-      <div className={cx("max-w-[88%] rounded-lg px-3.5 py-2 type-body-m sm:max-w-[80%]", out ? "rounded-br-xs bg-primary-container text-on-primary-container" : "rounded-bl-xs bg-surface-highest text-on-surface")}>
-        {m.kind === "poll" && m.poll ? <PollCard poll={m.poll} /> : m.kind === "location" && m.pin ? <PinCard name={m.pin.name} detail={m.pin.detail ?? "Map pin"} /> : plain ? <span className="italic opacity-80">{m.text}</span> : <WaText text={m.text} />}
-        <div className="mt-0.5 text-right type-label-s tabular opacity-60">{clock(m.at, tz)}</div>
-      </div>
-    </div>
-  );
-}
-
 function PendingBubble({ p, onRetry, onDiscard }: { p: Pending; onRetry: () => void; onDiscard: () => void }) {
-  const m = p.msg;
+  const m = p.out.msg;
   return (
     <div className="flex flex-col items-end">
       <div className={cx("max-w-[88%] rounded-lg rounded-br-xs px-3.5 py-2 type-body-m sm:max-w-[80%]", p.state === "failed" ? "bg-error-container text-on-error-container" : "bg-primary-container/70 text-on-primary-container")}>

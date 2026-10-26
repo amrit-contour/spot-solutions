@@ -1,5 +1,6 @@
 // "Templates" button for any message box: your saved snippets plus the messages from Settings → Messages, filled in for
 // this comic (or group) and dropped into the box to edit before sending.
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { greetName, messageRich, messageType, renderRich, snippetRich, type MessageKey, type MessageKind, type RichMessage, type TemplateVars } from "@spot/shared";
 import { useApp } from "../lib/app";
@@ -18,7 +19,7 @@ const BUILTIN_LABEL: Record<Builtin, string> = { ack: "Got your request", confir
  * `kinds` limits the list to what this box can send (an offer can't send a bare pin, for one).
  * `messages` and `builtins` add templates from Settings; `name` is left out for groups (no {{name}} there).
  */
-export function SnippetMenu({ name, vars, onPick, kinds, messages = [], builtins = [] }: { name?: string; vars?: TemplateVars; onPick: (m: RichMessage) => void; kinds?: MessageKind[]; messages?: MessageKey[]; builtins?: Builtin[] }) {
+export function SnippetMenu({ name, vars, onPick, kinds, messages = [], builtins = [], trigger }: { name?: string; vars?: TemplateVars; onPick: (m: RichMessage) => void; kinds?: MessageKind[]; messages?: MessageKey[]; builtins?: Builtin[]; /** Replaces the "Templates" button (the chat composer opens this from its + sheet). */ trigger?: (toggle: () => void, open: boolean) => ReactNode }) {
   const { settings } = useApp();
   const fill = { ...vars, ...(name !== undefined && { name: greetName(name) }) };
   const fits = (m: RichMessage) => !kinds || kinds.includes(m.kind);
@@ -34,11 +35,13 @@ export function SnippetMenu({ name, vars, onPick, kinds, messages = [], builtins
   return (
     <Menu
       align="right"
-      trigger={(toggle, open) => (
+      trigger={(toggle, open) =>
+        trigger ? trigger(toggle, open) : (
         <Button size="sm" variant="text" icon={IconTemplate} onClick={toggle} aria-expanded={open} aria-haspopup="menu">
           Templates
         </Button>
-      )}
+        )
+      }
     >
       {(close) => (
         <div className="w-72">

@@ -12,8 +12,11 @@ import {
   type Show,
   type SpotRequest,
   type SummarizeThreadResult,
+  type ThreadMediaResult,
+  type ThreadMember,
   type ThreadMessage,
   type WaChatLike,
+  type WaMessageLike,
 } from "@spot/shared";
 import { runCommand } from "./data";
 
@@ -21,9 +24,17 @@ export interface ChatTarget {
   id: string;
   chatId?: string;
   name: string;
-  /** Groups: "@Name" tags in the text that should become real WhatsApp tags. */
-  tags?: { label: string; comicId: string }[];
+  /** Groups: "@Name" tags in the text that should become real WhatsApp tags. `comicId` is any member's id (roster, phone id or @lid). */
+  tags?: MentionTag[];
 }
+
+export interface MentionTag {
+  label: string;
+  comicId: string;
+}
+
+/** Which chat a media request is about: a comic's or a show group. */
+export type MediaTarget = { comicId: string } | { groupId: string };
 
 export interface ChatSource {
   /** Sample conversations built from the demo sandbox, not WhatsApp. */
@@ -33,6 +44,8 @@ export interface ChatSource {
   /** A show's group (linked groups only). */
   groupThread: (groupId: string, before?: number) => Promise<GetThreadResult>;
   summarize: (comicId: string, weekOf: string) => Promise<SummarizeThreadResult>;
+  /** One sticker as an image (a data URL), read for this request and never stored. */
+  media: (target: MediaTarget, messageId: string) => Promise<ThreadMediaResult>;
   send: (to: ChatTarget, msg: RichMessage, opts: { voice: boolean; venueId: string | null }) => Promise<{ body: string }>;
 }
 
@@ -53,6 +66,7 @@ export function liveSource(uid: string): ChatSource {
     thread: (comicId, before) => runCommand<GetThreadResult>(uid, "get_thread", { comicId, ...(before ? { before } : {}) }, 90_000, { ephemeral: true }),
     groupThread: (groupId, before) => runCommand<GetThreadResult>(uid, "get_thread", { groupId, ...(before ? { before } : {}) }, 90_000, { ephemeral: true }),
     summarize: (comicId, weekOf) => runCommand<SummarizeThreadResult>(uid, "summarize_thread", { comicId, weekOf }, 240_000, { ephemeral: true }),
+    media: (target, messageId) => runCommand<ThreadMediaResult>(uid, "get_media", { ...target, messageId }, 60_000, { ephemeral: true }),
     send: async (to, msg, opts) => {
       const r = await runCommand<{ body?: string } | null>(uid, "send_message", sendPayload(to, msg, opts), 180_000);
       return { body: r?.body ?? msg.body };
@@ -85,22 +99,49 @@ export function demoConversations({ comics, requests, lineups, shows, now }: Dem
     if (r.status === "rejected" || r.status === "dismissed") msgs.push({ id: `${r.id}-no`, at: at + 60_000, fromMe: true, kind: "text", text: `Sorry ${first}, we're full this week. Ask again next week.` });
     if (comics.some((c) => c.id === r.comicId)) out.set(r.comicId, [...(out.get(r.comicId) ?? []), ...msgs].sort((a, b) => a.at - b.at));
   }
-  // A couple of spread-out times so the day separators show up.
+  // Sample stickers and reactions: a sticker from the first comic, and a thumbs-up from you on the second one's last message
+  // (which is therefore not "waiting on you").
+  const chats = [...out.entries()];
+  const [a, b] = [chats[0], chats[1]];
+  if (a) {
+    const last = a[1][a[1].length - 1];
+    if (last && !last.fromMe) out.set(a[0], [...a[1], { id: `${a[0]}-sticker`, at: last.at + 30_000, fromMe: false, kind: "sticker", text: "[sticker]", reactions: [{ emoji: "😂", count: 1, byMe: true }] }]);
+  }
+  if (b) {
+    const last = b[1][b[1].length - 1];
+    if (last && !last.fromMe) out.set(b[0], [...b[1].slice(0, -1), { ...last, reactions: [{ emoji: "👍", count: 1, byMe: true }] }]);
+  }
   void now;
   return out;
 }
 
-/** A demo group: the latest lineup posted by you and a reply from someone on it. */
+/** A tiny sticker for the demo: an emoji on a coloured rounded square, as an image. */
+export const demoSticker = (seed: string) => {
+  const faces = ["😂", "🎤", "🙌", "🔥", "👏"];
+  const tints = ["#fde68a", "#bfdbfe", "#fbcfe8", "#bbf7d0", "#ddd6fe"];
+  const n = [...seed].reduce((t, c) => t + c.charCodeAt(0), 0);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="${tints[n % tints.length]}"/><text x="64" y="86" font-size="72" text-anchor="middle">${faces[n % faces.length]}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+/** Who the demo group's "@" picker offers: the roster's first few comics. */
+const demoMembers = (comics: Comic[]): ThreadMember[] => comics.slice(0, 8).map((c) => ({ id: c.id, name: c.name }));
+
+/** A demo group: the latest lineup posted by you, replies from people on it (one tags you by their number), a sticker and reactions. */
 function demoGroup({ shows, lineups, comics, now }: DemoData, groupId: string): ThreadMessage[] {
   const show = shows.find((s) => s.groupId === groupId);
   const lineup = lineups.find((l) => l.showId === show?.id && l.slots.length);
   if (!show) return [];
   const names = (lineup?.slots ?? []).map((s, i) => `${i + 1}. ${comics.find((c) => c.id === s.comicId)?.name ?? "TBA"}`);
   const at = now - 3 * 3600_000;
-  const first = comics.find((c) => c.id === lineup?.slots[0]?.comicId)?.name.split(/\s+/)[0];
+  const people = (lineup?.slots ?? []).map((s) => comics.find((c) => c.id === s.comicId)).filter((c): c is Comic => Boolean(c));
+  const first = people[0]?.name;
+  const second = people[1] ?? comics[1];
   return [
-    { id: `${groupId}-1`, at, fromMe: true, kind: "text", text: `*${show.name}: the lineup* 🎤\n\n${names.join("\n") || "Lineup coming soon."}` },
+    { id: `${groupId}-1`, at, fromMe: true, kind: "text", text: `*${show.name}: the lineup* 🎤\n\n${names.join("\n") || "Lineup coming soon."}`, reactions: [{ emoji: "🔥", count: 3, byMe: false }, { emoji: "👍", count: 1, byMe: true }] },
     ...(first ? [{ id: `${groupId}-2`, at: at + 20 * 60_000, fromMe: false, kind: "text" as const, text: "See you all there 🙌", author: first }] : []),
+    ...(second ? [{ id: `${groupId}-3`, at: at + 25 * 60_000, fromMe: false, kind: "text" as const, text: `@98870264598667 can you bring the mic stand? @${second.phone} is on first`, author: second.name, mentions: [{ id: "98870264598667@lid", token: "@98870264598667", name: "You" }, { id: second.id, token: `@${second.phone}`, name: second.name }] }] : []),
+    ...(first ? [{ id: `${groupId}-4`, at: at + 30 * 60_000, fromMe: false, kind: "sticker" as const, text: "[sticker]", author: first }] : []),
   ];
 }
 
@@ -112,6 +153,16 @@ export function demoSource(get: () => DemoData): ChatSource {
     for (const [id, extra] of local) base.set(id, [...(base.get(id) ?? []), ...extra].sort((a, b) => a.at - b.at));
     return base;
   };
+  // The demo's messages as WhatsApp's: the same shape the worker hands matchThreads, so "needs reply" is the real rule.
+  const asLike = (m: ThreadMessage): WaMessageLike => ({
+    id: m.id,
+    type: m.kind === "sticker" ? "sticker" : "chat",
+    body: m.kind === "sticker" ? "" : snippet(m),
+    fromMe: m.fromMe,
+    timestamp: Math.floor(m.at / 1000),
+    authorName: m.author,
+    reactions: m.reactions?.map((r) => ({ emoji: r.emoji, byMe: r.byMe, count: r.count })),
+  });
   const snippet = (m: ThreadMessage) => (m.kind === "poll" && m.poll ? `Poll: ${m.poll.question}` : m.text).replace(/\s+/g, " ").slice(0, 80);
   return {
     demo: true,
@@ -128,14 +179,15 @@ export function demoSource(get: () => DemoData): ChatSource {
           timestamp: Math.floor(last.at / 1000),
           unreadCount: last.fromMe ? 0 : 1,
           // Shaped like a WhatsApp chat's last message, so matchThreads does the real work here too.
-          lastMessage: { id: last.id, type: "chat", body: snippet(last), fromMe: last.fromMe, timestamp: Math.floor(last.at / 1000) },
+          lastMessage: asLike(last),
+          recent: msgs.slice(-8).map(asLike),
         });
       }
       // The demo's show groups: a lineup post from you, plus anything sent here.
       for (const show of d.shows) {
         if (!show.groupId || chats.some((c) => c.id === show.groupId)) continue;
         const last = [...demoGroup(d, show.groupId), ...(local.get(show.groupId) ?? [])].pop();
-        if (last) chats.push({ id: show.groupId, isGroup: true, name: `${show.name} comics`, timestamp: Math.floor(last.at / 1000), unreadCount: 0, lastMessage: { id: last.id, type: "chat", body: snippet(last), fromMe: last.fromMe, timestamp: Math.floor(last.at / 1000), authorName: last.author } });
+        if (last) chats.push({ id: show.groupId, isGroup: true, name: `${show.name} comics`, timestamp: Math.floor(last.at / 1000), unreadCount: 0, lastMessage: asLike(last) });
       }
       return { threads: matchThreads(chats, d.comics), groups: matchGroupThreads(chats, d.shows, d.comics), at: Date.now() };
     },
@@ -145,8 +197,9 @@ export function demoSource(get: () => DemoData): ChatSource {
     },
     groupThread: async (groupId, before) => {
       const rows = [...demoGroup(get(), groupId), ...(local.get(groupId) ?? [])].filter((m) => (before ? m.at < before : true));
-      return { comicId: groupId, groupId, chatId: groupId, messages: rows.slice(-50), hasMore: rows.length > 50, at: Date.now() };
+      return { comicId: groupId, groupId, chatId: groupId, messages: rows.slice(-50), hasMore: rows.length > 50, members: demoMembers(get().comics), at: Date.now() };
     },
+    media: async (_t, messageId) => ({ dataUrl: demoSticker(messageId) }),
     summarize: async (comicId) => {
       const d = get();
       const req = d.requests.find((r) => r.comicId === comicId);

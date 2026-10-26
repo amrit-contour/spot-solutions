@@ -44,6 +44,43 @@ export function useTextEditing(ref: RefObject<HTMLTextAreaElement | HTMLInputEle
   };
 }
 
+/** The formatting buttons (bold, italic, strike, mono, quote, lists) and the emoji picker. Used by RichField and the Messages composer. */
+export function FormatBar({ onFormat, onEmoji, extra, className }: { onFormat: (op: FormatOp) => void; onEmoji: (emoji: string) => void; extra?: ReactNode; className?: string }) {
+  return (
+    <div className={cx("flex flex-wrap items-center gap-0.5", className)} role="toolbar" aria-label="Formatting">
+      {TOOLS.map((t) => (
+        <span key={t.op} className="contents">
+          {t.sep && <span aria-hidden className="mx-1 h-5 w-px bg-outline-variant" />}
+          <button
+            type="button"
+            // Keep the selection in the box while the button is pressed.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onFormat(t.op)}
+            aria-label={t.label}
+            title={t.keys ? `${t.label} (${t.keys})` : t.label}
+            className="state-layer pressable grid size-8 place-items-center rounded-sm text-sm text-on-surface-variant"
+          >
+            {t.glyph}
+          </button>
+        </span>
+      ))}
+      <span aria-hidden className="mx-1 h-5 w-px bg-outline-variant" />
+      <Popover
+        title="Emoji"
+        width={328}
+        trigger={(toggle, open) => (
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={toggle} aria-label="Emoji" aria-expanded={open} title="Emoji" className="state-layer pressable grid size-8 place-items-center rounded-sm text-base">
+            <span aria-hidden>🙂</span>
+          </button>
+        )}
+      >
+        {() => <EmojiPicker onPick={onEmoji} />}
+      </Popover>
+      {extra}
+    </div>
+  );
+}
+
 export function RichField({
   value,
   onChange,
@@ -77,46 +114,22 @@ export function RichField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-0.5" role="toolbar" aria-label="Formatting">
-        {TOOLS.map((t) => (
-          <span key={t.op} className="contents">
-            {t.sep && <span aria-hidden className="mx-1 h-5 w-px bg-outline-variant" />}
+      <FormatBar
+        onFormat={format}
+        onEmoji={(e) => insert(e, false)}
+        extra={
+          preview ? (
             <button
               type="button"
-              // Keep the selection in the box while the button is pressed.
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => format(t.op)}
-              aria-label={t.label}
-              title={t.keys ? `${t.label} (${t.keys})` : t.label}
-              className="state-layer pressable grid size-8 place-items-center rounded-sm text-sm text-on-surface-variant"
+              onClick={() => setShowPreview((v) => !v)}
+              aria-pressed={showPreview}
+              className={cx("state-layer pressable ml-auto h-8 rounded-sm px-2.5 type-label-m", showPreview ? "bg-secondary-container text-on-secondary-container" : "text-on-surface-variant")}
             >
-              {t.glyph}
+              Preview
             </button>
-          </span>
-        ))}
-        <span aria-hidden className="mx-1 h-5 w-px bg-outline-variant" />
-        <Popover
-          title="Emoji"
-          width={328}
-          trigger={(toggle, open) => (
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={toggle} aria-label="Emoji" aria-expanded={open} title="Emoji" className="state-layer pressable grid size-8 place-items-center rounded-sm text-base">
-              <span aria-hidden>🙂</span>
-            </button>
-          )}
-        >
-          {() => <EmojiPicker onPick={(e) => insert(e, false)} />}
-        </Popover>
-        {preview && (
-          <button
-            type="button"
-            onClick={() => setShowPreview((v) => !v)}
-            aria-pressed={showPreview}
-            className={cx("state-layer pressable ml-auto h-8 rounded-sm px-2.5 type-label-m", showPreview ? "bg-secondary-container text-on-secondary-container" : "text-on-surface-variant")}
-          >
-            Preview
-          </button>
-        )}
-      </div>
+          ) : null
+        }
+      />
       <TextArea
         ref={(el) => {
           ref.current = el;
