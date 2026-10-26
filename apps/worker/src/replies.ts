@@ -5,6 +5,7 @@ import {
   formatDate,
   localNow,
   parseYesNo,
+  renderMessage,
   sentWith,
   withHistory,
   type Comic,
@@ -17,6 +18,7 @@ import { col, db } from "./firebase.ts";
 import { extractProfile } from "./gemma.ts";
 import { confirmBody, notice } from "./commands.ts";
 import { sendQueued } from "./sendQueue.ts";
+import { greetFor } from "./greet.ts";
 import { watchUser } from "./userData.ts";
 
 /** A pending offer's yes/no. Returns true when the messages were an answer to it. */
@@ -60,14 +62,15 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
 
   if (!booked || !show) {
     await doc.ref.update({ status: "full", reply });
-    await sendQueued(client, await chatOf(uid, comicId), "Ah, sorry! That spot just got filled. I'll keep you in mind for the next one 🙏");
+    const who = (await col(uid, "comics").doc(comicId).get()).data() as Comic | undefined;
+    await sendQueued(client, await chatOf(uid, comicId), renderMessage(settings, "offerFull", { name: await greetFor(client, who ?? { id: comicId, name: offer.comicName }) }));
     await notice(uid, "warn", `${offer.comicName} said yes, but ${show?.name ?? "the show"} was already full. They've been told.`);
     return true;
   }
 
   await doc.ref.update({ status: "accepted", reply });
   const comic = (await comicRef.get()).data() as Comic;
-  await sendQueued(client, comic.chatId ?? comicId, confirmBody(uid, show, comic, booked.weekOf));
+  await sendQueued(client, comic.chatId ?? comicId, await confirmBody(uid, client, show, comic, booked.weekOf));
   // On a confirmed lineup this counts as told, so "Send updates" doesn't confirm them a second time.
   if (booked.status === "confirmed") {
     const fresh = (await lineupRef.get()).data() as Lineup;
@@ -76,7 +79,7 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
   // Show is today and its group is managed: add them now.
   if (show.groupId && localNow(new Date(), settings.timezone).date === dateInWeek(booked.weekOf, show.weekday)) {
     const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;
-    await group.addParticipants([comicId], { autoSendInviteV4: true, comment: `You're on for ${show.name}!` }).catch(() => undefined);
+    await group.addParticipants([comicId], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) }).catch(() => undefined);
   }
   await notice(uid, "info", `${offer.comicName} took the ${show.name} spot and got the confirmation.`);
   return true;

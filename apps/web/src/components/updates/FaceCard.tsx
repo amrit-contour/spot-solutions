@@ -8,6 +8,7 @@ import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction, dismissNotice, type Introduction } from "../../lib/updates";
 import { Avatar, Bubble, Button, Chip, TextArea, buttonClass } from "../ui";
+import { SnippetMenu } from "../SnippetMenu";
 import { IconChatCheck, IconSkip, IconUserCheck, IconUserPlus } from "../icons";
 import { UpdateItem } from "./shared";
 
@@ -43,10 +44,13 @@ export function OnboardCard({ a }: { a: ComicAction }) {
           <div className="mt-3">
             <Bubble>{a.message}</Bubble>
           </div>
-          <label className="mt-3 block">
-            <span className="mb-1.5 block type-label-m text-on-surface-variant">Ask who they are</span>
-            <TextArea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="min-h-0" />
-          </label>
+          <div className="mt-3">
+            <div className="-mt-1.5 mb-0.5 flex items-center justify-between gap-2">
+              <label htmlFor={`face-${a.id}`} className="type-label-m text-on-surface-variant">Ask who they are</label>
+              <SnippetMenu name={a.comicName} onPick={setDraft} />
+            </div>
+            <TextArea id={`face-${a.id}`} value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="min-h-0" />
+          </div>
         </div>
       </div>
       <div className="mt-3 flex items-center justify-end gap-2 border-t border-outline-variant/40 px-3 py-2">

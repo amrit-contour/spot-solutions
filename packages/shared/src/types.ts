@@ -38,10 +38,18 @@ export interface Settings {
   offers: { expiryHours: number };
   /** Write comic names to the curator's Google Contacts (done in the browser, with the curator's own Google token). */
   googleContacts: { enabled: boolean };
+  /** Curator's rewrites of the other messages (see MESSAGE_TYPES). Missing keys use the default. */
+  messages?: Partial<Record<import("./messages.ts").MessageKey, string>>;
+  /** Saved replies the curator can drop into any message box. */
+  snippets?: import("./messages.ts").Snippet[];
+  /** Tell comics held by the request window or last-week rule why. Banned, ignored and hosts never get a reply. */
+  heldReplies?: { enabled: boolean };
   /** Days "Scan past messages" looks back by default (1 to 21). Missing counts as 7. */
   scanDays?: number;
   /** Data retention. Missing on older docs: closedRequestsWeeks counts as 8. */
   retention?: { closedRequestsWeeks: number };
+  /** App look, per user. Missing counts as "nbc" (demo sandboxes count as "classic"). */
+  appearance?: { brand: "nbc" | "classic" };
 }
 
 export interface ComicProfile {
@@ -229,6 +237,8 @@ export interface SpotRequest {
   hold?: HoldReason | null;
   /** Curator chose to let a held request through. */
   holdOverridden?: boolean;
+  /** When the comic was told why their request was held (heldReplies). Once per request. */
+  heldRepliedAt?: number | null;
   /** Stamped once by the worker: this request created the comic, so they weren't on the roster before. */
   firstContact?: boolean;
   /** Stamped once by the worker: requests this comic made in earlier weeks. */
@@ -367,6 +377,8 @@ export interface ServerStatus {
   lastSeen: number;
   cpu: { model: string; cores: number; load1: number; usage: number }; // usage 0..1
   memory: { total: number; free: number; process: number };
+  /** The server's local console: LAN addresses, its .local name and access code (admins only). */
+  console?: { port: number; ips: string[]; host: string; token: string | null };
   disk?: { total: number; free: number } | null;
   ollama: { up: boolean; url: string; models: { name: string; size: number }[]; loaded: string[] };
   geminiServerKey: boolean;

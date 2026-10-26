@@ -44,6 +44,7 @@ import {
   type SpotRequest,
   type HostPoll,
   type SpotOffer,
+  greetName,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, useCollection, useDocument } from "../lib/data";
@@ -634,7 +635,7 @@ function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regretsAfte
   const minutesOf = new Map(lineup?.slots.map((s) => [s.comicId, s.minutes]));
   const preview = (cid: string) =>
     renderTemplate(settings.confirm.template, {
-      name: (comicsById.get(cid)?.name ?? "").split(" ")[0],
+      name: greetName(comicsById.get(cid)?.name),
       show: show.name,
       venue: venue?.name,
       mapsLink: venue?.mapsLink,

@@ -19,6 +19,9 @@ export const DEFAULT_SETTINGS: Settings = {
   hostPoll: { groupId: null },
   offers: { expiryHours: 3 },
   googleContacts: { enabled: false },
+  messages: {},
+  snippets: [],
+  heldReplies: { enabled: false },
   scanDays: 7,
   retention: { closedRequestsWeeks: 8 },
 };

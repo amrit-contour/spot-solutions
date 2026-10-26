@@ -1,5 +1,5 @@
 import type { Comic, HoldReason, RuleSettings, SpotHistoryEntry, Weekday } from "./types.ts";
-import { shiftWeek } from "./week.ts";
+import { DAY_NAMES, formatTime, shiftWeek } from "./week.ts";
 
 const toMin = (day: Weekday, hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -64,4 +64,9 @@ export function localNow(at: Date, timeZone: string) {
   const f = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const p = Object.fromEntries(f.formatToParts(at).map((x) => [x.type, x.value]));
   return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+}
+
+/** "Saturday 3:00 PM": when the request window opens, for the held-request reply. */
+export function windowOpensLabel(w: RuleSettings["window"]) {
+  return `${DAY_NAMES[w.startDay]} ${formatTime(w.startTime)}`;
 }

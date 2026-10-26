@@ -3,7 +3,7 @@ import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
-import { connectGoogleContacts, hasGoogleToken, onGoogleToken } from "../lib/googleContacts";
+import { connectGoogleContacts, googleTokenExpiry, hasGoogleToken, onGoogleToken } from "../lib/googleContacts";
 import { useGoogleSync } from "./GoogleContactsSync";
 import { IconUserCheck } from "./icons";
 import { Button, Switch, cx } from "./ui";
@@ -12,6 +12,7 @@ export function GoogleContactsCard() {
   const { settings, saveSettings, comics, comicsLoaded } = useApp();
   const demo = isDemoUser();
   const connected = useSyncExternalStore(onGoogleToken, hasGoogleToken);
+  const until = useSyncExternalStore(onGoogleToken, googleTokenExpiry);
   const [connecting, setConnecting] = useState(false);
   const sync = useGoogleSync();
   const enabled = settings.googleContacts.enabled;
@@ -57,8 +58,9 @@ export function GoogleContactsCard() {
             <Button variant={connected ? "outlined" : "tonal"} onClick={() => void connect()} loading={connecting} disabled={demo}>
               {connected ? "Reconnect Google" : "Connect Google Contacts"}
             </Button>
-            <span className="type-label-m text-on-surface-variant">{connected ? "Connected for the next hour" : "Not connected"}</span>
+            <span className="type-label-m text-on-surface-variant">{connected && until ? `Connected until ${new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Not connected"}</span>
           </div>
+          <p className="type-body-s text-on-surface-variant">Google gives apps that run in your browser one hour of access at a time, and we never store it on a server. When it runs out, tap Reconnect; no new consent screen, just a quick popup.</p>
           <p className="type-body-s text-on-surface-variant">The first time, Google may say “Google hasn't verified this app”. Choose Advanced, then continue. Only names and phone numbers are used, and nothing is ever deleted.</p>
         </div>
 

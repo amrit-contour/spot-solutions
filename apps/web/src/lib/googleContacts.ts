@@ -32,6 +32,9 @@ const clearToken = () => {
   changed();
 };
 
+/** When the current token runs out (epoch ms), or null. */
+export const googleTokenExpiry = () => (valid() ? token!.expires : null);
+
 /** True while we hold an unexpired token. */
 export const hasGoogleToken = () => Boolean(valid());
 

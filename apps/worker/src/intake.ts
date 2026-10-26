@@ -12,7 +12,9 @@ import {
   holdFor,
   lastSpot,
   localNow,
+  renderMessage,
   renderTemplate,
+  windowOpensLabel,
   rolloverDayFor,
   weekOf,
   type ComicAction,
@@ -27,6 +29,7 @@ import { classify } from "./gemma.ts";
 import { classifyContext, countPriorRequests } from "./classifyContext.ts";
 import { watchUser } from "./userData.ts";
 import { sendQueued } from "./sendQueue.ts";
+import { greetFor } from "./greet.ts";
 import { counters } from "./stats.ts";
 import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
 
@@ -149,6 +152,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     ackedAt: existing?.ackedAt ?? null,
     hold,
     holdOverridden: existing?.holdOverridden ?? false,
+    heldRepliedAt: existing?.heldRepliedAt ?? null,
     // Stamped once, when the request is first created.
     firstContact: existing ? (existing.firstContact ?? false) : !known,
     priorRequests: existing ? (existing.priorRequests ?? priorRequests) : priorRequests,
@@ -191,16 +195,39 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     Date.now() - newest < AUTO_ACK_MAX_AGE_MS;
   if (okToAck) await acknowledge(uid, client, request);
 
+  // Held by the window or last-week rule: optionally say why, once. Banned, ignored and hosts never hear back.
+  const okToExplain =
+    !p.quiet &&
+    settings.heldReplies?.enabled &&
+    (hold === "midweek" || hold === "last_week") &&
+    !request.holdOverridden &&
+    !locked &&
+    !request.heldRepliedAt &&
+    intent.isSpotRequest &&
+    intent.confidence >= AUTO_ACK_THRESHOLD &&
+    !p.contact.isBusiness &&
+    Date.now() - newest < AUTO_ACK_MAX_AGE_MS;
+  if (okToExplain) await explainHold(uid, client, request, hold);
+
   // V1 new-contact flow: someone you haven't saved asks for a spot → draft "who are you?".
   if (settings.onboarding.enabled && intent.isSpotRequest && !existing && p.contact.nameSource !== "contact" && !known?.onboarding && !p.contact.isBusiness) {
     await draftOnboarding(uid, client, p, week);
   }
 }
 
+async function explainHold(uid: string, client: WAWebJS.Client, r: SpotRequest, hold: "midweek" | "last_week") {
+  const { settings } = watchUser(uid);
+  const comic = (await col(uid, "comics").doc(r.comicId).get()).data() as Comic | undefined;
+  const name = await greetFor(client, comic ?? { id: r.comicId, name: r.comicName });
+  const body = renderMessage(settings, hold === "midweek" ? "heldWindow" : "heldLastWeek", { name, opens: windowOpensLabel(settings.rules.window) });
+  await sendQueued(client, comic?.chatId ?? r.comicId, body);
+  await col(uid, "requests").doc(r.id).update({ heldRepliedAt: Date.now() });
+  console.log(`[held] told ${comic?.name ?? r.comicName} (${hold})`);
+}
+
 async function draftOnboarding(uid: string, client: WAWebJS.Client, p: Pending, week: string) {
   const { settings } = watchUser(uid);
-  const greet = p.contact.nameSource === "whatsapp" ? ` ${p.contact.name.split(" ")[0]}` : "";
-  const draft = `Hey${greet}! Don't think I have you saved yet 🙂 Could you tell me your full name, which comedy scene you're from, and how long you've been doing comedy? Also, are you travelling?`;
+  const draft = renderMessage(settings, "onboard", { name: await greetFor(client, { id: p.contact.id, chatId: p.contact.chatId, name: p.contact.nameSource === "number" ? "" : p.contact.name, nameSource: p.contact.nameSource }) });
   const ref = col(uid, "actions").doc(actionId(p, "onboard"));
   const created = await ref.create({
     kind: "onboard",
@@ -226,7 +253,7 @@ async function acknowledge(uid: string, client: WAWebJS.Client, r: SpotRequest) 
   const { settings } = watchUser(uid);
   if (!settings.ack.enabled) return;
   const comic = (await col(uid, "comics").doc(r.comicId).get()).data() as Comic | undefined;
-  const body = renderTemplate(settings.ack.template, { name: (comic?.name ?? r.comicName).split(" ")[0] });
+  const body = renderTemplate(settings.ack.template, { name: await greetFor(client, comic ?? { id: r.comicId, name: r.comicName }) });
   await sendQueued(client, comic?.chatId ?? r.comicId, body);
   await col(uid, "requests").doc(r.id).update({ ackedAt: Date.now(), status: "acked" });
   console.log(`[ack] sent to ${comic?.name ?? r.comicName}`);
@@ -236,17 +263,19 @@ async function acknowledge(uid: string, client: WAWebJS.Client, r: SpotRequest) 
 async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, intent: Intent, week: string) {
   const { settings, shows, venues } = watchUser(uid);
   const comic = (await col(uid, "comics").doc(p.contact.id).get()).data() as Comic | undefined;
-  const first = (comic?.name ?? p.contact.name).split(" ")[0];
+  const name = await greetFor(client, comic ?? { id: p.contact.id, chatId: p.contact.chatId, name: p.contact.name, nameSource: p.contact.nameSource });
   const lineups = (await col(uid, "lineups").where("weekOf", "==", week).get()).docs.map((d) => d.data() as Lineup);
   const mine = lineups.find((l) => l.slots.some((s) => s.comicId === p.contact.id));
   const show = shows.find((s) => s.id === mine?.showId);
-  const when = show && mine ? `${show.name}, ${DAY_NAMES[show.weekday]} ${formatDate(dateInWeek(week, show.weekday))} at ${formatTime(show.startTime)}` : "";
+  const venue = venues.find((v) => v.id === show?.venueId);
+  const vars = { name, ...(show && { show: show.name, venue: venue?.name, day: DAY_NAMES[show.weekday], date: formatDate(dateInWeek(week, show.weekday)), time: formatTime(show.startTime) }) };
+  const say = (key: Parameters<typeof renderMessage>[1], extra = {}) => renderMessage(settings, key, { ...vars, ...extra });
 
   let draft: string;
   if (intent.kind === "cancel_spot") {
-    draft = mine ? `Okay ${first}, I've cancelled your spot for ${when}. See you next time! 🫡` : `Hey ${first}, you don't have a spot this week, so there's nothing to cancel.`;
+    draft = mine && show ? say("cancelDone") : say("cancelNone");
   } else if (intent.kind === "status_query") {
-    draft = mine?.status === "confirmed" ? `Yes! You're on ${when}.` : mine ? `You're pencilled in, but the lineup isn't final yet. I'll confirm soon.` : `You don't have a spot this week yet. I'll let you know once the lineup is out.`;
+    draft = mine && show ? say(mine.status === "confirmed" ? "statusConfirmed" : "statusPencilled") : say("statusNone");
   } else if (intent.kind === "show_info") {
     const lines = shows
       .filter((s) => s.active)
@@ -254,10 +283,10 @@ async function draftAction(uid: string, client: WAWebJS.Client, p: Pending, inte
         const v = venues.find((x) => x.id === s.venueId);
         return `• ${s.name}: ${DAY_NAMES[s.weekday]}s at ${formatTime(s.startTime)}${v ? `, ${v.name}${v.area ? ` (${v.area})` : ""}` : ""}${v?.mapsLink ? `\n  ${v.mapsLink}` : ""}`;
       });
-    draft = lines.length ? `Hey ${first}! Here's where and when:\n${lines.join("\n")}` : `Hey ${first}! I'll share the details soon.`;
+    draft = say("showInfo", { shows: lines.join("\n") });
   } else {
     const last = lastSpot(comic?.history, localNow(new Date(), settings.timezone).date);
-    draft = last ? `Your last spot was ${last.showName} on ${formatDate(last.date)}.` : `I don't have a record of your last spot yet.`;
+    draft = say("lastSpot", { lastShow: last?.showName, lastDate: last && formatDate(last.date) });
   }
 
   const action: Omit<ComicAction, "id"> = {

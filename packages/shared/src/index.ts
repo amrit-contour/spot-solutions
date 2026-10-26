@@ -13,3 +13,4 @@ export * from "./lineupUpdates.ts";
 export * from "./requestTags.ts";
 export * from "./scanHistory.ts";
 export * from "./reconcile.ts";
+export * from "./messages.ts";

@@ -1,21 +1,22 @@
 // Offer an open slot to one comic. A "yes" reply books them and sends the confirmation.
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { DAY_NAMES, dateInWeek, formatDate, formatTime, lineupId, type Show } from "@spot/shared";
+import { DAY_NAMES, dateInWeek, formatDate, formatTime, greetName, lineupId, renderMessage, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
+import { SnippetMenu } from "./SnippetMenu";
 import { runCommand } from "../lib/data";
-import { Avatar, Button, Field, Sheet, TextArea, TextInput, cx } from "./ui";
+import { Avatar, Button, Sheet, TextArea, TextInput, cx } from "./ui";
 import { IconSend } from "./icons";
 
 export function OfferSheet({ open, onClose, show, exclude }: { open: boolean; onClose: () => void; show: Show; exclude: string[] }) {
-  const { uid, week, comics, settings } = useApp();
+  const { uid, week, comics, settings, venues } = useApp();
   const [q, setQ] = useState("");
   const [pick, setPick] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const comic = comics.find((c) => c.id === pick);
-  const when = `${show.name}, ${DAY_NAMES[show.weekday]} ${formatDate(dateInWeek(week, show.weekday))} at ${formatTime(show.startTime)}`;
+  const vars = { show: show.name, venue: venues.find((v) => v.id === show.venueId)?.name, day: DAY_NAMES[show.weekday], date: formatDate(dateInWeek(week, show.weekday)), time: formatTime(show.startTime) };
   const [body, setBody] = useState("");
-  const defaultBody = (name: string) => `Hey ${name.split(" ")[0]}! A spot just opened up: ${when}. Want it? Reply *yes* or *no*.`;
+  const defaultBody = (name: string) => renderMessage(settings, "offer", { ...vars, name: greetName(name) });
 
   const list = useMemo(() => {
     const out = new Set(exclude);
@@ -58,7 +59,7 @@ export function OfferSheet({ open, onClose, show, exclude }: { open: boolean; on
       }
     >
       <p className="type-body-m text-on-surface-variant">
-        {when}. If they reply yes within {settings.offers.expiryHours} h, they're added to the lineup and get your confirmation message. If it fills up first, they're told it's gone.
+        {`${vars.show}, ${vars.day} ${vars.date} at ${vars.time}`}. If they reply yes within {settings.offers.expiryHours} h, they're added to the lineup and get your confirmation message. If it fills up first, they're told it's gone.
       </p>
       <div className="mt-5 flex flex-col gap-4">
         <TextInput placeholder="Search comics" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -81,9 +82,13 @@ export function OfferSheet({ open, onClose, show, exclude }: { open: boolean; on
           {!list.length && <li className="px-3 py-4 type-body-s text-on-surface-variant">No one matches.</li>}
         </ul>
         {comic && (
-          <Field label={`Message to ${comic.name.split(" ")[0]}`}>
-            <TextArea value={body} onChange={(e) => setBody(e.target.value)} rows={3} />
-          </Field>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="type-label-l text-on-surface-variant">Message to {greetName(comic.name)}</span>
+              <SnippetMenu name={comic.name} vars={vars} onPick={setBody} />
+            </div>
+            <TextArea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder={defaultBody(comic.name)} aria-label={`Message to ${comic.name}`} />
+          </div>
         )}
       </div>
     </Sheet>

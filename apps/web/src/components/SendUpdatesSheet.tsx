@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { DAY_NAMES, dateInWeek, diffLineup, formatDate, formatTime, renderTemplate, resendCandidates, type Lineup, type Show } from "@spot/shared";
+import { DAY_NAMES, dateInWeek, diffLineup, formatDate, formatTime, greetName, renderTemplate, resendCandidates, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
 import { Bubble, Button, Sheet, cx } from "./ui";
@@ -32,7 +32,7 @@ export function SendUpdatesSheet({ open, onClose, show, lineup, baseline, onSent
   };
 
   const vars = (cid: string) => ({
-    name: name(cid).split(" ")[0],
+    name: greetName(comicsById.get(cid)?.name),
     show: show.name,
     venue: venue?.name,
     mapsLink: venue?.mapsLink,

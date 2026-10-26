@@ -7,6 +7,7 @@ import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
 import { Avatar, Bubble, Button, Chip, TextArea } from "../ui";
+import { SnippetMenu } from "../SnippetMenu";
 import { IconArrowRight, IconCancel, IconChat, IconChatCheck, IconClock, IconMap, IconMic, IconSkip } from "../icons";
 import { UpdateItem } from "./shared";
 
@@ -63,10 +64,13 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
           <div className="mt-3">
             <Bubble>{a.message}</Bubble>
           </div>
-          <label className="mt-3 block">
-            <span className="mb-1.5 block type-label-m text-on-surface-variant">Your reply</span>
-            <TextArea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} className="min-h-0" />
-          </label>
+          <div className="mt-3">
+            <div className="-mt-1.5 mb-0.5 flex items-center justify-between gap-2">
+              <label htmlFor={`reply-${a.id}`} className="type-label-m text-on-surface-variant">Your reply</label>
+              <SnippetMenu name={a.comicName} onPick={setDraft} />
+            </div>
+            <TextArea id={`reply-${a.id}`} value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} className="min-h-0" />
+          </div>
           {cancel && (
             <p className="mt-2 type-body-s text-on-surface-variant">
               {cancelEffect(a, lineups, shows)}

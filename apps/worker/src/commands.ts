@@ -14,6 +14,7 @@ import {
   lineupId,
   pendingRejections,
   localNow,
+  renderMessage,
   renderTemplate,
   TTL_DAYS,
   resendCandidates,
@@ -37,6 +38,7 @@ import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
 import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
+import { greetFor } from "./greet.ts";
 import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
@@ -95,7 +97,7 @@ const handlers: Record<Command["type"], Handler> = {
     for (const slot of lineup.slots) {
       const comic = comics.get(slot.comicId);
       if (!comic) continue;
-      const body = confirmBody(uid, show, comic, lineup.weekOf, slot.minutes);
+      const body = await confirmBody(uid, client, show, comic, lineup.weekOf, slot.minutes);
       if (toldByHand.has(slot.comicId)) {
         results[comic.id] = "sent (already told)";
         continue;
@@ -145,8 +147,9 @@ const handlers: Record<Command["type"], Handler> = {
     const comics = await loadComics(uid, targets.map((r) => r.comicId));
     let sent = 0;
     for (const r of targets) {
-      const name = (comics.get(r.comicId)?.name ?? r.comicName).split(" ")[0];
+      const comic = comics.get(r.comicId);
       try {
+        const name = await greetFor(client, comic ?? { id: r.comicId, name: r.comicName });
         await sendQueued(client, comics.get(r.comicId)?.chatId ?? r.comicId, renderTemplate(settings.reject.template, { name }));
         await col(uid, "requests").doc(r.id).update({ status: "rejected", rejectedAt: Date.now(), updatedAt: Date.now() });
         sent++;
@@ -187,7 +190,7 @@ const handlers: Record<Command["type"], Handler> = {
 
   async sync_group(uid, { lineupId, exclude }) {
     const client = sessions.require(uid);
-    const { shows } = watchUser(uid);
+    const { shows, settings } = watchUser(uid);
     const lineupRef = col(uid, "lineups").doc(String(lineupId));
     const lineup = (await lineupRef.get()).data() as Lineup;
     const plan = lineup.groupSync;
@@ -202,7 +205,7 @@ const handlers: Record<Command["type"], Handler> = {
 
     for (const id of plan.toAdd.filter((id) => !skip.has(id))) {
       await enqueueTask(client, async () => {
-        const r = await group.addParticipants([id], { autoSendInviteV4: true, comment: `You're on for ${show.name}!` });
+        const r = await group.addParticipants([id], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) });
         // Runtime shape is { [id]: { code, message, isInviteV4Sent } } (the bundled typings nest it one level too deep).
         const res = typeof r === "string" ? null : (Object.values(r)[0] as unknown as { code: number; isInviteV4Sent: boolean });
         results[id] = res?.code === 200 ? "added" : res?.isInviteV4Sent ? "invited" : "failed";
@@ -251,11 +254,11 @@ const handlers: Record<Command["type"], Handler> = {
     const date = dateInWeek(lineup.weekOf, show.weekday);
     const messaged: string[] = [];
     const failed: string[] = [];
-    const send = async (id: string, body: (c: Comic) => string) => {
+    const send = async (id: string, body: (c: Comic) => Promise<string>) => {
       const comic = comics.get(id);
       try {
         if (!comic) throw new Error("Comic not found");
-        await sendQueued(client, comic.chatId ?? comic.id, body(comic));
+        await sendQueued(client, comic.chatId ?? comic.id, await body(comic));
         messaged.push(id);
       } catch (e) {
         console.error(`[lineup-update] ${id} failed`, e);
@@ -263,9 +266,9 @@ const handlers: Record<Command["type"], Handler> = {
       }
     };
     for (const slot of lineup.slots) {
-      if (toAdd.has(slot.comicId) || toResend.has(slot.comicId)) await send(slot.comicId, (c) => confirmBody(uid, show, c, lineup.weekOf, slot.minutes));
+      if (toAdd.has(slot.comicId) || toResend.has(slot.comicId)) await send(slot.comicId, (c) => confirmBody(uid, client, show, c, lineup.weekOf, slot.minutes));
     }
-    for (const id of changes.removed) if (toRemove.has(id)) await send(id, (c) => cancelBody(uid, show, c, lineup.weekOf));
+    for (const id of changes.removed) if (toRemove.has(id)) await send(id, (c) => cancelBody(uid, client, show, c, lineup.weekOf));
 
     // Settle the records: people who were told are done. Failed sends, and adds or removals the curator
     // unticked, stay pending, so nobody ends up on (or off) a lineup without knowing.
@@ -393,11 +396,11 @@ const handlers: Record<Command["type"], Handler> = {
   },
 };
 
-export function confirmBody(uid: string, show: Show, comic: Comic, week: string, minutes?: number | null) {
+export async function confirmBody(uid: string, client: WAWebJS.Client | null, show: Show, comic: Comic, week: string, minutes?: number | null) {
   const { settings, venues } = watchUser(uid);
   const venue = venues.find((v) => v.id === show.venueId);
   return renderTemplate(settings.confirm.template, {
-    name: comic.name.split(" ")[0],
+    name: await greetFor(client, comic),
     show: show.name,
     venue: venue?.name,
     mapsLink: venue?.mapsLink,
@@ -408,11 +411,11 @@ export function confirmBody(uid: string, show: Show, comic: Comic, week: string,
   });
 }
 
-export function cancelBody(uid: string, show: Show, comic: Comic, week: string) {
+export async function cancelBody(uid: string, client: WAWebJS.Client | null, show: Show, comic: Comic, week: string) {
   const { settings, venues } = watchUser(uid);
   const venue = venues.find((v) => v.id === show.venueId);
   return renderTemplate(settings.cancelSpot.template, {
-    name: comic.name.split(" ")[0],
+    name: await greetFor(client, comic),
     show: show.name,
     venue: venue?.name,
     day: DAY_NAMES[show.weekday],
