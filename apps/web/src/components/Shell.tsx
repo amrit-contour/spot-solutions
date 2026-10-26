@@ -195,6 +195,8 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
           {/* The size animates (font-size/line-height) instead of jumping between two classes. */}
           <h1 className={cx("min-w-0 flex-1 truncate transition-[font-size,line-height,letter-spacing] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none", stuck ? "type-title-l" : "type-headline-m sm:type-display-s")}>{title}</h1>
           {trailing && <div className="flex flex-none items-center">{trailing}</div>}
+          {/* Page actions live on the title's line at every width; the title truncates to make room. */}
+          {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
           </div>
           {subtitle && (
             // Collapses smoothly (grid rows 1fr -> 0fr) rather than popping out of the layout.
@@ -205,7 +207,6 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
             </div>
           )}
         </div>
-        {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
       </div>
       {children}
     </header>

@@ -71,7 +71,8 @@ export async function runCommand<R = unknown>(uid: string, type: CommandType, pa
         clearTimeout(timer);
         unsub();
         forget();
-        reject(new Error(d.error ?? "Command failed"));
+        // An older server doesn't know newer commands: say what to do instead of "Unknown command x".
+        reject(new Error(/^Unknown command /.test(d.error ?? "") ? "The server running your account is on an older version that can't do this yet. Update it (Server page, or its console), then try again." : (d.error ?? "Command failed")));
       }
     });
   });

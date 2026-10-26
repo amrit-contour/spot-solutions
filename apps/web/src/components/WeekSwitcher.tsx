@@ -7,16 +7,18 @@ export function WeekSwitcher() {
   const { week, setWeek, currentWeek } = useApp();
   const label = week === currentWeek ? "This week" : week === shiftWeek(currentWeek, -1) ? "Last week" : week === shiftWeek(currentWeek, 1) ? "Next week" : "Week of";
   return (
-    <div className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-full bg-surface-container p-1 sm:inline-flex sm:w-auto sm:flex-none">
+    <div className="inline-flex flex-none items-center gap-0.5 rounded-full bg-surface-container p-1 sm:gap-1">
       <IconButton icon={IconArrowLeft} label="Previous week" onClick={() => setWeek(shiftWeek(week, -1))} className="size-8" />
       <button
         onClick={() => setWeek(currentWeek)}
-        className={cx("state-layer rounded-full px-3 py-1 text-center sm:text-left", week !== currentWeek && "text-primary")}
+        className={cx("state-layer rounded-full px-2 py-1 text-center sm:px-3 sm:text-left", week !== currentWeek && "text-primary")}
         title="Jump to this week"
       >
-        <span className="block type-label-s text-on-surface-variant">{label}</span>
-        <span className="block type-label-l tabular">
-          {formatDate(week)} – {formatDate(dateInWeek(week, 0))}
+        {/* Phones: just the week's start, so it fits next to the page title. */}
+        <span className="block type-label-s text-on-surface-variant max-sm:hidden">{label}</span>
+        <span className="block type-label-l whitespace-nowrap tabular">
+          {formatDate(week)}
+          <span className="max-sm:hidden"> – {formatDate(dateInWeek(week, 0))}</span>
         </span>
       </button>
       <IconButton icon={IconArrowRight} label="Next week" onClick={() => setWeek(shiftWeek(week, 1))} className="size-8" />

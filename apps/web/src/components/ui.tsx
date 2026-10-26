@@ -300,7 +300,8 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
           animate={{ opacity: 1, transform: "translateY(0px)", transition: { duration: 0.24, ease: [0.05, 0.7, 0.1, 1] } }}
           exit={{ opacity: 0, transform: "translateY(8px)", transition: { duration: 0.14, ease: [0.3, 0, 0.8, 0.15] } }}
         >
-          <header className="flex h-16 flex-none items-center gap-2 border-b border-outline-variant/60 bg-surface px-2 pt-[env(safe-area-inset-top)] sm:h-[72px] sm:px-6">
+          {/* Height = the bar plus the notch, so the title never sits under the status bar. */}
+          <header className="flex h-[calc(4rem+env(safe-area-inset-top))] flex-none items-center gap-2 border-b border-outline-variant/60 bg-surface pt-[env(safe-area-inset-top)] pr-[max(0.5rem,env(safe-area-inset-right))] pl-[max(0.5rem,env(safe-area-inset-left))] sm:h-[calc(72px+env(safe-area-inset-top))] sm:px-6">
             <IconButton icon={IconClose} label="Close" tone="tonal" onClick={onClose} />
             <h2 className="ml-2 min-w-0 flex-1 truncate type-title-l sm:type-headline-s">{title}</h2>
             {footer && <div className="hidden items-center gap-2 sm:flex">{footer}</div>}
