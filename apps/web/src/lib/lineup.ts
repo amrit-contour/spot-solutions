@@ -98,9 +98,14 @@ export function untagMember(uid: string, show: Show, comicId: string) {
 export async function repeatLastWeek(uid: string, week: string, show: Show) {
   const prev = (await getDoc(lineupRef(uid, shiftWeek(week, -1), show.id))).data() as Lineup | undefined;
   if (!prev?.slots.length) return 0;
-  await setSlots(uid, week, show, prev.slots);
-  await Promise.all(prev.slots.map((s) => markRequest(uid, week, s.comicId, true)));
-  return prev.slots.length;
+  // Added to whoever is already on (regulars, people you placed), never replacing them.
+  const cur = (await getDoc(lineupRef(uid, week, show.id))).data() as Lineup | undefined;
+  const have = new Set((cur?.slots ?? []).map((s) => s.comicId));
+  const add = prev.slots.filter((s) => !have.has(s.comicId)).slice(0, Math.max(0, show.slotCount - have.size));
+  if (!add.length) return 0;
+  await setSlots(uid, week, show, [...(cur?.slots ?? []), ...add]);
+  await Promise.all(add.map((s) => markRequest(uid, week, s.comicId, true)));
+  return add.length;
 }
 
 export async function setLineupStatus(uid: string, week: string, show: Show, status: Lineup["status"]) {

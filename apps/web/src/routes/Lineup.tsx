@@ -80,6 +80,7 @@ export function LineupBoard() {
   const { uid, week, shows, comics, comicsById } = useApp();
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
+  const prevLineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", shiftWeek(week, -1))], `prev:${week}`);
   const offers = useCollection<SpotOffer>(uid, "offers", [where("weekOf", "==", week)], week);
   const poll = useDocument<HostPoll>(["users", uid, "polls", week]);
   const activeShows = useMemo(() => shows.filter((s) => s.active), [shows]);
@@ -296,7 +297,7 @@ export function LineupBoard() {
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} onAdd={(cid, seed) => addTo(cid, show, seed)} onAddTold={(cid, name) => addTold(cid, show, name)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} prev={prevLineups.data.find((l) => l.showId === show.id)} onAdd={(cid, seed) => addTo(cid, show, seed)} onAddTold={(cid, name) => addTold(cid, show, name)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
@@ -401,7 +402,7 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
   );
 }
 
-function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, onAdd, onAddTold, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; onAdd: (cid: string, seed?: { name: string }) => Promise<void>; onAddTold: (cid: string, name: string) => void; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, prev, onAdd, onAddTold, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; prev?: Lineup; onAdd: (cid: string, seed?: { name: string }) => Promise<void>; onAddTold: (cid: string, name: string) => void; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
   const { uid, week, currentWeek, venues, settings, session } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
@@ -468,6 +469,9 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
     }
   }, [syncStatus, lineupsLoaded]);
 
+  // Last week's lineup for this show was called off: offer to bring its comics back (the usual reason to repeat).
+  const [hideRepeat, setHideRepeat] = useState(false);
+  const repeatable = !cancelled && !confirmed && prev && (prev.status === "cancelled" || prev.status === "canned") ? prev.slots.map((s) => s.comicId).filter((id) => !ids.includes(id)) : [];
   const repeat = async () => {
     const n = await repeatLastWeek(uid, week, show);
     toast(n ? `Brought back last week's ${n} comics` : "Last week's lineup was empty");
@@ -567,6 +571,19 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
         )}
       </header>
 
+      {repeatable.length > 0 && !hideRepeat && (
+        <div className="mb-3 flex items-start gap-3 rounded-md bg-tertiary-container/60 px-3 py-2.5 text-on-tertiary-container">
+          <IconRepeat className="icon mt-0.5 size-5 flex-none" />
+          <div className="min-w-0 flex-1">
+            <p className="type-body-m">Last week's {show.name} was called off.</p>
+            <p className="type-body-s opacity-80">Bring back {repeatable.length === 1 ? "its comic" : `its ${repeatable.length} comics`}: {repeatable.slice(0, 3).map((id) => (comicsById.get(id)?.name ?? "comic").split(" ")[0]).join(", ")}{repeatable.length > 3 ? ` +${repeatable.length - 3}` : ""}</p>
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" onClick={() => void repeat()}>Bring them back</Button>
+              <Button size="sm" variant="text" onClick={() => setHideRepeat(true)}>Not now</Button>
+            </div>
+          </div>
+        </div>
+      )}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ol className="flex min-h-32 flex-col gap-2">
           {ids.map((cid, i) => (
@@ -637,11 +654,6 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
           </>
         ) : (
           <>
-            {(!ids.length || lineup?.defaultsSeeded) && (
-              <Button size="sm" variant="text" icon={IconRepeat} onClick={repeat}>
-                Repeat last week
-              </Button>
-            )}
             <div className="flex-1" />
             <Button size="sm" icon={IconSend} disabled={!ids.length} onClick={() => setConfirmOpen(true)}>
               Confirm & send
