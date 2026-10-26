@@ -49,6 +49,17 @@ describe("update checks", () => {
     u.setAuto(false);
     expect(u.view().autoUpdate).toBe(false);
   });
+  it("carries a move request in task.json, and a long job that keeps reporting isn't stale", async () => {
+    const data = mkdtempSync(path.join(os.tmpdir(), "spot-upd-"));
+    let t = 10_000_000;
+    const u = createUpdater({ version: "abc1234", data, hostname: "h", platform: "linux", dryRun: true, now: () => t, log: () => {} });
+    await u.start({ by: "test", task: "move-data", extra: { target: "/mnt/disk/spot", models: true } });
+    expect(JSON.parse(readFileSync(path.join(data, "task.json"), "utf8"))).toMatchObject({ task: "move-data", target: "/mnt/disk/spot", models: true, by: "test" });
+    writeFileSync(path.join(data, "update.json"), JSON.stringify({ state: "running", startedAt: t - 3 * 3_600_000, updatedAt: t - 60_000, task: "move-data" }));
+    expect(u.view().progress.state).toBe("running"); // still reporting a minute ago
+    writeFileSync(path.join(data, "update.json"), JSON.stringify({ state: "running", startedAt: t - 3 * 3_600_000, updatedAt: t - 2 * 3_600_000, task: "move-data" }));
+    expect(u.view().progress.state).toBe("error");
+  });
   it("treats a run that stopped reporting as failed", () => {
     const data = mkdtempSync(path.join(os.tmpdir(), "spot-upd-"));
     writeFileSync(path.join(data, "update.json"), JSON.stringify({ state: "running", startedAt: 1 }));

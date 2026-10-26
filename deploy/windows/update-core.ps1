@@ -14,9 +14,14 @@ $ProgressPreference = "SilentlyContinue"
 
 $Root      = if ($env:SPOT_ROOT) { $env:SPOT_ROOT } else { "C:\SpotSolutions" }
 $AppDir    = "$Root\app"
-$DataDir   = "$Root\data"
 $NodeDir   = "$Root\node"
+# Where the data and the AI models live: the Server Console's "Move data" writes these two files when they are moved to
+# another drive. The installer reads them too, so neither an update nor a re-install puts them back on C:.
+$DataDir   = "$Root\data"
 $ModelsDir = "$Root\ollama"
+foreach ($p in @(@{ File = "$Root\data-dir.txt"; Name = "DataDir" }, @{ File = "$Root\models-dir.txt"; Name = "ModelsDir" })) {
+  if (Test-Path $p.File) { $v = (Get-Content $p.File -Raw).Trim(); if ($v) { Set-Variable -Name $p.Name -Value $v } }
+}
 $ChromeDir = "$Root\chrome"
 $EnvFile   = "$AppDir\apps\worker\.env"
 $WorkerTask  = "SpotSolutionsWorker"
@@ -28,7 +33,7 @@ $Utf8 = New-Object System.Text.UTF8Encoding($false)   # no BOM: the console pars
 if (-not $Task) {
   try { $Task = (Get-Content "$DataDir\task.json" -Raw | ConvertFrom-Json).task } catch { $Task = "" }
 }
-if ($Task -notin @("update", "local-on", "local-off")) { throw "Unknown task '$Task'." }
+if ($Task -notin @("update", "local-on", "local-off", "move-data", "move-cleanup")) { throw "Unknown task '$Task'." }
 
 $From = if (Test-Path "$AppDir\VERSION") { (Get-Content "$AppDir\VERSION" -Raw).Trim() } else { "none" }
 $To = $null
@@ -98,6 +103,19 @@ function Invoke-Pull([string]$Model) {
 
 try {
   Set-Progress "running" "Starting"
+
+  # ------------------------------------------------------------------ move the data to another drive, or delete the old copy
+  # move.mjs does the work (copy, verify, switch, restart, check WhatsApp, roll back on any failure) and reports through
+  # update.json itself. It runs as SYSTEM here, so the new folder is made with SYSTEM and Administrators access only.
+  if ($Task -eq "move-data" -or $Task -eq "move-cleanup") {
+    $mv = "$AppDir\apps\worker\console\move.mjs"
+    if (-not (Test-Path $mv)) { throw "move.mjs isn't in the app folder. Update Spot Solutions first." }
+    $env:SPOT_ROOT = $Root
+    & "$NodeDir\node.exe" $mv $Task
+    $moveCode = $LASTEXITCODE
+    if ($moveCode -ne 0) { Start-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue }   # whatever happened, never leave the server stopped
+    exit $moveCode
+  }
 
   # ------------------------------------------------------------------ local model off
   if ($Task -eq "local-off") {

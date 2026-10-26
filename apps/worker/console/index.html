@@ -43,6 +43,7 @@
   header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 24px; }
   .logo { width: 48px; height: 48px; flex: none; }
   .grow { flex: 1; min-width: 0; }
+  header > .grow { flex: 1 1 240px; }
   .grid { display: grid; gap: 16px; }
   @media (min-width: 760px) { .g2 { grid-template-columns: 1fr 1fr; } .g4 { grid-template-columns: repeat(4, 1fr); } }
   .g4 { grid-template-columns: repeat(2, 1fr); }
@@ -89,20 +90,59 @@
   .theme { display: inline-flex; background: var(--s-high); border-radius: 999px; padding: 3px; gap: 2px; }
   .theme button { background: none; color: var(--on-surface-v); border: 0; border-radius: 999px; padding: 6px 12px; font: 500 13px/1 inherit; cursor: pointer; min-height: 0; }
   .theme button[aria-pressed="true"] { background: var(--primary-c); color: var(--on-primary-c); }
-  details.sec > summary { list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer; }
-  details.sec > summary::-webkit-details-marker { display: none; }
-  details.sec.stack > .secbody { display: block; padding-top: 4px; }
-  /* Cards in one row share the row's height; a collapsed one stays header-sized instead of stretching into an empty box. */
-  .grid > details.sec:not([open]) { align-self: start; }
-  details.sec > summary h2 { margin: 0; }
-  details.sec > summary .sum { margin-left: auto; }
-  details.sec > summary .chev { width: 10px; height: 10px; border-right: 2px solid var(--on-surface-v); border-bottom: 2px solid var(--on-surface-v); transform: rotate(-45deg); transition: transform .2s; flex: none; }
-  details.sec[open] > summary .chev { transform: rotate(45deg); }
-  details.sec[open] > summary { margin-bottom: 12px; }
-  /* Tight cards have no padding of their own: give the header the same 20px as other cards so collapsed rows match. */
-  details.sec.tight > summary { padding: 20px; }
-  details.sec.tight[open] > summary { padding-bottom: 8px; margin-bottom: 0; }
-  @media (prefers-reduced-motion: reduce) { details.sec > summary .chev { transition: none; } }
+  /* ---- collapsible sections: one summary row, one chevron, same everywhere ---- */
+  .chev { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; color: var(--on-surface-v); border-radius: 50%; transform: rotate(-90deg); transition: transform .2s cubic-bezier(.23,1,.32,1), background .15s; }
+  .chev svg { display: block; width: 20px; height: 20px; }
+  details[open] > summary .chev { transform: none; }
+  summary:hover .chev { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+  summary { list-style: none; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  summary:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  #secs { display: grid; gap: 16px; }
+  details.sec.card { padding: 0; }
+  details.sec > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 60px; padding: 14px 20px; border-radius: 16px; user-select: none; -webkit-tap-highlight-color: transparent; }
+  details.sec > summary h2 { margin: 0; flex: 0 1 auto; min-width: 0; }
+  details.sec > summary .sum { flex: 1 1 0; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .secbody { padding: 0 20px 20px; }
+  details.sec.tight > .secbody { padding: 0; }
+  details.sec.stack > .secbody { display: block; }
+  @media (max-width: 559px) {
+    details.sec > summary { padding: 12px 16px; }
+    details.sec > summary h2 { flex: 1 1 0; }
+    details.sec > summary .chev { order: 2; }
+    details.sec > summary .sum:empty { display: none; }
+    details.sec > summary .sum { order: 5; flex: 1 0 100%; text-align: left; white-space: normal; margin-top: -2px; }
+    .secbody { padding: 0 16px 16px; }
+  }
+  .eq { display: grid; gap: 12px; }
+  @media (min-width: 760px) { .eq { grid-template-columns: 1fr 1fr; } }
+  .eq > .panel { display: flex; flex-direction: column; min-width: 0; }
+  .panel.flush { padding: 0; overflow: hidden; }
+  .panel > h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  .panel.flush > h3 { padding: 14px 16px 6px; margin: 0; }
+  .panel.flush .row { padding: 12px 16px; }
+  .panel .path { margin: 6px 0 10px; overflow-wrap: anywhere; }
+  /* layout customising: handles, the ⋯ menu, drop marks */
+  .grip, .menubtn { appearance: none; border: 0; background: transparent; color: var(--on-surface-v); width: 32px; height: 32px; padding: 0; border-radius: 8px; display: inline-grid; place-items: center; flex: none; cursor: pointer; font: inherit; letter-spacing: 0; }
+  .grip { cursor: grab; touch-action: none; margin-left: -8px; }
+  .grip:hover, .menubtn:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+  .grip:focus-visible, .menubtn:focus-visible { outline: 2px solid var(--primary); outline-offset: 0; }
+  .grip svg, .menubtn svg { width: 18px; height: 18px; display: block; }
+  @media (pointer: coarse), (max-width: 640px) { .grip { display: none; } }
+  .menuwrap { position: relative; flex: none; }
+  .menu { position: absolute; z-index: 30; right: 0; top: calc(100% + 4px); min-width: 160px; padding: 6px; display: grid; gap: 2px; background: var(--s-high); border: 1px solid var(--outline-v); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); }
+  .menu button { background: transparent; color: var(--on-surface); height: 38px; justify-content: flex-start; border-radius: 8px; padding: 0 12px; font-weight: 500; }
+  .menu button:hover:not(:disabled) { background: var(--s-highest); }
+  .menu button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  details.sec.dragging { opacity: .45; }
+  details.sec.drop-before { box-shadow: 0 -3px 0 0 var(--primary); }
+  details.sec.drop-after { box-shadow: 0 3px 0 0 var(--primary); }
+  .custbar { display: grid; gap: 10px; margin-bottom: 16px; border: 1px dashed var(--outline-v); }
+  .custbar .actions { margin-top: 0; }
+  .hidden-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .alerts { display: grid; gap: 12px; margin-bottom: 16px; }
+  .alerts:empty { display: none; }
+  @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
 
   /* ---- setup, updates, AI models ---- */
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
@@ -127,9 +167,9 @@
   .panel { border: 1px solid var(--outline-v); border-radius: 12px; padding: 16px; }
   .panel + details.alt, details.alt + details.alt { margin-top: 10px; }
   .panel + details.alt { margin-top: 14px; }
-  details.alt { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); padding-top: 12px; }
-  details.alt > summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--on-surface-v); }
-  details.alt[open] > summary { margin-bottom: 8px; }
+  details.alt { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); padding-top: 4px; }
+  details.alt > summary, details.rep > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; font-weight: 600; font-size: 14px; color: var(--on-surface-v); border-radius: 8px; }
+  details.alt[open] > summary, details.rep[open] > summary { margin-bottom: 8px; }
   .conn { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
   .conn .grow { min-width: 240px; }
   ol.steps { margin: 6px 0 0; padding-left: 20px; }
@@ -143,7 +183,8 @@
   .dd-btn:hover:not(:disabled) { border-color: var(--on-surface-v); }
   .dd-btn[aria-expanded="true"] { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
   .dd-btn > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dd-btn .chev { width: 8px; height: 8px; border-right: 2px solid var(--on-surface-v); border-bottom: 2px solid var(--on-surface-v); transform: rotate(45deg) translateY(-2px); flex: none; }
+  .dd-btn .chev { width: 24px; height: 24px; transform: none; margin-right: -6px; }
+  .dd-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
   .dd-list { position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 6px; list-style: none; max-height: 264px; overflow: auto; background: var(--s-high); border: 1px solid var(--outline-v); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); }
   .dd-list li { padding: 9px 10px; border-radius: 8px; cursor: pointer; font: 13px "Roboto Mono", monospace; outline: none; }
   .dd-list li:hover, .dd-list li:focus { background: var(--s-highest); }
@@ -178,7 +219,7 @@
   .tile .tv { font-size: 28px; line-height: 1.15; font-weight: 600; font-variant-numeric: tabular-nums; font-variation-settings: "wdth" 110, "opsz" 36; }
   .tile .tv.bad { color: var(--error); }
   .tile .tf { font-size: 12px; opacity: .75; overflow-wrap: anywhere; }
-  .lv { margin-top: 16px; }
+  .lv { margin-top: 0; }
   .lv-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
   .plot { height: 104px; margin-top: 10px; }
   .plot svg { display: block; width: 100%; height: 100%; --bar: var(--primary); }
@@ -213,6 +254,19 @@
   @media (max-width: 640px) { .acc { grid-template-columns: auto minmax(0, 1fr) auto; } .acc .nums { grid-column: 2 / -1; white-space: normal; } }
   .dimmed { opacity: .55; }
   .empty { padding: 18px 0 6px; }
+
+  /* ---- storage ---- */
+  .chk { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; font-weight: 400; color: var(--on-surface); cursor: pointer; }
+  .chk input { margin: 0; width: 18px; height: 18px; accent-color: var(--primary); flex: none; }
+  .chk.off { opacity: .5; cursor: not-allowed; }
+  .check-res { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--s-cont); }
+  .check-res.bad { background: var(--error-c); color: var(--on-error-c); }
+  .check-res.ok { background: var(--tertiary-c); color: var(--on-tertiary-c); }
+  .panel.good { border-color: var(--ok); }
+  .pbar { height: 10px; border-radius: 99px; background: var(--s-highest); overflow: hidden; margin-top: 10px; }
+  .pbar > i { display: block; height: 100%; background: var(--primary); border-radius: inherit; transition: width .5s cubic-bezier(.23,1,.32,1); }
+  .scanning { opacity: .6; }
+  .eq + .blk { margin-top: 20px; padding-top: 20px; border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
 </style>
 </head>
 <body>
@@ -220,7 +274,7 @@
 <div class="toast" id="toast"></div>
 <script>
 const $ = (s) => document.querySelector(s);
-const fmt = (b) => b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB";
+const fmt = (b) => b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : b >= 1e6 ? Math.round(b / 1e6) + " MB" : b >= 1e3 ? Math.round(b / 1e3) + " KB" : b + " B";
 const up = (s) => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3500); }
@@ -240,9 +294,43 @@ let state = null, aiv = null, conn = null, editing = false, phone = null, bootId
 // Collapsible sections: open state per section, remembered on this machine.
 let secs = {};
 try { secs = JSON.parse(localStorage.getItem("spot-console-sections") || "{}"); } catch {}
+// Earlier versions had one "live" and two "services"/"machine" sections: carry the choice over.
+if ("live" in secs && !("stats" in secs)) { secs.stats = secs.live; secs.detail = secs.live; }
+if (("services" in secs || "machine" in secs) && !("server" in secs)) secs.server = secs.services !== false || secs.machine !== false;
 const isOpen = (id, dflt) => (id in secs ? secs[id] : dflt);
-const sec = (id, title, summary, body, { open = true, cls = "", style = "" } = {}) =>
-  `<details class="card sec ${cls}" data-sec="${id}" style="${style}" ${isOpen(id, open) ? "open" : ""}><summary><h2>${title}</h2>${summary ? `<span class="muted small sum">${summary}</span>` : ""}<span class="chev" aria-hidden="true"></span></summary><div class="secbody">${body}</div></details>`;
+const saveSecs = () => { try { localStorage.setItem("spot-console-sections", JSON.stringify(secs)); } catch {} };
+// One chevron for every collapse control: a fixed 28 px box, the arrow drawn in a 20 px box and centred in it.
+const chev = `<span class="chev" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="M6 8l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+
+// Which sections show, and in what order: chosen by the owner, remembered on this machine.
+const DEFAULT_ORDER = ["stats", "detail", "accounts", "server", "storage", "setup", "ai", "updates", "phone", "logs"];
+const TITLES = { stats: "Live", detail: "Activity and AI", accounts: "Accounts", server: "Server", storage: "Storage", setup: "Setup", ai: "AI models", updates: "Updates", phone: "Open on your phone", logs: "Worker logs" };
+function normaliseLayout(l) {
+  const known = new Set(DEFAULT_ORDER);
+  const order = (Array.isArray(l?.order) ? l.order : []).filter((id, i, a) => known.has(id) && a.indexOf(id) === i);
+  DEFAULT_ORDER.forEach((id, i) => { // a section this layout hasn't seen yet goes after its default neighbour
+    if (order.includes(id)) return;
+    const prev = DEFAULT_ORDER.slice(0, i).reverse().find((x) => order.includes(x));
+    order.splice(prev ? order.indexOf(prev) + 1 : 0, 0, id);
+  });
+  return { order, hidden: (Array.isArray(l?.hidden) ? l.hidden : []).filter((id) => known.has(id)) };
+}
+let layout = normaliseLayout(null);
+try { layout = normaliseLayout(JSON.parse(localStorage.getItem("spot-console-layout") || "null")); } catch {}
+const saveLayout = () => { try { localStorage.setItem("spot-console-layout", JSON.stringify(layout)); } catch {} };
+let custMode = false, menuFor = null, dragId = null, dropAt = null, blockIds = []; // blockIds: sections that exist on this server, in order
+const gripSvg = `<svg viewBox="0 0 18 18" aria-hidden="true"><g fill="currentColor"><circle cx="6.5" cy="4" r="1.4"/><circle cx="11.5" cy="4" r="1.4"/><circle cx="6.5" cy="9" r="1.4"/><circle cx="11.5" cy="9" r="1.4"/><circle cx="6.5" cy="14" r="1.4"/><circle cx="11.5" cy="14" r="1.4"/></g></svg>`;
+const dotsSvg = `<svg viewBox="0 0 18 18" aria-hidden="true"><g fill="currentColor"><circle cx="3.5" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="14.5" cy="9" r="1.5"/></g></svg>`;
+const sec = (id, title, summary, body, { open = true, cls = "" } = {}) => {
+  const first = visibleIds()[0] === id, last = visibleIds().at(-1) === id;
+  const tools = custMode ? { grip: `<button type="button" class="grip" data-grip="${id}" aria-label="Drag to move ${esc(TITLES[id] || title)}. Or press the up and down arrow keys." title="Drag to move">${gripSvg}</button>`,
+    menu: `<span class="menuwrap"><button type="button" class="menubtn" data-menu="${id}" aria-haspopup="menu" aria-expanded="${menuFor === id}" aria-label="Options for ${esc(TITLES[id] || title)}">${dotsSvg}</button>${menuFor === id ? `<div class="menu" role="menu" aria-label="${esc(TITLES[id] || title)}"><button type="button" role="menuitem" data-move="${id}" data-dir="-1" ${first ? "disabled" : ""}>Move up</button><button type="button" role="menuitem" data-move="${id}" data-dir="1" ${last ? "disabled" : ""}>Move down</button><button type="button" role="menuitem" data-hide="${id}" ${forced(id) ? "disabled" : ""}>Hide</button></div>` : ""}</span>` } : { grip: "", menu: "" };
+  return `<details class="card sec ${cls}" data-sec="${id}" ${isOpen(id, open) ? "open" : ""}><summary>${tools.grip}<h2>${title}</h2><span class="muted small sum">${summary || ""}</span>${tools.menu}${chev}</summary><div class="secbody">${body}</div></details>`;
+};
+// Setup can't be hidden while the server isn't connected: it's the one thing the owner has to do.
+const forced = (id) => id === "setup" && state && !state.config.key;
+const shown = (id) => blockIds.includes(id) && (!layout.hidden.includes(id) || forced(id));
+const visibleIds = () => layout.order.filter(shown);
 // Form state lives outside render(), so the 5 s refresh never wipes what was typed.
 let joinCode = "", devName = null, joining = false, replaceOpen = false, altOpen = { code: false, key: false };
 try { joinCode = new URLSearchParams(location.search).get("join") || ""; } catch {}
@@ -261,7 +349,7 @@ const when = (ms) => (ms ? new Date(ms).toLocaleString([], { day: "numeric", mon
 const left = (ms) => { const t = Math.max(0, Math.round((ms - Date.now()) / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 const spin = `<span class="spin" aria-hidden="true"></span>`;
 const validKeyShape = (k) => /^[A-Za-z0-9_-]{20,200}$/.test(k);
-const holdRender = () => editing || ddOpen !== null;
+const holdRender = () => editing || ddOpen !== null || menuFor !== null || dragId !== null;
 
 /** A dropdown that matches the console instead of the browser's native select. */
 const dd = (id, value, options, { placeholder = "Choose…", disabled = false } = {}) => {
@@ -279,22 +367,39 @@ const testErr = (key) => (testRes[key] && !testRes[key].ok ? `<div class="small 
 
 function updateBanner(s) {
   const u = s.update, p = u.progress;
-  const what = p?.task === "local-on" ? "Setting up the local model" : p?.task === "local-off" ? "Turning off the local model" : "Updating Spot Solutions";
-  if (restarting || u.running)
-    return `<div class="banner busy" role="status">${spin}<div class="grow"><b>${restarting && !u.running ? "Restarting on the new version…" : `${what}…`}</b><div class="small">${esc(p?.step || "Working")}. This page reloads by itself when it's done; the worker restarts, WhatsApp reconnects within a minute.</div></div></div>`;
-  if (p?.state === "error") return `<div class="banner bad" role="alert"><div class="grow"><b>${p.task === "update" || !p.task ? "The update didn't finish" : "That didn't finish"}</b><div class="small">${esc(p.error || "Something went wrong.")}</div></div>${p.task === "update" || !p.task ? `<button data-update-now>Try again</button>` : ""}</div>`;
+  const move = p?.task === "move-data" || p?.task === "move-cleanup";
+  const what = p?.task === "local-on" ? "Setting up the local model" : p?.task === "local-off" ? "Turning off the local model" : p?.task === "move-data" ? "Moving the data to another drive" : p?.task === "move-cleanup" ? "Deleting the old copy" : "Updating Spot Solutions";
+  if (restarting || u.running) {
+    const pct = move && stor?.move?.pct != null ? stor.move.pct : null;
+    const note = p?.task === "move-data" ? "Keep this page open. The worker is stopped while the data is copied, so WhatsApp is offline for a few minutes. If anything fails, the data goes back to the old folder." : move ? "This can take a few minutes." : "This page reloads by itself when it's done; the worker restarts, WhatsApp reconnects within a minute.";
+    return `<div class="banner busy" role="status">${spin}<div class="grow"><b>${restarting && !u.running && !move ? "Restarting on the new version…" : `${what}…`}</b><div class="small">${esc(p?.step || "Working")}. ${note}</div>${pct != null ? `<div class="pbar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>` : ""}</div></div>`;
+  }
+  if (p?.state === "error") return `<div class="banner bad" role="alert"><div class="grow"><b>${move ? "The data move didn't finish" : p.task === "update" || !p.task ? "The update didn't finish" : "That didn't finish"}</b><div class="small">${esc(p.error || "Something went wrong.")}</div></div>${p.task === "update" || !p.task ? `<button data-update-now>Try again</button>` : ""}</div>`;
   if (u.available) return `<div class="banner" role="status"><div class="grow"><b>Update available</b><div class="small"><span class="mono">${esc(shortV(u.current))}</span> → <span class="mono">${esc(shortV(u.latest.version))}</span>${u.latest.builtAt ? ` · released ${esc(when(u.latest.builtAt))}` : ""}. ${u.autoUpdate ? "It installs by itself shortly; you can do it now." : "Automatic updates are off."}</div></div><button data-update-now>Update now</button></div>`;
   return "";
+}
+
+// Things the owner must not be able to hide: they always show above the sections.
+function alerts(s) {
+  const out = [];
+  const ub = updateBanner(s);
+  if (ub) out.push(ub);
+  const moving = s.update.running && ["move-data", "move-cleanup"].includes(s.update.progress?.task);
+  const st = s.storage;
+  if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Spot Solutions keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
+  if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Spot Solutions below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
+  else if (!s.services.worker && !s.update.running) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The worker isn't running</b><div class="small">WhatsApp is offline until it starts. Try restarting it; the logs say why it stopped.</div></div><button data-restart="worker">Restart worker</button></div>`);
+  return out.length ? `<div class="alerts">${out.join("")}</div>` : "";
 }
 
 function updatesCard(s) {
   const u = s.update;
   const status = u.dev ? "Development copy: update it with git." : u.latest ? (u.available ? `Newer version <span class="mono">${esc(shortV(u.latest.version))}</span> is available.` : "You're on the latest version.") : u.checkError ? `Couldn't check: ${esc(u.checkError)}` : "Checking…";
-  return sec("updates", "Updates", u.available ? "Update available" : u.latest ? "Up to date" : "", `
+  return sec("updates", "Updates", u.dev ? "Development copy" : u.available ? "Update available" : u.latest ? `Up to date · ${esc(shortV(u.current))}` : u.checkError ? "Couldn't check" : "Checking…", `
       <div class="row2"><div class="grow"><b>Version</b><div class="muted small">${status}</div></div><span class="chip neutral mono">${esc(shortV(u.current))}</span></div>
       ${u.checkedAt ? `<div class="muted small" style="margin-top:6px">Last checked ${esc(when(u.checkedAt))}. Checks every 30 minutes.</div>` : ""}
       <div class="row2 split"><div class="grow"><b>Install updates automatically</b><div class="muted small">At a quiet moment, a few minutes after a release appears. The worker and this console restart; WhatsApp logins are kept.</div></div><button type="button" class="switch" role="switch" aria-checked="${u.autoUpdate}" aria-label="Install updates automatically" data-auto></button></div>
-      <div class="actions"><button class="tonal" data-update-check ${u.running ? "disabled" : ""}>Check now</button>${u.available ? `<button data-update-now ${u.running ? "disabled" : ""}>Update now</button>` : ""}</div>`, { open: u.available, style: "margin-top:16px" });
+      <div class="actions"><button class="tonal" data-update-check ${u.running ? "disabled" : ""}>Check now</button>${u.available ? `<button data-update-now ${u.running ? "disabled" : ""}>Update now</button>` : ""}</div>`, { open: u.available });
 }
 
 function connectBlock(s) {
@@ -324,14 +429,14 @@ function connectBlock(s) {
 
 function setupInner(s) {
   const alt = `
-    <details class="alt" id="alt-code" ${altOpen.code ? "open" : ""}><summary>Have a join code from the app?</summary>
+    <details class="alt" id="alt-code" ${altOpen.code ? "open" : ""}><summary>Have a join code from the app?${chev}</summary>
       <form id="join" autocomplete="off">
         <div class="muted small">In the app, an admin opens <b>Server, Add a server</b> and makes a code. Codes last 15 minutes and work once.</div>
         <label for="joincode">Join code</label>
         <input type="text" id="joincode" class="mono" placeholder="SPOT-XXXX-XXXX" autocapitalize="characters" spellcheck="false" value="${esc(joinCode)}">
         <div class="actions"><button type="submit" ${joining ? "disabled" : ""}>${joining ? "Joining…" : "Join"}</button></div>
       </form></details>
-    <details class="alt" id="alt-key" ${altOpen.key ? "open" : ""}><summary>First server ever? Use a key file</summary>
+    <details class="alt" id="alt-key" ${altOpen.key ? "open" : ""}><summary>First server ever? Use a key file${chev}</summary>
       <div class="muted small">Only for a brand-new Firebase project, before anyone is an admin in the app. In the <b>Firebase console, Project settings, Service accounts</b>, choose <b>Generate new private key</b> and drop the file here. Delete it afterwards: it is a password.</div>
       <div class="drop" id="drop" style="margin-top:12px"><b>Drop your service-account .json here</b><div class="muted small">or click to choose the file</div><input type="file" id="file" accept=".json,application/json" hidden></div>
     </details>`;
@@ -340,7 +445,7 @@ function setupInner(s) {
 
 function aiCard(s) {
   const a = aiv;
-  if (!a) return sec("ai", "AI models", "", `<div class="muted">Loading…</div>`, { open: false, style: "margin-top:16px" });
+  if (!a) return sec("ai", "AI models", "Loading…", `<div class="muted">Loading…</div>`, { open: false });
   if (!draft) draft = { mode: a.mode || "", localModel: a.localModel || "", geminiModel: a.geminiModel || "" };
   const hasKey = !!a.geminiKey;
   const local = a.localEnabled;
@@ -354,7 +459,7 @@ function aiCard(s) {
   const pull = a.pull;
   const pct = pull && pull.total ? Math.min(100, Math.round((pull.completed / pull.total) * 100)) : 0;
   const modeOpt = (m, desc, off) => `<label class="opt ${draft.mode === m ? "on" : ""} ${off ? "off" : ""}"><input type="radio" name="mode" value="${m}" ${draft.mode === m ? "checked" : ""} ${off ? "disabled" : ""}><span><b>${esc(a.modes[m])}</b><span class="muted small">${desc}</span></span></label>`;
-  const summary = `${local ? "Local" : "Gemini only"}${hasKey ? " · Gemini key set" : ""}`;
+  const summary = `${a.mode ? esc(a.modes[a.mode]) : "Built-in default"} · ${local ? "local model on" : "Gemini only"}${hasKey ? " · Gemini key set" : ""}`;
   return sec("ai", "AI models", summary, `
     <div class="blk">
       <div class="row2"><div class="grow"><b>Local model on this computer</b><div class="muted small">${local ? (a.ollama.up ? `Ollama is running with ${a.ollama.models.length} model${a.ollama.models.length === 1 ? "" : "s"}. Chats stay on this machine.` : "On, but Ollama isn't answering. Restart it under Services.") : "Off. This server answers with Gemini only, and can't host accounts set to Local only."}</div></div>
@@ -395,7 +500,7 @@ function aiCard(s) {
         ${modeOpt("local_only", "Chats never leave this computer. Needs the local model.", !local)}
       </div>
       <div class="actions"><button data-save-ai ${!dirty || savingAi ? "disabled" : ""}>${savingAi ? "Saving…" : "Save defaults"}</button>${draft.mode === "" ? `<span class="muted small">Not set: curators keep the app's built-in default (local Gemma).</span>` : ""}${dirty ? `<button class="text" data-reset-ai>Discard</button>` : ""}</div>
-    </div>`, { open: false, style: "margin-top:16px" });
+    </div>`, { open: false });
 }
 
 // ---------- live dashboard (numbers come from /api/live: the worker's stats file, read every few seconds) ----------
@@ -433,26 +538,32 @@ function lastUpdateText() {
   return `${p.task === "local-on" || p.task === "local-off" ? "Local model changed" : p.to ? `Updated to ${shortV(p.to)}` : "Done"}`;
 }
 
-function liveBody() {
+const tileOf = (key, label, value, foot, o = {}) => {
+  const inner = `<span class="tl">${label}</span><span class="tv ${o.bad ? "bad" : ""}">${value}</span><span class="tf">${foot}</span>`;
+  return key ? `<button type="button" class="tile" data-metric="${key}" aria-pressed="${metric === key}" title="Chart ${esc(METRICS[key][0].toLowerCase())}">${inner}</button>` : `<div class="tile">${inner}</div>`;
+};
+// The stats bar: the tiles. Kept apart from the chart and panels below it, so each can be collapsed on its own.
+function liveStatsBody() {
   const l = liveData;
   if (!l) return `<div class="muted empty">Waiting for the worker's first report. It writes its numbers every few seconds once it is running${state && !state.services.worker ? ", and it isn't running right now" : ""}.</div>`;
-  const stale = l.state === "stale";
-  const tile = (key, label, value, foot, o = {}) => {
-    const inner = `<span class="tl">${label}</span><span class="tv ${o.bad ? "bad" : ""}">${value}</span><span class="tf">${foot}</span>`;
-    return key ? `<button type="button" class="tile" data-metric="${key}" aria-pressed="${metric === key}" title="Chart ${esc(METRICS[key][0].toLowerCase())}">${inner}</button>` : `<div class="tile">${inner}</div>`;
-  };
-  const q = l.queue, a = l.ai, local = a.local, gem = a.gemini, aiSplit = local + gem;
-  return `${stale ? `<div class="banner bad" style="margin-bottom:12px" role="status"><div class="grow"><b>The worker isn't reporting</b><div class="small">Last report ${esc(ago(Date.now() - l.ageMs))}. ${state && !state.services.worker ? "It's stopped: check Services below." : "The numbers below are the last ones it sent."}</div></div></div>` : ""}
-    <div class="${stale ? "dimmed" : ""}">
-    <div class="tiles">
-      ${tile(null, "Connected", n(l.counts.ready), `of ${n(l.counts.accounts)} account${l.counts.accounts === 1 ? "" : "s"} here`)}
-      ${tile("in", "Messages read", n(l.day.in), `${n(l.totals.in)} since start`)}
-      ${tile("spot", "Spot requests", n(l.day.spot), `${n(l.totals.spot)} since start`)}
-      ${tile("sent", "Sent", n(l.day.sent), `${n(l.totals.sent)} since start`)}
-      ${tile("err", "Errors", n(l.day.err), `${n(l.totals.err)} since start`, { bad: l.day.err > 0 })}
-      ${tile(null, "Send queue", n(q.pending), q.lastSendAt ? `last sent ${esc(ago(q.lastSendAt))}` : "nothing sent yet")}
+  const stale = l.state === "stale", q = l.queue;
+  return `${stale ? `<div class="banner bad" style="margin-bottom:12px" role="status"><div class="grow"><b>The worker isn't reporting</b><div class="small">Last report ${esc(ago(Date.now() - l.ageMs))}. ${state && !state.services.worker ? "It's stopped: check Server below." : "The numbers below are the last ones it sent."}</div></div></div>` : ""}
+    <div class="${stale ? "dimmed" : ""}"><div class="tiles">
+      ${tileOf(null, "Connected", n(l.counts.ready), `of ${n(l.counts.accounts)} account${l.counts.accounts === 1 ? "" : "s"} here`)}
+      ${tileOf("in", "Messages read", n(l.day.in), `${n(l.totals.in)} since start`)}
+      ${tileOf("spot", "Spot requests", n(l.day.spot), `${n(l.totals.spot)} since start`)}
+      ${tileOf("sent", "Sent", n(l.day.sent), `${n(l.totals.sent)} since start`)}
+      ${tileOf("err", "Errors", n(l.day.err), `${n(l.totals.err)} since start`, { bad: l.day.err > 0 })}
+      ${tileOf(null, "Send queue", n(q.pending), q.lastSendAt ? `last sent ${esc(ago(q.lastSendAt))}` : "nothing sent yet")}
     </div>
-    <div class="muted small" style="margin-top:8px">Counts are for the last 24 hours. Tap Messages read, Spot requests, Sent or Errors to chart it.</div>
+    <div class="muted small" style="margin-top:8px">Counts are for the last 24 hours. Tap Messages read, Spot requests, Sent or Errors to chart it.</div></div>`;
+}
+// The detail: the hourly chart, then the AI and worker panels.
+function liveDetailBody() {
+  const l = liveData;
+  if (!l) return `<div class="muted empty">The chart and AI numbers appear once the worker reports.</div>`;
+  const stale = l.state === "stale", q = l.queue, a = l.ai, local = a.local, gem = a.gemini, aiSplit = local + gem;
+  return `<div class="${stale ? "dimmed" : ""}">
     ${liveChart(l)}
     <div class="lv-panels">
       <div class="panel"><b>AI</b>
@@ -487,28 +598,31 @@ function accountsBody() {
 function liveSummaries() {
   const l = liveData;
   const dot = (c) => `<span class="dot ${c}" style="display:inline-block;width:8px;height:8px;margin-right:6px"></span>`;
+  const avg = l?.ai?.avgMs == null ? "" : ` · avg ${(l.ai.avgMs / 1000).toFixed(l.ai.avgMs < 10000 ? 1 : 0)} s`;
   return {
-    live: !l ? "Waiting for the worker" : l.state === "stale" ? `${dot("bad")}Worker not reporting` : `${dot("ok")}Live · ${n(l.day.in)} read · ${n(l.day.sent)} sent (24 h)`,
+    stats: !l ? "Waiting for the worker" : l.state === "stale" ? `${dot("bad")}Worker not reporting` : `${dot("ok")}${n(l.counts.ready)} connected · ${n(l.day.in)} read · ${n(l.day.sent)} sent in 24 h`,
+    detail: !l ? "No report yet" : `${METRICS[metric][0]} ${n(l.day[metric])} in 24 h · AI ${n(l.ai.day)} call${l.ai.day === 1 ? "" : "s"}${avg}`,
     accounts: !l ? "No report yet" : `${n(l.counts.ready)} of ${n(l.counts.accounts)} connected${l.counts.qr ? ` · ${l.counts.qr} need a scan` : ""}`,
   };
 }
+const liveBodies = { stats: liveStatsBody, detail: liveDetailBody, accounts: accountsBody };
 const livePrev = {};
-const liveSecs = () => {
-  const sm = liveSummaries(), live = liveBody(), acc = accountsBody();
-  Object.assign(livePrev, { live, accounts: acc, lives: sm.live, accountss: sm.accounts }); // what the DOM now shows
-  return `${sec("live", "Live", sm.live, live, { style: "margin-bottom:16px" })}${sec("accounts", `Accounts${liveData?.server?.hostname ? ` on ${esc(liveData.server.hostname)}` : " on this server"}`, sm.accounts, acc, { style: "margin-bottom:16px" })}`;
+// The three live sections' HTML, with what the DOM now shows remembered so the 3 s refresh can patch only what changed.
+const liveBlock = (id, title) => {
+  const sm = liveSummaries()[id], body = liveBodies[id]();
+  livePrev[id] = body; livePrev[id + "s"] = sm;
+  return sec(id, title, sm, body);
 };
 // Patch only what changed, so the 3 s refresh never replaces unchanged DOM (no flicker, no lost hover or scroll).
 function patchLive() {
   const sm = liveSummaries();
-  const bodies = { live: liveBody, accounts: accountsBody };
-  for (const id of ["live", "accounts"]) {
+  for (const id of Object.keys(liveBodies)) {
     const d = document.querySelector(`details.sec[data-sec="${id}"]`);
     if (!d) continue;
     const sum = d.querySelector("summary .sum");
     if (sum && livePrev[id + "s"] !== sm[id]) { sum.innerHTML = sm[id]; livePrev[id + "s"] = sm[id]; }
     if (!d.open) continue;
-    const html = bodies[id]();
+    const html = liveBodies[id]();
     if (livePrev[id] === html && d.querySelector(".secbody").firstChild) continue;
     const body = d.querySelector(".secbody"), list = body.querySelector(".acclist"), top = list ? list.scrollTop : 0;
     body.innerHTML = html; livePrev[id] = html;
@@ -524,7 +638,7 @@ async function pollLive() {
     liveData = r.live; liveAt = Date.now();
     if (state) patchLive();
   } catch { wait = 6000; }
-  const open = ["live", "accounts"].some((id) => isOpen(id, true));
+  const open = Object.keys(liveBodies).some((id) => isOpen(id, true) && shown(id));
   pollLive.t = setTimeout(pollLive, open ? wait : 10000);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) pollLive(); });
@@ -535,6 +649,73 @@ document.addEventListener("click", (e) => {
   try { localStorage.setItem("spot-console-metric", metric); } catch {}
   patchLive();
 });
+
+// ---------- storage: what's in the data folder, free space, moving it to another drive ----------
+let stor = null, moveInput = "", moveModels = false, moveCheck = null, checking = false, startingMove = false;
+let keepOld = null; // the finishedAt of a move whose old copy the owner chose to keep
+try { keepOld = Number(localStorage.getItem("spot-console-keepold")) || null; } catch {}
+const PHASES = ["Checking the new folder", "Stopping the worker", "Copying data", "Checking the copy", "Switching to the new folder", "Starting the worker", "Waiting for WhatsApp to come back"];
+const moveRunning = () => Boolean(state?.update?.running && ["move-data", "move-cleanup"].includes(state.update.progress?.task));
+function storageSummary() {
+  if (!stor) return "Loading…";
+  const mv = stor.move;
+  if (moveRunning() || mv?.phase === "running") return `Moving the data… ${mv?.pct != null ? mv.pct + "%" : ""}`;
+  if (mv?.phase === "cleaning") return "Deleting the old copy…";
+  const free = stor.drive.free != null ? `${fmt(stor.drive.free)} free` : "free space unknown";
+  const drive = /^[A-Za-z]:/.test(stor.dataDir) ? ` on ${stor.dataDir.slice(0, 2)}` : "";
+  return `${stor.low ? "Almost full: " : ""}${free}${drive}${stor.bytes != null ? ` · data ${fmt(stor.bytes)}` : ""}`;
+}
+function storageBody(s) {
+  if (!stor) return `<div class="muted">Loading…</div>`;
+  const d = stor.drive, m = stor.models, mv = stor.move;
+  const dataPanel = `<div class="panel"><h3>Data folder</h3><div class="mono small path">${esc(stor.dataDir)}</div>
+    ${stor.entries ? `<div class="${stor.scanning ? "scanning" : ""}">${stor.entries.map((e) => `<div class="kv"><span>${esc(e.label)}</span><b>${fmt(e.bytes)}</b></div>`).join("")}<div class="kv"><span><b>Total</b></span><b>${fmt(stor.bytes)}</b></div></div>` : `<div class="muted small">${spin} Counting what's in it…</div>`}
+    ${d.total ? meter("Drive", d.total - d.free, d.total, `${fmt(d.free)} free of ${fmt(d.total)}`) : ""}</div>`;
+  const modelsPanel = `<div class="panel"><h3>AI models folder</h3>${m.used ? `<div class="mono small path">${esc(m.dir)}</div>
+    <div class="kv"><span>Models</span><b>${m.bytes ? fmt(m.bytes) : "none yet"}</b></div>
+    ${m.inside ? `<div class="muted small">This folder is inside the data folder, so it moves with it.</div>` : ""}
+    ${m.total ? meter("Drive", m.total - m.free, m.total, `${fmt(m.free)} free of ${fmt(m.total)}`) : ""}` : `<div class="muted small" style="margin-top:6px">${esc(m.reason)} Nothing is stored for AI models here.</div>`}</div>`;
+  let action;
+  if (moveRunning() || mv?.phase === "running" || mv?.phase === "cleaning") {
+    const idx = PHASES.findIndex((p) => (mv?.step || "").startsWith(p.split(" ")[0]));
+    action = `<div class="panel"><b>${mv?.phase === "cleaning" ? "Deleting the old copy" : "Moving the data"}</b>
+      <div class="muted small" style="margin-top:4px">${spin} ${esc(mv?.step || state.update.progress?.step || "Working")}</div>
+      <div class="pbar" role="progressbar" aria-valuenow="${mv?.pct ?? 0}" aria-valuemin="0" aria-valuemax="100"><i style="width:${mv?.pct ?? 0}%"></i></div>
+      ${mv?.phase === "running" ? `<ol class="steps small muted" style="margin-top:10px">${PHASES.map((p, i) => `<li ${i === idx ? 'style="color:var(--on-surface);font-weight:600"' : ""}>${p}${i < idx ? " ✓" : ""}</li>`).join("")}</ol>` : ""}
+      <div class="muted small" style="margin-top:8px">Keep this page open. WhatsApp is offline until the worker is back on the new folder. If any step fails, everything goes back to the old folder.</div></div>`;
+  } else {
+    const ok = moveCheck?.ok && moveCheck.path === moveInput.trim();
+    const canModels = m.movable && !m.inside;
+    const modelsLabel = !m.used ? "" : m.inside ? `<div class="muted small" style="margin-top:12px">The AI models are inside the data folder and move with it.</div>` : `<label class="chk ${canModels ? "" : "off"}" ${canModels ? "" : `title="${esc(m.reason || "")}"`}><input type="checkbox" id="movemodels" ${moveModels && canModels ? "checked" : ""} ${canModels ? "" : "disabled"}> Also move the AI models${m.bytes ? ` (${fmt(m.bytes)})` : ""}</label>`;
+    const done = mv?.phase === "awaiting-cleanup" && mv.canDelete && keepOld !== mv.finishedAt;
+    const failed = mv?.phase === "failed" && mv.error && keepOld !== mv.finishedAt;
+    action = `${done ? `<div class="panel good" style="margin-bottom:12px"><b>The data now lives in ${esc(mv.target)}</b>
+        <div class="small" style="margin-top:4px">The move was checked, and WhatsApp is back and ready. The old copy is still in <span class="mono">${esc(mv.old)}</span>${mv.bytes ? ` (${fmt(mv.bytes)})` : ""}, using space. Delete it once you're happy.</div>
+        <div class="actions"><button class="tonal" data-move-delete>Delete the old copy</button><button class="text" data-move-keep="${mv.finishedAt}">Keep it for now</button></div></div>` : ""}
+      ${failed ? `<div class="banner bad" style="margin-bottom:12px" role="alert"><div class="grow"><b>The last move didn't work</b><div class="small">${esc(mv.error)}</div></div><button data-move-keep="${mv.finishedAt}">Dismiss</button></div>` : ""}
+      <b>Move data to another folder</b>
+      <div class="muted small" style="margin-top:2px">For when this drive is full, or to keep the data on a bigger disk. It is copied and checked first, and only then switched; the old copy stays until you delete it. WhatsApp is offline for a few minutes.</div>
+      <form id="movef" autocomplete="off">
+        <label for="movepath">New folder (the full path)</label>
+        <input type="text" id="movepath" class="mono" placeholder="${esc(stor.example)}" spellcheck="false" autocapitalize="off" value="${esc(moveInput)}">
+        ${modelsLabel}
+        ${moveCheck ? (moveCheck.ok && ok ? `<div class="check-res ok small" role="status">✓ That folder works. It needs ${fmt(moveCheck.needBytes)} (data${moveCheck.modelsBytes ? " and models" : ""} plus 1 GB spare) and ${moveCheck.free != null ? fmt(moveCheck.free) : "enough"} is free there.${(moveCheck.warnings || []).map((w) => `<div>${esc(w)}</div>`).join("")}</div>` : moveCheck.ok ? "" : `<div class="check-res bad small" role="alert">${esc(moveCheck.error)}</div>`) : ""}
+        <div class="actions"><button type="submit" class="tonal" ${checking || !moveInput.trim() ? "disabled" : ""}>${checking ? "Checking…" : "Check folder"}</button><button type="button" data-move-go ${ok && !startingMove ? "" : "disabled"}>${startingMove ? "Starting…" : "Move data"}</button></div>
+      </form>`;
+  }
+  return `<div class="eq">${dataPanel}${modelsPanel}</div><div class="blk" id="moveblk">${action}</div>`;
+}
+
+function logSummary(text) {
+  const lines = (text || "").split(/\r?\n/).filter(Boolean);
+  if (!lines.length) return "No logs yet";
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = /^(\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d)/.exec(lines[i]);
+    const t = m ? Date.parse(m[1].replace(" ", "T")) : NaN;
+    if (!isNaN(t)) return `last entry ${ago(t)} · ${lines.length} lines`;
+  }
+  return `${lines.length} lines · updates every 5 s`;
+}
 
 function render() {
   const s = state, c = s.config, k = c.key;
@@ -547,46 +728,166 @@ function render() {
   const stepList = steps.map((st, i) => `<div class="step"><span class="num ${st.done ? "done" : ""}">${st.done ? "✓" : i + 1}</span><div class="grow"><b>${st.title}</b><div class="muted small" style="margin-top:2px">${st.body}</div></div></div>`).join("");
   // A server with no key leads with how to connect it; once connected, the checklist leads and reconnecting is tucked away.
   const setupBody = `
-    ${k ? `${stepList}<details id="replace" style="margin-top:8px" ${replaceOpen ? "open" : ""}><summary style="cursor:pointer;font-weight:600">Reconnect or replace the key</summary><div style="margin-top:12px">${setupInner(s)}</div></details>` : `${setupInner(s)}<div style="margin-top:16px">${stepList}</div>`}
+    ${k ? `${stepList}<details id="replace" class="rep" style="margin-top:8px" ${replaceOpen ? "open" : ""}><summary>Reconnect or replace the key${chev}</summary><div style="margin-top:12px">${setupInner(s)}</div></details>` : `${setupInner(s)}<div style="margin-top:16px">${stepList}</div>`}
     <form id="cfg" style="margin-top:8px">
       <label for="admins">Admin emails (comma separated)</label>
       <input type="text" id="admins" value="${esc(c.admins.join(", "))}" placeholder="you@gmail.com">
       <div class="actions"><button type="submit">Save &amp; restart worker</button><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app" target="_blank" rel="noreferrer">Open Spot Solutions ↗</a><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app/help" target="_blank" rel="noreferrer">Server guide ↗</a></div>
     </form>`;
+  const cpuPct = Math.round(s.cpu.usage * 100), memPct = Math.round((1 - s.memory.free / s.memory.total) * 100);
+  const lowDisk = s.storage?.low;
+  const serverSummary = `<span class="dot ${allUp ? "ok" : "bad"}" style="display:inline-block;width:8px;height:8px;margin-right:6px"></span>${allUp ? "All running" : "Needs attention"} · CPU ${cpuPct}% · memory ${memPct}%${s.disk ? ` · ${lowDisk ? `<span class="err-text">${fmt(s.disk.free)} free</span>` : `${fmt(s.disk.free)} free`}` : ""}`;
+  const serverBody = `<div class="eq">
+      <div class="panel flush"><h3>Services</h3>
+        <div class="row"><span class="dot ${s.services.worker ? "ok" : "bad"}"></span><div class="grow"><b>Spot Solutions worker</b><div class="muted small">${s.services.worker ? "Running" : k ? "Stopped. Check the logs below." : "Waits for the Firebase key"}</div></div><button class="tonal sm" data-restart="worker">Restart</button></div>
+        ${s.localModel ? `<div class="row"><span class="dot ${s.services.ollama ? "ok" : "bad"}"></span><div class="grow"><b>Ollama</b><div class="muted small">${s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"} installed` : "Not responding"}</div></div><button class="tonal sm" data-restart="ollama">Restart</button></div>` : `<div class="row"><span class="dot ok"></span><div class="grow"><b>Local model</b><div class="muted small">Off: this server answers with Gemini only. Turn it on under AI models.</div></div></div>`}
+        ${s.ollama.models.length ? `<div class="row"><div class="models">${s.ollama.models.map((m) => `<span class="chip neutral mono">${esc(m.name)} · ${fmt(m.size)}</span>`).join("")}</div></div>` : ""}
+      </div>
+      <div class="panel"><h3>Machine</h3>
+        ${meter("CPU", s.cpu.usage, 1, `${cpuPct}% · ${s.cpu.cores} cores · load ${s.cpu.load[0].toFixed(2)}`)}
+        ${meter("Memory", s.memory.total - s.memory.free, s.memory.total, `${fmt(s.memory.total - s.memory.free)} of ${fmt(s.memory.total)}`)}
+        ${s.disk ? meter(/^[A-Za-z]:/.test(s.disk.dir || "") ? `Disk (${s.disk.dir.slice(0, 2)})` : "Disk", s.disk.total - s.disk.free, s.disk.total, `${fmt(s.disk.free)} free of ${fmt(s.disk.total)}`) : ""}
+        <div class="muted small mfoot">${esc(s.cpu.model)}</div>
+      </div></div>`;
+  const blocks = {
+    stats: liveBlock("stats", "Live"),
+    detail: liveBlock("detail", "Activity and AI"),
+    accounts: liveBlock("accounts", `Accounts${liveData?.server?.hostname ? ` on ${esc(liveData.server.hostname)}` : " on this server"}`),
+    server: sec("server", "Server", serverSummary, serverBody),
+    storage: sec("storage", "Storage", storageSummary(), storageBody(s), { open: Boolean(lowDisk) || moveRunning() }),
+    setup: sec("setup", k ? "Setup" : "Connect this server", `${steps.filter((x) => x.done || x.optional).length} of ${steps.length} done`, setupBody, { open: !steps.every((x) => x.done || x.optional) }),
+    ai: aiCard(s),
+    updates: updatesCard(s),
+    logs: sec("logs", "Worker logs", logSummary(s.logs), `<pre class="logs" id="logs">${esc(s.logs)}</pre>`, { open: false, cls: "tight" }),
+  };
+  if (phone && phone.qr) blocks.phone = sec("phone", "Open on your phone", "Scan with your phone's camera", `<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center"><pre class="qr" aria-label="QR code for this console">${esc(phone.qr)}</pre><div class="grow" style="min-width:220px"><div class="muted small">Scan while your phone is on the same Wi-Fi. The link includes this server's access code, so only share it with people who should manage the server.</div><div class="mono small" style="margin-top:8px;word-break:break-all">${esc(phone.url)}</div></div></div>`, { open: false });
+  blockIds = DEFAULT_ORDER.filter((id) => blocks[id]);
+  const hiddenNow = layout.order.filter((id) => blocks[id] && layout.hidden.includes(id) && !forced(id));
+  const custBar = custMode ? `<div class="card custbar" role="region" aria-label="Customize sections"><div><b>Customize this page</b><div class="muted small">Drag a section by its handle to reorder it. On a phone, or from the keyboard, use the ⋯ menu (Move up, Move down, Hide). Warnings about low disk space, a stopped worker or an unconnected server always show at the top.</div></div>
+      ${hiddenNow.length ? `<div><div class="muted small" style="margin-bottom:6px">Hidden sections</div><div class="hidden-chips">${hiddenNow.map((id) => `<button type="button" class="tonal sm" data-show="${id}">Show ${esc(TITLES[id])}</button>`).join("")}</div></div>` : `<div class="muted small">No sections are hidden.</div>`}
+      <div class="actions"><button type="button" class="tonal" data-layout-reset>Reset layout</button><button type="button" data-cust-done>Done</button></div></div>` : "";
   $("#app").innerHTML = `
   <header>${logo}
     <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Spot Solutions <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
     <span class="chip ${allUp ? "ok" : "bad"}">${allUp ? "All services running" : "Needs attention"}</span>
+    <button type="button" class="tonal sm" data-cust-toggle aria-pressed="${custMode}">${custMode ? "Done customizing" : "Customize"}</button>
     <div class="theme" role="group" aria-label="Theme">${["system", "light", "dark"].map((t) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
   </header>
-  ${(() => { const b = updateBanner(s); return b ? `<div style="margin-bottom:16px">${b}</div>` : ""; })()}
-
-  ${liveSecs()}
-
-  <div class="grid g2">
-${sec("services", "Services", allUp ? "All running" : "Needs attention", `
-      <div class="row"><span class="dot ${s.services.worker ? "ok" : "bad"}"></span><div class="grow"><b>Spot Solutions worker</b><div class="muted small">${s.services.worker ? "Running" : k ? "Stopped. Check the logs below." : "Waits for the Firebase key"}</div></div><button class="tonal sm" data-restart="worker">Restart</button></div>
-      ${s.localModel ? `<div class="row"><span class="dot ${s.services.ollama ? "ok" : "bad"}"></span><div class="grow"><b>Ollama</b><div class="muted small">${s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"} installed` : "Not responding"}</div></div><button class="tonal sm" data-restart="ollama">Restart</button></div>` : `<div class="row"><span class="dot ok"></span><div class="grow"><b>Local model</b><div class="muted small">Off: this server answers with Gemini only. Turn it on under AI models.</div></div></div>`}
-      ${s.ollama.models.length ? `<div class="row"><div class="models">${s.ollama.models.map((m) => `<span class="chip neutral mono">${esc(m.name)} · ${fmt(m.size)}</span>`).join("")}</div></div>` : ""}
-`, { cls: "tight" })}
-${sec("machine", "Machine", `CPU ${Math.round(s.cpu.usage * 100)}% · memory ${Math.round((1 - s.memory.free / s.memory.total) * 100)}%`, `
-      ${meter("CPU", s.cpu.usage, 1, `${Math.round(s.cpu.usage * 100)}% · ${s.cpu.cores} cores · load ${s.cpu.load[0].toFixed(2)}`)}
-      ${meter("Memory", s.memory.total - s.memory.free, s.memory.total, `${fmt(s.memory.total - s.memory.free)} of ${fmt(s.memory.total)}`)}
-      ${s.disk ? meter("Disk", s.disk.total - s.disk.free, s.disk.total, `${fmt(s.disk.free)} free of ${fmt(s.disk.total)}`) : ""}
-      <div class="muted small mfoot">${esc(s.cpu.model)}</div>
-`, { cls: "stack" })}
-  </div>
-
-${sec("setup", k ? "Setup" : "Connect this server", `${steps.filter((x) => x.done || x.optional).length} of ${steps.length} done`, setupBody, { open: !steps.every((x) => x.done || x.optional), style: "margin-top:16px" })}
-
-${aiCard(s)}
-
-${updatesCard(s)}
-
-  ${phone && phone.qr ? sec("phone", "Open this console on your phone", "Scan with your phone's camera", `<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center"><pre class="qr" aria-label="QR code for this console">${esc(phone.qr)}</pre><div class="grow" style="min-width:220px"><div class="muted small">Scan while your phone is on the same Wi-Fi. The link includes this server's access code, so only share it with people who should manage the server.</div><div class="mono small" style="margin-top:8px;word-break:break-all">${esc(phone.url)}</div></div></div>`, { open: false, style: "margin-top:16px" }) : ""}
-
-  ${sec("logs", "Worker logs", "updates every 5 s", `<pre class="logs" id="logs">${esc(s.logs)}</pre>`, { open: false, cls: "tight", style: "margin-top:16px" })}`;
+  ${alerts(s)}
+  ${custBar}
+  <div id="secs">${visibleIds().map((id) => blocks[id]).join("")}</div>
+  ${!custMode && hiddenNow.length ? `<p class="muted small" style="margin-top:16px">${hiddenNow.length} section${hiddenNow.length === 1 ? " is" : "s are"} hidden. <a href="#" data-cust-toggle>Customize</a> to show ${hiddenNow.length === 1 ? "it" : "them"}.</p>` : ""}`;
   wire();
+}
+
+
+// ---------- customising the page: reorder, hide, reset ----------
+function moveSection(id, dir) {
+  const vis = visibleIds(), i = vis.indexOf(id), j = i + dir;
+  if (i < 0 || j < 0 || j >= vis.length) return;
+  const order = layout.order.filter((x) => x !== id);
+  order.splice(order.indexOf(vis[j]) + (dir > 0 ? 1 : 0), 0, id);
+  layout.order = order; saveLayout();
+}
+function dropSection(id, onto, after) {
+  if (id === onto) return;
+  const order = layout.order.filter((x) => x !== id);
+  order.splice(order.indexOf(onto) + (after ? 1 : 0), 0, id);
+  layout.order = order; saveLayout();
+}
+function focusAfter(sel) { setTimeout(() => document.querySelector(sel)?.focus(), 0); }
+function wireLayout() {
+  document.querySelectorAll("[data-cust-toggle]").forEach((b) => b.onclick = (e) => { e.preventDefault(); custMode = !custMode; menuFor = null; render(); });
+  const done = $("[data-cust-done]"); if (done) done.onclick = () => { custMode = false; menuFor = null; render(); };
+  const reset = $("[data-layout-reset]"); if (reset) reset.onclick = () => { layout = normaliseLayout(null); saveLayout(); menuFor = null; render(); toast("Layout reset"); };
+  document.querySelectorAll("[data-show]").forEach((b) => b.onclick = () => { layout.hidden = layout.hidden.filter((x) => x !== b.dataset.show); saveLayout(); render(); });
+  document.querySelectorAll("[data-goto]").forEach((b) => b.onclick = () => revealSection(b.dataset.goto));
+  const gs = $("[data-goto-storage]"); if (gs) gs.onclick = () => revealSection("storage", "#movepath");
+  if (!custMode) return;
+  document.querySelectorAll("[data-menu]").forEach((b) => b.onclick = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    menuFor = menuFor === b.dataset.menu ? null : b.dataset.menu; render();
+    if (menuFor) focusAfter(`.menu [role=menuitem]:not(:disabled)`); else focusAfter(`[data-menu="${b.dataset.menu}"]`);
+  });
+  document.querySelectorAll("[data-move]").forEach((b) => b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); menuFor = null; moveSection(b.dataset.move, Number(b.dataset.dir)); render(); focusAfter(`[data-menu="${b.dataset.move}"]`); });
+  document.querySelectorAll("[data-hide]").forEach((b) => b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); menuFor = null; layout.hidden = [...new Set([...layout.hidden, b.dataset.hide])]; saveLayout(); render(); toast(`${TITLES[b.dataset.hide]} hidden. Show it again from Customize.`); });
+  document.querySelectorAll(".menu").forEach((m) => m.onkeydown = (e) => {
+    const items = [...m.querySelectorAll("button:not(:disabled)")], i = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); const id = menuFor; menuFor = null; render(); focusAfter(`[data-menu="${id}"]`); }
+  });
+  // The handle: drag with a mouse, or focus it and use the arrow keys.
+  document.querySelectorAll(".grip").forEach((g) => {
+    const d = g.closest("details.sec");
+    g.onclick = (e) => { e.preventDefault(); e.stopPropagation(); };
+    g.onmousedown = () => { d.draggable = true; };
+    g.onmouseup = () => { if (!dragId) d.draggable = false; };
+    g.onkeydown = (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault(); moveSection(g.dataset.grip, e.key === "ArrowUp" ? -1 : 1); render(); focusAfter(`[data-grip="${g.dataset.grip}"]`);
+    };
+  });
+  const wrap = $("#secs");
+  const clearMarks = () => wrap.querySelectorAll(".drop-before,.drop-after").forEach((x) => x.classList.remove("drop-before", "drop-after"));
+  const endDrag = () => { clearMarks(); wrap.querySelectorAll("details.sec").forEach((x) => { x.draggable = false; x.classList.remove("dragging"); }); dragId = null; dropAt = null; };
+  wrap.ondragstart = (e) => {
+    const d = e.target.closest?.("details.sec");
+    if (!d || !d.draggable) return;
+    dragId = d.dataset.sec; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", dragId);
+    setTimeout(() => d.classList.add("dragging"), 0);
+  };
+  wrap.ondragover = (e) => {
+    if (!dragId) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = "move";
+    const t = e.target.closest?.("details.sec");
+    clearMarks(); dropAt = null;
+    if (!t || t.dataset.sec === dragId) return;
+    const r = t.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+    t.classList.add(after ? "drop-after" : "drop-before"); dropAt = { id: t.dataset.sec, after };
+  };
+  wrap.ondrop = (e) => { if (!dragId) return; e.preventDefault(); const from = dragId, at = dropAt; endDrag(); if (at) { dropSection(from, at.id, at.after); render(); focusAfter(`[data-grip="${from}"]`); } };
+  wrap.ondragend = endDrag;
+}
+// Open (and un-hide) a section and bring it into view.
+function revealSection(id, focusSel) {
+  layout.hidden = layout.hidden.filter((x) => x !== id); saveLayout();
+  secs[id] = true; saveSecs(); render();
+  const d = document.querySelector(`details.sec[data-sec="${id}"]`);
+  if (d) { d.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); if (focusSel) setTimeout(() => $(focusSel)?.focus(), 250); }
+}
+document.addEventListener("click", (e) => { if (menuFor !== null && !e.target.closest?.(".menuwrap")) { menuFor = null; if (state) render(); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && menuFor !== null && !e.target.closest?.(".menu")) { menuFor = null; if (state) render(); } });
+
+// ---------- the Storage section ----------
+function wireStorage() {
+  const inp = $("#movepath");
+  if (inp) inp.oninput = (e) => { moveInput = e.target.value; if (moveCheck && moveCheck.path !== moveInput.trim()) { moveCheck = null; } const go = $("[data-move-go]"); if (go) go.disabled = true; const chk = $("#movef button[type=submit]"); if (chk) chk.disabled = !moveInput.trim(); };
+  const mm = $("#movemodels"); if (mm) mm.onchange = () => { moveModels = mm.checked; moveCheck = null; render(); };
+  const f = $("#movef");
+  if (f) f.onsubmit = async (e) => {
+    e.preventDefault();
+    checking = true; moveCheck = null; editing = false; render();
+    try { moveCheck = await post("/api/storage/check", { path: moveInput, models: moveModels }); if (moveCheck.ok) moveInput = moveCheck.path; } catch (err) { moveCheck = { ok: false, error: err.message }; }
+    checking = false; render();
+  };
+  const go = $("[data-move-go]");
+  if (go) go.onclick = async () => {
+    const where = moveCheck?.path || moveInput.trim();
+    if (!confirm(`Move all of Spot Solutions' data${moveModels ? " and the AI models" : ""} to ${where}?\n\nWhatsApp goes offline for a few minutes while it is copied and checked. If anything fails, everything goes back to the old folder. The old copy stays until you delete it.`)) return;
+    startingMove = true; render();
+    try { await post("/api/storage/move", { path: where, models: moveModels }); restarting = false; toast("Moving the data. Keep this page open."); moveCheck = null; }
+    catch (err) { toast(err.message); }
+    startingMove = false; refresh(true);
+  };
+  const del = $("[data-move-delete]");
+  if (del) del.onclick = async () => {
+    const mv = stor?.move;
+    if (!confirm(`Delete the old copy in ${mv?.old}${mv?.moveModels && mv?.modelsOld ? ` and the old AI models in ${mv.modelsOld}` : ""}?\n\nThis can't be undone. Only do it once you've seen WhatsApp working from the new folder.`)) return;
+    try { await post("/api/storage/cleanup", {}); toast("Deleting the old copy…"); } catch (err) { toast(err.message); }
+    refresh(true);
+  };
+  document.querySelectorAll("[data-move-keep]").forEach((b) => b.onclick = () => { keepOld = Number(b.dataset.moveKeep); try { localStorage.setItem("spot-console-keepold", String(keepOld)); } catch {} render(); });
 }
 
 const post = (path, body) => api(path, body ?? {});
@@ -603,11 +904,14 @@ function wire() {
     render();
   });
   document.querySelectorAll("details.sec").forEach((d) => d.ontoggle = () => {
-    secs[d.dataset.sec] = d.open;
-    try { localStorage.setItem("spot-console-sections", JSON.stringify(secs)); } catch {}
-    if ((d.dataset.sec === "live" || d.dataset.sec === "accounts") && d.open) { livePrev[d.dataset.sec] = null; patchLive(); pollLive(); }
-    if (d.dataset.sec === "logs" && d.open) { const l = $("#logs"); if (l) l.scrollTop = l.scrollHeight; }
+    const id = d.dataset.sec;
+    secs[id] = d.open; saveSecs();
+    if (id in liveBodies && d.open) { livePrev[id] = null; patchLive(); pollLive(); }
+    if (id === "logs" && d.open) { const l = $("#logs"); if (l) l.scrollTop = l.scrollHeight; }
+    if (id === "storage" && d.open) refresh(true);
   });
+  wireLayout();
+  wireStorage();
   const logs = $("#logs"); if (logs) logs.scrollTop = logs.scrollHeight;
   document.querySelectorAll("[data-restart]").forEach((b) => b.onclick = async () => {
     b.disabled = true; b.textContent = "Restarting…";
@@ -649,7 +953,7 @@ function wire() {
       joining = false; editing = false; refresh();
     };
   }
-  ["admins", "geminikey", "joincode", "devname", "pullname"].forEach((id) => { const el = $("#" + id); if (el) { el.onfocus = () => editing = true; el.onblur = () => editing = false; } });
+  ["admins", "geminikey", "joincode", "devname", "pullname", "movepath"].forEach((id) => { const el = $("#" + id); if (el) { el.onfocus = () => editing = true; el.onblur = () => editing = false; } });
   $("#cfg").onsubmit = async (e) => {
     e.preventDefault();
     const body = { admins: $("#admins").value.split(",").map((x) => x.trim()).filter(Boolean) };
@@ -759,8 +1063,10 @@ async function refresh(force = false) {
   if (refreshing) return;
   refreshing = true;
   try {
-    const [st, a, c] = await Promise.all([api("/api/status"), api("/api/ai").catch(() => aiv), api("/api/connect").catch(() => conn)]);
-    state = st; aiv = a; conn = c;
+    // The data folder is only counted (it can hold thousands of files) while the Storage section is open or a move is running.
+    const wantScan = isOpen("storage", Boolean(state?.storage?.low)) && shown("storage") || moveRunning();
+    const [st, a, c, sg] = await Promise.all([api("/api/status"), api("/api/ai").catch(() => aiv), api("/api/connect").catch(() => conn), api(`/api/storage${wantScan ? "?scan=1" : ""}`).catch(() => stor)]);
+    state = st; aiv = a; conn = c; stor = sg;
     if (bootId === null) bootId = st.boot;
     else if (st.boot !== bootId) return location.reload(); // restarted on new code: load the new page
     if (restarting && !st.update.running) restarting = false;
@@ -774,7 +1080,7 @@ async function refresh(force = false) {
   refreshing = false;
   // Faster while something is moving: a link waiting for approval, a model download, an update.
   clearTimeout(refresh.t);
-  const busy = conn?.phase === "waiting" || conn?.phase === "installing" || aiv?.pull?.done === false || state?.update?.running || restarting;
+  const busy = conn?.phase === "waiting" || conn?.phase === "installing" || aiv?.pull?.done === false || state?.update?.running || restarting || stor?.move?.phase === "running" || stor?.move?.phase === "cleaning";
   refresh.t = setTimeout(() => refresh(), busy ? 1500 : 5000);
 }
 setInterval(() => { const cd = $("#cd"); if (cd && conn?.expiresAt) cd.textContent = left(conn.expiresAt); }, 1000);

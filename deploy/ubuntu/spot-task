@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
-# Spot Solutions server tasks on Ubuntu/Debian, run as root by systemd: spot-task@update, spot-task@local-on, spot-task@local-off.
+# Spot Solutions server tasks on Ubuntu/Debian, run as root by systemd: spot-task@update, spot-task@local-on, spot-task@local-off,
+# spot-task@move-data and spot-task@move-cleanup (move the data to another disk; delete the old copy after a verified move).
 #
-# The server console runs as the unprivileged "spot" user. Its sudoers rule lets it start exactly these three units and
+# The server console runs as the unprivileged "spot" user. Its sudoers rule lets it start exactly these five units and
 # nothing else. This script lives in /usr/local/sbin (root-owned) and never runs anything from the spot-writable
 # app folder: it downloads and verifies the release itself, unpacks it in a root-owned staging folder, then copies the
 # files into place. Dependencies are installed as "spot". Progress goes to $DATA_DIR/update.json for the console.
+# The two move tasks run /usr/local/lib/spot-solutions/move.mjs, a root-owned copy installed from the verified release (never
+# the spot-writable app folder). Its only input from "spot" is a folder path in task.json, which it validates again; what it
+# may delete later is recorded in /etc/spot-solutions/move.json, which only root writes.
 #
 # Test hooks (not used in production): SPOT_TASK_NO_SYSTEMD=1 skips systemctl/chown/sudo, SPOT_DIST_URL, SPOT_APP_DIR,
 # SPOT_DATA_DIR, SPOT_SKIP_DEPS=1, SPOT_SKIP_MODEL=1.
 set -uo pipefail
 
 TASK="${1:-}"
-case "$TASK" in update|local-on|local-off) ;; *) echo "usage: spot-task update|local-on|local-off" >&2; exit 2 ;; esac
+case "$TASK" in update|local-on|local-off|move-data|move-cleanup) ;; *) echo "usage: spot-task update|local-on|local-off|move-data|move-cleanup" >&2; exit 2 ;; esac
 
 APP_DIR="${SPOT_APP_DIR:-/opt/spot-solutions}"
-DATA_DIR="${SPOT_DATA_DIR:-/var/lib/spot-solutions}"
+STATE_DIR="${SPOT_STATE_DIR:-/etc/spot-solutions}"
+# The data may have been moved to another disk (console: Storage, Move data): the folder is recorded here, root-owned.
+DATA_DIR="${SPOT_DATA_DIR:-$(head -n1 "$STATE_DIR/data-dir" 2>/dev/null || true)}"
+[[ -n "$DATA_DIR" ]] || DATA_DIR=/var/lib/spot-solutions
+HELPER_DIR="${SPOT_HELPER_DIR:-/usr/local/lib/spot-solutions}"
 SVC_USER="${SPOT_SVC_USER:-spot}"
 DIST="${SPOT_DIST_URL:-https://spot-solutions.web.app}"
 ENV_FILE="$APP_DIR/apps/worker/.env"
@@ -54,6 +62,25 @@ if command -v flock >/dev/null && [[ "$NO_SYSTEMD" != 1 ]]; then exec 9>/run/loc
 [[ -n "$NODE" ]] || fail "Node.js isn't installed."
 progress running "Starting"
 
+# The console may start these units and nothing else (also refreshed on every update, so older installs gain new tasks).
+write_sudoers() {
+  [[ "$NO_SYSTEMD" == 1 ]] && return 0
+  local f=/etc/sudoers.d/spot-console
+  printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl restart spot-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl start --no-block spot-task@update.service, /usr/bin/systemctl start --no-block spot-task@local-on.service, /usr/bin/systemctl start --no-block spot-task@local-off.service, /usr/bin/systemctl start --no-block spot-task@move-data.service, /usr/bin/systemctl start --no-block spot-task@move-cleanup.service\n' "$SVC_USER" > "$f.new"
+  chmod 440 "$f.new"
+  if visudo -cf "$f.new" >/dev/null 2>&1; then mv -f "$f.new" "$f"; else rm -f "$f.new"; fi
+}
+# install_helper <dir with move.mjs and storage.mjs>: root-owned copies the move tasks run.
+install_helper() {
+  [[ "$NO_SYSTEMD" == 1 ]] && return 0
+  install -d -m 0755 -o root -g root "$HELPER_DIR" "$STATE_DIR"
+  local f
+  for f in move.mjs storage.mjs; do
+    [[ -f "$1/$f" ]] || continue
+    install -m 0644 -o root -g root "$1/$f" "$HELPER_DIR/$f.new" && mv -f "$HELPER_DIR/$f.new" "$HELPER_DIR/$f"
+  done
+}
+
 wait_ollama() { for _ in $(seq 1 60); do curl -fs --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null && return 0; sleep 1; done; return 1; }
 pull_model() { # pull_model <name>
   [[ "${SPOT_SKIP_MODEL:-0}" == 1 ]] && return 0
@@ -62,6 +89,14 @@ pull_model() { # pull_model <name>
   progress running "Downloading the local model ($1)"
   asuser ollama pull "$1" || echo "model pull failed (will retry on the next update)" >&2
 }
+
+# ---------------------------------------------------------------- move the data to another disk / delete the old copy
+if [[ "$TASK" == move-data || "$TASK" == move-cleanup ]]; then
+  [[ -f "$HELPER_DIR/move.mjs" && -f "$HELPER_DIR/storage.mjs" ]] || fail "The move helper isn't installed. Update Spot Solutions (or run the install command) first."
+  install -d -m 0755 "$STATE_DIR" 2>/dev/null || true
+  SPOT_STATE_DIR="$STATE_DIR" "$NODE" "$HELPER_DIR/move.mjs" "$TASK"
+  exit $?
+fi
 
 # ---------------------------------------------------------------- local-on / local-off
 if [[ "$TASK" == local-off ]]; then
@@ -119,6 +154,8 @@ tar -xzf "$TMP/app.tgz" -C "$TMP/stage" --no-same-owner --no-same-permissions ||
 
 progress running "Installing files"
 OLD_LOCK="$(sha256_of "$APP_DIR/pnpm-lock.yaml" 2>/dev/null || echo none)"
+install_helper "$TMP/stage/apps/worker/console"   # root-owned, from the verified release; before the stage is handed to spot
+write_sudoers
 [[ "$NO_SYSTEMD" == 1 ]] || chown -R "$SVC_USER:$SVC_USER" "$TMP/stage"
 cp -a "$TMP/stage/." "$APP_DIR/" || fail "Copying the new files failed."
 # This script updates itself too (root-owned, from the verified release), effective next time.

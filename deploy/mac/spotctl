@@ -13,6 +13,7 @@
 #   spotctl awake on|off keep running with the lid closed (asks for an admin password)
 #   spotctl login on|off start the server automatically when you log in
 #   spotctl logs         follow the worker log
+#   spotctl apply        rewrite the launch agents (after the data folder moved: the console's "Move data" calls this)
 #   spotctl uninstall    remove agents and code (keeps data unless --all)
 #
 # Everything lives in ~/Library/Application Support/SpotSolutions. Re-running setup also updates the code.
@@ -25,7 +26,11 @@ fi
 
 ROOT="${SPOT_ROOT:-$HOME/Library/Application Support/SpotSolutions}"
 APP="$ROOT/app"
-DATA="$ROOT/data"
+# The data may live on another drive: the console's Storage section, Move data, writes the folder here. Every setup, update
+# and agent rewrite uses it, so none of them puts the data back in the default folder.
+DATA="$(head -n1 "$ROOT/data-dir" 2>/dev/null || true)"
+[[ -n "$DATA" ]] || DATA="$ROOT/data"
+MODELS_DIR="$(head -n1 "$ROOT/models-dir" 2>/dev/null || true)"
 RT="$ROOT/runtime"            # node + ollama binaries we downloaded
 LOGS="$ROOT/logs"
 AGENTS="$HOME/Library/LaunchAgents"
@@ -82,6 +87,7 @@ $args  </array>
     <key>SPOT_ENV_FILE</key><string>$APP/apps/worker/.env</string>
     <key>SPOT_OLLAMA_EXE</key><string>$(find_ollama)</string>
     <key>SPOT_NO_LOCAL_MODEL</key><string>$(no_local && echo 1 || echo 0)</string>
+$([[ -n "$MODELS_DIR" ]] && printf '    <key>OLLAMA_MODELS</key><string>%s</string>' "$MODELS_DIR")
   </dict>
   <key>WorkingDirectory</key><string>$APP/apps/worker</string>
   <key>RunAtLoad</key><$runatload/>
@@ -151,6 +157,7 @@ loaded() { launchctl print "gui/$UID_N/$1" >/dev/null 2>&1; }
 running() { launchctl print "gui/$UID_N/$1" 2>/dev/null | grep -q "state = running"; }
 
 cmd_setup() {
+  [[ "$DATA" == "$ROOT/data" || -d "$(dirname "$DATA")" ]] || die "Your data lives in $DATA, but that drive isn't connected. Plug it in and run setup again."
   mkdir -p "$APP" "$DATA" "$RT" "$LOGS" "$ROOT/chrome"
   step "Node.js $NODE_MAJOR"
   if [[ ! -x "$(node_bin)" ]]; then
@@ -386,7 +393,17 @@ cmd_local() {
   esac
 }
 
-# What the console starts: reads DATA/task.json ({"task":"update"|"local-on"|"local-off"}) unless a name is given.
+# Moving the data to another drive (the console's Storage section): move.mjs copies, verifies, switches (this script's `apply`
+# rewrites the launch agents from the data-dir file) and restarts, or puts everything back if anything fails.
+cmd_move() { # move-data | move-cleanup
+  [[ -x "$(node_bin)" && -f "$APP/apps/worker/console/move.mjs" ]] || task_fail "move.mjs isn't in the app folder. Update Spot Solutions first."
+  SPOT_ROOT="$ROOT" "$(node_bin)" "$APP/apps/worker/console/move.mjs" "$1"
+}
+
+# Rewrites the launch agents from the current settings (data folder, models folder). Nothing is restarted here.
+cmd_apply() { write_agents; ok "Launch agents rewritten (data in $DATA)"; }
+
+# What the console starts: reads DATA/task.json ({"task":"update"|"local-on"|"local-off"|"move-data"|"move-cleanup"}) unless a name is given.
 cmd_task() {
   local t="${1:-}"
   [[ -n "$t" ]] || t="$("$(node_bin)" -e 'try{console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).task||"")}catch{console.log("")}' "$DATA/task.json" 2>/dev/null || true)"
@@ -394,6 +411,7 @@ cmd_task() {
     update) cmd_update ;;
     local-on) cmd_local on ;;
     local-off) cmd_local off ;;
+    move-data|move-cleanup) cmd_move "$t" ;;
     *) die "unknown task: $t" ;;
   esac
 }
@@ -429,6 +447,7 @@ case "${1:-}" in
   setup) cmd_setup ;;
   update) cmd_update ;;
   local) shift; cmd_local "${1:-}" ;;
+  apply) cmd_apply ;;
   task) shift; cmd_task "${1:-}" ;;
   start) cmd_start ;;
   stop) cmd_stop ;;

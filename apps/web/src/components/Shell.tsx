@@ -123,6 +123,9 @@ function ShellFrame({ children }: { children: ReactNode }) {
  * Every page's title bar. It stays pinned at the top while the page scrolls, shrinking to a compact bar,
  * and publishes its height as --page-header-h so bars below it (StickyBar, Requests tabs) pin just under it.
  */
+/** The header currently publishing --page-header-h (one page at a time). */
+let headerOwner: HTMLElement | null = null;
+
 export function PageHeader({ title, subtitle, actions, trailing, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
   const conn = useConnection();
   const ref = useRef<HTMLElement>(null);
@@ -131,11 +134,23 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const root = document.documentElement;
-    const ro = new ResizeObserver(() => root.style.setProperty("--page-header-h", `${el.offsetHeight}px`));
+    const publish = () => {
+      headerOwner = el;
+      root.style.setProperty("--page-header-h", `${el.getBoundingClientRect().height}px`);
+    };
+    const ro = new ResizeObserver(() => headerOwner === el || !headerOwner?.isConnected ? publish() : undefined);
+    publish();
     ro.observe(el);
+    // Also after the shrink/grow transition settles, in case the last resize frame was mid-animation.
+    el.addEventListener("transitionend", publish);
     return () => {
       ro.disconnect();
-      root.style.removeProperty("--page-header-h");
+      el.removeEventListener("transitionend", publish);
+      // Only the header that set the value clears it: a page re-rendering its header must not wipe the new one's.
+      if (headerOwner === el) {
+        headerOwner = null;
+        root.style.removeProperty("--page-header-h");
+      }
     };
   }, []);
   // Compact once you've scrolled a bit; expand only back near the top. The gap between the two thresholds stops

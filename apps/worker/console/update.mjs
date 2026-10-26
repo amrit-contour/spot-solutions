@@ -1,6 +1,7 @@
 // Updates for this server: what's the latest release, is this one older, and start the platform's updater.
 // The updaters themselves (spotctl on macOS, spot-update on Ubuntu, update.ps1 on Windows) do the download, the sha256
-// check, the file swap and the restarts, outside this process so they survive restarting it. They report progress
+// check, the file swap and the restarts, outside this process so they survive restarting it. The same runners also do
+// "move-data" and "move-cleanup" (move.mjs; the request, a folder path, rides in task.json). They report progress
 // in DATA/update.json, which the page shows.
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
@@ -73,7 +74,7 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
   /** What the updater script last reported. A run that stopped reporting long ago is treated as failed. */
   function progress() {
     const p = readJson(progressFile);
-    if (p.state === "running" && now() - (p.startedAt ?? 0) > STALE_RUNNING_MS) return { ...p, state: "error", error: "The update stopped without finishing. Try again." };
+    if (p.state === "running" && now() - (p.updatedAt ?? p.startedAt ?? 0) > STALE_RUNNING_MS) return { ...p, state: "error", error: "The update stopped without finishing. Try again." };
     return p;
   }
   const running = () => starting || progress().state === "running";
@@ -94,7 +95,7 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
   }
 
   /** Hand the job to the platform's updater. It runs on its own, then restarts the worker and this console. */
-  async function start({ by = "console", task = "update" } = {}) {
+  async function start({ by = "console", task = "update", extra = null } = {}) {
     if (running()) return { ok: true, already: true };
     if (task === "update" && (version === "dev" || version === "none")) throw new Error("This is a development copy. Update it with git.");
     // An update unpacks a new copy and may reinstall packages; on a nearly full disk that can leave WhatsApp
@@ -112,7 +113,7 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
     try {
       mkdirSync(data, { recursive: true });
       writeFileSync(progressFile, JSON.stringify({ state: "running", step: "Starting", from: version, to: latest?.version ?? null, startedAt: now(), task }));
-      writeFileSync(taskFile, JSON.stringify({ task, by, at: now() }));
+      writeFileSync(taskFile, JSON.stringify({ ...(extra ?? {}), task, by, at: now() }));
       log(`[update] ${task} started by ${by}`);
       await launch(task);
       return { ok: true };

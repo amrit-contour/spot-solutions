@@ -84,10 +84,20 @@ Everything is under `C:\SpotSolutions`.
 | Path | What's in it |
 |---|---|
 | `app\` | The code. Settings are in `app\apps\worker\.env`. |
-| `data\` | `service-account.json` (the key), `worker.log`, `console.log`, `console-token`. |
+| `data\` | `service-account.json` (the key), `worker.log`, `console.log`, `console-token`. Can be moved to another drive: see below. |
 | `data\wwebjs\` | WhatsApp logins (`session-<uid>`), the server id (`server.json`) and login-backup markers. |
 | `node\`, `ollama\`, `chrome\` | Node.js, the Gemma models, Chrome. |
 | `run-worker.ps1`, `run-console.ps1` | The launchers the tasks run. |
+
+## Moving the data to another drive
+
+When `C:` is nearly full (WhatsApp can lose its login when it can't save it), keep the data on another drive. Open the console, **Storage**, type the new folder (for example `D:\SpotSolutions\data`), tick **Also move the AI models** if you want the Gemma files (several GB) moved too, press **Check folder**, then **Move data**.
+
+What happens, with progress in the console: the worker (and Ollama, for models) stops and any browser it left behind is closed; everything is **copied** (never moved) to the new folder, then checked file by file (sizes, the WhatsApp login and backup folders, the key and token byte for byte); only then is the new folder switched on (`.env`, the two launcher scripts, `OLLAMA_MODELS`, and the file `C:\SpotSolutions\data-dir.txt` that the installer and the updater read, so neither puts the data back on `C:`); the worker restarts and the console waits for every WhatsApp account to be ready again, with no QR. If any step fails it switches back to the old folder, restarts, removes the half-made copy and says what went wrong. Only after it worked does **Delete the old copy** appear, as its own button.
+
+The folder must be on a local NTFS drive (not a network share, not FAT32), outside `C:\SpotSolutions\app`, empty or new, with room for the data plus 1 GB. It is locked to SYSTEM and Administrators like the original. The Windows long-path setting is switched on so WhatsApp's deep browser folders copy cleanly. If the drive is unplugged later, the worker waits and the installer tells you to plug it back in.
+
+The console also warns at the top when the data drive has under 2 GB free, with a **Move data…** shortcut.
 
 ## Update
 

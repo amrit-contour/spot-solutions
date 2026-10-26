@@ -9,7 +9,8 @@
 #   ollama        local AI
 #   spot-worker   WhatsApp + curation (starts once the server is connected)
 #   spot-console  local web console on port 7420: sign in, update, AI models, logs
-# Plus spot-task, a small root-owned helper the console uses to update the server and to turn the local model on or off.
+# Plus spot-task, a small root-owned helper the console uses to update the server, turn the local model on or off, and move
+# the data to another disk (with move.mjs and storage.mjs, also root-owned, in /usr/local/lib/spot-solutions).
 # Connect the server from its console afterwards. Re-running updates and restarts.
 #
 # Local model or Gemini only? You choose in the console (AI models) and can switch any time. The installer picks for
@@ -24,7 +25,12 @@ fi
 
 SRC_URL="${SPOT_SRC_URL:-https://spot-solutions.web.app/dl/spot-solutions.tar.gz}"
 APP_DIR="/opt/spot-solutions"
-DATA_DIR="/var/lib/spot-solutions"
+STATE_DIR="/etc/spot-solutions"
+# The data may live on another disk (console: Storage, Move data). That choice is recorded here, so re-running this
+# installer keeps it instead of going back to the default folder.
+DATA_DIR="$(head -n1 "${STATE_DIR}/data-dir" 2>/dev/null || true)"
+[[ -n "${DATA_DIR}" ]] || DATA_DIR="/var/lib/spot-solutions"
+[[ "${DATA_DIR}" == "/var/lib/spot-solutions" ]] || [[ -d "$(dirname "${DATA_DIR}")" ]] || { echo "Your data lives in ${DATA_DIR}, but that disk isn't mounted. Mount it and run this again."; exit 1; }
 SVC_USER="spot"
 MODEL="${GEMMA_MODEL:-gemma3:4b}"
 PNPM="pnpm@9.15.4"
@@ -123,6 +129,8 @@ chmod 600 "${ENV_FILE}"
 # spot-task: root-owned, installed from the release we just unpacked. The console never has root run anything from the
 # folder it can write to; it can only ask systemd to start these three named tasks.
 install -m 0755 -o root -g root "${APP_DIR}/deploy/ubuntu/spot-task" /usr/local/sbin/spot-task
+install -d -m 0755 -o root -g root /usr/local/lib/spot-solutions "${STATE_DIR}"
+for f in move.mjs storage.mjs; do install -m 0644 -o root -g root "${APP_DIR}/apps/worker/console/${f}" "/usr/local/lib/spot-solutions/${f}"; done
 cat > /etc/systemd/system/spot-task@.service <<EOF
 [Unit]
 Description=Spot Solutions server task (%i)
@@ -134,9 +142,9 @@ ExecStart=/usr/local/sbin/spot-task %i
 TimeoutStartSec=7200
 EOF
 
-# The console may restart the worker and Ollama, and start the three tasks above: nothing else.
+# The console may restart the worker and Ollama, and start the five tasks above: nothing else.
 cat > /etc/sudoers.d/spot-console <<EOF
-${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart spot-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl start --no-block spot-task@update.service, /usr/bin/systemctl start --no-block spot-task@local-on.service, /usr/bin/systemctl start --no-block spot-task@local-off.service
+${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart spot-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl start --no-block spot-task@update.service, /usr/bin/systemctl start --no-block spot-task@local-on.service, /usr/bin/systemctl start --no-block spot-task@local-off.service, /usr/bin/systemctl start --no-block spot-task@move-data.service, /usr/bin/systemctl start --no-block spot-task@move-cleanup.service
 EOF
 chmod 440 /etc/sudoers.d/spot-console
 visudo -cf /etc/sudoers.d/spot-console >/dev/null

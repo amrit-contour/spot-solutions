@@ -17,6 +17,8 @@ import { createConnect } from "./connect.mjs";
 import { createUpdater } from "./update.mjs";
 import { createAi } from "./ai.mjs";
 import { createLive } from "./live.mjs";
+import { createStorage } from "./storageview.mjs";
+import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
@@ -121,6 +123,8 @@ async function workerLogs() {
   return WIN || MAC ? tailFile(WORKER_LOG) : sh("journalctl", ["-u", "spot-worker", "-n", "150", "--no-pager", "-o", "short-iso"], 8000);
 }
 async function disk() {
+  // The drive the data lives on (it may not be the system drive any more).
+  try { const d = freeBytes(DATA); return { total: d.total, free: d.free, dir: DATA }; } catch { /* fall back to the system drive */ }
   if (WIN) {
     const out = await ps("$d = Get-PSDrive C; \"$($d.Used + $d.Free) $($d.Free)\"");
     if (!out) return null;
@@ -214,6 +218,7 @@ async function status() {
     cpu: { model: os.cpus()[0]?.model?.trim(), cores: os.cpus().length, usage: cpu(), load: os.loadavg() },
     memory: await memory(),
     disk: d,
+    storage: { dir: DATA, free: d?.free ?? null, total: d?.total ?? null, low: d?.free != null && d.free < LOW_DISK_BYTES },
     services: { worker, ollama: ollamaSvc },
     localModel: !noLocalModel(),
     ollama: o,
@@ -270,6 +275,16 @@ const connect = createConnect({
 const updater = createUpdater({ version: VERSION, data: DATA, hostname: os.hostname(), platform: process.platform, uid: process.getuid?.(), macRoot: MAC_ROOT, dryRun: DRY });
 updater.begin();
 void updater.check(); // so the page can say right away whether a newer release exists
+// Where the data lives, and moving it to another drive (storage.mjs, move.mjs). Test consoles (DRY_RUN) keep the pointer files inside their own temp data folder.
+const storage = createStorage({
+  data: DATA,
+  envFile: ENV_FILE,
+  env: DRY && !process.env.SPOT_STATE_DIR ? { ...process.env, SPOT_STATE_DIR: path.join(DATA, ".state") } : process.env,
+  ollama,
+  noLocalModel,
+  updater,
+  run: async (cmd, args) => (await exec(cmd, args, { timeout: 15000 })).stdout,
+});
 const ai = createAi({
   readEnv,
   writeEnv,
@@ -359,6 +374,21 @@ createServer(async (req, res) => {
       if (!v.available && !b.force) return json(res, 200, { ok: true, upToDate: true, to: v.current });
       const r = await updater.start({ by: String(b.by ?? "console").slice(0, 80) });
       return json(res, 200, { ...r, to: v.latest?.version ?? null });
+    }
+
+    // Storage: what's in the data folder, free space, and moving it to another drive. Only paths are accepted; the move
+    // itself runs in the platform's task runner (move.mjs) and reports progress through /api/update and /api/storage.
+    if (url.pathname === "/api/storage" && req.method === "GET") return json(res, 200, await storage.view({ scan: url.searchParams.get("scan") === "1" }));
+    if (url.pathname.startsWith("/api/storage/") && req.method === "POST") {
+      const b = await body(req);
+      const act = url.pathname.slice("/api/storage/".length);
+      try {
+        if (act === "check") return json(res, 200, await storage.check(String(b.path ?? ""), { models: b.models === true }));
+        if (act === "move") return json(res, 200, await storage.start(String(b.path ?? ""), { models: b.models === true, by: "console" }));
+        if (act === "cleanup") return json(res, 200, await storage.cleanup({ by: "console" }));
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
     }
 
     // AI models: the server's Gemini key, model choice, tests, local models, default routing (ai.mjs).

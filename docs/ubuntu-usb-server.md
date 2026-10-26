@@ -111,6 +111,10 @@ Add a second server and accounts spread across both, and move to the other if on
 
 The server updates itself: the console checks every 30 minutes and installs a release a few minutes after it appears (switch off under **Updates**), or press **Update now** (or **Update** on the Server page of the app). A server installed before this release needs the install command run once more. Running it again always works: it pulls the latest code and restarts the worker. Your WhatsApp sessions, key and `.env` survive, because they live in `/var/lib/spot-solutions` and `/opt/spot-solutions/apps/worker/.env`. If you run several servers, stop any still on an older release first (see [multi-server.md](multi-server.md)).
 
+## Moving the data to another disk
+
+In the console, **Storage**, type the new folder on the mounted disk (for example `/mnt/disk/SpotSolutions/data`; ext4, not NTFS or FAT), press **Check folder**, then **Move data**. The console runs as the unprivileged `spot` user, so it only asks systemd to start `spot-task@move-data`, which runs `/usr/local/lib/spot-solutions/move.mjs` as root. That helper is root-owned, validates the path again (absolute, no symlinks on the way, not inside the app folder, empty, writable, room for the data plus 1 GB) and copies without following symlinks. It then writes the choice to `/etc/spot-solutions/data-dir` (which the installer and `spot-task` read, so re-running the install command or updating keeps it), adds systemd drop-ins for `spot-console` and `spot-worker` (and `ollama` when the models move), restarts them and waits for WhatsApp. On any failure it puts everything back. **Delete the old copy** is a separate task and only removes the folder recorded by a verified move in `/etc/spot-solutions/move.json`. A server installed before this release needs the install command run once more to get the helper.
+
 ## If something's off
 
 | Symptom | Fix |

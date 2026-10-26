@@ -51,6 +51,10 @@ From Terminal, the same controls are in `spotctl` inside the app:
 
 Everything lives in `~/Library/Application Support/SpotSolutions` (`app`, `data` with the key and WhatsApp logins, `logs`, `runtime`).
 
+## Moving the data to an external drive
+
+In the console, **Storage**, type the new folder (for example `/Volumes/Backup HDD/SpotSolutions/data`) and press **Check folder**, then **Move data**. The worker stops, everything is copied and checked, the launch agents are rewritten to use the new folder (`spotctl apply`, from the `data-dir` file in `~/Library/Application Support/SpotSolutions`, which every `spotctl` run reads, so updates and re-running setup keep it), the worker and console restart, and the console waits for WhatsApp to be ready again. Any failure switches back to the old folder. **Delete the old copy** appears only afterwards. Use an APFS or Mac OS Extended drive, and keep it connected: the server can't start without it.
+
 ## Updating
 
 The server updates itself: the console checks every 30 minutes and installs a new release a few minutes after it appears (turn that off under **Updates** in the console), or press **Update now** there or **Update** on the Server page of the app. A Mac set up before this release needs one manual update first: **More → Update Spot Solutions**, or run the install command again. Either keeps your key and WhatsApp session. If you run several servers, stop any still on an older release first, see [multi-server.md](multi-server.md).
