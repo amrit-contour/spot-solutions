@@ -15,11 +15,11 @@ Or download [SpotServer-mac.zip](https://spot-solutions.web.app/dl/SpotServer-ma
 ## Set up
 
 1. Open **Spot Server** and type your email.
-2. Click **Set up this Mac**. It downloads Node.js, Ollama and Gemma (about 3.5 GB) into `~/Library/Application Support/SpotSolutions`. It needs no Homebrew and no admin password. If Ollama is already running on the Mac, it uses that.
-3. The server console appears inside the app. Type the join code an admin made in the app (**Account, Server, Add a server**) under **Enter join code**, check the device name and click **Join**. The worker starts by itself, with a key made for this Mac only. Without a code, click **or drop a key file** and drop a key made with `deploy/new-server-key.sh <name>` (see [multi-server.md](multi-server.md)), then delete the file.
+2. Click **Set up this Mac** (the Terminal install command already did this). It downloads Node.js and, on a Mac with about 8 GB of memory or more, Ollama and Gemma (about 3.5 GB) into `~/Library/Application Support/SpotSolutions`. It needs no Homebrew and no admin password. If Ollama is already running on the Mac, it uses that.
+3. The server console appears inside the app. Click **Connect with Spot Solutions**, open the link (or scan the QR with your phone), sign in with Google, check the 4-character code and approve. The worker starts by itself, with a key made for this Mac only, and your email becomes one of its admins. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is for a brand-new project (see [multi-server.md](multi-server.md)).
 4. Link WhatsApp at spot-solutions.web.app → Settings → Show QR code.
 
-**Gemini only.** A Mac with little memory can skip the local model. Tick **Gemini only** before **Set up this Mac**: it downloads Node.js only, and AI runs on Gemini (add a Gemini key in the console, or each curator under Settings → AI models). That server can't host accounts set to **Local only**. From Terminal: `SPOT_NO_LOCAL_MODEL=1 spotctl setup`; switch back with `SPOT_NO_LOCAL_MODEL=0 spotctl setup`. Updates keep the choice.
+**Local model or Gemini only.** A Mac with little memory (under about 8 GB) starts on Gemini, and any Mac can switch in the console under **AI models** (**Local model on this computer**, with progress). Add a Gemini key there, or each curator under Settings → AI models. A Gemini-only server can't host accounts set to **Local only**. From Terminal: `spotctl local on` or `spotctl local off`. Updates keep the choice.
 
 ## Everyday
 
@@ -40,6 +40,8 @@ From Terminal, the same controls are in `spotctl` inside the app:
 | Command | What it does |
 |---|---|
 | `spotctl setup` | Installs or updates (re-run to update) |
+| `spotctl update` | Updates to the latest release (checksum-verified), restarts the worker and console on it, refreshes the model. What the console's **Update now** runs |
+| `spotctl local on\|off` | Turns the local model on or off |
 | `spotctl start` / `stop` | Starts or stops Ollama, the worker and the console |
 | `spotctl restart [worker\|ollama\|console]` | Restarts one part, or all |
 | `spotctl awake on\|off` | Keep running with the lid closed (asks for your password) |
@@ -51,7 +53,7 @@ Everything lives in `~/Library/Application Support/SpotSolutions` (`app`, `data`
 
 ## Updating
 
-In the app: **More → Update Spot Solutions**, or run `spotctl setup` again. It keeps your key and WhatsApp session. If you run several servers, stop any still on an older release first, see [multi-server.md](multi-server.md).
+The server updates itself: the console checks every 30 minutes and installs a new release a few minutes after it appears (turn that off under **Updates** in the console), or press **Update now** there or **Update** on the Server page of the app. A Mac set up before this release needs one manual update first: **More → Update Spot Solutions**, or run the install command again. Either keeps your key and WhatsApp session. If you run several servers, stop any still on an older release first, see [multi-server.md](multi-server.md).
 
 ## For a Mac that stays on
 

@@ -45,7 +45,7 @@ service cloud.firestore {
         allow read: if isServerAdmin(id);
         allow create: if isServerAdmin(id)
           && request.resource.data.status == 'pending'
-          && ((request.resource.data.type in ['restart_worker', 'restart_ollama'])
+          && ((request.resource.data.type in ['restart_worker', 'restart_ollama', 'update_server'])
             // Data tools cross users, so the worker trusts `by`: it has to be the signed-in admin.
             || (request.resource.data.type in ['delete_user_data', 'remove_user', 'wipe_demo']
               && request.resource.data.by is string && request.resource.data.by.lower() == email()));
@@ -76,6 +76,8 @@ service cloud.firestore {
     match /joinCodes/{hash} { allow read, write: if false; }
     match /serverKeys/{email} { allow read, write: if false; }
     match /joinAttempts/{key} { allow read, write: if false; }
+    // Device links (a console asking an admin to approve it): functions only, like join codes.
+    match /deviceLinks/{hash} { allow read, write: if false; }
 
     // The demo account is a read-only template: demo visitors copy it into their own sandbox.
     // Only the user doc and the collections the clone copies (apps/web/src/lib/demo.ts COLLECTIONS). Never

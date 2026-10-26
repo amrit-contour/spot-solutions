@@ -9,11 +9,13 @@
     Set-ExecutionPolicy -Scope Process Bypass -Force
     irm https://spot-solutions.web.app/install.ps1 | iex
 
-  Re-running is safe: it updates the code and restarts the task.
+  Re-running is safe: it updates the code and restarts the task. After this first install the server updates itself:
+  the Server Console has an Update now button and installs updates automatically (scheduled task SpotSolutionsUpdate).
 
-  Gemini-only server (skips Ollama and the Gemma download; AI goes to Gemini, so add a Gemini key later):
-  double-click "Install Spot Solutions (Gemini only).cmd", or set $env:SPOT_NO_LOCAL_MODEL = "1" before running the install.
-  Re-running without it keeps whatever the previous install chose. A Gemini-only server can't host accounts set to "Local only".
+  Local model or Gemini only? You choose in the Server Console (AI models) and can switch any time. The installer picks
+  for you: a local model on PCs with about 8 GB of memory or more, Gemini only on smaller ones. To force it, set
+  $env:SPOT_NO_LOCAL_MODEL = "1" (or "0") first, or use "Install Spot Solutions (Gemini only).cmd".
+  Re-running without it keeps whatever the previous install chose.
 #>
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue" # Invoke-WebRequest is painfully slow with the progress bar
@@ -36,7 +38,12 @@ $Model     = if ($env:GEMMA_MODEL) { $env:GEMMA_MODEL } else { "gemma3:4b" }
 # Gemini-only? An explicit SPOT_NO_LOCAL_MODEL wins; otherwise keep what an earlier install wrote to .env.
 $NoLocal = $false
 if ($env:SPOT_NO_LOCAL_MODEL) { $NoLocal = ($env:SPOT_NO_LOCAL_MODEL -match '^(1|true|yes)$') }
-elseif ((Test-Path "$AppDir\apps\worker\.env") -and (Select-String -Path "$AppDir\apps\worker\.env" -Pattern '^SPOT_NO_LOCAL_MODEL=1' -Quiet)) { $NoLocal = $true }
+elseif (Test-Path "$AppDir\apps\worker\.env") { $NoLocal = [bool](Select-String -Path "$AppDir\apps\worker\.env" -Pattern '^SPOT_NO_LOCAL_MODEL=1' -Quiet) }
+else {
+  # A fresh install: a local model needs about 8 GB. Switchable later in the Server Console.
+  $ram = (Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).TotalPhysicalMemory
+  if ($ram -and $ram -lt 7.3e9) { $NoLocal = $true; Write-Host "This PC has under 8 GB of memory, so it will use Gemini. You can turn on a local model later in the Server Console." }
+}
 $NoLocalFlag = if ($NoLocal) { "1" } else { "0" }
 
 function Step($msg) { Write-Host "`n> $msg" -ForegroundColor Yellow }
@@ -187,25 +194,32 @@ Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyC
   Where-Object { $_.ExecutablePath -and $_.ExecutablePath -like "$ChromeDir\*" } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 2
-# Launcher: start Ollama if needed, then keep the worker running. Full paths, so it works as SYSTEM.
+# Launcher: start Ollama if needed, then keep the worker running. Full paths, so it works as SYSTEM. Whether a local
+# model is wanted, and where Ollama is, are looked up each time round, so turning it on later in the console just works.
 $Launcher = "$Root\run-worker.ps1"
-@"
-`$env:OLLAMA_MODELS = '$ModelsDir'
-`$env:OLLAMA_KEEP_ALIVE = '24h'
-`$env:PUPPETEER_CACHE_DIR = '$ChromeDir'
-`$env:SPOT_OLLAMA_EXE = '$Ollama'
-`$env:Path = '$NodeDir;' + `$env:Path
-function Ollama-Up { try { Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null; `$true } catch { `$false } }
-Set-Location '$AppDir\apps\worker'
-while (`$true) {
-  # Idle until a Firebase key is added in the Server Console.
-  if (-not (Test-Path '$KeyFile')) { Start-Sleep 10; continue }
-  if ('$NoLocalFlag' -ne '1' -and -not (Ollama-Up)) { Start-Process -FilePath '$Ollama' -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 }
-  "`$(Get-Date -Format s) starting worker" | Out-File -Append -Encoding utf8 '$DataDir\worker.log'
-  & '$Node' '$AppDir\apps\worker\node_modules\tsx\dist\cli.mjs' --env-file-if-exists=.env src\index.ts *>> '$DataDir\worker.log'
+@'
+$env:OLLAMA_MODELS = '__MODELS__'
+$env:OLLAMA_KEEP_ALIVE = '24h'
+$env:PUPPETEER_CACHE_DIR = '__CHROME__'
+$env:Path = '__NODEDIR__;' + $env:Path
+function Ollama-Up { try { Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null; $true } catch { $false } }
+function No-Local { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^SPOT_NO_LOCAL_MODEL=(1|true|yes)\s*$' } catch { $false } }
+function Find-Ollama {
+  foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { return $c } }
+  $g = Get-Command ollama -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($g) { return $g.Source }
+  return $null
+}
+Set-Location '__APPDIR__\apps\worker'
+while ($true) {
+  # Idle until the server is connected (a key exists).
+  if (-not (Test-Path '__KEYFILE__')) { Start-Sleep 10; continue }
+  if (-not (No-Local) -and -not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 } }
+  "$(Get-Date -Format s) starting worker" | Out-File -Append -Encoding utf8 '__DATADIR__\worker.log'
+  & '__NODE__' '__APPDIR__\apps\worker\node_modules\tsx\dist\cli.mjs' --env-file-if-exists=.env src\index.ts *>> '__DATADIR__\worker.log'
   Start-Sleep 10
 }
-"@ | Set-Content -Encoding UTF8 $Launcher
+'@ -replace '__MODELS__', $ModelsDir -replace '__CHROME__', $ChromeDir -replace '__NODEDIR__', $NodeDir -replace '__ENVFILE__', $EnvFile -replace '__ROOT__', $Root -replace '__APPDIR__', $AppDir -replace '__KEYFILE__', $KeyFile -replace '__DATADIR__', $DataDir -replace '__NODE__', $Node | Set-Content -Encoding UTF8 $Launcher
 
 $action    = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Launcher`""
 $trigger   = New-ScheduledTaskTrigger -AtStartup
@@ -222,17 +236,36 @@ Ok "Task '$TaskName' registered and started"
 Step "Server Console (port 7420)"
 $ConsoleTask = "SpotSolutionsConsole"
 $cEnvScript = "$Root\run-console.ps1"
-@"
-`$env:SPOT_DATA_DIR = '$DataDir'
-`$env:SPOT_ENV_FILE = '$EnvFile'
-`$env:SPOT_OLLAMA_EXE = '$Ollama'
-`$env:OLLAMA_MODELS = '$ModelsDir'
-while (`$true) { & '$Node' '$AppDir\apps\worker\console\server.mjs' *>> '$DataDir\console.log'; Start-Sleep 5 }
-"@ | Set-Content -Encoding UTF8 $cEnvScript
+@'
+$env:SPOT_DATA_DIR = '__DATADIR__'
+$env:SPOT_ENV_FILE = '__ENVFILE__'
+$env:OLLAMA_MODELS = '__MODELS__'
+# Looked up on every start (the console is restarted after the local model is turned on).
+foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { $env:SPOT_OLLAMA_EXE = $c; break } }
+while ($true) { & '__NODE__' '__APPDIR__\apps\worker\console\server.mjs' *>> '__DATADIR__\console.log'; Start-Sleep 5 }
+'@ -replace '__DATADIR__', $DataDir -replace '__ENVFILE__', $EnvFile -replace '__MODELS__', $ModelsDir -replace '__ROOT__', $Root -replace '__NODE__', $Node -replace '__APPDIR__', $AppDir | Set-Content -Encoding UTF8 $cEnvScript
 $cAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$cEnvScript`""
 Unregister-ScheduledTask -TaskName $ConsoleTask -Confirm:$false -ErrorAction SilentlyContinue
 Register-ScheduledTask -TaskName $ConsoleTask -Action $cAction -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
 Start-ScheduledTask -TaskName $ConsoleTask
+# The update task: the console starts it (schtasks /run) to update the server or turn the local model on or off. It runs
+# as SYSTEM with no trigger, so updates work unattended and outlive the worker and console restarts they cause.
+$UpdateTask = "SpotSolutionsUpdate"
+$stub = "$Root\update.ps1"
+@'
+# Started by the Server Console. Runs a private copy of the release's update-core.ps1, so the app folder can be
+# replaced while it runs.
+$core = '__APPDIR__\deploy\windows\update-core.ps1'
+$run = '__ROOT__\update-core.run.ps1'
+if (-not (Test-Path $core)) { throw "update-core.ps1 isn't in the app folder. Run the Spot Solutions installer again." }
+Copy-Item $core $run -Force
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $run
+exit $LASTEXITCODE
+'@ -replace '__APPDIR__', $AppDir -replace '__ROOT__', $Root | Set-Content -Encoding UTF8 $stub
+$uAction   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$stub`""
+$uSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+Unregister-ScheduledTask -TaskName $UpdateTask -Confirm:$false -ErrorAction SilentlyContinue
+Register-ScheduledTask -TaskName $UpdateTask -Action $uAction -Principal $principal -Settings $uSettings | Out-Null
 # Reachable from phones/laptops on your home network (private profile only).
 Remove-NetFirewallRule -DisplayName "Spot Solutions Console" -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName "Spot Solutions Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private | Out-Null
@@ -272,10 +305,12 @@ $token = (Get-Content "$DataDir\console-token" -ErrorAction SilentlyContinue)
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Dhcp,Manual -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.*" } | Select-Object -First 1).IPAddress
 Write-Host ""
 Write-Host "Open 'Spot Server Console' on the desktop (it's opening now):" -ForegroundColor Green
-Write-Host "  1. Drop this server's own Firebase key into it (one key per device; admins create it with deploy/new-server-key.sh, see /help). The worker starts by itself."
-if ($NoLocal) { Write-Host "     Gemini-only: also add a Gemini key (Server Console, or each curator in the app)." }
-Write-Host "  2. Add your email under Admins to see this server in the app, from anywhere."
-Write-Host "  3. Link WhatsApp at https://spot-solutions.web.app -> Settings."
+Write-Host "  1. Click Connect with Spot Solutions and sign in with Google (an admin account). The worker starts by itself."
+Write-Host "     No admin yet (a brand-new project)? Use 'First server ever? Use a key file' in the same card."
+if ($NoLocal) { Write-Host "     This server uses Gemini: add a Gemini key under AI models (or each curator in the app). A local model can be turned on there too." }
+else { Write-Host "     Local or Gemini only, and which models, is under AI models in the console." }
+Write-Host "  2. Link WhatsApp at https://spot-solutions.web.app -> Settings."
+Write-Host "  The server updates itself; the console has an Update now button."
 if ($token -and $ip) {
   $phoneUrl = "http://${ip}:7420/?token=$token"
   Write-Host ""

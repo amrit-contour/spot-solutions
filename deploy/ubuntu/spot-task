@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# Spot Solutions server tasks on Ubuntu/Debian, run as root by systemd: spot-task@update, spot-task@local-on, spot-task@local-off.
+#
+# The server console runs as the unprivileged "spot" user. Its sudoers rule lets it start exactly these three units and
+# nothing else. This script lives in /usr/local/sbin (root-owned) and never runs anything from the spot-writable
+# app folder: it downloads and verifies the release itself, unpacks it in a root-owned staging folder, then copies the
+# files into place. Dependencies are installed as "spot". Progress goes to $DATA_DIR/update.json for the console.
+#
+# Test hooks (not used in production): SPOT_TASK_NO_SYSTEMD=1 skips systemctl/chown/sudo, SPOT_DIST_URL, SPOT_APP_DIR,
+# SPOT_DATA_DIR, SPOT_SKIP_DEPS=1, SPOT_SKIP_MODEL=1.
+set -uo pipefail
+
+TASK="${1:-}"
+case "$TASK" in update|local-on|local-off) ;; *) echo "usage: spot-task update|local-on|local-off" >&2; exit 2 ;; esac
+
+APP_DIR="${SPOT_APP_DIR:-/opt/spot-solutions}"
+DATA_DIR="${SPOT_DATA_DIR:-/var/lib/spot-solutions}"
+SVC_USER="${SPOT_SVC_USER:-spot}"
+DIST="${SPOT_DIST_URL:-https://spot-solutions.web.app}"
+ENV_FILE="$APP_DIR/apps/worker/.env"
+PROGRESS="$DATA_DIR/update.json"
+NO_SYSTEMD="${SPOT_TASK_NO_SYSTEMD:-0}"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+NODE="$(command -v node || true)"
+STARTED="$(date +%s)000"
+FROM="$(cat "$APP_DIR/VERSION" 2>/dev/null || echo none)"
+TO=""
+
+jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\n\t' '  ' | cut -c1-300; }
+# progress <state> <step> [error]
+progress() {
+  mkdir -p "$DATA_DIR"
+  printf '{"state":"%s","step":"%s","error":%s,"from":"%s","to":%s,"startedAt":%s,"task":"%s"}' \
+    "$1" "$(jstr "$2")" "$([[ -n "${3:-}" ]] && printf '"%s"' "$(jstr "$3")" || echo null)" "$(jstr "$FROM")" "$([[ -n "$TO" ]] && printf '"%s"' "$(jstr "$TO")" || echo null)" "$STARTED" "$TASK" > "$PROGRESS.tmp"
+  mv -f "$PROGRESS.tmp" "$PROGRESS"
+  [[ "$NO_SYSTEMD" == 1 ]] || chown "$SVC_USER:$SVC_USER" "$PROGRESS" 2>/dev/null || true
+}
+fail() { echo "spot-task: $*" >&2; progress error "Failed" "$*"; exit 1; }
+sysctl_() { [[ "$NO_SYSTEMD" == 1 ]] && { echo "(skip) systemctl $*"; return 0; }; systemctl "$@"; }
+asuser() { if [[ "$NO_SYSTEMD" == 1 ]]; then "$@"; else sudo -u "$SVC_USER" -H "$@"; fi; }
+sha256_of() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+envget() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2-; }
+envset() { # envset KEY VALUE: keeps the file's owner and 600 mode
+  local k="$1" v="$2" tmp="$ENV_FILE.new"
+  { grep -v "^$k=" "$ENV_FILE" 2>/dev/null || true; echo "$k=$v"; } > "$tmp"
+  cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
+  [[ "$NO_SYSTEMD" == 1 ]] || { chown "$SVC_USER:$SVC_USER" "$ENV_FILE"; chmod 600 "$ENV_FILE"; }
+}
+no_local() { [[ "$(envget SPOT_NO_LOCAL_MODEL)" =~ ^(1|true|yes)$ ]]; }
+model_name() { local m; m="$(envget SPOT_LOCAL_MODEL)"; [[ "$m" =~ ^[A-Za-z0-9._:/-]{1,100}$ ]] || m="${1:-gemma3:4b}"; echo "$m"; }
+
+if command -v flock >/dev/null && [[ "$NO_SYSTEMD" != 1 ]]; then exec 9>/run/lock/spot-task.lock; flock -n 9 || fail "Another update is already running."; fi
+[[ -n "$NODE" ]] || fail "Node.js isn't installed."
+progress running "Starting"
+
+wait_ollama() { for _ in $(seq 1 60); do curl -fs --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null && return 0; sleep 1; done; return 1; }
+pull_model() { # pull_model <name>
+  [[ "${SPOT_SKIP_MODEL:-0}" == 1 ]] && return 0
+  command -v ollama >/dev/null || return 0
+  wait_ollama || { echo "ollama isn't answering; skipping the model pull" >&2; return 0; }
+  progress running "Downloading the local model ($1)"
+  asuser ollama pull "$1" || echo "model pull failed (will retry on the next update)" >&2
+}
+
+# ---------------------------------------------------------------- local-on / local-off
+if [[ "$TASK" == local-off ]]; then
+  progress running "Turning the local model off"
+  envset SPOT_NO_LOCAL_MODEL 1
+  sysctl_ disable --now ollama >/dev/null 2>&1 || true
+  sysctl_ restart spot-worker || true
+  progress done "Local model off"
+  exit 0
+fi
+if [[ "$TASK" == local-on ]]; then
+  progress running "Installing Ollama"
+  if ! command -v ollama >/dev/null; then
+    curl -fsSL https://ollama.com/install.sh -o "$TMP/ollama-install.sh" || fail "Couldn't download the Ollama installer."
+    [[ "$NO_SYSTEMD" == 1 ]] && echo "(skip) install ollama" || sh "$TMP/ollama-install.sh" || fail "Installing Ollama failed."
+  fi
+  if [[ "$NO_SYSTEMD" != 1 ]]; then
+    mkdir -p /etc/systemd/system/ollama.service.d
+    printf '[Service]\nEnvironment=OLLAMA_KEEP_ALIVE=24h\nEnvironment=OLLAMA_NUM_PARALLEL=1\n' > /etc/systemd/system/ollama.service.d/spot.conf
+    systemctl daemon-reload
+  fi
+  sysctl_ enable --now ollama || fail "Couldn't start Ollama."
+  pull_model "$(model_name)"
+  envset SPOT_NO_LOCAL_MODEL 0
+  progress running "Restarting the worker"
+  sysctl_ restart spot-worker || true
+  progress done "Local model on"
+  exit 0
+fi
+
+# ---------------------------------------------------------------- update
+progress running "Checking the latest version"
+curl -fsSL --max-time 30 "$DIST/dl/version.json?t=$(date +%s)" -o "$TMP/version.json" || fail "Couldn't reach Spot Solutions to check for an update."
+# Validated before anything is used: only a plain version, a sha256 and a model name get through.
+eval "$("$NODE" -e '
+  const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  const ok = (v, re) => (typeof v === "string" && re.test(v) ? v : "");
+  console.log(`LATEST=${ok(j.version, /^[0-9A-Za-z._-]{1,40}$/)}`);
+  console.log(`SHA=${ok(j.sha256, /^[0-9a-f]{64}$/)}`);
+  console.log(`LMODEL=${ok(j.model, /^[A-Za-z0-9._:\/-]{1,100}$/)}`);
+' "$TMP/version.json")"
+[[ -n "${LATEST:-}" && -n "${SHA:-}" ]] || fail "The version file from Spot Solutions isn't valid."
+TO="$LATEST"
+if [[ "$LATEST" == "$FROM" ]]; then progress done "Already up to date"; exit 0; fi
+
+progress running "Downloading $LATEST"
+curl -fSL --max-time 1800 "$DIST/dl/spot-solutions.tar.gz" -o "$TMP/app.tgz" || fail "The download failed."
+progress running "Verifying the download"
+[[ "$(sha256_of "$TMP/app.tgz")" == "$SHA" ]] || fail "The download didn't match its checksum, so it was not installed."
+tar -tzf "$TMP/app.tgz" > "$TMP/list" 2>/dev/null || fail "The download isn't a valid archive."
+if grep -Eq '(^/|(^|/)\.\.(/|$))' "$TMP/list"; then fail "The download contains unsafe paths, so it was not installed."; fi
+mkdir -p "$TMP/stage"
+tar -xzf "$TMP/app.tgz" -C "$TMP/stage" --no-same-owner --no-same-permissions || fail "Unpacking the download failed."
+[[ -f "$TMP/stage/apps/worker/package.json" && "$(cat "$TMP/stage/VERSION" 2>/dev/null)" == "$LATEST" ]] || fail "The download isn't the version it claims to be."
+
+progress running "Installing files"
+OLD_LOCK="$(sha256_of "$APP_DIR/pnpm-lock.yaml" 2>/dev/null || echo none)"
+[[ "$NO_SYSTEMD" == 1 ]] || chown -R "$SVC_USER:$SVC_USER" "$TMP/stage"
+cp -a "$TMP/stage/." "$APP_DIR/" || fail "Copying the new files failed."
+# This script updates itself too (root-owned, from the verified release), effective next time.
+if [[ -f "$TMP/stage/deploy/ubuntu/spot-task" && "$NO_SYSTEMD" != 1 ]]; then
+  install -m 0755 -o root -g root "$TMP/stage/deploy/ubuntu/spot-task" /usr/local/sbin/spot-task.new && mv -f /usr/local/sbin/spot-task.new /usr/local/sbin/spot-task
+fi
+NEW_LOCK="$(sha256_of "$APP_DIR/pnpm-lock.yaml" 2>/dev/null || echo none)"
+if [[ "${SPOT_SKIP_DEPS:-0}" != 1 ]] && [[ "$OLD_LOCK" != "$NEW_LOCK" || ! -d "$APP_DIR/apps/worker/node_modules" ]]; then
+  progress running "Installing packages"
+  PNPM="$("$NODE" -e 'try{const p=require(process.argv[1]).packageManager;console.log(/^pnpm@[0-9.]+$/.test(p)?p:"pnpm@9.15.4")}catch{console.log("pnpm@9.15.4")}' "$APP_DIR/package.json")"
+  asuser bash -c "cd '$APP_DIR' && npx -y '$PNPM' install --frozen-lockfile --filter '@spot/worker...'" || fail "Installing packages failed. The old version may still run; try again."
+fi
+
+progress running "Restarting the worker and console"
+sysctl_ restart spot-worker || true
+if ! no_local; then
+  # The worker is already back on the new code; now the local model (a no-op when it's current).
+  pull_model "$(model_name "${LMODEL:-gemma3:4b}")"
+fi
+progress done "Updated to $LATEST"
+# The console goes last: it restarts itself, and the page reloads on the new version.
+sysctl_ restart spot-console || true
+exit 0

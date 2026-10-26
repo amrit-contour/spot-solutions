@@ -5,7 +5,8 @@ import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { AppError, createJoinCode as createCode, redeemJoinCode as redeemCode, removeServer as removeOne, type Deps } from "./core";
 import { googleGcp } from "./gcp";
 import { ENROLLER_ID, PROJECT_ID, REGION, ipHash, serviceAccountEmail } from "./logic";
-import { firestoreStore } from "./store";
+import { approveDeviceLink as approveLink, getDeviceLink as getLink, pollDeviceLink as pollLink, startDeviceLink as startLink, type LinkDeps } from "./link";
+import { firestoreLinkStore, firestoreStore } from "./store";
 
 initializeApp();
 // A dedicated identity (deploy/setup-functions-iam.sh), not the default compute account.
@@ -18,6 +19,8 @@ const deps = (): Deps => ({
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   log: (m) => console.log(`[enroll] ${m}`),
 });
+
+const linkDeps = (): LinkDeps => ({ ...deps(), links: firestoreLinkStore() });
 
 /** Real errors stay in the log; the caller only sees messages written for them. */
 function rethrow(e: unknown): never {
@@ -48,6 +51,15 @@ export const removeServer = onCall({ timeoutSeconds: 120 }, async (req) => {
 
 const HTTP_STATUS: Record<string, number> = { "invalid-argument": 400, "permission-denied": 403, "not-found": 404, "failed-precondition": 412, "resource-exhausted": 429, internal: 500 };
 
+function sendError(res: { status(n: number): { json(b: unknown): void } }, e: unknown) {
+  if (e instanceof AppError) {
+    res.status(HTTP_STATUS[e.code] ?? 500).json({ error: e.message });
+    return;
+  }
+  console.error("[enroll]", e);
+  res.status(500).json({ error: "Something went wrong. Try again." });
+}
+
 /**
  * A new server trades a join code for its key. No sign-in: the code is the credential (15 minutes, one use, 8 random
  * characters, hashed at rest) and attempts are limited per IP.
@@ -72,5 +84,60 @@ export const redeemJoinCode = onRequest({ invoker: "public", cors: false, timeou
     }
     console.error("[enroll]", e);
     res.status(500).json({ error: "Something went wrong. Try again." });
+  }
+});
+
+// ---------- device link: sign in first, then the console gets its own key (functions/src/link.ts) ----------
+
+const clientIp = (req: { headers: Record<string, unknown>; ip?: string }) => {
+  const forwarded = String(req.headers["x-forwarded-for"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return ipHash(forwarded[forwarded.length - 1] || req.ip || "unknown");
+};
+
+/** The server console asks for a link (public; limited per IP). Nothing here is a credential yet. */
+export const startDeviceLink = onRequest({ invoker: "public", cors: false }, async (req, res) => {
+  res.set("cache-control", "no-store");
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "POST only" });
+    return;
+  }
+  try {
+    const b = (typeof req.body === "object" && req.body ? req.body : {}) as { deviceName?: unknown; challenge?: unknown };
+    res.status(200).json({ ok: true, ...(await startLink(linkDeps(), { deviceName: b.deviceName, challenge: b.challenge, ip: clientIp(req) })) });
+  } catch (e) {
+    sendError(res, e);
+  }
+});
+
+/** The console polls with the code and its secret. Once an admin approved, the reply carries the key, once. */
+export const pollDeviceLink = onRequest({ invoker: "public", cors: false, timeoutSeconds: 120 }, async (req, res) => {
+  res.set("cache-control", "no-store");
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "POST only" });
+    return;
+  }
+  try {
+    const b = (typeof req.body === "object" && req.body ? req.body : {}) as { code?: unknown; secret?: unknown };
+    res.status(200).json({ ok: true, ...(await pollLink(linkDeps(), { code: b.code, secret: b.secret })) });
+  } catch (e) {
+    sendError(res, e);
+  }
+});
+
+/** Web app: what is this link? (any signed-in user; says whether they may approve it). */
+export const getDeviceLink = onCall(async (req) => {
+  try {
+    return await getLink(linkDeps(), caller(req.auth), (req.data ?? {}) as { code?: unknown });
+  } catch (e) {
+    return rethrow(e);
+  }
+});
+
+/** Web app: an admin approves. */
+export const approveDeviceLink = onCall(async (req) => {
+  try {
+    return await approveLink(linkDeps(), caller(req.auth), (req.data ?? {}) as { code?: unknown });
+  } catch (e) {
+    return rethrow(e);
   }
 });

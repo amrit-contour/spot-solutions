@@ -163,25 +163,23 @@ export function HelpPage() {
                 ["A computer that can stay on", os === "mac" ? "Any Mac on macOS 13 or newer (Apple Silicon or Intel)" : os === "windows" ? "Windows 10 or 11 with the App Installer (winget). Most PCs already have it." : "Ubuntu 24.04 or newer, Debian or Kali. Installed onto the disk or a USB stick works too; a live USB doesn't."],
                 ["Memory and disk", "8 GB RAM recommended, about 10 GB of free disk"],
                 ["Power and internet", "Plugged in, with Wi-Fi or Ethernet"],
-                ["A join code", <>An admin makes it in the app, under <B>Account → Server → Add a server</B>. See below.</>],
+                ["An admin account", <>You sign in with Google on the server, and approve it. Only admins can connect a server. See below.</>],
                 ["Your phone", "To scan the WhatsApp QR code once"],
               ]}
             />
-            <h3 id="get-code" className="mt-6 type-title-m">Get a join code</h3>
-            <Steps>
-              <li>In the app, sign in as an admin and open <B>Account → Server</B>.</li>
-              <li>Click <B>Add a server</B>, then <B>Make a code</B>. You get a code like <Code>SPOT-7K3F-Q9TX</Code>. It works once and lasts 15 minutes.</li>
-              <li>You enter it on the server computer once it is installed, below.</li>
-            </Steps>
-            <Callout>Each server gets its own key, made for it. Nothing to download or move around, and one server can be removed without touching the others.</Callout>
+            <h3 id="get-code" className="mt-6 type-title-m">How a server connects</h3>
+            <P>You don't need a key file or a code. After installing, the server console shows <B>Connect with your Spot Solutions account</B>: a link and a QR code. Open it on the same computer or scan it with your phone, sign in with Google, check that the 4-character check matches, and approve. The server makes its own key, and your email becomes one of its admins. The link works once and lasts 15 minutes. Only admins can approve; anyone else sees "ask an admin".</P>
+            <P><B>Prefer a code?</B> In the app, open <B>Account → Server</B>, click <B>Add a server</B>, then <B>Make a code</B> (like <Code>SPOT-7K3F-Q9TX</Code>, works once, lasts 15 minutes) and type it into the console under <B>Have a join code from the app?</B></P>
+            <Callout>Each server gets its own key, made for it. Nothing to download or move around, and one server can be removed without touching the others. The only time you need a key file is the very first server of a brand-new project, before anyone is an admin: the console tucks that under <B>First server ever?</B></Callout>
           </Section>
 
           <Section id="install" title="Install the server">
+            <P>One install for every computer, and the same console afterwards. There is also a download page that picks the right one for you: <Link className="text-primary underline-offset-4 hover:underline" to="/install">spot-solutions.web.app/install</Link>. Whether the server runs a local model or Gemini only is chosen later, in the console, and can be switched any time. The installer starts with a local model on computers with about 8 GB of memory or more.</P>
             {os === "mac" && (
               <>
                 <P>Open <B>Terminal</B> and run:</P>
-                <Cmd>curl -fsSL https://spot-solutions.web.app/install-mac.sh | bash</Cmd>
-                <P>This puts <B>Spot Server</B> in Applications and opens it. Or download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/SpotServer-mac.zip?v=${__BUILD_ID__}`} download>SpotServer-mac.zip</a>, double-click it and drag the app into Applications.</P>
+                <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | bash</Cmd>
+                <P>This puts <B>Spot Server</B> in Applications, sets the Mac up (a few minutes the first time) and opens the app. The older <Code>install-mac.sh</Code> address still works. Or download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/SpotServer-mac.zip?v=${__BUILD_ID__}`} download>SpotServer-mac.zip</a>, double-click it and drag the app into Applications.</P>
                 <Callout>Downloaded through a browser, macOS says it can't check the developer the first time. Open <B>System Settings → Privacy & Security</B> and click <B>Open Anyway</B>. The Terminal install avoids this.</Callout>
               </>
             )}
@@ -190,7 +188,7 @@ export function HelpPage() {
                 <Steps>
                   <li>Download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/SpotSolutions-Windows.zip?v=${__BUILD_ID__}`} download>SpotSolutions-Windows.zip</a> and unzip it.</li>
                   <li>Double-click <B>Install Spot Solutions.cmd</B> and click <B>Yes</B> on the admin prompt.</li>
-                  <li>Wait while it installs Node.js and Ollama and downloads Gemma (about 3.5 GB).</li>
+                  <li>Wait while it installs Node.js and, on a PC with about 8 GB of memory or more, Ollama and Gemma (about 3.5 GB).</li>
                 </Steps>
                 <P>Or, in PowerShell as Administrator:</P>
                 <Cmd>{"Set-ExecutionPolicy -Scope Process Bypass -Force\nirm https://spot-solutions.web.app/install.ps1 | iex"}</Cmd>
@@ -199,9 +197,9 @@ export function HelpPage() {
             )}
             {os === "linux" && (
               <>
-                <P>In a terminal on the server (or over SSH), with your email so you can see the server in the app:</P>
-                <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | sudo ADMIN_EMAILS=you@gmail.com bash</Cmd>
-                <P>It asks nothing, installs Node, Ollama and Gemma, and sets up three services that start at boot and restart on crash: <Code>ollama</Code>, <Code>spot-worker</Code> and <Code>spot-console</Code>. At the end it prints the console link.</P>
+                <P>In a terminal on the server (or over SSH):</P>
+                <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash</Cmd>
+                <P>It asks nothing, installs Node and (with about 8 GB of memory or more) Ollama and Gemma, and sets up services that start at boot and restart on crash: <Code>ollama</Code>, <Code>spot-worker</Code> and <Code>spot-console</Code>. At the end it prints the console link.</P>
                 <Callout>Want a pocket server? Install Ubuntu Server onto a USB stick (a full install, not a live USB) and boot the laptop from it. See the <a className="underline" href="#always-on">always-on</a> tips below.</Callout>
               </>
             )}
@@ -209,14 +207,14 @@ export function HelpPage() {
 
           <Section id="setup" title="First-time setup">
             <Steps>
-              {os === "mac" && <li>In Spot Server, type your email and click <B>Set up this Mac</B>. You can watch the progress in the window.</li>}
+              {os === "mac" && <li>If the install command didn't already set the Mac up, click <B>Set up this Mac</B> in Spot Server. You can watch the progress in the window.</li>}
               <li>
                 Open the <B>server console</B>
                 {os === "mac" ? " (it's inside the Spot Server window)" : os === "windows" ? " (the Spot Server Console shortcut; it opens by itself after installing)" : <> from a phone or laptop on the same Wi-Fi, using the link the installer printed. Lost it? Run <Code>sudo spot-console-url</Code></>}
                 .
               </li>
-              <li>Type the join code under <B>Enter join code</B>, check the device name and click <B>Join</B>. The worker starts by itself. No code? Click <B>or drop a key file</B> and drop a key made with the scripts under <a className="underline" href="#several-servers">Running several servers</a>.</li>
-              <li>Under <B>Admins</B>, add your email (if you didn't already). This shows the server in the app under <B>Account → Server</B>.</li>
+              <li>Click <B>Connect with Spot Solutions</B>, open the link (or scan the QR with your phone), sign in with Google and approve. The worker starts by itself, and your email is added as an admin so the server shows in the app under <B>Account → Server</B>. A join code from the app works too; see <a className="underline" href="#get-code">above</a>.</li>
+              <li>Optional: open <B>AI models</B> in the console to add a Gemini key, pick models, test them, or turn the local model on or off.</li>
               <li>On any computer, open <Link className="text-primary underline-offset-4 hover:underline" to="/settings">Spot Solutions → Settings</Link> → <B>Show QR code</B>, and scan it from WhatsApp on your phone (<B>Settings → Linked devices → Link a device</B>).</li>
             </Steps>
             <Callout tone="ok">That's it. From now on you can manage the server from the app, from anywhere. The console is only needed to join.</Callout>
@@ -232,10 +230,7 @@ export function HelpPage() {
             <P>The key can only use the database, the login backups and push notifications, nothing else. To revoke one by hand:</P>
             <Cmd>deploy/revoke-server-key.sh studio-mac</Cmd>
             <P>Add <Code>--dry-run</Code> to either script to see what it would do without changing anything.</P>
-            <P><B>Gemini-only servers.</B> A computer without room for Gemma (under about 8 GB of memory) can still be a server. Install it without the local model, and it answers with Gemini instead. Add a Gemini key in its console or in the app.</P>
-            {os === "mac" && <P>In Spot Server, tick <B>Gemini only</B> before <B>Set up this Mac</B>.</P>}
-            {os === "windows" && <P>Double-click <Code>Install Spot Solutions (Gemini only).cmd</Code> instead of the normal one.</P>}
-            {os === "linux" && <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | sudo SPOT_NO_LOCAL_MODEL=1 bash</Cmd>}
+            <P><B>Gemini-only servers.</B> A computer without room for Gemma (under about 8 GB of memory) can still be a server, and answers with Gemini instead. The installer picks that by itself on small computers. In the server console, <B>AI models → Local model on this computer</B> turns the local model on or off at any time, and you add a Gemini key right there (or each curator adds their own in the app). The default routing there (local first, Gemini first, Gemini only, local only) applies to curators who haven't chosen their own; anyone who has keeps their choice.</P>
             <P><B>What "Local only" means.</B> A curator who picks Local only never has their chats sent to Gemini. Only servers running Gemma can host that account, so a Gemini-only server will not take it. If no Gemma server is online, the account waits until one is. With the default, Local first, any server can host the account and Gemini answers when Gemma is down.</P>
             <Callout>Keep at least one server with Gemma if any curator uses Local only.</Callout>
           </Section>
@@ -321,8 +316,10 @@ export function HelpPage() {
           </Section>
 
           <Section id="update" title="Update">
-            {os === "mac" && <P>In Spot Server: <B>More → Update Spot Solutions</B>. To update the app itself, run the install command again.</P>}
-            {os === "windows" && <P>Run <B>Install Spot Solutions.cmd</B> again from a freshly downloaded zip. It keeps your key, WhatsApp link and settings.</P>}
+            <P>Servers update themselves. The console checks for a new release every 30 minutes and installs it a few minutes after it appears (each server waits a different few minutes, so a fleet doesn't restart at once). Turn that off under <B>Updates → Install updates automatically</B> in the console. <B>Update now</B> there, and the <B>Update</B> button on each server in <B>Account → Server</B>, do it immediately. The worker and console restart on the new code and WhatsApp reconnects within a minute; the download is checked against a published checksum first, and the local model is refreshed too.</P>
+            <P>A server installed before automatic updates needs one manual update first. After that it takes care of itself:</P>
+            {os === "mac" && <P>In Spot Server: <B>More → Update Spot Solutions</B>, or run the install command again.</P>}
+            {os === "windows" && <P>Run <B>Install Spot Solutions.cmd</B> again from a freshly downloaded zip (or the PowerShell line above). It keeps your key, WhatsApp link and settings.</P>}
             {os === "linux" && <Cmd>curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash</Cmd>}
             <P>Updates never touch your data, key or WhatsApp link.</P>
           </Section>

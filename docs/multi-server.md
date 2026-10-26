@@ -28,12 +28,25 @@ A hard crash means a gap of a few minutes before the account is back (150 second
 
 Which server gets an account, best first: the pinned server, then servers with a local model, then the least loaded, then the newest install. A server stops taking accounts when it reaches its limit. The limit is (memory minus 5.5 GB) / 450 MB with a local model, and (memory minus 1.5 GB) / 450 MB without one. Set `SPOT_MAX_ACCOUNTS` in the worker's `.env` to override it.
 
+## Connect a server with your account
+
+The quickest way, and the only one most people need. On a freshly installed server, the console starts with **Connect with your Spot Solutions account**.
+
+1. Click **Connect with Spot Solutions**. The console shows a link, a QR code and a 4-character check (like `K7QF`).
+2. Open the link on the same computer, or scan the QR code with your phone. Sign in with Google.
+3. The page asks **Connect server <name>?** and shows the same 4 characters. Check they match, then click **Connect server**.
+4. The console collects its own key, restarts the worker, and adds your email to its admins. The server shows up under **Account, Server** within a minute.
+
+Only admins can approve (the same list as everywhere else in the app); anyone else sees "Ask an admin". The link lasts 15 minutes and works once. Only approve a computer you set up yourself.
+
+How it works: the console makes a random secret and sends only its sha256 to `startDeviceLink`, which returns a one-time code (stored hashed in `deviceLinks`, closed to every client). The link is `https://spot-solutions.web.app/connect-server?c=<code>`. When an admin approves (`approveDeviceLink`, verified email in `config/access.admins`), the console, which polls `pollDeviceLink` with the code and its secret, gets a key made the same way as for a join code. The key is only in that one reply: never in a URL, never stored, never logged. If the reply is lost, the same console can ask again for 10 minutes (the first key's account is revoked first). `startDeviceLink` is limited to 10 per 15 minutes per IP.
+
 ## Join a server with a code
 
-Every server has its own Firebase service-account key. Never copy one key between computers. With a join code the app makes that key for you, so nobody needs the Google Cloud CLI.
+The other way, for when signing in on the server's side isn't convenient. Every server has its own Firebase service-account key. Never copy one key between computers. With a join code the app makes that key for you, so nobody needs the Google Cloud CLI.
 
 1. Sign in to the app as an admin and open **Account, Server**. Click **Add a server**. Optionally name it, then click **Make a code**. You get a code like `SPOT-7K3F-Q9TX`, a copy button, a QR of the code text and a countdown. A code works once and lasts 15 minutes.
-2. On the new computer, install Spot Solutions (see the guide for [Mac](mac-server.md), [Windows](windows-server.md) or [Ubuntu](ubuntu-usb-server.md)) and open its server console. Type the code under **Enter join code**. The device name is filled in with the computer's name; change it if you like. Click **Join**.
+2. On the new computer, install Spot Solutions (see the guide for [Mac](mac-server.md), [Windows](windows-server.md) or [Ubuntu](ubuntu-usb-server.md)) and open its server console. Type the code under **Have a join code from the app?**. The device name is filled in with the computer's name; change it if you like. Click **Join**.
 3. The console trades the code for a key, saves it and restarts the worker. Under **Admins** in the console, add your email if it isn't there yet. The server shows up under **Account, Server** within a minute, and the Add a server card says it joined.
 
 What happens behind the scenes: the code is hashed in Firestore (`joinCodes`), and the console calls the `redeemJoinCode` Cloud Function over HTTPS, at most 10 tries per 15 minutes per IP address. The function creates the service account `spot-<device-name>` (a number is added if the name is taken) with only what the worker uses: `roles/datastore.user` and `roles/firebasecloudmessaging.admin` on the project, and `roles/storage.objectAdmin` on the default bucket only. It returns the key once and records the account in `serverKeys`. If setting up fails, the account is cleaned up and the code works again.
@@ -58,7 +71,7 @@ deploy/new-server-key.sh studio-mac
 
 It makes the same account with the same roles, and saves the key to `~/.spot-keys/spot-<device-name>.json` (folder mode 700; set `SPOT_KEY_DIR` to change it). The device name is lower-cased, anything but letters, digits and dashes becomes a dash, and the full account name must be 6 to 30 characters. Running it again adds a fresh key. `--dry-run` prints the `gcloud` commands. `SPOT_PROJECT` and `SPOT_BUCKET` override the project (default `spot-solutions`) and bucket (default `spot-solutions.firebasestorage.app`). The script is also served at `https://spot-solutions.web.app/new-server-key.sh`.
 
-In that server's console, click **or drop a key file** and drop `spot-<device-name>.json` onto it. The worker restarts by itself. Delete the file from the machine you made it on. It is a password.
+In that server's console, open **First server ever? Use a key file** and drop `spot-<device-name>.json` onto it (this is also where the very first server of a brand-new project goes, when nobody is an admin yet). The worker restarts by itself. Delete the file from the machine you made it on. It is a password.
 
 To revoke a device by hand:
 
@@ -76,7 +89,7 @@ Once, as a project Owner with `gcloud` and `firebase` signed in:
 2. `firebase deploy --only functions` (builds `functions/` first).
 3. `pnpm --filter @spot/web build && bash deploy/build-dist.sh && firebase deploy --only firestore:rules,hosting`.
 
-The functions are 2nd gen, Node 22, region `asia-south1`: `createJoinCode` and `removeServer` (callable, admins only, by the verified email in `config/access.admins`) and `redeemJoinCode` (public HTTPS, protected by the code). `joinCodes`, `serverKeys` and `joinAttempts` in Firestore are closed to every client.
+The functions are 2nd gen, Node 22, region `asia-south1`: `createJoinCode`, `removeServer` and `approveDeviceLink` (callable, admins only, by the verified email in `config/access.admins`), `getDeviceLink` (callable, any verified sign-in; says whether you may approve), and the public HTTPS `redeemJoinCode`, `startDeviceLink` and `pollDeviceLink` (protected by the code or the console's secret). `joinCodes`, `serverKeys`, `joinAttempts` and `deviceLinks` in Firestore are closed to every client. No new IAM roles are needed: they run as `spot-enroller` like the others.
 
 ## Make another server your primary
 
@@ -97,19 +110,13 @@ To reset the whole fleet and bring servers back one at a time:
 
 Curators keep their data. Each account's login backup stays in the cloud, so the first server to join takes the accounts over without a new QR scan. If a server came from the default key, its old key is not revoked by Remove, so rotate it in the Firebase console.
 
-## Gemini-only servers
+## Local model or Gemini only
 
-A computer without room for Gemma (under about 8 GB of memory) can still be a server. Install it without the local model and it answers with Gemini. The installer then skips Ollama and the Gemma download. Add a Gemini key in that server's console (**Server Gemini key**) or let each curator add their own under **Settings, AI models**.
+A computer without room for Gemma (under about 8 GB of memory) can still be a server and answer with Gemini. There is one installer per system, and the choice is made in the console, under **AI models**: **Local model on this computer** turns Ollama and Gemma on (it installs and downloads them, with progress) or off, at any time. The installer starts you off by memory: a local model at about 8 GB or more, Gemini otherwise. To force it, set `SPOT_NO_LOCAL_MODEL=1` (or `0`) when running the installer; re-running keeps the last choice.
 
 Gemini receives the text of the messages it reads. A Gemini-only server cannot host an account set to **Local only** (see below).
 
-| OS | How |
-| --- | --- |
-| **Ubuntu / Debian** | `curl -fsSL https://spot-solutions.web.app/install.sh \| sudo SPOT_NO_LOCAL_MODEL=1 bash`. Or pass the flag: `... \| sudo bash -s -- --no-local-model`. If you set neither and run it in a terminal on a first install, it asks once (30 seconds, default is yes to a local model). |
-| **Windows** | Double-click `Install Spot Solutions (Gemini only).cmd` instead of the normal one. Or set `$env:SPOT_NO_LOCAL_MODEL = "1"` in the PowerShell window before the one-liner. |
-| **macOS** | Tick **Gemini only** in Spot Server before **Set up this Mac**. Or in Terminal: `SPOT_NO_LOCAL_MODEL=1 spotctl setup` (the `spotctl` inside the app, see [mac-server.md](mac-server.md)). |
-
-Re-running an installer keeps whatever the last run chose. To switch a server back to a local model, re-run with `SPOT_NO_LOCAL_MODEL=0` (Windows: `$env:SPOT_NO_LOCAL_MODEL = "0"`; Mac: `SPOT_NO_LOCAL_MODEL=0 spotctl setup`).
+**AI models** in the console also has: the server's **Gemini key** (masked, kept only on that server), **Fetch models** and **Test** for a Gemini model, the installed local models with **Test**, **Make default** and a **Download** box with progress, and **Default routing**: local first with Gemini as backup, Gemini first with local as backup, Gemini only, or local only. The routing and models apply to curators who have never saved AI settings of their own; anyone who has (Settings, AI models) keeps their choice. They are stored in the worker's `.env` as `SPOT_AI_MODE`, `SPOT_LOCAL_MODEL` and `SPOT_GEMINI_MODEL`.
 
 ## Local only vs Local first
 
@@ -166,7 +173,17 @@ Servers from before the fleet release heartbeat but ignore leases: they start ev
 
 They carry on by themselves once the old server is stopped or updated. In **Account, Server, Fleet**, an old server shows "Older version: it doesn't report capacity yet. Update it to join the fleet."
 
-To update a server, run its installer again (see the guide for [Mac](mac-server.md), [Windows](windows-server.md) or [Ubuntu](ubuntu-usb-server.md)). Re-running keeps its key, `.env` and WhatsApp logins.
+To update a server by hand, run its installer again (see the guide for [Mac](mac-server.md), [Windows](windows-server.md) or [Ubuntu](ubuntu-usb-server.md)). Re-running keeps its key, `.env` and WhatsApp logins. Servers installed from this release on also update themselves, see below.
+
+## Updates
+
+`deploy/build-dist.sh` publishes `dl/version.json` (`version`, `builtAt`, `sha256` of the tarball, `size`, default `model`) next to `dl/spot-solutions.tar.gz`. Each console checks it at start and every 30 minutes.
+
+- **Update now** in the console, or **Update** on a server in **Account, Server** (the app sends an `update_server` command; the worker asks its console to run the updater and the server shows "Updating..." until its new version reports in). The Server page shows each server's version against the latest.
+- **Install updates automatically** (on by default, in the console under **Updates**): a few minutes after a release appears, at a stable per-server offset of 0 to 10 minutes so servers in a fleet don't all restart together. After a failed update, automatic ones wait 6 hours.
+- What an update does: download, check the sha256 (refuses a mismatch, a bad archive or unsafe paths), put the files in place keeping `.env`, keys and WhatsApp logins, reinstall packages only if the lockfile changed, restart the worker and the console on the new code, and `ollama pull` the model (a no-op when current). WhatsApp reconnects without a QR within a minute.
+- Per system: **macOS** `spotctl update`, run as its own launch agent so it outlives the restarts; **Ubuntu** `spot-task@update.service`, a root-owned oneshot (`/usr/local/sbin/spot-task`) that the console's user may start through sudoers and that never runs anything from the app folder as root; **Windows** the scheduled task `SpotSolutionsUpdate` (SYSTEM, started on demand).
+- The checksum guards against corrupt or truncated downloads and a tampered file in transit. It comes from the same host as the download, so it is not a signature.
 
 ## If something is off
 

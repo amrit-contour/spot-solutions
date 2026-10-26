@@ -185,6 +185,7 @@ export const adminConfigured = ADMINS.length > 0;
 
 /** Admin actions sent from the app. Runs only for this server. */
 export function watchServerCommands(onRestartWorker: () => Promise<void>) {
+  void settleUpdate().catch(() => undefined);
   db.collection("servers")
     .doc(SERVER_ID)
     .collection("commands")
@@ -200,6 +201,9 @@ export function watchServerCommands(onRestartWorker: () => Promise<void>) {
             console.log(`[server] ${type} requested by ${ch.doc.data().by}`);
             if (type === "restart_ollama") {
               await restartOllama();
+              await ref.update({ status: "done" });
+            } else if (type === "update_server") {
+              await requestUpdate(String(ch.doc.data().by ?? "the app"));
               await ref.update({ status: "done" });
             } else if (type === "restart_worker") {
               await ref.update({ status: "done" });
@@ -224,4 +228,33 @@ async function restartOllama() {
   } else {
     await exec("sudo", ["-n", "/usr/bin/systemctl", "restart", "ollama"], { timeout: 60_000 });
   }
+}
+
+// ---- updates (apps/worker/console/update.mjs does the work; this is the app's way to ask for it) ----
+
+const serverRef = () => db.collection("servers").doc(SERVER_ID);
+
+/** Ask this machine's console to run its updater, and say so on the server's doc so the app can show "Updating". */
+async function requestUpdate(by: string) {
+  const port = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
+  let res: Response;
+  try {
+    // The console trusts requests from this machine; admins already proved themselves to Firestore to get here.
+    res = await fetch(`http://127.0.0.1:${port}/api/update`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ by }), signal: AbortSignal.timeout(30_000) });
+  } catch {
+    throw new Error("This server's console isn't answering. Update it once by running the installer again.");
+  }
+  const body = (await res.json().catch(() => ({}))) as { error?: string; to?: string | null; already?: boolean };
+  if (res.status === 404) throw new Error("This server's console is too old to update from here. Run the installer again once.");
+  if (!res.ok) throw new Error(body.error ?? `Console said ${res.status}`);
+  await serverRef().set({ update: { state: "updating", target: body.to ?? null, from: VERSION, startedAt: Date.now() } }, { merge: true });
+}
+
+/** After a restart: an update that changed our version is done, one that never changed it for 30 minutes failed. */
+async function settleUpdate() {
+  const ref = serverRef();
+  const u = (await ref.get()).data()?.update as ServerStatus["update"];
+  if (!u) return;
+  if (u.from !== VERSION) await ref.update({ update: FieldValue.delete() });
+  else if (u.state === "updating" && Date.now() - u.startedAt > 30 * 60_000) await ref.update({ update: { ...u, state: "error", error: "The update didn't finish. Check the server's console." } });
 }

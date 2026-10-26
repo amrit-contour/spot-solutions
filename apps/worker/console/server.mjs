@@ -3,6 +3,8 @@
 // and shows service health, machine stats and logs. No dependencies, plain Node.
 //
 // Env: SPOT_DATA_DIR, SPOT_ENV_FILE, SPOT_CONSOLE_PORT (7420), SPOT_CONSOLE_TOKEN_FILE
+// Test hooks: SPOT_CONSOLE_DRY_RUN=1 never restarts or updates anything on the machine; SPOT_FUNCTIONS_URL, SPOT_DIST_URL,
+// SPOT_WEB_URL and SPOT_GEMINI_URL point the console at stand-ins for Spot Solutions' servers.
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -11,6 +13,9 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { createConnect } from "./connect.mjs";
+import { createUpdater } from "./update.mjs";
+import { createAi } from "./ai.mjs";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
@@ -23,7 +28,7 @@ const WORKER_LOG = MAC ? path.join(DATA, "..", "logs", "worker.log") : path.join
 const OLLAMA_EXE = process.env.SPOT_OLLAMA_EXE ?? "ollama";
 const PORT = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
 // Release this console belongs to (written by the installer's tarball), shown in the header.
-const VERSION = (() => { try { return readFileSync(new URL("../../../VERSION", import.meta.url), "utf8").trim(); } catch { return "dev"; } })();
+const VERSION = process.env.SPOT_VERSION ?? (() => { try { return readFileSync(new URL("../../../VERSION", import.meta.url), "utf8").trim(); } catch { return "dev"; } })();
 // Changes on every start, so an embedded view (the Mac app) knows to reload a stale page.
 const BOOT = Date.now();
 const TOKEN_FILE = process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(DATA, "console-token");
@@ -89,7 +94,9 @@ async function isActive(unit) {
   if (unit === "ollama") return (await ollama()).up;
   return Boolean(await ps(`(${WIN_WORKER} | Measure-Object).Count -gt 0 | % { if ($_) { 'yes' } }`));
 }
+const DRY = process.env.SPOT_CONSOLE_DRY_RUN === "1";
 async function restart(unit) {
+  if (DRY) return null;
   if (MAC) return sh("launchctl", ["kickstart", "-k", `${gui()}/${macLabel(unit)}`], 30000);
   if (!WIN) return sh("sudo", ["-n", "/usr/bin/systemctl", "restart", unit], 30000);
   if (unit === "ollama") {
@@ -192,6 +199,8 @@ async function status() {
   const gk = env.GEMINI_API_KEY ?? "";
   return {
     version: VERSION,
+    boot: BOOT,
+    update: updater.view(),
     hostname: os.hostname(),
     os: `${os.type()} ${os.release()}`,
     distro: WIN ? (await ps("(Get-CimInstance Win32_OperatingSystem).Caption")) : (existsSync("/etc/os-release") && readFileSync("/etc/os-release", "utf8").match(/PRETTY_NAME="([^"]+)"/)?.[1]) || null,
@@ -242,6 +251,31 @@ async function installKey(k) {
   writeEnv({ FIREBASE_SERVICE_ACCOUNT: KEY_FILE, FIREBASE_PROJECT_ID: k.project_id });
   await restart("spot-worker");
 }
+
+// ---------- connect with an account, updates, AI models ----------
+const addAdmin = (email) => {
+  const e = String(email ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return;
+  const have = (readEnv().SPOT_ADMIN_EMAILS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (!have.includes(e)) writeEnv({ SPOT_ADMIN_EMAILS: [...have, e].join(",") });
+};
+const connect = createConnect({
+  hostname: os.hostname(),
+  // The signed-in admin who approved this server becomes one of its admins, so it shows in their Server page at once.
+  onApproved: async ({ key, approvedBy }) => { addAdmin(approvedBy); await installKey(key); },
+});
+const updater = createUpdater({ version: VERSION, data: DATA, hostname: os.hostname(), platform: process.platform, uid: process.getuid?.(), macRoot: MAC_ROOT, dryRun: DRY });
+updater.begin();
+void updater.check(); // so the page can say right away whether a newer release exists
+const ai = createAi({
+  readEnv,
+  writeEnv,
+  restartWorker: () => restart("spot-worker"),
+  ollamaUrl: OLLAMA,
+  ollamaInfo: ollama,
+  noLocalModel,
+});
+
 const isLocal = (req) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "");
 function authed(req) {
   if (isLocal(req)) return true;
@@ -290,6 +324,60 @@ createServer(async (req, res) => {
       if (!ip) return json(res, 200, { url: null, qr: null });
       const link = `http://${ip}:${PORT}/?token=${TOKEN}`;
       return json(res, 200, { url: link, qr: qrText(link) });
+    }
+
+    // Connect with a Spot Solutions account: a one-time link an admin approves in the web app (connect.mjs).
+    if (url.pathname === "/api/connect" && req.method === "GET") return json(res, 200, connect.state());
+    if (url.pathname === "/api/connect/start" && req.method === "POST") {
+      const b = await body(req);
+      return json(res, 200, await connect.start(b.deviceName));
+    }
+    if (url.pathname === "/api/connect/cancel" && req.method === "POST") {
+      connect.cancel();
+      return json(res, 200, { ok: true });
+    }
+
+    // Updates (update.mjs). The worker calls POST /api/update from this machine when the app's Update button is pressed.
+    if (url.pathname === "/api/update" && req.method === "GET") return json(res, 200, updater.view());
+    if (url.pathname === "/api/update/check" && req.method === "POST") {
+      await updater.check();
+      return json(res, 200, updater.view());
+    }
+    if (url.pathname === "/api/update/auto" && req.method === "POST") {
+      updater.setAuto((await body(req)).on);
+      return json(res, 200, updater.view());
+    }
+    if (url.pathname === "/api/update" && req.method === "POST") {
+      const b = await body(req);
+      await updater.check();
+      const v = updater.view();
+      if (!v.latest) return json(res, 502, { error: "Couldn't reach Spot Solutions to look for an update. Check this server's internet." });
+      if (!v.available && !b.force) return json(res, 200, { ok: true, upToDate: true, to: v.current });
+      const r = await updater.start({ by: String(b.by ?? "console").slice(0, 80) });
+      return json(res, 200, { ...r, to: v.latest?.version ?? null });
+    }
+
+    // AI models: the server's Gemini key, model choice, tests, local models, default routing (ai.mjs).
+    if (url.pathname === "/api/ai" && req.method === "GET") return json(res, 200, await ai.view());
+    if (url.pathname.startsWith("/api/ai/") && req.method === "POST") {
+      const b = await body(req);
+      const act = url.pathname.slice("/api/ai/".length);
+      try {
+        if (act === "key") { await ai.setKey(typeof b.key === "string" ? b.key.trim() : ""); return json(res, 200, { ok: true }); }
+        if (act === "models") return json(res, 200, { models: await ai.listModels(b.key) });
+        if (act === "test") return json(res, 200, await ai.test({ provider: b.provider, model: b.model, key: b.key }));
+        if (act === "pull") { await ai.startPull(String(b.model ?? "").trim()); return json(res, 200, { ok: true }); }
+        if (act === "defaults") { await ai.setDefaults(b); return json(res, 200, { ok: true }); }
+      } catch (e) {
+        return json(res, 400, { error: e.message });
+      }
+    }
+    // Turn the local model on or off on this computer (installs or stops Ollama; the platform's helper does it).
+    if (url.pathname === "/api/local" && req.method === "POST") {
+      const b = await body(req);
+      if (Boolean(b.enabled) === !noLocalModel()) return json(res, 200, { ok: true, unchanged: true });
+      await updater.start({ by: "console", task: b.enabled ? "local-on" : "local-off" });
+      return json(res, 200, { ok: true });
     }
 
     if (url.pathname === "/api/key" && req.method === "POST") {

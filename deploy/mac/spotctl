@@ -2,8 +2,11 @@
 # Spot Solutions server control for macOS (Apple Silicon and Intel). No Homebrew or Xcode needed.
 #
 #   spotctl setup        download Node, Ollama, Gemma and the worker; install launch agents
-#                        SPOT_NO_LOCAL_MODEL=1 spotctl setup   Gemini-only: no Ollama/Gemma, AI runs on Gemini
-#                        (kept on later updates; SPOT_NO_LOCAL_MODEL=0 spotctl setup switches back)
+#                        A local model is set up when this Mac has about 8 GB of memory or more, Gemini only on less.
+#                        You can switch in the server console (AI models) or: SPOT_NO_LOCAL_MODEL=1|0 spotctl setup
+#   spotctl update       fetch the latest release (checked against its sha256), restart the worker and console
+#                        on the new code, refresh the local model. What the console's Update button runs.
+#   spotctl local on|off turn the local model (Ollama and Gemma) on or off
 #   spotctl start|stop   start or stop the whole server (Ollama, worker, console)
 #   spotctl restart [worker|ollama|console]
 #   spotctl status       one line per service, machine-readable (used by the app)
@@ -12,8 +15,13 @@
 #   spotctl logs         follow the worker log
 #   spotctl uninstall    remove agents and code (keeps data unless --all)
 #
-# Everything lives in ~/Library/Application Support/SpotSolutions. Re-running setup updates the code.
+# Everything lives in ~/Library/Application Support/SpotSolutions. Re-running setup also updates the code.
 set -euo pipefail
+
+# Test hook: with SPOT_CTL_DRY_RUN=1 nothing is ever loaded, started or restarted (and every service reads as stopped).
+if [[ -n "${SPOT_CTL_DRY_RUN:-}" ]]; then
+  launchctl() { case "$1" in print) return 1 ;; *) echo "(skip) launchctl $*" >&2 ;; esac; }
+fi
 
 ROOT="${SPOT_ROOT:-$HOME/Library/Application Support/SpotSolutions}"
 APP="$ROOT/app"
@@ -26,6 +34,7 @@ MODEL="${GEMMA_MODEL:-gemma3:4b}"
 NODE_MAJOR=22
 UID_N="$(id -u)"
 LABELS=(com.spotsolutions.ollama com.spotsolutions.worker com.spotsolutions.console)
+UPDATE_LABEL=com.spotsolutions.update   # a one-shot job the console starts to update or change the local model
 ARCH="$(uname -m)"            # arm64 | x86_64
 
 step() { printf '\n▸ %s\n' "$*"; }
@@ -87,6 +96,43 @@ $args  </array>
 EOF
 }
 
+# A job that does nothing until the console kickstarts it, and that outlives the worker and console restarts it causes.
+plist_task() {
+  cat > "$AGENTS/$UPDATE_LABEL.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$UPDATE_LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$ROOT/spotctl</string>
+    <string>task</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$RT/node/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PUPPETEER_CACHE_DIR</key><string>$ROOT/chrome</string>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>ProcessType</key><string>Background</string>
+  <key>AbandonProcessGroup</key><true/>
+  <key>StandardOutPath</key><string>$LOGS/update.log</string>
+  <key>StandardErrorPath</key><string>$LOGS/update.log</string>
+</dict>
+</plist>
+EOF
+}
+
+# The updater runs from this stable copy, never from the app folder it is about to replace.
+install_self() {
+  local src="${1:-$0}"
+  [[ -f "$src" ]] || return 0
+  [[ "$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" == "$ROOT/spotctl" ]] && return 0
+  cp "$src" "$ROOT/spotctl.new" && chmod +x "$ROOT/spotctl.new" && mv -f "$ROOT/spotctl.new" "$ROOT/spotctl"
+}
+
 write_agents() {
   mkdir -p "$AGENTS" "$LOGS"
   local node; node="$(node_bin)"
@@ -98,6 +144,7 @@ write_agents() {
   plist com.spotsolutions.worker /bin/bash -c "while [ ! -f '$DATA/service-account.json' ]; do sleep 10; done; exec '$node' '$APP/apps/worker/node_modules/tsx/dist/cli.mjs' --env-file-if-exists=.env src/index.ts"
   # caffeinate holds a "don't sleep" assertion for exactly as long as the server runs.
   plist com.spotsolutions.console /usr/bin/caffeinate -is "$node" "$APP/apps/worker/console/server.mjs"
+  plist_task
 }
 
 loaded() { launchctl print "gui/$UID_N/$1" >/dev/null 2>&1; }
@@ -115,10 +162,15 @@ cmd_setup() {
   fi
   ok "Node $("$(node_bin)" -v)"
 
-  # Explicit choice wins; otherwise keep what an earlier setup chose.
+  # Explicit choice wins; otherwise keep what an earlier setup chose; on a fresh install decide by memory (a local
+  # model wants about 8 GB). It can be switched later in the console, under AI models.
   case "${SPOT_NO_LOCAL_MODEL:-}" in
     1|true|yes) touch "$ROOT/.no-local-model" ;;
     0|false|no) rm -f "$ROOT/.no-local-model" ;;
+    *)
+      if [[ ! -f "$APP/apps/worker/package.json" && "$(sysctl -n hw.memsize 2>/dev/null || echo 0)" -lt 7300000000 ]]; then
+        touch "$ROOT/.no-local-model"; echo "  This Mac has under 8 GB of memory, so it will use Gemini. You can turn on a local model later in the console."
+      fi ;;
   esac
   if no_local; then
     step "Gemini-only server: skipping Ollama and Gemma"
@@ -163,6 +215,8 @@ EOF
 
   step "Background services"
   touch "$ROOT/.start-at-login"
+  install_self "$APP/deploy/mac/spotctl"   # (this run may be an older bundle's copy: the release's is the one to keep)
+  [[ -f "$ROOT/spotctl" ]] || install_self "$0"
   write_agents
   cmd_start
   # kickstart without -k leaves a running process alone, so an update would keep serving the old code.
@@ -185,6 +239,8 @@ cmd_start() {
     loaded "$l" || launchctl bootstrap "gui/$UID_N" "$AGENTS/$l.plist" 2>/dev/null || true
     launchctl kickstart "gui/$UID_N/$l" 2>/dev/null || true
   done
+  # The one-shot update job is only loaded, never started here.
+  [[ -f "$AGENTS/$UPDATE_LABEL.plist" ]] && { loaded "$UPDATE_LABEL" || launchctl bootstrap "gui/$UID_N" "$AGENTS/$UPDATE_LABEL.plist" 2>/dev/null || true; }
   ok "Server started"
 }
 
@@ -216,6 +272,132 @@ cmd_status() {
   echo "version=$(cat "$APP/VERSION" 2>/dev/null || echo none)"
 }
 
+# ---------------------------------------------------------------- update and local model (run by the console)
+PROGRESS="$DATA/update.json"
+TASK_NAME=update; FROM="none"; TO=""; STARTED=0
+jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\n\t' '  ' | cut -c1-300; }
+# progress <state> <step> [error]: what the console shows while this runs
+progress() {
+  mkdir -p "$DATA"
+  printf '{"state":"%s","step":"%s","error":%s,"from":"%s","to":%s,"startedAt":%s,"task":"%s"}' \
+    "$1" "$(jstr "$2")" "$([[ -n "${3:-}" ]] && printf '"%s"' "$(jstr "$3")" || echo null)" "$(jstr "$FROM")" "$([[ -n "$TO" ]] && printf '"%s"' "$(jstr "$TO")" || echo null)" "$STARTED" "$TASK_NAME" > "$PROGRESS.tmp"
+  mv -f "$PROGRESS.tmp" "$PROGRESS"
+}
+task_fail() { printf '  ✗ %s\n' "$*" >&2; progress error "Failed" "$*"; exit 1; }
+sha256_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
+env_set() { # env_set KEY VALUE in the worker's .env
+  local f="$APP/apps/worker/.env"
+  { grep -v "^$1=" "$f" 2>/dev/null || true; echo "$1=$2"; } > "$f.tmp" && mv "$f.tmp" "$f"; chmod 600 "$f"
+}
+local_model_name() {
+  local m; m="$(grep -E '^SPOT_LOCAL_MODEL=' "$APP/apps/worker/.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
+  [[ "$m" =~ ^[A-Za-z0-9._:/-]{1,100}$ ]] || m="${1:-$MODEL}"; echo "$m"
+}
+pull_model() {
+  no_local && return 0
+  [[ "${SPOT_SKIP_MODEL:-0}" == 1 ]] && return 0
+  [[ -n "$(find_ollama)" ]] || return 0
+  for _ in $(seq 1 30); do ollama_up && break; sleep 1; done
+  progress running "Downloading the local model ($1)"
+  "$(find_ollama)" pull "$1" || printf '  ! model pull failed; it will be retried on the next update\n' >&2
+}
+
+cmd_update() {
+  TASK_NAME=update; STARTED="$(( $(date +%s) * 1000 ))"; FROM="$(cat "$APP/VERSION" 2>/dev/null || echo none)"
+  [[ -x "$(node_bin)" && -f "$APP/apps/worker/package.json" ]] || task_fail "Spot Solutions isn't set up on this Mac yet. Run setup first."
+  local tmp; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' RETURN
+  step "Checking the latest version"; progress running "Checking the latest version"
+  local base="${SPOT_DIST_URL:-https://spot-solutions.web.app}"
+  curl -fsSL --max-time 30 "$base/dl/version.json?t=$(date +%s)" -o "$tmp/version.json" || task_fail "Couldn't reach Spot Solutions to check for an update."
+  local latest sha lmodel
+  eval "$("$(node_bin)" -e '
+    const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const ok = (v, re) => (typeof v === "string" && re.test(v) ? v : "");
+    console.log(`latest=${ok(j.version, /^[0-9A-Za-z._-]{1,40}$/)}`);
+    console.log(`sha=${ok(j.sha256, /^[0-9a-f]{64}$/)}`);
+    console.log(`lmodel=${ok(j.model, /^[A-Za-z0-9._:\/-]{1,100}$/)}`);
+  ' "$tmp/version.json")"
+  [[ -n "$latest" && -n "$sha" ]] || task_fail "The version file from Spot Solutions isn't valid."
+  TO="$latest"
+  if [[ "$latest" == "$FROM" ]]; then progress done "Already up to date"; ok "Already up to date ($FROM)"; return 0; fi
+
+  step "Downloading $latest"; progress running "Downloading $latest"
+  curl -fSL --max-time 1800 "$base/dl/spot-solutions.tar.gz" -o "$tmp/app.tgz" || task_fail "The download failed."
+  progress running "Verifying the download"
+  [[ "$(sha256_of "$tmp/app.tgz")" == "$sha" ]] || task_fail "The download didn't match its checksum, so it was not installed."
+  tar -tzf "$tmp/app.tgz" > "$tmp/list" 2>/dev/null || task_fail "The download isn't a valid archive."
+  if grep -Eq '(^/|(^|/)\.\.(/|$))' "$tmp/list"; then task_fail "The download contains unsafe paths, so it was not installed."; fi
+  mkdir -p "$tmp/stage"; tar -xzf "$tmp/app.tgz" -C "$tmp/stage" || task_fail "Unpacking the download failed."
+  [[ -f "$tmp/stage/apps/worker/package.json" && "$(cat "$tmp/stage/VERSION" 2>/dev/null)" == "$latest" ]] || task_fail "The download isn't the version it claims to be."
+
+  step "Installing files"; progress running "Installing files"
+  local oldlock newlock
+  oldlock="$(sha256_of "$APP/pnpm-lock.yaml" 2>/dev/null || echo none)"
+  cp -R "$tmp/stage/." "$APP/" || task_fail "Copying the new files failed."
+  newlock="$(sha256_of "$APP/pnpm-lock.yaml" 2>/dev/null || echo none)"
+  if [[ "${SPOT_SKIP_DEPS:-0}" != 1 ]] && [[ "$oldlock" != "$newlock" || ! -d "$APP/apps/worker/node_modules" ]]; then
+    step "Installing packages"; progress running "Installing packages"
+    (cd "$APP" && PATH="$RT/node/bin:$PATH" PUPPETEER_CACHE_DIR="$ROOT/chrome" "$RT/node/bin/npx" -y pnpm@9.15.4 install --frozen-lockfile --filter "@spot/worker...") || task_fail "Installing packages failed. The old version may still run; try again."
+  fi
+  install_self "$APP/deploy/mac/spotctl"
+  write_agents          # the launch agents may have changed in this release
+  ok "Version $latest"
+
+  step "Restarting"; progress running "Restarting the worker"
+  # kickstart without -k leaves a running process alone, so an update would keep serving the old code.
+  running com.spotsolutions.worker && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.worker" 2>/dev/null || true
+  pull_model "$(local_model_name "${lmodel:-$MODEL}")"
+  progress done "Updated to $latest"
+  # The console goes last: it restarts itself, and its page reloads on the new version.
+  running com.spotsolutions.console && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.console" 2>/dev/null || true
+  ok "Updated to $latest"
+}
+
+cmd_local() {
+  TASK_NAME="local-${1:-}"; STARTED="$(( $(date +%s) * 1000 ))"; FROM="$(cat "$APP/VERSION" 2>/dev/null || echo none)"
+  case "${1:-}" in
+    off)
+      progress running "Turning the local model off"
+      touch "$ROOT/.no-local-model"; env_set SPOT_NO_LOCAL_MODEL 1
+      write_agents   # removes Ollama's agent
+      launchctl bootout "gui/$UID_N/com.spotsolutions.ollama" 2>/dev/null || true
+      running com.spotsolutions.worker && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.worker" 2>/dev/null || true
+      progress done "Local model off"; ok "Local model off" ;;
+    on)
+      progress running "Setting up Ollama"
+      rm -f "$ROOT/.no-local-model"
+      if ollama_up && [[ ! -f "$AGENTS/com.spotsolutions.ollama.plist" ]]; then
+        touch "$ROOT/.external-ollama"
+      else
+        rm -f "$ROOT/.external-ollama"
+        if [[ -z "$(find_ollama)" ]]; then
+          mkdir -p "$RT/ollama"
+          curl -fSL https://github.com/ollama/ollama/releases/latest/download/ollama-darwin.tgz | tar -xz -C "$RT/ollama"
+          [[ -x "$RT/ollama/ollama" ]] || task_fail "The Ollama download didn't contain the expected program."
+        fi
+      fi
+      env_set SPOT_NO_LOCAL_MODEL 0
+      write_agents; cmd_start >/dev/null
+      pull_model "$(local_model_name)"
+      progress running "Restarting the worker"
+      running com.spotsolutions.worker && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.worker" 2>/dev/null || true
+      progress done "Local model on"; ok "Local model on" ;;
+    *) die "usage: spotctl local on|off" ;;
+  esac
+}
+
+# What the console starts: reads DATA/task.json ({"task":"update"|"local-on"|"local-off"}) unless a name is given.
+cmd_task() {
+  local t="${1:-}"
+  [[ -n "$t" ]] || t="$("$(node_bin)" -e 'try{console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).task||"")}catch{console.log("")}' "$DATA/task.json" 2>/dev/null || true)"
+  case "$t" in
+    update) cmd_update ;;
+    local-on) cmd_local on ;;
+    local-off) cmd_local off ;;
+    *) die "unknown task: $t" ;;
+  esac
+}
+
 cmd_awake() {
   case "${1:-}" in
     on)  /usr/bin/osascript -e 'do shell script "pmset -a disablesleep 1 && pmset -c sleep 0 && pmset -c disksleep 0" with administrator privileges with prompt "Spot Server wants to keep this Mac running with the lid closed."' >/dev/null && ok "Mac stays awake, even with the lid closed" ;;
@@ -236,6 +418,7 @@ cmd_login() {
 
 cmd_uninstall() {
   cmd_stop
+  loaded "$UPDATE_LABEL" && launchctl bootout "gui/$UID_N/$UPDATE_LABEL" 2>/dev/null || true
   rm -f "$AGENTS"/com.spotsolutions.*.plist
   rm -rf "$APP" "$RT" "$ROOT/chrome" "$LOGS"
   [[ "${1:-}" == --all ]] && rm -rf "$ROOT"
@@ -244,6 +427,9 @@ cmd_uninstall() {
 
 case "${1:-}" in
   setup) cmd_setup ;;
+  update) cmd_update ;;
+  local) shift; cmd_local "${1:-}" ;;
+  task) shift; cmd_task "${1:-}" ;;
   start) cmd_start ;;
   stop) cmd_stop ;;
   restart) shift; cmd_restart "${1:-all}" ;;
@@ -252,5 +438,5 @@ case "${1:-}" in
   login) shift; cmd_login "${1:-}" ;;
   logs) tail -n 100 -F "$LOGS/worker.log" ;;
   uninstall) shift; cmd_uninstall "${1:-}" ;;
-  *) sed -n '2,15p' "$0"; exit 1 ;;
+  *) sed -n '2,20p' "$0"; exit 1 ;;
 esac

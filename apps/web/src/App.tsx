@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppProvider, useAuthUser } from "./lib/app";
 import { Shell } from "./components/Shell";
@@ -14,10 +14,15 @@ import { Waiting } from "./routes/Waiting";
 import { useAccess } from "./lib/access";
 import { HelpPage } from "./routes/Help";
 import { AdminOnly } from "./components/AdminOnly";
+import { ConnectServer } from "./routes/ConnectServer";
+import { InstallPage } from "./routes/InstallPage";
 
 export default function App() {
   const user = useAuthUser();
   const access = useAccess(user);
+  // Public or sign-in-first pages that don't need an approved account.
+  const { pathname } = useLocation();
+  const standalone = pathname === "/connect-server" ? <ConnectServer user={user} /> : pathname === "/install" ? <InstallPage /> : null;
   return (
     <>
       <Toaster
@@ -32,7 +37,9 @@ export default function App() {
           },
         }}
       />
-      {user === undefined ? (
+      {standalone ? (
+        standalone
+      ) : user === undefined ? (
         <div className="grid min-h-dvh place-items-center text-primary">
           <Spinner className="size-8" />
         </div>

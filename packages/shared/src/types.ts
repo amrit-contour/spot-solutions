@@ -421,11 +421,13 @@ export interface ServerStatus {
   logsWanted?: number;
   /** Fleet capacity (docs/fleet.md). Missing on servers older than the fleet release. */
   fleet?: import("./fleet.ts").FleetCapacity;
+  /** An update the server is running or just ran (written by the worker; see apps/worker/console/update.mjs). */
+  update?: { state: "updating" | "error"; target: string | null; from: string; startedAt: number; error?: string };
 }
 
 /** servers/{id}/commands/{cmd}: admin actions from the app's Server page. */
 export interface ServerCommand {
-  type: "restart_worker" | "restart_ollama" | "delete_user_data" | "remove_user" | "wipe_demo";
+  type: "restart_worker" | "restart_ollama" | "update_server" | "delete_user_data" | "remove_user" | "wipe_demo";
   /** delete_user_data / remove_user / wipe_demo: see AdminDataPayload. */
   payload?: Record<string, unknown>;
   result?: unknown;

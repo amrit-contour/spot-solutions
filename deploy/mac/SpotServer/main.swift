@@ -19,7 +19,6 @@ final class Server: ObservableObject {
     @Published var log: String = ""
     @Published var lastError: String? = nil
     @Published var adminEmail: String = ""
-    @Published var geminiOnly: Bool = false      // setup option: skip Ollama/Gemma, AI runs on Gemini
 
     private var timer: Timer?
     private let ctl = Bundle.main.path(forResource: "spotctl", ofType: nil) ?? ""
@@ -141,21 +140,18 @@ struct SetupView: View {
                     Logo(size: 56)
                     Text("Turn this Mac into a\nSpot Solutions server").font(.system(size: 30, weight: .semibold, design: .rounded))
                     VStack(alignment: .leading, spacing: 10) {
-                        Bullet("cpu", server.geminiOnly ? "Downloads Node.js only. No Homebrew needed." : "Downloads Node.js, Ollama and Gemma (about 3.5 GB). No Homebrew needed.")
-                        Bullet("lock.shield", server.geminiOnly ? "Chats are read by Gemini (add a Gemini key later). Accounts set to Local only can't run here." : "Chats are read by Gemma on this Mac. They never reach a cloud AI.")
+                        Bullet("cpu", "Downloads Node.js and, if this Mac has about 8 GB of memory, a local Gemma model (about 3.5 GB). No Homebrew needed.")
+                        Bullet("lock.shield", "Local model or Gemini? You choose in the console afterwards, and can switch any time.")
                         Bullet("bolt.horizontal", "Runs in the background and restarts itself if it crashes.")
                         Bullet("laptopcomputer", "Optionally keeps running with the lid closed.")
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Your email (to see this server in the app)").font(.callout).foregroundStyle(.secondary)
+                        Text("Your email (optional: signing in from the console adds it)").font(.callout).foregroundStyle(.secondary)
                         TextField("you@gmail.com", text: $server.adminEmail).textFieldStyle(.roundedBorder).frame(maxWidth: 340)
                     }
-                    Toggle("Gemini only (no local model; skips the 3.5 GB download)", isOn: $server.geminiOnly)
-                        .toggleStyle(.checkbox).disabled(server.busy != nil)
                     Button {
                         server.perform("Setting up", ["setup"], env: [
                             "ADMIN_EMAILS": server.adminEmail.trimmingCharacters(in: .whitespaces).lowercased(),
-                            "SPOT_NO_LOCAL_MODEL": server.geminiOnly ? "1" : "0",
                         ])
                     } label: {
                         Label(server.busy == nil ? "Set up this Mac" : "Setting up…", systemImage: "arrow.down.circle.fill").padding(.horizontal, 6)
@@ -269,7 +265,7 @@ struct DashboardView: View {
                 Button { NSWorkspace.shared.open(consoleURL) } label: { Label("Console in browser", systemImage: "rectangle.on.rectangle") }
                 Button { NSWorkspace.shared.open(supportDir.appendingPathComponent("logs")) } label: { Label("Logs folder", systemImage: "doc.text.magnifyingglass") }
                 Menu {
-                    Button("Update Spot Solutions") { server.perform("Updating", ["setup"]) }
+                    Button("Update Spot Solutions") { server.perform("Updating", ["update"]) }
                     Button("Restart worker") { server.perform("Restarting", ["restart", "worker"]) }
                     if server.localModel { Button("Restart Ollama") { server.perform("Restarting", ["restart", "ollama"]) } }
                     Divider()

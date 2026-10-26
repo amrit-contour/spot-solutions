@@ -72,7 +72,9 @@ It installs Node 22, Chrome's libraries, Ollama and Gemma (about a 3.5 GB downlo
 | `spot-worker` | WhatsApp + curation. Idle until a Firebase key is added. |
 | `spot-console` | Local web console on port **7420** |
 
-**Gemini only.** A machine with little memory can skip the local model: `curl -fsSL https://spot-solutions.web.app/install.sh | sudo SPOT_NO_LOCAL_MODEL=1 bash` (or `... | sudo bash -s -- --no-local-model`). It installs no Ollama or Gemma, AI runs on Gemini (add a key in the console, or each curator under Settings → AI models), and the server can't host accounts set to **Local only**. Re-running keeps the choice; set `SPOT_NO_LOCAL_MODEL=0` to switch back. See [multi-server.md](multi-server.md).
+**Local model or Gemini only.** A machine under about 8 GB of memory starts on Gemini with no Ollama or Gemma. You can switch either way in the console under **AI models**, any time. A Gemini-only server can't host accounts set to **Local only**. To force it at install time, set `SPOT_NO_LOCAL_MODEL=1` (or `--no-local-model`, or `=0`). See [multi-server.md](multi-server.md).
+
+The installer also puts `spot-task` in `/usr/local/sbin` (root-owned) with the unit `spot-task@.service`, and lets the `spot` user start only `spot-task@update`, `spot-task@local-on` and `spot-task@local-off` (and restart the worker and Ollama). That is how the console updates the server and turns the local model on or off without being root.
 
 At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it from your phone or Mac on the same Wi-Fi. The console is served from the laptop itself, so it's only reachable on your home network, and you only need it once, for the key.
 
@@ -82,8 +84,8 @@ At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it 
 
 The console shows services, CPU/RAM/disk, installed models and live worker logs, with Restart buttons.
 
-1. **Join code:** one key per device, made for you. In the app, an admin opens **Account, Server, Add a server** and makes a code. Type it under **Enter join code**, check the device name and click **Join**. The worker starts by itself. Without a code, click **or drop a key file** and drag in a key made with `deploy/new-server-key.sh <name>` (see [multi-server.md](multi-server.md)), then delete the file.
-2. **Admins:** your email (already set if you passed `ADMIN_EMAILS`). It opens **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere.
+1. **Connect with Spot Solutions:** click it, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The server gets its own key and the worker starts by itself. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is only for a brand-new project (see [multi-server.md](multi-server.md)).
+2. **Admins:** signing in adds your email. It opens **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere. Add other admins in the console's **Admin emails**.
 3. **Server Gemini key:** optional on a server with Gemma. Leave it blank; each curator adds their own in the app under **Settings → AI models**, where they can test it, browse models and pick a primary and a fallback. On a Gemini-only server, add one here or have each curator add theirs.
 
 Lost the link? `sudo spot-console-url`.
@@ -107,7 +109,7 @@ Add a second server and accounts spread across both, and move to the other if on
 
 ## Updating
 
-Run the same install command again. It pulls the latest code and restarts the worker. Your WhatsApp sessions, key and `.env` survive, because they live in `/var/lib/spot-solutions` and `/opt/spot-solutions/apps/worker/.env`. If you run several servers, stop any still on an older release first (see [multi-server.md](multi-server.md)).
+The server updates itself: the console checks every 30 minutes and installs a release a few minutes after it appears (switch off under **Updates**), or press **Update now** (or **Update** on the Server page of the app). A server installed before this release needs the install command run once more. Running it again always works: it pulls the latest code and restarts the worker. Your WhatsApp sessions, key and `.env` survive, because they live in `/var/lib/spot-solutions` and `/opt/spot-solutions/apps/worker/.env`. If you run several servers, stop any still on an older release first (see [multi-server.md](multi-server.md)).
 
 ## If something's off
 
@@ -123,7 +125,7 @@ Run the same install command again. It pulls the latest code and restarts the wo
 
 ```bash
 sudo systemctl disable --now spot-worker spot-console
-sudo rm -rf /opt/spot-solutions /etc/systemd/system/spot-*.service /etc/sudoers.d/spot-console
+sudo rm -rf /opt/spot-solutions /etc/systemd/system/spot-*.service /usr/local/sbin/spot-task /etc/sudoers.d/spot-console
 # also removes the WhatsApp link and key:
 sudo rm -rf /var/lib/spot-solutions
 ```

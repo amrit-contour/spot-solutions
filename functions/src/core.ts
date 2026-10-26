@@ -81,10 +81,23 @@ export async function redeemJoinCode(deps: Deps, input: { code?: unknown; device
   if (!claimed.ok) throw new AppError("invalid-argument", BAD_CODE);
 
   const deviceName = cleanName(input.deviceName) || claimed.code.deviceName || "server";
-  return provision(deps, hash, claimed.code.createdBy, deviceName);
+  return provision(
+    deps,
+    { finish: (email) => deps.store.finishCode(hash, email, deps.now()), release: () => deps.store.releaseCode(hash) },
+    claimed.code.createdBy,
+    deviceName,
+  );
 }
 
-async function provision(deps: Deps, hash: string, createdBy: string, deviceName: string) {
+/** What provisioning does to whatever authorised it (a join code, a device link) on success and on failure. */
+export interface ProvisionHooks {
+  finish(serviceAccount: string): Promise<void>;
+  /** Give the authorisation back so it can be tried again. */
+  release(): Promise<void>;
+}
+
+/** Makes the per-server service account with its roles and one key. Used by join codes and device links. */
+export async function provision(deps: Deps, hooks: ProvisionHooks, createdBy: string, deviceName: string) {
   const { gcp } = deps;
   // First free name: spot-<device>, then -2, -3, ...
   const taken = new Set<string>();
@@ -94,7 +107,7 @@ async function provision(deps: Deps, hash: string, createdBy: string, deviceName
     if (!(await gcp.serviceAccountExists(serviceAccountEmail(saId)))) break;
     taken.add(saId);
     if (i === 19) {
-      await deps.store.releaseCode(hash);
+      await hooks.release();
       throw new AppError("internal", "Couldn't find a free name for this server. Remove old servers and try again.");
     }
   }
@@ -108,13 +121,13 @@ async function provision(deps: Deps, hash: string, createdBy: string, deviceName
     const key = await retry(deps, () => gcp.createKey(email), 3, 1_000);
     const now = deps.now();
     await deps.store.putServerKey(email, { deviceName, deviceSlug: sanitiseDevice(deviceName), createdBy, createdAt: now, keyId: key.keyId });
-    await deps.store.finishCode(hash, email, now);
+    await hooks.finish(email);
     return { key: key.json, serviceAccount: email, deviceName };
   } catch (e) {
     deps.log(`join failed for ${email}: ${(e as Error).message}`);
     // Undo what we did and give the code back, so the admin doesn't have to make another.
     if (created) await revokeAccount(deps, email).catch((err) => deps.log(`cleanup of ${email} failed: ${(err as Error).message}`));
-    await deps.store.releaseCode(hash).catch(() => undefined);
+    await hooks.release().catch(() => undefined);
     throw new AppError("internal", "Couldn't set up this server's key. Try the code again in a minute.");
   }
 }
@@ -122,7 +135,7 @@ async function provision(deps: Deps, hash: string, createdBy: string, deviceName
 // ---------- 3. admin removes a server ----------
 
 /** Keys first (so access ends even if a later step fails), then the roles, then the account. Mirrors deploy/revoke-server-key.sh. */
-async function revokeAccount(deps: Deps, email: string) {
+export async function revokeAccount(deps: Deps, email: string) {
   const { gcp } = deps;
   if (!isManagedAccount(email)) throw new Error(`Refusing to touch ${email}`);
   for (const k of await gcp.listUserKeyIds(email).catch(() => [] as string[])) await gcp.deleteKey(email, k);

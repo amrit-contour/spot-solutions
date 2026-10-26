@@ -8,7 +8,7 @@ You need:
 |---|---|
 | **A PC** | Windows 10 or 11. 8 GB RAM recommended (Gemma 3 4B uses about 3.5 GB). Keep it plugged in and online. |
 | **winget** | Part of Windows "App Installer". Only used to install Ollama, so you don't need it for a Gemini-only server or if Ollama is already installed. Most PCs have it. |
-| **A join code** | One key per device, made for you. An admin makes a code in the app under **Account, Server, Add a server**. See [multi-server.md](multi-server.md). |
+| **An admin account** | You sign in with Google in the server console and approve it. No key files. See [multi-server.md](multi-server.md). |
 
 ## Install
 
@@ -30,9 +30,9 @@ irm https://spot-solutions.web.app/install.ps1 | iex
 
 To set your admin email at the same time, run this first: `$env:ADMIN_EMAILS = "you@gmail.com"`.
 
-### Gemini only
+### Local model or Gemini only
 
-No room for Gemma (under about 8 GB of RAM)? Double-click **Install Spot Solutions (Gemini only).cmd** instead. It skips Ollama and the Gemma download, and AI runs on Gemini, so you add a Gemini key later. In PowerShell, run `$env:SPOT_NO_LOCAL_MODEL = "1"` before the one-liner. This server can't host accounts set to **Local only**. See [multi-server.md](multi-server.md).
+There is one installer. A PC with about 8 GB of RAM or more starts with Ollama and Gemma; a smaller one starts on Gemini. You can switch any time in the console under **AI models**, which installs or turns off the local model for you. `Install Spot Solutions (Gemini only).cmd` still exists and forces Gemini at install time. A Gemini-only server can't host accounts set to **Local only**. See [multi-server.md](multi-server.md).
 
 ## What the installer does
 
@@ -44,6 +44,7 @@ No room for Gemma (under about 8 GB of RAM)? Double-click **Install Spot Solutio
 | Configuration | Writes `app\apps\worker\.env` and locks `C:\SpotSolutions\data` so only SYSTEM and Administrators can read it. |
 | Worker | A scheduled task `SpotSolutionsWorker` that starts at boot as SYSTEM and restarts after a crash. It waits until a Firebase key exists, starts Ollama if needed, and logs to `data\worker.log`. |
 | Console | A second task, `SpotSolutionsConsole`, serves the server console on port 7420 (log: `data\console.log`). |
+| Updates | A third task, `SpotSolutionsUpdate` (SYSTEM, no trigger), started by the console to update the server or turn the local model on or off. It runs `update.ps1`, which runs the release's `deploy\windows\update-core.ps1`. |
 | Firewall | An inbound rule "Spot Solutions Console" for TCP 7420, **private networks only**. |
 | Shortcuts | **Spot Server Console** and **Spot Solutions** on the desktop (all users) and in the Start menu. They open in an Edge app window when Edge is installed. |
 | Power | No standby or hibernate on power, and closing the lid on power does nothing. |
@@ -52,9 +53,8 @@ At the end the console opens and the installer prints a link for a phone on the 
 
 ## Finish setup in the console
 
-1. Type the join code (from **Account, Server, Add a server** in the app) under **Enter join code**, check the device name, and click **Join**. The worker starts by itself. No code? Click **or drop a key file** and drop a key made with `deploy/new-server-key.sh` (then delete the file, it is a password).
-2. Under **Admins**, add your email. This shows the server in the app under **Account, Server**, from anywhere.
-3. Gemini-only server: also add a Gemini key (the console, or each curator under **Settings, AI models**).
+1. Click **Connect with Spot Solutions**, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The worker starts by itself and your email is added as an admin, so the server shows in the app under **Account, Server**. A join code from the app works too; a key file is only for the very first server of a brand-new project (**First server ever?**).
+2. Optional: under **AI models**, add a Gemini key, pick and test models, or turn the local model on or off.
 4. Open **Spot Solutions** from the desktop, go to **Settings, Show QR code**, and scan it from WhatsApp on your phone (**Linked devices**).
 
 ## Everyday
@@ -91,7 +91,7 @@ Everything is under `C:\SpotSolutions`.
 
 ## Update
 
-Run the installer again. Re-running is safe: it stops the old worker and its browsers, updates the code, keeps your key, `.env` and WhatsApp logins, and restarts the tasks. It keeps the last choice between local model and Gemini-only unless you set `SPOT_NO_LOCAL_MODEL`.
+The server updates itself: the console checks every 30 minutes and installs a release a few minutes after it appears (switch off under **Updates**), or press **Update now** (or **Update** on the Server page of the app). Nothing needs an admin prompt: the update runs as the SYSTEM task above. A PC installed before this release needs the manual route once, which is to run the installer again. Re-running is safe: it stops the old worker and its browsers, updates the code, keeps your key, `.env` and WhatsApp logins, and restarts the tasks. It keeps the last choice between local model and Gemini-only unless you set `SPOT_NO_LOCAL_MODEL`.
 
 Use the PowerShell one-liner, or download the zip again. The `.cmd` in an old unzipped folder runs the `install.ps1` stored next to it, which may be out of date.
 

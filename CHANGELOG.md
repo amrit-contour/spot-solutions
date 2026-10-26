@@ -1,5 +1,14 @@
 # Changelog
 
+## 26 October 2026 (servers)
+
+### Servers
+- **Connect with your account.** A fresh server console now starts with sign-in: it shows a one-time link and QR, you sign in with Google on the same computer or your phone, check a 4-character code and approve. The server makes its own key; your email becomes one of its admins. Join codes still work; a key file is only for the very first server of a new project. New Cloud Functions `startDeviceLink`, `pollDeviceLink`, `getDeviceLink`, `approveDeviceLink`; new `/connect-server` page.
+- **Automatic updates.** Servers check `dl/version.json` every 30 minutes and update themselves a few minutes after a release (switchable), or on **Update now** in the console or the Update button on the Server page. Downloads are checked against a published sha256. The worker and console really restart on the new code, the local model is refreshed, and Server shows each server's version against the latest and "Updating...".
+- **AI models in the console.** Server Gemini key, fetch and test models, pull local models, choose a default local model and routing for curators who haven't set their own, and turn the local model on or off. Same console on macOS, Windows and Ubuntu.
+- **One install.** `install.sh` now serves Mac and Ubuntu; `/install` is a download page that picks the OS. Local model or Gemini only is decided in the console (the installer picks by memory). Old install URLs still work.
+- Console: Services and Machine cards share one height.
+
 ## 26 October 2026
 
 ### Messages

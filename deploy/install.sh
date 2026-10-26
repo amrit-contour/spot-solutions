@@ -4,17 +4,23 @@
 #   curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash
 #   # optional: | sudo ADMIN_EMAILS=you@gmail.com bash
 #
-# Installs Node 22, Chrome's libraries, Ollama + Gemma, then three systemd services:
+# One command for every computer: on a Mac it hands over to the Mac installer (no sudo), on Ubuntu/Debian it
+#   installs Node 22, Chrome's libraries, Ollama + Gemma, then three systemd services:
 #   ollama        local AI
-#   spot-worker   WhatsApp + curation (starts once a Firebase key is added)
-#   spot-console  local web console on port 7420: status, logs, key upload, restarts
-# Add keys from the console afterwards. Re-running updates and restarts.
+#   spot-worker   WhatsApp + curation (starts once the server is connected)
+#   spot-console  local web console on port 7420: sign in, update, AI models, logs
+# Plus spot-task, a small root-owned helper the console uses to update the server and to turn the local model on or off.
+# Connect the server from its console afterwards. Re-running updates and restarts.
 #
-# Gemini-only server (no Ollama/Gemma download; AI goes to Gemini, needs a Gemini key):
-#   curl -fsSL https://spot-solutions.web.app/install.sh | sudo SPOT_NO_LOCAL_MODEL=1 bash
-#   (or pass --no-local-model). If you run it from a terminal and set neither, it asks once.
-# A Gemini-only server can't host accounts whose AI policy is "Local only".
+# Local model or Gemini only? You choose in the console (AI models) and can switch any time. The installer picks for
+# you: a local model on computers with about 8 GB of memory or more, Gemini only on smaller ones. To force it:
+#   SPOT_NO_LOCAL_MODEL=1 (or --no-local-model), or SPOT_NO_LOCAL_MODEL=0. Re-running keeps the last choice.
 set -euo pipefail
+
+# One entry point: the Mac installer lives in install-mac.sh (it installs the Spot Server app and sets the Mac up).
+if [[ "$(uname -s)" == Darwin ]]; then
+  exec bash -c "$(curl -fsSL "${SPOT_BASE_URL:-https://spot-solutions.web.app}/install-mac.sh")" install-mac.sh "$@"
+fi
 
 SRC_URL="${SPOT_SRC_URL:-https://spot-solutions.web.app/dl/spot-solutions.tar.gz}"
 APP_DIR="/opt/spot-solutions"
@@ -29,15 +35,15 @@ for arg in "$@"; do if [[ "$arg" == "--no-local-model" ]]; then SPOT_NO_LOCAL_MO
 . /etc/os-release
 case "${ID} ${ID_LIKE:-}" in *ubuntu*|*debian*|*kali*) ;; *) echo "Warning: built for Ubuntu/Debian/Kali, you're on ${PRETTY_NAME}. Trying anyway." ;; esac
 
-# Local model or Gemini-only? Explicit env/flag wins; else keep what a previous install chose; else ask on a terminal.
+# Local model or Gemini-only? An explicit env/flag wins; else keep what a previous install chose; else decide by memory
+# (a local model needs about 8 GB). It can be switched any time in the console, under AI models.
 ENV_FILE="${APP_DIR}/apps/worker/.env"
 if [[ -z "${SPOT_NO_LOCAL_MODEL:-}" ]]; then
-  if [[ -f "${ENV_FILE}" ]] && grep -q '^SPOT_NO_LOCAL_MODEL=1' "${ENV_FILE}"; then
-    SPOT_NO_LOCAL_MODEL=1
-  elif [[ ! -f "${ENV_FILE}" && -t 1 && -r /dev/tty ]]; then
-    printf 'Run AI on this machine with Ollama + Gemma (about 3.5 GB, needs ~4 GB of free memory)? [Y/n] (n = Gemini only) ' > /dev/tty
-    read -r -t 30 ans < /dev/tty 2>/dev/null || ans=""
-    if [[ "${ans}" =~ ^[Nn] ]]; then SPOT_NO_LOCAL_MODEL=1; fi
+  if [[ -f "${ENV_FILE}" ]]; then
+    if grep -q '^SPOT_NO_LOCAL_MODEL=1' "${ENV_FILE}"; then SPOT_NO_LOCAL_MODEL=1; else SPOT_NO_LOCAL_MODEL=0; fi
+  else
+    MEM_KB="$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+    if [[ "${MEM_KB:-0}" -lt 7300000 ]]; then SPOT_NO_LOCAL_MODEL=1; echo "This computer has under 8 GB of memory, so it will use Gemini. You can turn on a local model later in the console."; fi
   fi
 fi
 case "${SPOT_NO_LOCAL_MODEL:-}" in 1|true|yes) NO_LOCAL=1 ;; *) NO_LOCAL=0 ;; esac
@@ -114,20 +120,34 @@ if grep -q '^SPOT_NO_LOCAL_MODEL=' "${ENV_FILE}"; then sed -i "s|^SPOT_NO_LOCAL_
 chown "${SVC_USER}:${SVC_USER}" "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
-# The console may restart these two services, and nothing else.
+# spot-task: root-owned, installed from the release we just unpacked. The console never has root run anything from the
+# folder it can write to; it can only ask systemd to start these three named tasks.
+install -m 0755 -o root -g root "${APP_DIR}/deploy/ubuntu/spot-task" /usr/local/sbin/spot-task
+cat > /etc/systemd/system/spot-task@.service <<EOF
+[Unit]
+Description=Spot Solutions server task (%i)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/spot-task %i
+TimeoutStartSec=7200
+EOF
+
+# The console may restart the worker and Ollama, and start the three tasks above: nothing else.
 cat > /etc/sudoers.d/spot-console <<EOF
-${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart spot-worker, /usr/bin/systemctl restart ollama
+${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart spot-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl start --no-block spot-task@update.service, /usr/bin/systemctl start --no-block spot-task@local-on.service, /usr/bin/systemctl start --no-block spot-task@local-off.service
 EOF
 chmod 440 /etc/sudoers.d/spot-console
 visudo -cf /etc/sudoers.d/spot-console >/dev/null
 
 step "systemd services"
-OLLAMA_UNIT=""; [[ "${NO_LOCAL}" == 1 ]] || OLLAMA_UNIT=" ollama.service"
+# Always ordered after Ollama when it exists, so turning the local model on later needs no unit change.
 cat > /etc/systemd/system/spot-worker.service <<EOF
 [Unit]
 Description=Spot Solutions worker (WhatsApp + Gemma)
-After=network-online.target${OLLAMA_UNIT}
-Wants=network-online.target${OLLAMA_UNIT}
+After=network-online.target ollama.service
+Wants=network-online.target
 # Stays idle until a Firebase key is uploaded in the console.
 ConditionPathExists=${DATA_DIR}/service-account.json
 
@@ -192,10 +212,9 @@ step "Done"
 echo "One-time setup: open the server console from a phone or laptop on THIS Wi-Fi:"
 /usr/local/bin/spot-console-url | sed 's/^/  /'
 echo
-echo "1. Drop this server's own Firebase key into the console (starts the worker). One key per device:"
-echo "   on your admin Mac run: deploy/new-server-key.sh <device-name>   (see /help → Running several servers)"
-if [[ "${NO_LOCAL}" == 1 ]]; then echo "   Gemini-only: also add a Gemini key (console, or each curator in the app)."; fi
-echo "2. Add your email under Admins to see this server in the app."
-echo "3. Link WhatsApp at https://spot-solutions.web.app → Settings."
-echo "After that, everything (including restarts and logs) is in the app → Account → Server, from anywhere."
-echo "Forgot the link later? sudo spot-console-url"
+echo "1. In the console, click Connect with Spot Solutions and sign in with Google (an admin account)."
+echo "   No admin yet (a brand-new project)? Use 'First server ever? Use a key file' in the same card."
+if [[ "${NO_LOCAL}" == 1 ]]; then echo "   This server uses Gemini: add a Gemini key under AI models (or each curator in the app). A local model can be turned on there too."; else echo "   Local or Gemini only, and which models, is under AI models in the console."; fi
+echo "2. Link WhatsApp at https://spot-solutions.web.app → Settings."
+echo "After that, everything (restarts, logs, updates) is in the app → Account → Server, from anywhere."
+echo "The server updates itself; the console has an Update now button. Forgot the link later? sudo spot-console-url"

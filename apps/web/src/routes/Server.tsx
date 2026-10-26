@@ -14,6 +14,7 @@ import { Collapsible } from "../components/Collapsible";
 import { AddServerCard } from "../components/AddServerCard";
 import { Menu, MenuItem } from "../components/Menu";
 import { RemoveServerButton } from "../components/RemoveServerButton";
+import { ServerUpdate } from "../components/ServerUpdate";
 import { WipeDemoCard } from "../components/AdminDataTools";
 import { isAdmin, useAccessConfig } from "../lib/access";
 import { Avatar, Button, Card, Chip, Empty, cx } from "../components/ui";
@@ -130,6 +131,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
     >
       <div className="flex flex-col gap-4 pb-1">
       <div className="flex flex-wrap items-center justify-end gap-2 empty:hidden">
+        <ServerUpdate server={s} online={online} now={now} />
         <ConsoleLinks server={s} />
         <RemoveServerButton server={s} />
       </div>

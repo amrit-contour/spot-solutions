@@ -1,7 +1,8 @@
 // Firestore side of the handlers (Admin SDK, so the rules that deny clients don't apply).
 import { getFirestore } from "firebase-admin/firestore";
 import { rateLimit } from "./logic";
-import type { JoinCodeDoc, ServerInfo, ServerKeyDoc, Store } from "./ports";
+import { CLAIM_STALE_MS, MAX_DELIVERIES, REDELIVER_MS } from "./link";
+import type { ApproveResult, ClaimLinkResult, JoinCodeDoc, LinkDoc, LinkStore, ServerInfo, ServerKeyDoc, Store } from "./ports";
 
 export function firestoreStore(db = getFirestore()): Store {
   const codes = db.collection("joinCodes");
@@ -74,6 +75,59 @@ export function firestoreStore(db = getFirestore()): Store {
     },
     async sweepCodes(now) {
       const old = await codes.where("expiresAt", "<", now - 24 * 3_600_000).limit(50).get();
+      if (old.empty) return;
+      const batch = db.batch();
+      old.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    },
+  };
+}
+
+/** deviceLinks: closed to every client in firestore.rules. Each change is one transaction. */
+export function firestoreLinkStore(db = getFirestore()): LinkStore {
+  const links = db.collection("deviceLinks");
+  return {
+    async putLink(hash, doc) {
+      await links.doc(hash).create(doc);
+    },
+    async getLink(hash) {
+      return ((await links.doc(hash).get()).data() as LinkDoc | undefined) ?? null;
+    },
+    async approveLink(hash, email, now): Promise<ApproveResult> {
+      return db.runTransaction(async (tx) => {
+        const ref = links.doc(hash);
+        const d = (await tx.get(ref)).data() as LinkDoc | undefined;
+        if (!d) return "missing";
+        if (now >= d.expiresAt) return "expired";
+        if (d.status !== "pending") return "already";
+        tx.update(ref, { status: "approved", approvedBy: email, approvedAt: now });
+        return "ok";
+      });
+    },
+    async claimLink(hash, now): Promise<ClaimLinkResult> {
+      return db.runTransaction(async (tx) => {
+        const ref = links.doc(hash);
+        const d = (await tx.get(ref)).data() as LinkDoc | undefined;
+        if (!d) return { ok: false, reason: "missing" } as const;
+        if (d.status === "pending") return { ok: false, reason: "pending" } as const;
+        if (d.status === "redeeming" && now - (d.claimedAt ?? 0) < CLAIM_STALE_MS) return { ok: false, reason: "busy" } as const;
+        if (d.status === "done" && !(now - (d.doneAt ?? 0) < REDELIVER_MS && (d.deliveries ?? 0) < MAX_DELIVERIES)) return { ok: false, reason: "done" } as const;
+        tx.update(ref, { status: "redeeming", claimedAt: now });
+        return { ok: true, link: d } as const;
+      });
+    },
+    async finishLink(hash, serviceAccount, now) {
+      const ref = links.doc(hash);
+      await db.runTransaction(async (tx) => {
+        const d = (await tx.get(ref)).data() as LinkDoc | undefined;
+        tx.update(ref, { status: "done", serviceAccount, doneAt: now, deliveries: (d?.deliveries ?? 0) + 1 });
+      });
+    },
+    async releaseLink(hash) {
+      await links.doc(hash).update({ status: "approved" });
+    },
+    async sweepLinks(now) {
+      const old = await links.where("expiresAt", "<", now - 24 * 3_600_000).limit(50).get();
       if (old.empty) return;
       const batch = db.batch();
       old.docs.forEach((d) => batch.delete(d.ref));

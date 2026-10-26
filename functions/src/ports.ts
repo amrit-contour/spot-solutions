@@ -74,3 +74,39 @@ export interface Store {
   /** Housekeeping: delete codes that expired over a day ago. */
   sweepCodes(now: number): Promise<void>;
 }
+
+// ---------- device links: a console asks to join, an admin approves it in the web app ----------
+
+export type LinkStatus = "pending" | "approved" | "redeeming" | "done";
+
+export interface LinkDoc {
+  /** sha256 of the secret only the console holds. The key is only ever handed to whoever proves it. */
+  challenge: string;
+  deviceName: string;
+  createdAt: number;
+  expiresAt: number;
+  status: LinkStatus;
+  approvedBy?: string;
+  approvedAt?: number;
+  claimedAt?: number;
+  doneAt?: number;
+  serviceAccount?: string;
+  /** How many times the key was handed out (a lost reply may be re-issued, a few times). */
+  deliveries?: number;
+}
+
+export type ApproveResult = "ok" | "missing" | "expired" | "already";
+export type ClaimLinkResult = { ok: true; link: LinkDoc } | { ok: false; reason: "pending" | "busy" | "done" | "missing" };
+
+export interface LinkStore {
+  putLink(hash: string, doc: LinkDoc): Promise<void>;
+  getLink(hash: string): Promise<LinkDoc | null>;
+  /** pending and unexpired only, in one transaction. */
+  approveLink(hash: string, email: string, now: number): Promise<ApproveResult>;
+  /** approved (or re-deliverable done, or a stuck redeeming) to redeeming, in one transaction. */
+  claimLink(hash: string, now: number): Promise<ClaimLinkResult>;
+  finishLink(hash: string, serviceAccount: string, now: number): Promise<void>;
+  /** Provisioning failed: back to approved so the console's next poll tries again. */
+  releaseLink(hash: string): Promise<void>;
+  sweepLinks(now: number): Promise<void>;
+}

@@ -169,10 +169,10 @@ The user guide is in [docs/multi-server.md](docs/multi-server.md) and the protoc
 | --- | --- |
 | **Ubuntu** (laptop, mini PC, or a USB stick) | `curl -fsSL https://spot-solutions.web.app/install.sh \| sudo bash` · [guide](docs/ubuntu-usb-server.md) |
 | **Windows 10/11** | Download [SpotSolutions-Windows.zip](https://spot-solutions.web.app/dl/SpotSolutions-Windows.zip), unzip, double-click **Install Spot Solutions.cmd** · [guide](docs/windows-server.md) |
-| **macOS** | `curl -fsSL https://spot-solutions.web.app/install-mac.sh \| bash` (installs the Spot Server menu-bar app) · [guide](docs/mac-server.md) |
+| **macOS** | `curl -fsSL https://spot-solutions.web.app/install.sh \| bash` (installs the Spot Server menu-bar app; `install-mac.sh` still works) · [guide](docs/mac-server.md) |
 | **Docker** | `docker compose -f deploy/docker-compose.yml up -d` |
 
-Every installer can skip the local model for a **Gemini-only** server. After installing, paste the server's own service-account key into the Server Console (create one per device with `deploy/new-server-key.sh <device>`), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices.
+[spot-solutions.web.app/install](https://spot-solutions.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Spot Solutions** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves.
 
 > [!IMPORTANT]
 > Upgrading from an older release? Stop the old server before the new one links. Servers from before multi-server support don't know about leases, so new servers pause and show a notice while one is online.
