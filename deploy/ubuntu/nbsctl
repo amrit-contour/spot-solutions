@@ -2,7 +2,7 @@
 # Nothing BOT Server tasks on Ubuntu/Debian, run as root by systemd: nothing-bot-server-task@update, nothing-bot-server-task@local-on, nothing-bot-server-task@local-off,
 # nothing-bot-server-task@move-data and nothing-bot-server-task@move-cleanup (move the data to another disk; delete the old copy after a verified move).
 #
-# The server console runs as the unprivileged "nbs" user. Its sudoers rule lets it start exactly these five units and
+# The server console runs as the unprivileged "nbs" user. Its sudoers rule lets it start exactly these units and
 # nothing else. This script lives in /usr/local/sbin (root-owned) and never runs anything from the nbs-writable
 # app folder: it downloads and verifies the release itself, unpacks it in a root-owned staging folder, then copies the
 # files into place. Dependencies are installed as "nbs". Progress goes to $DATA_DIR/update.json for the console.
@@ -55,6 +55,9 @@ envset() { # envset KEY VALUE: keeps the file's owner and 600 mode
   cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
   [[ "$NO_SYSTEMD" == 1 ]] || { chown "$SVC_USER:$SVC_USER" "$ENV_FILE"; chmod 600 "$ENV_FILE"; }
 }
+# The owner pressed "Stop server" in the console: it sets NBS_WORKER_STOPPED=1 in .env and disables the unit. Nothing here starts it again.
+worker_stopped() { [[ "$(envget NBS_WORKER_STOPPED)" =~ ^(1|true|yes)$ ]]; }
+restart_worker() { if worker_stopped; then echo "(skip) the worker was stopped from the console; it stays stopped"; else sysctl_ restart nothing-bot-server-worker || true; fi; }
 no_local() { [[ "$(envget NBS_NO_LOCAL_MODEL)" =~ ^(1|true|yes)$ ]]; }
 model_name() { local m; m="$(envget NBS_LOCAL_MODEL)"; [[ "$m" =~ ^[A-Za-z0-9._:/-]{1,100}$ ]] || m="${1:-gemma3:4b}"; echo "$m"; }
 
@@ -66,7 +69,7 @@ progress running "Starting"
 write_sudoers() {
   [[ "$NO_SYSTEMD" == 1 ]] && return 0
   local f=/etc/sudoers.d/nothing-bot-server-console
-  printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service\n' "$SVC_USER" > "$f.new"
+  printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl disable --now nothing-bot-server-worker, /usr/bin/systemctl enable --now nothing-bot-server-worker, /usr/bin/systemctl kill --signal=SIGKILL nothing-bot-server-worker, /usr/bin/systemctl disable --now ollama, /usr/bin/systemctl enable --now ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service\n' "$SVC_USER" > "$f.new"
   chmod 440 "$f.new"
   if visudo -cf "$f.new" >/dev/null 2>&1; then mv -f "$f.new" "$f"; else rm -f "$f.new"; fi
 }
@@ -103,7 +106,7 @@ if [[ "$TASK" == local-off ]]; then
   progress running "Turning the local model off"
   envset NBS_NO_LOCAL_MODEL 1
   sysctl_ disable --now ollama >/dev/null 2>&1 || true
-  sysctl_ restart nothing-bot-server-worker || true
+  restart_worker
   progress done "Local model off"
   exit 0
 fi
@@ -122,7 +125,7 @@ if [[ "$TASK" == local-on ]]; then
   pull_model "$(model_name)"
   envset NBS_NO_LOCAL_MODEL 0
   progress running "Restarting the worker"
-  sysctl_ restart nothing-bot-server-worker || true
+  restart_worker
   progress done "Local model on"
   exit 0
 fi
@@ -170,7 +173,7 @@ if [[ "${NBS_SKIP_DEPS:-0}" != 1 ]] && [[ "$OLD_LOCK" != "$NEW_LOCK" || ! -d "$A
 fi
 
 progress running "Restarting the worker and console"
-sysctl_ restart nothing-bot-server-worker || true
+restart_worker
 if ! no_local; then
   # The worker is already back on the new code; now the local model (a no-op when it's current).
   pull_model "$(model_name "${LMODEL:-gemma3:4b}")"

@@ -20,6 +20,7 @@ import { createAi } from "./ai.mjs";
 import { createLive } from "./live.mjs";
 import { createStorage } from "./storageview.mjs";
 import { createBrowser } from "./fsbrowse.mjs";
+import { createWorkerControl, isStopped } from "./control.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 
 const exec = promisify(execFile);
@@ -108,6 +109,8 @@ async function isActive(unit) {
 const DRY = process.env.NBS_CONSOLE_DRY_RUN === "1";
 async function restart(unit) {
   if (DRY) return null;
+  // A stopped server stays stopped: saving a key or a setting restarts the worker only when it is meant to be running.
+  if (unit === "nothing-bot-server-worker" && isStopped(readEnv())) return null;
   if (MAC) return sh("launchctl", ["kickstart", "-k", `${gui()}/${macLabel(unit)}`], 30000);
   if (!WIN) return sh("sudo", ["-n", "/usr/bin/systemctl", "restart", unit], 30000);
   if (unit === "ollama") {
@@ -116,6 +119,20 @@ async function restart(unit) {
   // The launcher loop starts the worker again within ~10 s.
   return ps(`${WIN_WORKER} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`, 30000);
 }
+/** Like sh(), but with an environment and a success flag, and never throws: what worker control (control.mjs) runs. */
+async function runCmd(cmd, args, { timeout = 15000, env } = {}) {
+  try {
+    const { stdout } = await exec(cmd, args, { timeout, maxBuffer: 2 << 20, env: env ? { ...process.env, ...env } : process.env });
+    return { ok: true, out: stdout.trim() };
+  } catch (e) {
+    return { ok: false, out: (e.stdout ?? "").toString().trim() };
+  }
+}
+// Stop server / Start server: control.mjs does the platform work; the flag it keeps in .env is respected by the launchers and updaters.
+const workerCtl = createWorkerControl({
+  platform: process.platform, uid: process.getuid?.() ?? 0, home: os.homedir(), dataDir: DATA, chromeDir: process.env.PUPPETEER_CACHE_DIR ?? "",
+  run: runCmd, active: (svc) => isActive(svc === "ollama" ? "ollama" : "nothing-bot-server-worker"), readEnv, writeEnv, dry: DRY,
+});
 function tailFile(file, bytes = 24000) {
   if (!existsSync(file)) return null;
   const size = statSync(file).size;
@@ -226,6 +243,8 @@ async function status() {
     disk: d,
     storage: { dir: DATA, free: d?.free ?? null, total: d?.total ?? null, low: d?.free != null && d.free < LOW_DISK_BYTES },
     services: { worker, ollama: ollamaSvc },
+    // "running" | "stopping" | "stopped" | "starting" | "down" (should be running and isn't); stopped means the owner pressed Stop.
+    workerControl: await workerCtl.view(),
     localModel: !noLocalModel(),
     ollama: o,
     config: {
@@ -477,10 +496,23 @@ createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
 
+    // Stop or start the WhatsApp worker (and optionally the local model). Returns the new state, the same on every platform.
+    if (url.pathname === "/api/worker" && req.method === "POST") {
+      const b = await body(req);
+      if (b.action !== "stop" && b.action !== "start") return json(res, 400, { error: "action must be stop or start" });
+      if (b.action === "start" && !existsSync(KEY_FILE)) return json(res, 400, { error: "This server isn't connected yet, so there is nothing to start." });
+      try {
+        return json(res, 200, { ok: true, ...(await workerCtl.act(b.action, { models: b.models === true && !noLocalModel() })) });
+      } catch (e) {
+        return json(res, 409, { error: e.message });
+      }
+    }
+
     if (url.pathname === "/api/restart" && req.method === "POST") {
       const { service } = await body(req);
       if (service === "ollama" && noLocalModel()) return json(res, 400, { error: "This server runs without a local model (Gemini only)." });
       const unit = service === "ollama" ? "ollama" : "nothing-bot-server-worker";
+      if (unit !== "ollama" && isStopped(readEnv())) return json(res, 409, { error: "The server is stopped. Press Start server first." });
       await restart(unit);
       return json(res, 200, { ok: true, active: await isActive(unit) });
     }

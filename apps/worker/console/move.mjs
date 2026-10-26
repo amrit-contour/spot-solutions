@@ -162,7 +162,7 @@ export async function runMove({ ctx, request, ops, io, report = () => {}, now = 
     step("Starting the worker", 82);
     await ops.start({ models: Boolean(plan.models?.separate), target });
 
-    const hasKey = existsSync(path.join(target, "service-account.json"));
+    const hasKey = existsSync(path.join(target, "service-account.json")) && !workerStopped(ctx);
     if (hasKey) {
       step("Waiting for WhatsApp to come back", 88);
       const h = await io.health({ file: path.join(target, "live-stats.json"), since: sinceStart, expectReady: before.ready });
@@ -276,6 +276,41 @@ export function browserPidsOn(psOut, dir, selfPid = process.pid) {
   return [...hit];
 }
 
+/**
+ * The Windows stop, shared with the console's "Stop server" (control.mjs): ends the worker's scheduled task, the launcher loop
+ * (it respawns the worker ~10 s after it dies) and the worker's process tree (taskkill /T /F), then waits up to ~40 s until no browser
+ * or worker is left. Reads NBS_OLD (a folder whose browser profiles must go), NBS_CHROME and NBS_STOP_MODELS=1 (also stop Ollama).
+ * Prints STOPPED or STILL_RUNNING.
+ */
+export const WIN_STOP_SCRIPT = `
+$ErrorActionPreference = 'SilentlyContinue'
+$old = $env:NBS_OLD.TrimEnd('\\')
+$chrome = $env:NBS_CHROME
+$ci = [StringComparison]::OrdinalIgnoreCase
+function Kill-Tree($id) { & taskkill.exe /PID $id /T /F *> $null; Stop-Process -Id $id -Force }
+# Wildcard-free matching (a folder name with [ ] must not break it). Chrome, Edge or Chromium running from our profile folders,
+# including the crash handler; their helpers die with them (taskkill /T).
+function Get-Browsers { Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.Name -match '^(chrome|chromium|msedge|chrome_crashpad_handler|crashpad_handler)\\.exe$' -and (($chrome -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($chrome + '\\', $ci)) -or ($old -and $_.CommandLine -and $_.CommandLine.IndexOf($old, $ci) -ge 0)) } }
+function Get-Workers { Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*NothingBotServer*' -and $_.CommandLine -notlike '*console*server.mjs*' -and $_.CommandLine -notlike '*move.mjs*' } }
+Stop-ScheduledTask -TaskName NothingBotServerWorker
+# The launcher loop starts the worker again ~10 s after it dies, and that new browser would write into the folder being copied: it goes first.
+Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf('run-worker.ps1', $ci) -ge 0 } | ForEach-Object { Kill-Tree $_.ProcessId }
+Get-Workers | ForEach-Object { Kill-Tree $_.ProcessId }
+if ($env:NBS_STOP_MODELS -eq '1') { Get-Process -Name 'ollama','ollama app' | Stop-Process -Force }
+# Wait (up to ~40 s) until no browser or worker is left, killing whatever shows up again.
+for ($i = 0; $i -lt 40; $i++) {
+  $left = @(Get-Browsers) + @(Get-Workers)
+  if (-not $left.Count) { break }
+  $left | ForEach-Object { Kill-Tree $_.ProcessId }
+  Start-Sleep 1
+}
+if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNING' } else { Write-Output 'STOPPED' }`;
+/** True when the owner pressed "Stop server" in the console (NBS_WORKER_STOPPED=1 in .env): a move must not start the worker or wait for it. */
+export function workerStopped(ctx) {
+  try { return /^NBS_WORKER_STOPPED=(1|true|yes)\s*$/im.test(readFileSync(ctx.envFile, "utf8")); } catch { return false; }
+}
+export const winStopped = (out) => /STOPPED/.test(String(out));
+
 export function makeOps(ctx, { dry = false, log = console.log } = {}) {
   const win = ctx.platform === "win32", mac = ctx.platform === "darwin";
   const m = modFor(ctx.platform);
@@ -303,31 +338,9 @@ export function makeOps(ctx, { dry = false, log = console.log } = {}) {
   return {
     async stop({ from, models }) {
       if (win) {
-        const out = await ps(`
-$ErrorActionPreference = 'SilentlyContinue'
-$old = $env:NBS_OLD.TrimEnd('\\')
-$chrome = $env:NBS_CHROME
-$ci = [StringComparison]::OrdinalIgnoreCase
-function Kill-Tree($id) { & taskkill.exe /PID $id /T /F *> $null; Stop-Process -Id $id -Force }
-# Wildcard-free matching (a folder name with [ ] must not break it). Chrome, Edge or Chromium running from our profile folders,
-# including the crash handler; their helpers die with them (taskkill /T).
-function Get-Browsers { Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.Name -match '^(chrome|chromium|msedge|chrome_crashpad_handler|crashpad_handler)\\.exe$' -and (($chrome -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($chrome + '\\', $ci)) -or ($_.CommandLine -and $_.CommandLine.IndexOf($old, $ci) -ge 0)) } }
-function Get-Workers { Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*NothingBotServer*' -and $_.CommandLine -notlike '*console*server.mjs*' -and $_.CommandLine -notlike '*move.mjs*' } }
-Stop-ScheduledTask -TaskName NothingBotServerWorker
-# The launcher loop starts the worker again ~10 s after it dies, and that new browser would write into the folder being copied: it goes first.
-Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf('run-worker.ps1', $ci) -ge 0 } | ForEach-Object { Kill-Tree $_.ProcessId }
-Get-Workers | ForEach-Object { Kill-Tree $_.ProcessId }
-if ($env:NBS_STOP_MODELS -eq '1') { Get-Process -Name 'ollama','ollama app' | Stop-Process -Force }
-# Wait (up to ~40 s) until no browser or worker is left, killing whatever shows up again.
-for ($i = 0; $i -lt 40; $i++) {
-  $left = @(Get-Browsers) + @(Get-Workers)
-  if (-not $left.Count) { break }
-  $left | ForEach-Object { Kill-Tree $_.ProcessId }
-  Start-Sleep 1
-}
-if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNING' } else { Write-Output 'STOPPED' }`,
+        const out = await ps(WIN_STOP_SCRIPT,
           { NBS_CHROME: ctx.chrome, NBS_OLD: from, NBS_STOP_MODELS: models ? "1" : "0" });
-        if (!dry && !/STOPPED/.test(String(out)) ) throw new Error(STILL_CLOSING);
+        if (!dry && !winStopped(out)) throw new Error(STILL_CLOSING);
       } else if (mac) {
         if (!dry) {
           await sh("launchctl", ["bootout", `${gui}/app.nothingbot.server.worker`]);
@@ -396,10 +409,11 @@ if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNIN
 
     async start({ models }) {
       if (dry) return D("start worker and restart console");
+      const keepStopped = workerStopped(ctx); // the owner stopped the server: a move doesn't start it
       if (win) {
         await ps(`
 $ErrorActionPreference = 'SilentlyContinue'
-Start-ScheduledTask -TaskName NothingBotServerWorker
+${keepStopped ? "" : "Start-ScheduledTask -TaskName NothingBotServerWorker"}
 # The console's launcher loop keeps the old environment, so restart the whole task to pick up the new folder.
 Stop-ScheduledTask -TaskName NothingBotServerConsole
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*NothingBotServer*console*server.mjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
@@ -409,7 +423,7 @@ Start-ScheduledTask -TaskName NothingBotServerConsole`);
         if (existsSync(ctl)) await sh("/bin/bash", [ctl, "restart", "all"], { strict: true });
       } else {
         if (models) await sh("systemctl", ["start", "ollama"]);
-        await sh("systemctl", ["restart", "nothing-bot-server-worker"]);
+        if (!keepStopped) await sh("systemctl", ["restart", "nothing-bot-server-worker"]);
         await sh("systemctl", ["restart", "nothing-bot-server-console"]);
       }
     },

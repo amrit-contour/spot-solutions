@@ -170,7 +170,7 @@ EOF
 
 # The console may restart the worker and Ollama, and start the five tasks above: nothing else.
 cat > /etc/sudoers.d/nothing-bot-server-console <<EOF
-${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service
+${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl disable --now nothing-bot-server-worker, /usr/bin/systemctl enable --now nothing-bot-server-worker, /usr/bin/systemctl kill --signal=SIGKILL nothing-bot-server-worker, /usr/bin/systemctl disable --now ollama, /usr/bin/systemctl enable --now ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service
 EOF
 chmod 440 /etc/sudoers.d/nothing-bot-server-console
 visudo -cf /etc/sudoers.d/nothing-bot-server-console >/dev/null
@@ -233,7 +233,10 @@ chmod 755 /usr/local/bin/nbs-console-url
 systemctl daemon-reload
 systemctl enable nothing-bot-server-worker nothing-bot-server-console >/dev/null
 systemctl restart nothing-bot-server-console
-[[ -f "${DATA_DIR}/service-account.json" ]] && systemctl restart nothing-bot-server-worker
+# A server the owner stopped from the console stays stopped (NBS_WORKER_STOPPED=1 in .env); Start server in the console undoes it.
+if grep -Eqi '^NBS_WORKER_STOPPED=(1|true|yes)[[:space:]]*$' "${ENV_FILE}" 2>/dev/null; then
+  systemctl disable --now nothing-bot-server-worker >/dev/null 2>&1 || true
+elif [[ -f "${DATA_DIR}/service-account.json" ]]; then systemctl restart nothing-bot-server-worker; fi
 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then ufw allow ${PORT}/tcp >/dev/null && ok "Opened port ${PORT} in ufw"; fi
 
 step "Keep running with the lid closed"

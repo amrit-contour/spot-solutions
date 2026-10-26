@@ -152,8 +152,8 @@ write_agents() {
     loaded app.nothingbot.server.ollama && launchctl bootout "gui/$UID_N/app.nothingbot.server.ollama" 2>/dev/null || true
     rm -f "$AGENTS/app.nothingbot.server.ollama.plist"
   elif ! external_ollama; then plist app.nothingbot.server.ollama "$(find_ollama)" serve; else rm -f "$AGENTS/app.nothingbot.server.ollama.plist"; fi
-  # The worker waits for a Firebase key; the console is where you add it.
-  plist app.nothingbot.server.worker /bin/bash -c "while [ ! -f '$DATA/service-account.json' ]; do sleep 10; done; exec '$node' '$APP/apps/worker/node_modules/tsx/dist/cli.mjs' --env-file-if-exists=.env src/index.ts"
+  # The worker waits for a Firebase key (the console is where you add it) and idles while the owner has stopped the server.
+  plist app.nothingbot.server.worker /bin/bash -c "while [ ! -f '$DATA/service-account.json' ] || grep -Eqi '^NBS_WORKER_STOPPED=(1|true|yes)[[:space:]]*\$' '$APP/apps/worker/.env' 2>/dev/null; do sleep 10; done; exec '$node' '$APP/apps/worker/node_modules/tsx/dist/cli.mjs' --env-file-if-exists=.env src/index.ts"
   # caffeinate holds a "don't sleep" assertion for exactly as long as the server runs.
   plist app.nothingbot.server.console /usr/bin/caffeinate -is "$node" "$APP/apps/worker/console/server.mjs"
   plist_task
@@ -174,6 +174,9 @@ retire_legacy() {
   return 0
 }
 
+# The owner pressed "Stop server" in the console (it sets NBS_WORKER_STOPPED=1 in .env and unloads + disables the worker agent).
+# start, setup and update then leave the worker alone, and the agent's own wrapper idles if it is ever loaded anyway.
+worker_stopped() { grep -Eqi '^NBS_WORKER_STOPPED=(1|true|yes)[[:space:]]*$' "$APP/apps/worker/.env" 2>/dev/null; }
 loaded() { launchctl print "gui/$UID_N/$1" >/dev/null 2>&1; }
 running() { launchctl print "gui/$UID_N/$1" 2>/dev/null | grep -q "state = running"; }
 
@@ -265,6 +268,7 @@ cmd_start() {
   [[ -f "$AGENTS/app.nothingbot.server.console.plist" ]] || write_agents
   for l in "${LABELS[@]}"; do
     [[ -f "$AGENTS/$l.plist" ]] || continue
+    [[ "$l" == app.nothingbot.server.worker ]] && worker_stopped && continue   # stopped from the console: stays stopped until Start server
     loaded "$l" || launchctl bootstrap "gui/$UID_N" "$AGENTS/$l.plist" 2>/dev/null || true
     launchctl kickstart "gui/$UID_N/$l" 2>/dev/null || true
   done

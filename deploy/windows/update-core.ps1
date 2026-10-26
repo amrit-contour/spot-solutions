@@ -57,6 +57,24 @@ function Set-EnvValue([string]$Key, [string]$Value) {
   if ($text -match "(?m)^$Key=") { $text = $text -replace "(?m)^$Key=.*", "$Key=$Value" } else { $text = $text.TrimEnd() + "`r`n$Key=$Value`r`n" }
   Set-Content -Encoding ASCII $EnvFile $text
 }
+# A server the owner stopped (console: Stop server) stays stopped: an update, the local-model switch or a move never starts it.
+function Test-WorkerStopped { return ((Get-EnvValue "NBS_WORKER_STOPPED") -match '^(1|true|yes)$') }
+function Start-Worker {
+  if (Test-WorkerStopped) { return }
+  Enable-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue | Out-Null
+  Start-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue
+}
+# Launchers from before "Stop server" don't look at the flag: teach them (it takes effect when the loop is next started).
+function Update-Launcher {
+  $f = "$Root\run-worker.ps1"
+  if (-not (Test-Path $f)) { return }
+  $t = Get-Content $f -Raw
+  if ($t -match 'NBS_WORKER_STOPPED') { return }
+  $fn = "function Stopped { try { (Get-Content '$EnvFile' -Raw) -match '(?m)^NBS_WORKER_STOPPED=(1|true|yes)\s*$' } catch { `$false } }"
+  $t = $t.Replace("function No-Local {", "$fn`r`nfunction No-Local {")
+  $t = [regex]::Replace($t, '(?m)^(while \(\$true\) \{)\r?$', '$1' + "`r`n  if (Stopped) { Start-Sleep 10; continue }")
+  Set-Content -Encoding UTF8 $f $t
+}
 function Test-NoLocal { return ((Get-EnvValue "NBS_NO_LOCAL_MODEL") -match '^(1|true|yes)$') }
 function Get-ModelName([string]$Default = "gemma3:4b") {
   $m = Get-EnvValue "NBS_LOCAL_MODEL"
@@ -115,7 +133,7 @@ try {
     $env:NBS_ROOT = $Root
     & "$NodeDir\node.exe" $mv $Task
     $moveCode = $LASTEXITCODE
-    if ($moveCode -ne 0) { Start-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue }   # whatever happened, never leave the server stopped
+    if ($moveCode -ne 0) { Start-Worker }   # whatever happened, never leave the server stopped
     exit $moveCode
   }
 
@@ -125,7 +143,7 @@ try {
     Set-EnvValue "NBS_NO_LOCAL_MODEL" "1"
     Stop-WorkerProcesses
     Get-Process -Name "ollama", "ollama app" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-ScheduledTask -TaskName $WorkerTask
+    Start-Worker
     Set-Progress "done" "Local model off"
     return
   }
@@ -151,7 +169,7 @@ try {
     Invoke-Pull (Get-ModelName)
     Set-EnvValue "NBS_NO_LOCAL_MODEL" "0"
     Set-Progress "running" "Restarting the worker"
-    Start-ScheduledTask -TaskName $WorkerTask
+    Start-Worker
     Restart-Console   # so its Ollama path is current
     Set-Progress "done" "Local model on"
     return
@@ -203,9 +221,10 @@ try {
     if ($code -ne 0) { throw "Installing packages failed (see the console log). Try again." }
   }
   Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+  Update-Launcher
 
   Set-Progress "running" "Restarting the worker"
-  Start-ScheduledTask -TaskName $WorkerTask
+  Start-Worker
   if (-not (Test-NoLocal)) { Invoke-Pull (Get-ModelName $lmodel) }
   Set-Progress "done" "Updated to $latest"
   Restart-Console   # last: the console serves the new page once its loop starts it again
@@ -213,6 +232,6 @@ try {
 catch {
   Set-Progress "error" "Failed" $_.Exception.Message
   # Whatever failed, never leave the server stopped.
-  Start-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue
+  Start-Worker
   exit 1
 }

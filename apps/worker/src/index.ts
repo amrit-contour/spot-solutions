@@ -14,6 +14,7 @@ import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } f
 import { SERVER_ID, adminConfigured, watchServerCommands, writeServerStatus } from "./stats.ts";
 import { startScheduler } from "./scheduler.ts";
 import { startRetention } from "./retention.ts";
+import { readFileSync } from "node:fs";
 
 const commandListeners = new Map<string, () => void>();
 const HEARTBEAT_MS = 30_000;
@@ -160,6 +161,13 @@ async function main() {
   };
   // SIGHUP too (terminal closed, ssh dropped): puppeteer's own handlers are off, so this drain is the only thing that closes Chromium cleanly.
   for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => void shutdown());
+  // Windows has no SIGTERM for a console-less process, so "Stop server" in the console sets NBS_WORKER_STOPPED=1 in .env and the
+  // worker closes itself properly (logins uploaded, leases released) when it sees it. Elsewhere the supervisor sends SIGTERM.
+  if (process.platform === "win32") {
+    setInterval(() => {
+      try { if (/^NBS_WORKER_STOPPED=(1|true|yes)\s*$/im.test(readFileSync(process.env.NBS_ENV_FILE ?? ".env", "utf8"))) void shutdown(0); } catch { /* no .env: nothing to stop for */ }
+    }, 3000).unref();
+  }
 }
 
 main().catch((e) => {

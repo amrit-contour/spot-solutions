@@ -240,6 +240,7 @@ $env:OLLAMA_KEEP_ALIVE = '24h'
 $env:PUPPETEER_CACHE_DIR = '__CHROME__'
 $env:Path = '__NODEDIR__;' + $env:Path
 function Ollama-Up { try { Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null; $true } catch { $false } }
+function Stopped { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_WORKER_STOPPED=(1|true|yes)\s*$' } catch { $false } }
 function No-Local { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_NO_LOCAL_MODEL=(1|true|yes)\s*$' } catch { $false } }
 function Find-Ollama {
   foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { return $c } }
@@ -249,7 +250,8 @@ function Find-Ollama {
 }
 Set-Location '__APPDIR__\apps\worker'
 while ($true) {
-  # Idle until the server is connected (a key exists).
+  # Idle while the owner has stopped the server (console: Stop server), and until the server is connected (a key exists).
+  if (Stopped) { Start-Sleep 10; continue }
   if (-not (Test-Path '__KEYFILE__')) { Start-Sleep 10; continue }
   if (-not (No-Local) -and -not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 } }
   "$(Get-Date -Format s) starting worker" | Out-File -Append -Encoding utf8 '__DATADIR__\worker.log'
