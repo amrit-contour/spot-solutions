@@ -70,7 +70,7 @@ export function CompactButton({ icon: I, label, variant = "tonal", size = "sm", 
         title={rest.title ?? label}
         disabled={rest.disabled || loading}
         onClick={rest.onClick}
-        className={buttonClass({ variant, size: "md", className: cx("size-10 px-0! sm:hidden", className) })}
+        className={buttonClass({ variant, size: "md", className: cx("size-9 flex-none px-0! sm:hidden", className) })}
       >
         {loading ? <Spinner className="size-5" /> : <I className="icon size-5" />}
       </button>

@@ -18,18 +18,22 @@ function ServerRow({ s, now }: { s: ServerStatus; now: number }) {
   const pct = f ? Math.min(1, f.hosting / Math.max(1, f.maxAccounts)) : 0;
   return (
     <li className="flex flex-col gap-2 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      {/* Name, status and the one action always share the first line; chips wrap underneath. */}
+      <div className="flex items-center gap-3">
         <span className={cx("size-2.5 flex-none rounded-full", online ? "bg-ok" : "bg-error")} />
-        <span className="min-w-0 truncate type-body-l">{s.hostname}</span>
-        <Chip>{platformName(s.platform)}</Chip>
-        {f?.draining && <Chip tone="tertiary">Draining</Chip>}
-        {f && <Chip tone={f.localModel ? "success" : "neutral"} icon={f.localModel ? IconCpu : undefined}>{f.localModel ? "Local model" : "No local model"}</Chip>}
-        <span className="ml-auto type-body-s text-on-surface-variant">{online ? "Online" : `Offline · ${timeAgo(s.lastSeen, now)}`}</span>
+        <span className="min-w-0 flex-1 truncate type-body-l">{s.hostname}</span>
+        <span className="flex-none type-body-s text-on-surface-variant">{online ? "Online" : `Offline · ${timeAgo(s.lastSeen, now)}`}</span>
         <RemoveServerButton server={s} />
       </div>
+      <div className="flex flex-wrap items-center gap-1.5 pl-5.5">
+        <Chip>{platformName(s.platform)}</Chip>
+        {f?.draining && <Chip tone="tertiary">Draining</Chip>}
+        {s.disk && s.disk.free < 2 * 1024 ** 3 && <Chip tone="error">Low disk · {(s.disk.free / 1024 ** 3).toFixed(1)} GB free</Chip>}
+        {f && <Chip tone={f.localModel ? "success" : "neutral"} icon={f.localModel ? IconCpu : undefined}>{f.localModel ? "Local model" : "No local model"}</Chip>}
+      </div>
       {f ? (
-        <div className="flex items-center gap-3">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-highest">
+        <div className="flex flex-col gap-1.5 pl-5.5 sm:flex-row sm:items-center sm:gap-3">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-highest sm:flex-1">
             <div className={cx("h-full rounded-full transition-[width] duration-500", pct >= 1 ? "bg-error" : pct > 0.75 ? "bg-tertiary" : "bg-primary")} style={{ width: `${pct * 100}%` }} />
           </div>
           <span className="type-body-s text-on-surface-variant tabular">

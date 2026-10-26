@@ -123,7 +123,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
  * Every page's title bar. It stays pinned at the top while the page scrolls, shrinking to a compact bar,
  * and publishes its height as --page-header-h so bars below it (StickyBar, Requests tabs) pin just under it.
  */
-export function PageHeader({ title, subtitle, actions, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, trailing, children }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
   const conn = useConnection();
   const ref = useRef<HTMLElement>(null);
   const [stuck, setStuck] = useState(false);
@@ -174,7 +174,10 @@ export function PageHeader({ title, subtitle, actions, children }: { title: Reac
       </div>
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
-          <h1 className={cx("text-balance", stuck ? "truncate type-title-l" : "type-headline-m sm:type-display-s")}>{title}</h1>
+          <div className="flex items-center gap-3">
+          <h1 className={cx("min-w-0 flex-1 text-balance", stuck ? "truncate type-title-l" : "type-headline-m sm:type-display-s")}>{title}</h1>
+          {trailing && <div className="flex flex-none items-center">{trailing}</div>}
+          </div>
           {subtitle && !stuck && <p className="mt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>}
         </div>
         {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}

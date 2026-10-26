@@ -18,7 +18,7 @@ import { ServerUpdate } from "../components/ServerUpdate";
 import { WipeDemoCard } from "../components/AdminDataTools";
 import { isAdmin, useAccessConfig } from "../lib/access";
 import { Avatar, Card, Chip, CompactButton, Empty, cx } from "../components/ui";
-import { IconComics, IconCpu, IconRefresh, IconServer } from "../components/icons";
+import { IconComics, IconCpu, IconLightbulb, IconRefresh, IconServer } from "../components/icons";
 
 const ONLINE_MS = 90_000;
 
@@ -231,7 +231,7 @@ export function ServerPage() {
   const admin = isAdmin(useAccessConfig(), user.email);
   return (
     <div className="w-full">
-      <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" actions={admin ? <Link to="/help" className="state-layer rounded-full border border-outline-variant px-4 py-2 type-label-l text-on-surface-variant">Server guide</Link> : undefined} />
+      <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" trailing={admin ? <Link to="/help" aria-label="Server guide" title="Server guide" className="state-layer inline-flex h-10 items-center gap-2 rounded-full border border-outline-variant px-3 type-label-l text-on-surface-variant sm:px-4"><IconLightbulb className="icon size-5" /><span className="max-sm:hidden">Server guide</span></Link> : undefined} />
       <div className="flex flex-col gap-10 px-4 pb-12 sm:px-8">
         {admin && <AddServerCard />}
         {admin && <FleetView servers={servers} />}
