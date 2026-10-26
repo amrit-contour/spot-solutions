@@ -19,6 +19,7 @@ const { Client, LocalAuth } = WAWebJS;
 export { DATA_DIR };
 
 const BACKUP_EVERY_MS = 6 * 3600_000;
+const READY_WATCHDOG_MS = 3 * 60_000;
 const MAX_PREPARE_FAILS = 5; // failed login restores (each already retried 4 times) before a stale local copy is allowed
 const PREPARE_RETRY_MS = 30_000;
 const run = promisify(execFile);
@@ -99,6 +100,8 @@ class SessionManager {
   private stopping = new Map<string, WAWebJS.Client>(); // clients whose destroy() is still running, so kill() can reach them
   private ready = new Set<string>();
   private restarting = new Set<string>();
+  /** Times in a row a session signed in but never became ready (see the watchdog on "authenticated"). */
+  private stuck = new Map<string, number>();
   private restoredOnce = new Set<string>();
   private backupTimers = new Map<string, NodeJS.Timeout>();
 
@@ -221,10 +224,23 @@ class SessionManager {
       sawQr = true;
       void setState(uid, { status: "qr", qr });
     });
-    client.on("authenticated", () => void setState(uid, { status: "authenticated", qr: null }));
+    client.on("authenticated", () => {
+      void setState(uid, { status: "authenticated", qr: null });
+      // Signed in but never "ready": WhatsApp Web loaded before whatsapp-web.js could hook in (an upstream race).
+      // Nothing retries that on its own, so reload the browser rather than sit there for hours.
+      setTimeout(() => {
+        if (this.clients.get(uid) !== client || this.ready.has(uid)) return;
+        const n = (this.stuck.get(uid) ?? 0) + 1;
+        this.stuck.set(uid, n);
+        console.warn(`[session] ${uid} signed in but not ready after ${READY_WATCHDOG_MS / 60_000} min; reloading (try ${n})`);
+        void this.stop(uid).then(() => this.scheduleRestart(uid, Math.min(5, n) * 15_000));
+        if (n === 3) void notice(uid, "warn", "WhatsApp signed in but keeps failing to finish loading on the server. It keeps retrying; if this lasts, restart the server from its console.");
+      }, READY_WATCHDOG_MS).unref();
+    });
     client.on("auth_failure", (m) => void setState(uid, { status: "error", error: `Auth failed: ${m}` }));
     client.on("ready", async () => {
       this.ready.add(uid);
+      this.stuck.delete(uid);
       const me = client.info;
       await setState(uid, { status: "ready", qr: null, phone: me?.wid?.user ?? null, pushName: me?.pushname ?? null, error: null });
       await userRef(uid).set({ waEnabled: true, selfId: me?.wid?._serialized ?? null }, { merge: true });
