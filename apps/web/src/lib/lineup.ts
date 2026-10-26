@@ -63,7 +63,9 @@ export async function placeComic(uid: string, week: string, show: Show, comicId:
   }
   const cur = lineups.find((l) => l.showId === show.id);
   if (cur?.slots.some((s) => s.comicId === comicId)) return;
-  await setSlots(uid, week, show, [...(cur?.slots ?? []), { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null }]);
+  // Added after the lineup was confirmed: a last-minute (ad hoc) spot. Kept in history, never counted for the cooldown.
+  const adhoc = cur?.status === "confirmed";
+  await setSlots(uid, week, show, [...(cur?.slots ?? []), { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null, ...(adhoc && { adhoc: true }) }]);
   await markRequest(uid, week, comicId, true);
 }
 
@@ -169,8 +171,10 @@ export async function placeAsTold(uid: string, week: string, show: Show, comicId
     const comic = (await tx.get(comicRef)).data() as Comic | undefined;
     const plan = planReconcilePlace({ lineup: cur ?? null, show, comicId, markTold: true, now: Date.now() });
     if (plan.outcome === "full" || plan.outcome === "called_off") return plan.outcome;
-    tx.set(ref, { ...(cur ?? blank(week, show)), slots: plan.slots, ...(plan.sent ? { sent: plan.sent } : {}) });
-    tx.set(comicRef, { lastPerformedWeek: week, history: withHistory(comic?.history, { date: dateInWeek(week, show.weekday), showId: show.id, showName: show.name, status: "confirmed" }) }, { merge: true });
+    const adhoc = cur?.status === "confirmed" && !cur.slots.some((x) => x.comicId === comicId);
+    const slots = adhoc ? plan.slots.map((x) => (x.comicId === comicId ? { ...x, adhoc: true } : x)) : plan.slots;
+    tx.set(ref, { ...(cur ?? blank(week, show)), slots, ...(plan.sent ? { sent: plan.sent } : {}) });
+    tx.set(comicRef, { ...(!adhoc && { lastPerformedWeek: week }), history: withHistory(comic?.history, { date: dateInWeek(week, show.weekday), showId: show.id, showName: show.name, status: "confirmed", ...(adhoc && { adhoc: true }) }) }, { merge: true });
     return plan.outcome;
   });
   if (outcome === "full") throw new Error(`${show.name} is full`);

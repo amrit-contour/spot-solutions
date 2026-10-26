@@ -13,7 +13,9 @@ import {
   clampScanDays,
   SCAN_DAYS_MAX,
   SCAN_DAYS_MIN,
+  COOLDOWN_MAX_WEEKS,
   GROUP_POST_KEYS,
+  cooldownWeeks,
   MESSAGE_GROUPS,
   MESSAGE_TYPES,
   messageRich,
@@ -118,6 +120,9 @@ const EXTRA_VARIABLES = [
   { key: "lastShow", label: "Last show they did" },
   { key: "lastDate", label: "Date of their last show" },
   { key: "opens", label: "When requests open" },
+  { key: "lastWhen", label: "When they were last up" },
+  { key: "askAgain", label: "When they can ask again" },
+  { key: "pocs", label: "POCs (tagged)" },
   { key: "lineup", label: "Running order" },
   { key: "count", label: "Number of comics" },
 ];
@@ -389,12 +394,30 @@ function RulesSection() {
             </div>
           )}
         </div>
-        <SettingRow label="Skip last week's comics" info={<>Hold requests from anyone who performed last week, so newer faces get a shot.</>}>
-            <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Skip last week's comics" />
+        <SettingRow label="Hold recent comics" info={<>Hold requests from anyone who did a spot in the last few weeks, so newer faces get a shot. Ad hoc spots (offers you sent, or spots added after confirming) never count.</>}>
+            <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Hold recent comics" />
           </SettingRow>
+        {r.skipLastWeek && (
+          <SettingRow label="Recent means within" info={<>1 week is last week only.</>}>
+            <Stepper value={cooldownWeeks(r)} onChange={(v) => saveSettings({ rules: { ...r, cooldownWeeks: v } })} min={1} max={COOLDOWN_MAX_WEEKS} suffix={cooldownWeeks(r) === 1 ? "week" : "weeks"} />
+          </SettingRow>
+        )}
         <SettingRow label="Tell held comics why" info={<>Off by default. When on, someone held by the request window or last week's rule gets one short reply saying why (edit the words in Messages → Held requests). Same safety as auto-acknowledge: clear asks only, fresh messages only, never businesses. Banned, ignored and hosts never get a reply.</>}>
-          <Switch checked={Boolean(settings.heldReplies?.enabled)} onChange={(v) => saveSettings({ heldReplies: { enabled: v } })} label="Tell held comics why" />
+          <Switch checked={Boolean(settings.heldReplies?.enabled)} onChange={(v) => saveSettings({ heldReplies: { ...settings.heldReplies, enabled: v } })} label="Tell held comics why" />
         </SettingRow>
+        {settings.heldReplies?.enabled && (
+          <SettingRow label="The reply" info={<>Draft for review: it waits in Updates → Needs a reply until you send it.</>}>
+            <Segmented
+              size="sm"
+              value={settings.heldReplies.mode ?? "send"}
+              onChange={(v) => saveSettings({ heldReplies: { enabled: true, mode: v } })}
+              options={[
+                { value: "send", label: "Send it" },
+                { value: "review", label: "Draft for review" },
+              ]}
+            />
+          </SettingRow>
+        )}
         <SettingRow label="Scan past messages: days to look back" info={<>The starting choice when you run Requests → Scan past messages. Spot Solutions only reads older DMs when you run that scan yourself.</>}>
           <Stepper value={clampScanDays(settings.scanDays)} onChange={(v) => saveSettings({ scanDays: v })} min={SCAN_DAYS_MIN} max={SCAN_DAYS_MAX} suffix="days" />
         </SettingRow>
@@ -437,7 +460,10 @@ function AfterShowSection() {
         </Field>
         <div className="grid gap-x-8 gap-y-2 rounded-lg bg-surface-container px-4 py-2 md:grid-cols-2">
           <SettingRow label="Spot offers expire after" info="Offer a spot from a show's menu on the Lineup page. No reply in time and the offer lapses.">
-            <Stepper value={settings.offers.expiryHours} onChange={(v) => saveSettings({ offers: { expiryHours: v } })} min={1} max={48} suffix="h" />
+            <Stepper value={settings.offers.expiryHours} onChange={(v) => saveSettings({ offers: { ...settings.offers, expiryHours: v } })} min={1} max={48} suffix="h" />
+          </SettingRow>
+          <SettingRow label="Offers to several: add the first yeses" info="When you offer a spot to several comics at once, the first yeses fill it on their own. Off: everyone who says yes comes to Updates and you pick; the rest are told it's filled. An offer to one comic always books on yes.">
+            <Switch checked={settings.offers.autoAdd !== false} onChange={(v) => saveSettings({ offers: { ...settings.offers, autoAdd: v } })} label="In an offer to several comics, add the first yeses automatically" />
           </SettingRow>
           <SettingRow label="Did the mic happen?" info="The morning after each show, Requests asks you. “No” stops it counting as anyone's spot.">
             <Switch checked={m.enabled} onChange={(v) => saveSettings({ micCheck: { ...m, enabled: v } })} label="Mic check" />
@@ -518,7 +544,7 @@ function MessageSection({ type }: { type: MessageKey }) {
           {m.group === "replies" && " Drafted under Updates → Needs a reply; nothing goes out until you send it, unless “Send without asking me” is on."}
         </>
       }
-      aside={held ? <Switch checked={!off} onChange={(v) => saveSettings({ heldReplies: { enabled: v } })} label="Tell held comics why" /> : undefined}
+      aside={held ? <Switch checked={!off} onChange={(v) => saveSettings({ heldReplies: { ...settings.heldReplies, enabled: v } })} label="Tell held comics why" /> : undefined}
     >
       <TemplateEditor
         value={messageRich(settings, type)}

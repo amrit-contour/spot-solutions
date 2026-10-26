@@ -154,10 +154,11 @@ export const MESSAGE_TYPES: readonly MessageType[] = [
   {
     key: "heldLastWeek",
     group: "held",
-    label: "Performed last week",
-    when: "They were up last week and “Hold last week's comics” is on.",
-    default: "Hey {{name}}, you were up last week, so I'm giving others a turn this time. Ask me again next week!",
-    vars: [],
+    label: "Performed recently",
+    when: "They did a spot within your cooldown (Request rules → Hold recent comics). Ad hoc spots don't count.",
+    default: "Hey {{name}}, you were up {{lastWhen}}, so I'm giving others a turn this time. Ask me again {{askAgain}}!",
+    vars: ["lastWhen", "askAgain", "lastShow", "lastDate"],
+    sample: { lastWhen: "last week", askAgain: "next week", lastShow: "Monday Mic", lastDate: "20 Oct" },
   },
   {
     key: "groupWelcome",

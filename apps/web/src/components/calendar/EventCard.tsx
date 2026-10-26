@@ -137,7 +137,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
       ) : (
         <ol className={cx("mt-3 flex flex-col gap-1.5", off && "opacity-60")}>
           {slots.map((s, i) => {
-            const pills = comicPills({ comic: comicsById.get(s.comicId), request: asks.find((r) => r.comicId === s.comicId), show, lastWeek, states: statesFor(s.comicId), days: false }, s.comicId);
+            const pills = comicPills({ comic: comicsById.get(s.comicId), request: asks.find((r) => r.comicId === s.comicId), show, lastWeek, states: statesFor(s.comicId), days: false, adhoc: s.adhoc }, s.comicId);
             return (
               <li key={s.comicId} className="flex h-10 items-center gap-2.5 rounded-md bg-surface-container pr-3 pl-2">
                 <span className="w-4 flex-none text-center type-label-m text-on-surface-variant tabular">{i + 1}</span>

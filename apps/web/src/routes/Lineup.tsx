@@ -217,7 +217,10 @@ export function LineupBoard() {
     const keepMinutes = (show: Show, ids: string[]): Slot[] => {
       const prev = new Map<string, Slot>();
       for (const l of lineups.data) for (const s of l.slots) prev.set(s.comicId, s);
-      return ids.map((cid) => ({ comicId: cid, minutes: prev.get(cid)?.minutes ?? (show.includeSlotTime ? (show.defaultMinutes ?? null) : null) }));
+      const here = lineups.data.find((l) => l.showId === show.id);
+      // Ad hoc stays with the slot; someone dropped onto an already-confirmed lineup is a new ad hoc spot.
+      const adhocOf = (cid: string) => here?.slots.find((x) => x.comicId === cid)?.adhoc ?? (here?.status === "confirmed" && !here.slots.some((x) => x.comicId === cid));
+      return ids.map((cid) => ({ comicId: cid, minutes: prev.get(cid)?.minutes ?? (show.includeSlotTime ? (show.defaultMinutes ?? null) : null), ...(adhocOf(cid) && { adhoc: true }) }));
     };
     try {
       for (const sid of touched) {
@@ -372,10 +375,10 @@ function Column({ id, children, className }: { id: string; children: React.React
   );
 }
 
-function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action, show, states, onMinutes }: { comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void }) {
+function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action, show, states, onMinutes, adhoc }: { adhoc?: boolean; comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void }) {
   const name = comic?.name ?? request?.comicName ?? `+${id.split("@")[0]}`;
   const performed = comic?.lastPerformedWeek === lastWeek;
-  const pills = comicPills({ comic, request, show, lastWeek, states }, id);
+  const pills = comicPills({ comic, request, show, lastWeek, states, adhoc }, id);
   return (
     <div className={cx("flex min-h-14 items-center gap-3 rounded-md py-2 pl-3", action ? "pr-1" : "pr-3", lifted ? "bg-surface-highest" : "bg-surface-container")}>
       {index !== undefined ? <span className="w-5 text-center type-label-l text-on-surface-variant tabular">{index + 1}</span> : <Avatar name={name} size={32} tone={performed ? "secondary" : "primary"} />}
@@ -419,7 +422,7 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action
   );
 }
 
-function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action, show, states, onMinutes, shared }: { id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void; shared?: boolean }) {
+function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action, show, states, onMinutes, shared, adhoc }: { adhoc?: boolean; id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void; shared?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
   return (
     <li
@@ -431,7 +434,7 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
     >
       {/* Shared layout: the card glides between Waiting and a lineup. Off while dragging, where dnd-kit moves it. */}
       <motion.div layoutId={shared ? `tile-${id}` : undefined} layout={shared ? "position" : false} transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}>
-        <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} show={show} states={states} onMinutes={onMinutes} />
+        <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} show={show} states={states} onMinutes={onMinutes} adhoc={adhoc} />
       </motion.div>
     </li>
   );
@@ -643,6 +646,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
               lastWeek={lastWeek}
               minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null}
               show={show}
+              adhoc={Boolean(lineup?.slots.find((x) => x.comicId === cid)?.adhoc)}
               states={statesFor(cid)}
               onMinutes={lineup && !cancelled ? (m) => void setMinutes(uid, week, show, lineup, cid, m).catch((e: Error) => toast.error(e.message)) : undefined}
               disabled={cancelled}

@@ -3,7 +3,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { deleteField, orderBy, updateDoc, where, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
-import { localNow, type AppNotice, type ComicAction, type Lineup } from "@spot/shared";
+import { localNow, type AppNotice, type ComicAction, type Lineup, type SpotOffer } from "@spot/shared";
 import { useApp } from "./app";
 import { useCollection, userDoc } from "./data";
 import { db } from "./firebase";
@@ -29,6 +29,8 @@ export interface UpdatesState {
   micChecks: Lineup[];
   /** "Clear the group?" questions from the day-after cleanup. */
   cleanups: Lineup[];
+  /** Ad hoc rounds where you pick: everyone who said yes, by round. */
+  adhoc: SpotOffer[][];
   /** System notices. */
   server: AppNotice[];
   /** Everything open. */
@@ -54,6 +56,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   const notices = useCollection<AppNotice>(uid, "notices", [where("read", "==", false)]);
   const confirmed = useCollection<Lineup>(uid, "lineups", [where("status", "==", "confirmed")]);
   const asked = useCollection<Lineup>(uid, "lineups", [where("cleanup.status", "==", "asked")]);
+  const interested = useCollection<SpotOffer>(uid, "offers", [where("status", "==", "interested")]);
   const today = localNow(new Date(), settings.timezone).date;
 
   const value = useMemo<UpdatesState>(() => {
@@ -69,10 +72,13 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
     }
     const micChecks = settings.micCheck.enabled ? confirmed.data.filter((l) => !l.outcome && l.date && l.date < today && shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5) : [];
     const cleanups = asked.data.filter((l) => shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date));
-    const total = replies.length + followUps.length + onboarding.length + introductions.length + micChecks.length + cleanups.length + server.length;
+    const rounds = new Map<string, SpotOffer[]>();
+    for (const o of interested.data) if (o.round) rounds.set(o.round.id, [...(rounds.get(o.round.id) ?? []), o]);
+    const adhoc = [...rounds.values()].sort((a, b) => b[0].sentAt - a[0].sentAt);
+    const total = replies.length + followUps.length + onboarding.length + introductions.length + micChecks.length + cleanups.length + adhoc.length + server.length;
     const needsYou = total - server.filter((n) => n.level !== "warn").length;
-    return { loading: actions.loading || notices.loading || confirmed.loading, replies, followUps, onboarding, introductions, micChecks, cleanups, server, total, needsYou };
-  }, [actions, notices, confirmed, asked, settings.micCheck.enabled, today, shows]);
+    return { loading: actions.loading || notices.loading || confirmed.loading, replies, followUps, onboarding, introductions, micChecks, cleanups, adhoc, server, total, needsYou };
+  }, [actions, notices, confirmed, asked, interested, settings.micCheck.enabled, today, shows]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,5 +1,6 @@
+import { cooldownWeeks, recentSpot } from "./adhoc.ts";
 import type { Comic, HoldReason, RuleSettings, SpotHistoryEntry, Weekday } from "./types.ts";
-import { DAY_NAMES, formatTime, shiftWeek } from "./week.ts";
+import { DAY_NAMES, formatTime } from "./week.ts";
 
 const toMin = (day: Weekday, hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -30,13 +31,13 @@ export function holdFor(opts: { comic?: Comic | null; week: string; at: Date; ru
   if (comic?.list === "ignored") return "ignored";
   if (comic?.list === "host") return "host";
   if (!inWindow(at, rules.window, timeZone)) return "midweek";
-  if (rules.skipLastWeek && comic?.lastPerformedWeek === shiftWeek(week, -1)) return "last_week";
+  if (rules.skipLastWeek && recentSpot(comic, week, cooldownWeeks(rules))) return "last_week";
   return null;
 }
 
 export const HOLD_LABEL: Record<HoldReason, string> = {
   midweek: "Outside request window",
-  last_week: "Performed last week",
+  last_week: "Performed recently",
   banned: "Banned",
   ignored: "Ignored",
   host: "Host / POC",

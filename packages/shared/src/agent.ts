@@ -335,7 +335,9 @@ export type ActionPlan =
   | { type: "outcome"; showId: string; lineupId: string; outcome: "happened" | "canned" }
   | { type: "retime"; showId: string; startTime: string }
   /** Asked by the day-after cleanup: yes clears the group, no keeps everyone for next week. */
-  | { type: "cleanup"; showId: string; lineupId: string };
+  | { type: "cleanup"; showId: string; lineupId: string }
+  /** A comic said yes in an ad hoc round where the curator picks. */
+  | { type: "adhoc_pick"; showId: string; roundId: string; comicId: string; comicName: string };
 
 export type PendingAction =
   | { stage: "confirm"; plan: ActionPlan; summary: string; createdAt: number; expiresAt: number }
@@ -576,6 +578,8 @@ export function describePlan(plan: ActionPlan, c: { show: Pick<Show, "name" | "w
       return `Send confirmations for ${when} to ${c.filled ?? 0} ${c.filled === 1 ? "person" : "people"}${c.told ? ` (${c.told} already told, skipped)` : ""} from your own WhatsApp?`;
     case "outcome":
       return plan.outcome === "happened" ? `Mark ${when} as happened?` : `Mark ${when} as didn't happen? Everyone on it loses that spot from their history.`;
+    case "adhoc_pick":
+      return `Add ${plan.comicName} to ${when}? They said yes to the ad hoc spot.`;
     case "cleanup":
       return `Clear the ${c.show.name} group for next week? POCs, regulars, co-hosts and admins stay.`;
     case "retime":

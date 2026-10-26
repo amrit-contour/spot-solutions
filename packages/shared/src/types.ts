@@ -38,7 +38,9 @@ export interface Settings {
   micCheck: { enabled: boolean; time: string; whatsapp: boolean };
   /** Group where hosts/POCs vote on which shows they can take. */
   hostPoll: { groupId: string | null };
-  offers: { expiryHours: number };
+  /** autoAdd: in an offer to several comics, the first yeses fill the slots. Off: yeses come to Updates and you pick. An offer
+   * to one comic always books on yes. Missing means on. */
+  offers: { expiryHours: number; autoAdd?: boolean };
   /** Write comic names to the curator's Google Contacts (done in the browser, with the curator's own Google token). */
   googleContacts: { enabled: boolean };
   /** Curator's rewrites of the other messages (see MESSAGE_TYPES). Missing keys use the default. */
@@ -48,7 +50,8 @@ export interface Settings {
   /** Saved replies the curator can drop into any message box. */
   snippets?: import("./messages.ts").Snippet[];
   /** Tell comics held by the request window or last-week rule why. Banned, ignored and hosts never get a reply. */
-  heldReplies?: { enabled: boolean };
+  /** Tell held comics why. mode "review" drafts the reply in Updates instead of sending it (missing: send). */
+  heldReplies?: { enabled: boolean; mode?: "send" | "review" };
   /** Check waiting requests against your own WhatsApp replies. auto: apply clear ones without asking. */
   followUp?: { enabled: boolean; auto: boolean };
   /** Days "Scan past messages" looks back by default (1 to 21). Missing counts as 7. */
@@ -93,8 +96,15 @@ export interface SpotOffer {
   weekOf: string;
   showId: string;
   lineupId: string;
-  status: "pending" | "accepted" | "declined" | "expired" | "full";
+  /** interested: said yes in an offer round where you pick (it waits in Updates). */
+  status: "pending" | "accepted" | "declined" | "expired" | "full" | "interested";
   sentAt: number;
+  /**
+   * The ad hoc request this offer is part of: the same slot(s) offered to `size` comics at once, filling `slots`.
+   * autoAdd: the first yeses are booked; off: yeses wait in Updates for you to pick. A round of one always books on yes.
+   * The round is simply every offer with this id. Missing on offers sent one at a time before rounds existed.
+   */
+  round?: { id: string; size: number; slots: number; autoAdd: boolean } | null;
   expiresAt: number;
   reply?: string | null;
   /** Sent as a poll: the poll message's id and its options (first books the spot, second passes). */
@@ -118,8 +128,10 @@ export interface HostPoll {
 export interface RuleSettings {
   /** Only accept requests inside this weekly window; others are held as mid-week asks. */
   window: { enabled: boolean; startDay: Weekday; startTime: string; endDay: Weekday; endTime: string };
-  /** Hold requests from comics who performed last week. */
+  /** Hold requests from comics who performed recently (see cooldownWeeks). Ad hoc spots never count. */
   skipLastWeek: boolean;
+  /** How far back "recently" goes, in weeks (1 = last week only, the old rule). Missing means 1. */
+  cooldownWeeks?: number;
 }
 
 /** Why a request was held back instead of landing in Asked. */
@@ -132,12 +144,14 @@ export interface SpotHistoryEntry {
   showId: string;
   showName: string;
   status: "confirmed" | "cancelled" | "canned";
+  /** An ad hoc spot: shown in history, ignored by the cooldown. */
+  adhoc?: boolean;
 }
 
 /** A comic asked something other than a spot: drafted reply waiting for the curator. */
 export interface ComicAction {
   id: string;
-  kind: "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "onboard" | "follow_up";
+  kind: "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "onboard" | "follow_up" | "held";
   comicId: string;
   comicName: string;
   weekOf: string;
@@ -320,6 +334,8 @@ export interface SpotRequest {
 export interface Slot {
   comicId: string;
   minutes?: number | null;
+  /** A last-minute spot (booked through an offer, or added after the lineup was confirmed). Kept in history; never holds them back. */
+  adhoc?: boolean;
 }
 
 export interface GroupSyncPlan {
@@ -411,7 +427,8 @@ export type CommandType =
   | "get_thread"
   | "summarize_thread"
   | "list_voice_sources"
-  | "cleanup_group";
+  | "cleanup_group"
+  | "settle_round";
 
 export interface Command {
   type: CommandType;

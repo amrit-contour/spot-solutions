@@ -12,8 +12,25 @@ export const LOW_DISK_BYTES = 2 * GIB;
 export const HEADROOM_BYTES = GIB;
 /** Browser lock files: never copied (the browser makes new ones), never compared. */
 export const SKIP_NAMES = new Set(["SingletonLock", "SingletonSocket", "SingletonCookie", "lockfile"]);
+/**
+ * Chromium cache folders inside the WhatsApp browser profiles (data/wwebjs/<profile>/...). Chromium rebuilds them on the next
+ * start and writes to them constantly, so a move neither copies nor compares them. Everything that holds the WhatsApp login
+ * (Local Storage, IndexedDB, Cookies, Preferences, the LocalAuth files) is outside this list and stays strictly verified.
+ */
+export const CACHE_DIRS = new Set(["Cache", "Code Cache", "GPUCache", "GrShaderCache", "ShaderCache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache", "Crashpad", "component_crx_cache", "extensions_crx_cache", "BrowserMetrics", "Safe Browsing", "optimization_guide_model_store", "Media Cache"]);
+/** Service Worker sub-folders that are only caches (the registrations next to them stay). */
+const SW_CACHE_DIRS = new Set(["CacheStorage", "ScriptCache"]);
+/** True for a cache-only path inside a browser profile; `rel` is slash-separated, from the data folder. */
+export function isCacheOnly(rel) {
+  const parts = rel.split("/");
+  if (parts[0] !== "wwebjs" || parts.length < 3) return false; // wwebjs/<profile>/<something>
+  for (let i = 2; i < parts.length; i++) {
+    if (CACHE_DIRS.has(parts[i]) || (i > 0 && parts[i - 1] === "Service Worker" && SW_CACHE_DIRS.has(parts[i]))) return true;
+  }
+  return false;
+}
 /** Files in the top of the data folder that keep changing while a move runs. They are copied if possible, never compared. */
-export const VOLATILE = new Set(["update.json", "update.json.tmp", "task.json", "console.log", "live-stats.json", "live-stats.json.tmp", "move.json"]);
+export const VOLATILE = new Set(["update.json", "update.json.tmp", "task.json", "console.log", "live-stats.json", "live-stats.json.tmp", "move.json", "worker.log"]);
 /** Marks a folder this feature created, so a failed move may remove it and nothing else. */
 export const MARKER = ".spot-data-copy";
 const CRITICAL_FILES = ["service-account.json", "console-token", "console.json", "wwebjs/server.json"];
@@ -242,18 +259,19 @@ export const fmtGb = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.m
 function listDir(dir, platform) {
   try { return readdirSync(toFsPath(dir, platform), { withFileTypes: true }); } catch { return []; }
 }
-/** Size and file count of a tree, never following symlinks. `skip` names are left out at any depth. */
-export async function measure(dir, { platform = process.platform, skip = SKIP_NAMES } = {}) {
+/** Size and file count of a tree, never following symlinks. `skip` names are left out at any depth, and so are browser caches (they aren't copied). */
+export async function measure(dir, { platform = process.platform, skip = SKIP_NAMES, dropCaches = true } = {}) {
   const m = modFor(platform);
   let bytes = 0, files = 0, n = 0;
-  const stack = [dir];
+  const stack = [[dir, ""]];
   while (stack.length) {
-    const d = stack.pop();
+    const [d, rel] = stack.pop();
     for (const e of listDir(d, platform)) {
       if (skip.has(e.name)) continue;
-      const p = m.join(d, e.name);
+      const p = m.join(d, e.name), r = rel ? `${rel}/${e.name}` : e.name;
+      if (dropCaches && isCacheOnly(r)) continue;
       if (e.isSymbolicLink()) { files++; continue; }
-      if (e.isDirectory()) { stack.push(p); continue; }
+      if (e.isDirectory()) { stack.push([p, r]); continue; }
       if (!e.isFile()) continue;
       try { bytes += lstatSync(toFsPath(p, platform)).size; files++; } catch { /* vanished */ }
       if (++n % 400 === 0) await tick();
@@ -286,10 +304,10 @@ export async function summariseData(dir, { platform = process.platform } = {}) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /**
  * Copies src into dst, file by file, without ever following a symlink (links are recreated as links). Browser lock files
- * are skipped. Files another program holds are retried; a volatile file that stays locked is skipped, anything else fails
+ * and browser caches (isCacheOnly) are skipped. Files another program holds are retried; a volatile file that stays locked is skipped, anything else fails
  * with its path. `chown` ({ uid, gid }) is applied to everything made, for the root helper.
  */
-export async function copyTree(src, dst, { platform = process.platform, skip = SKIP_NAMES, onProgress = () => {}, chown = null, retries = 4, volatile = VOLATILE, total = null } = {}) {
+export async function copyTree(src, dst, { platform = process.platform, skip = SKIP_NAMES, onProgress = () => {}, chown = null, retries = 4, volatile = VOLATILE, total = null, dropCaches = true } = {}) {
   const m = modFor(platform);
   const f = (p) => toFsPath(p, platform);
   let bytes = 0, files = 0, n = 0, last = 0;
@@ -305,16 +323,17 @@ export async function copyTree(src, dst, { platform = process.platform, skip = S
       }
     }
   }
-  async function walk(s, d, depth) {
+  async function walk(s, d, depth, rel) {
     mkdirSync(f(d), { recursive: true });
     own(d);
     for (const e of listDir(s, platform)) {
       if (skip.has(e.name)) continue;
-      const sp = m.join(s, e.name), dp = m.join(d, e.name);
+      const sp = m.join(s, e.name), dp = m.join(d, e.name), r = rel ? `${rel}/${e.name}` : e.name;
+      if (dropCaches && isCacheOnly(r)) continue;
       if (e.isSymbolicLink()) {
         try { symlinkSync(readlinkSync(f(sp)), f(dp)); own(dp); files++; } catch (err) { throw new Error(`Couldn't recreate the link ${sp}: ${err.message}`); }
       } else if (e.isDirectory()) {
-        await walk(sp, dp, depth + 1);
+        await walk(sp, dp, depth + 1, r);
         try { const st = lstatSync(f(sp)); chmodSync(f(dp), st.mode & 0o7777); } catch { /* keep default */ }
       } else if (e.isFile()) {
         const st = lstatSync(f(sp));
@@ -328,13 +347,52 @@ export async function copyTree(src, dst, { platform = process.platform, skip = S
       }
     }
   }
-  await walk(src, dst, 0);
+  await walk(src, dst, 0, "");
   report(true);
   return { bytes, files };
 }
 
+// ---------- is anything still writing? ----------
+/** A cheap picture of what matters in a tree (file count, bytes, newest change): equal pictures a moment apart mean nothing is writing. */
+export async function fingerprint(dir, { platform = process.platform, skip = SKIP_NAMES, volatile = new Set([...VOLATILE, "console.json", "console-token", "service-account.json"]) } = {}) {
+  const m = modFor(platform);
+  let files = 0, bytes = 0, newest = 0, n = 0;
+  const stack = [[dir, "", 0]];
+  while (stack.length) {
+    const [d, rel, depth] = stack.pop();
+    for (const e of listDir(d, platform)) {
+      if (skip.has(e.name) || (depth === 0 && volatile.has(e.name))) continue;
+      const p = m.join(d, e.name), r = rel ? `${rel}/${e.name}` : e.name;
+      if (isCacheOnly(r)) continue;
+      if (e.isDirectory()) { stack.push([p, r, depth + 1]); continue; }
+      if (!e.isFile()) continue;
+      try { const st = lstatSync(toFsPath(p, platform)); files++; bytes += st.size; newest = Math.max(newest, st.mtimeMs); } catch { /* vanished */ }
+      if (++n % 400 === 0) await tick();
+    }
+  }
+  return { files, bytes, newest };
+}
+export const sameFingerprint = (a, b) => a.files === b.files && a.bytes === b.bytes && a.newest === b.newest;
+/** The plain-language reason a move stops when something is still writing to the data folder. */
+export const STILL_CLOSING = "WhatsApp is still closing; try again in a minute.";
+/**
+ * Waits for the data folder to go quiet: two pictures `gapMs` apart that match. A browser that is still shutting down keeps
+ * changing its files, so this catches one the stop step missed. { ok, picture }.
+ */
+export async function waitQuiet(dir, { platform = process.platform, gapMs = 2500, timeoutMs = 30_000, wait = sleep, now = Date.now } = {}) {
+  const end = now() + timeoutMs;
+  let prev = await fingerprint(dir, { platform });
+  for (;;) {
+    await wait(gapMs);
+    const cur = await fingerprint(dir, { platform });
+    if (sameFingerprint(prev, cur)) return { ok: true, picture: cur };
+    if (now() >= end) return { ok: false, picture: cur };
+    prev = cur;
+  }
+}
+
 // ---------- verify ----------
-async function inventory(root, { platform, skip, ignoreTop }) {
+async function inventory(root, { platform, skip, ignoreTop, dropCaches = true }) {
   const m = modFor(platform);
   const out = new Map();
   let n = 0;
@@ -342,6 +400,7 @@ async function inventory(root, { platform, skip, ignoreTop }) {
     for (const e of listDir(dir, platform)) {
       if (skip.has(e.name) || (depth === 0 && ignoreTop.has(e.name))) continue;
       const p = m.join(dir, e.name), r = rel ? `${rel}/${e.name}` : e.name;
+      if (dropCaches && isCacheOnly(r)) continue;
       if (e.isSymbolicLink()) out.set(r, { t: "l" });
       else if (e.isDirectory()) { out.set(r, { t: "d" }); await walk(p, r, depth + 1); }
       else if (e.isFile()) { try { out.set(r, { t: "f", size: lstatSync(toFsPath(p, platform)).size }); } catch { /* gone */ } if (++n % 400 === 0) await tick(); }

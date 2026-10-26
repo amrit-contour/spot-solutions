@@ -1,5 +1,17 @@
 # Changelog
 
+## 27 October 2026 (ad hoc offers)
+
+### Ad hoc spots
+- **Offer to several at once.** Pick one comic or several in Offer a spot, and how many spots to fill. One comic: a yes books them (as before). Several: the first yeses fill it automatically, or (switch off) everyone who says yes comes to Updates → Ad hoc yeses, you tick who gets it, and the rest are told it's filled. With the agent number linked, it asks you there too ("yes" adds them).
+- A "no" to a one-person offer shows in Updates so you can offer the spot to someone else.
+- **Ad hoc slots** (booked through an offer, or added after the lineup was confirmed) show an "Ad hoc" pill, stay in the comic's history, and never count against them. They join the group exactly as before.
+
+### Request rules
+- "Skip last week's comics" is now **Hold recent comics** with a cooldown of 1 to 8 weeks. Ad hoc spots don't count.
+- "Tell held comics why" can **send it** or **draft it for review** in Updates. The Performed recently message says when they were last up and when to ask again.
+- Settings → Around the show: "Offers to several: add the first yeses" (on by default).
+
 ## 27 October 2026 (group ops)
 
 ### Show groups

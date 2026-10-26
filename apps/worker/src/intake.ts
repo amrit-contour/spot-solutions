@@ -25,6 +25,9 @@ import {
   type Comic,
   type InboundMessage,
   type SpotRequest,
+  cooldownWeeks,
+  cooldownWords,
+  recentSpot,
 } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 import { classify } from "./gemma.ts";
@@ -229,9 +232,33 @@ async function explainHold(uid: string, client: WAWebJS.Client, r: SpotRequest, 
   const comic = (await col(uid, "comics").doc(r.comicId).get()).data() as Comic | undefined;
   const name = await greetFor(client, comic ?? { id: r.comicId, name: r.comicName });
   const kind = hold === "midweek" ? "heldWindow" : "heldLastWeek";
-  const facts = { name, opens: windowOpensLabel(settings.rules.window) };
-  await sendRich(client, comic?.chatId ?? r.comicId, messageRich(settings, kind), facts, null, { rewrite: (t) => inVoice(uid, kind, t, facts) });
+  const weeks = cooldownWeeks(settings.rules);
+  const spot = hold === "last_week" ? recentSpot(comic, r.weekOf, weeks) : null;
+  const facts = {
+    name,
+    opens: windowOpensLabel(settings.rules.window),
+    ...(spot && { ...cooldownWords(spot.date, r.weekOf, weeks, formatDate), lastShow: spot.showName, lastDate: formatDate(spot.date) }),
+  };
   await col(uid, "requests").doc(r.id).update({ heldRepliedAt: Date.now() });
+  if (settings.heldReplies?.mode === "review") {
+    // Drafted in Updates → Needs a reply; nothing goes out until the curator sends it.
+    const { draft, rich } = await composeDraft(uid, kind, facts);
+    await col(uid, "actions").doc(`${r.id}_held`).set({
+      kind: "held",
+      comicId: r.comicId,
+      comicName: r.comicName,
+      weekOf: r.weekOf,
+      message: r.messages.map((m) => m.body).join("\n"),
+      draft,
+      ...(rich && { rich }),
+      lineupId: null,
+      status: "pending",
+      createdAt: Date.now(),
+    } satisfies Omit<ComicAction, "id">);
+    console.log(`[held] drafted for ${comic?.name ?? r.comicName} (${hold})`);
+    return;
+  }
+  await sendRich(client, comic?.chatId ?? r.comicId, messageRich(settings, kind), facts, null, { rewrite: (t) => inVoice(uid, kind, t, facts) });
   console.log(`[held] told ${comic?.name ?? r.comicName} (${hold})`);
 }
 

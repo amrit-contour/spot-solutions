@@ -21,3 +21,4 @@ export * from "./geo.ts";
 export * from "./threads.ts";
 export * from "./groupPosts.ts";
 export * from "./groupCleanup.ts";
+export * from "./adhoc.ts";

@@ -16,6 +16,7 @@ import {
   localNow,
   confirmSkipReason,
   renderMessage,
+  renderRich,
   groupPostVars,
   messageRich,
   renderTemplate,
@@ -59,6 +60,7 @@ import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
 import { getThread, listThreads, summarizeThread } from "./chats.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
+import { settleRound } from "./replies.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
@@ -157,8 +159,9 @@ const handlers: Record<Command["type"], Handler> = {
     const date = dateInWeek(lineup.weekOf, show.weekday);
     for (const slot of lineup.slots) {
       if (!results[slot.comicId]?.startsWith("sent")) continue;
-      const history = withHistory(comics.get(slot.comicId)?.history, { date, showId: show.id, showName: show.name, status: "confirmed" });
-      batch.set(col(uid, "comics").doc(slot.comicId), { lastPerformedWeek: lineup.weekOf, history }, { merge: true });
+      const history = withHistory(comics.get(slot.comicId)?.history, { date, showId: show.id, showName: show.name, status: "confirmed", ...(slot.adhoc && { adhoc: true }) });
+      // Ad hoc spots stay in history but never count as "performed" for the cooldown.
+      batch.set(col(uid, "comics").doc(slot.comicId), { ...(!slot.adhoc && { lastPerformedWeek: lineup.weekOf }), history }, { merge: true });
       batch.set(col(uid, "requests").doc(`${lineup.weekOf}_${slot.comicId}`), { status: "confirmed", updatedAt: Date.now() }, { merge: true });
     }
     // Remember what each comic was told, so edits after confirming can be reviewed against it.
@@ -324,8 +327,9 @@ const handlers: Record<Command["type"], Handler> = {
     const batch = db.batch();
     for (const id of changes.added) {
       if (bad.has(id)) continue;
-      const history = withHistory(comics.get(id)?.history, { date, showId: show.id, showName: show.name, status: "confirmed" });
-      batch.set(col(uid, "comics").doc(id), { lastPerformedWeek: lineup.weekOf, history }, { merge: true });
+      const adhoc = Boolean(lineup.slots.find((x) => x.comicId === id)?.adhoc);
+      const history = withHistory(comics.get(id)?.history, { date, showId: show.id, showName: show.name, status: "confirmed", ...(adhoc && { adhoc: true }) });
+      batch.set(col(uid, "comics").doc(id), { ...(!adhoc && { lastPerformedWeek: lineup.weekOf }), history }, { merge: true });
       batch.set(col(uid, "requests").doc(`${lineup.weekOf}_${id}`), { status: "confirmed", updatedAt: now }, { merge: true });
     }
     for (const id of changes.removed) {
@@ -363,18 +367,22 @@ const handlers: Record<Command["type"], Handler> = {
    * (handleVote), and a typed yes or no is still understood (handleOfferReply). `rich` carries what the curator
    * edited in the sheet; without it the offer goes out as the text in `body`.
    */
-  async send_offer(uid, { comicId, lineupId, body, rich }) {
+  /**
+   * Offer open slot(s) to one comic (comicId, message already filled in) or to several at once (comicIds, the template:
+   * {{name}} is filled per comic). Several make one ad hoc round that fills `slots`; autoAdd books the first yeses.
+   */
+  async send_offer(uid, { comicId, comicIds, lineupId, body, rich, slots, autoAdd }) {
     const client = sessions.require(uid);
     const { settings, shows, venues } = watchUser(uid);
     const lineup = (await col(uid, "lineups").doc(String(lineupId)).get()).data() as Lineup | undefined;
     if (!lineup) throw new Error("Lineup not found");
     const show = shows.find((s) => s.id === lineup.showId);
     if (!show) throw new Error("Show not found");
-    const comic = (await col(uid, "comics").doc(String(comicId)).get()).data() as Comic | undefined;
-    if (!comic) throw new Error("Comic not found");
-    // One live offer per comic: the newest replaces any older one.
-    const old = await col(uid, "offers").where("comicId", "==", comic.id).where("status", "==", "pending").get();
-    for (const d of old.docs) await d.ref.update({ status: "expired" });
+    const ids = [...new Set((Array.isArray(comicIds) ? comicIds : [comicId]).map(String).filter(Boolean))];
+    if (!ids.length) throw new Error("Pick someone to offer the spot to.");
+    const open = show.slotCount - lineup.slots.length;
+    if (open <= 0) throw new Error(`${show.name} is full.`);
+    const comics = await loadComics(uid, ids);
 
     const asPoll = rich ? normalizeMessage(rich).kind === "poll" : false;
     const msg: RichMessage = rich ? normalizeMessage(rich, { kind: "text", body: String(body ?? "") }) : { kind: "text", body: String(body ?? "") };
@@ -386,21 +394,41 @@ const handlers: Record<Command["type"], Handler> = {
       const problem = pollProblem(msg.poll);
       if (problem) throw new Error(problem);
     } else if (msg.kind !== "text") throw new Error("An offer goes out as a poll or as text.");
-    const sent = await sendRich(client, comic.chatId ?? comic.id, msg, {}, venues.find((v) => v.id === show.venueId), { prerendered: true });
+
     const now = Date.now();
-    const offer: Omit<SpotOffer, "id"> = {
-      comicId: comic.id,
-      comicName: comic.name,
-      weekOf: lineup.weekOf,
-      showId: show.id,
-      lineupId: String(lineupId),
-      status: "pending",
-      sentAt: now,
-      expiresAt: now + settings.offers.expiryHours * 3600_000,
-      reply: null,
-      ...(pollOptions && sent && { pollMessageId: sent.id._serialized, pollOptions }),
-    };
-    await col(uid, "offers").add(offer);
+    const round = { id: `r${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, size: ids.length, slots: Math.max(1, Math.min(open, Number(slots) || 1, ids.length)), autoAdd: ids.length === 1 ? true : autoAdd !== false };
+    let sentCount = 0;
+    for (const id of ids) {
+      const comic = comics.get(id);
+      if (!comic) continue;
+      // One live offer per comic: the newest replaces any older one.
+      const old = await col(uid, "offers").where("comicId", "==", id).where("status", "==", "pending").get();
+      for (const d of old.docs) await d.ref.update({ status: "expired" });
+      // One comic: the curator's text as typed. Several: the template, filled in for each.
+      const out = ids.length === 1 ? msg : renderRich(msg, { name: await greetFor(client, comic) });
+      const sent = await sendRich(client, comic.chatId ?? comic.id, out, {}, venues.find((v) => v.id === show.venueId), { prerendered: true });
+      const offer: Omit<SpotOffer, "id"> = {
+        comicId: id,
+        comicName: comic.name,
+        weekOf: lineup.weekOf,
+        showId: show.id,
+        lineupId: String(lineupId),
+        status: "pending",
+        sentAt: now,
+        expiresAt: now + settings.offers.expiryHours * 3600_000,
+        reply: null,
+        round,
+        ...(pollOptions && sent && { pollMessageId: sent.id._serialized, pollOptions }),
+      };
+      await col(uid, "offers").add(offer);
+      sentCount++;
+    }
+    return { sent: sentCount, roundId: round.id };
+  },
+
+  /** Pick from an ad hoc round's yeses (Updates). close: tell the rest it's filled. */
+  async settle_round(uid, { roundId, pick, close }) {
+    return settleRound(uid, sessions.require(uid), String(roundId), Array.isArray(pick) ? pick.map(String) : [], close !== false);
   },
 
   /** WhatsApp poll to the hosts group: which of this week's shows can you take? */

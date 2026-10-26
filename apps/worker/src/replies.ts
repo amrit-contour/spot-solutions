@@ -1,8 +1,10 @@
 // Replies to things the curator started: spot offers, onboarding questions, host polls, mic checks.
 import type WAWebJS from "whatsapp-web.js";
 import {
+  confirmPending,
   dateInWeek,
   formatDate,
+  onYes,
   localNow,
   messageRich,
   offerVote,
@@ -25,7 +27,7 @@ import { sendRich } from "./sendRich.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
-import { sendMicCheck } from "./agentOutbox.ts";
+import { agentOn, readMemory, sendMicCheck, sendToCurator, writeMemory } from "./agentOutbox.ts";
 
 /** A pending offer's yes/no. Returns true when the messages were an answer to it. */
 export async function handleOfferReply(uid: string, client: WAWebJS.Client, comicId: string, texts: string[]) {
@@ -43,15 +45,59 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
   return true;
 }
 
-/** Book or decline an offer. Shared by typed replies and poll votes, so both run the same booking transaction. */
+/** Every offer in the same ad hoc round. */
+async function roundOffers(uid: string, roundId: string) {
+  return (await col(uid, "offers").where("round.id", "==", roundId).get()).docs.map((d) => ({ ...(d.data() as SpotOffer), id: d.id, ref: d.ref }));
+}
+
+/**
+ * A yes or no to an offer. Shared by typed replies and poll votes. One comic asked: yes books it. Several asked at once:
+ * yes books it while slots are left (auto-add) or waits in Updates for the curator to pick; a yes after it filled is told so.
+ */
 async function settleOffer(uid: string, client: WAWebJS.Client, offerRef: FirebaseFirestore.DocumentReference, offer: SpotOffer, answer: boolean, reply: string) {
-  const comicId = offer.comicId;
+  const show = showName(uid, offer.showId);
   if (!answer) {
     await offerRef.update({ status: "declined", reply });
-    await notice(uid, "info", `${offer.comicName} passed on the ${showName(uid, offer.showId)} spot.`, "offer");
+    const single = !offer.round || offer.round.size <= 1;
+    await notice(uid, single ? "warn" : "info", `${offer.comicName} passed on the ${show} spot.${single ? " Offer it to someone else from Lineup." : ""}`, "offer");
     return;
   }
+  const round = offer.round ? await roundOffers(uid, offer.round.id) : [];
+  const step = onYes(offer, round);
+  if (step === "full") return void (await tellFull(uid, client, offerRef, offer, reply, false));
+  if (step === "pick") {
+    await offerRef.update({ status: "interested", reply });
+    const yeses = round.filter((o) => o.status === "interested").length + 1;
+    await notice(uid, "info", `${offer.comicName} said yes to the ${show} ad hoc spot (${yeses} yes so far for ${offer.round!.slots} spot${offer.round!.slots === 1 ? "" : "s"}). Pick who gets it in Updates.`, "offer");
+    await askAgentToPick(uid, offer, show);
+    return;
+  }
+  await bookOffer(uid, client, offerRef, offer, reply);
+}
 
+/** With the agent number linked: "Rohan said yes. Add them?" A yes there books them (see agent.ts, adhoc_pick). */
+async function askAgentToPick(uid: string, offer: SpotOffer, show: string) {
+  if (!(await agentOn(uid, "notify"))) return;
+  const mem = await readMemory(uid);
+  if (mem.pending && mem.pending.expiresAt > Date.now()) return;
+  const summary = `${offer.comicName} said yes to the ${show} ad hoc spot. Add them to the lineup?`;
+  const pending = { ...confirmPending({ type: "adhoc_pick", showId: offer.showId, roundId: offer.round!.id, comicId: offer.comicId, comicName: offer.comicName }, summary, Date.now()), expiresAt: offer.expiresAt };
+  if (await sendToCurator(uid, `🎤 ${summary}\nReply *yes* to add them (they get the confirmation), or pick in Updates.`, { unprompted: true })) await writeMemory(uid, { pending });
+}
+
+/** Tell someone who said yes that the spot is gone. */
+async function tellFull(uid: string, client: WAWebJS.Client, offerRef: FirebaseFirestore.DocumentReference, offer: SpotOffer, reply: string | null, quiet: boolean) {
+  const { settings } = watchUser(uid);
+  await offerRef.update({ status: "full", ...(reply !== null && { reply }) });
+  const who = (await col(uid, "comics").doc(offer.comicId).get()).data() as Comic | undefined;
+  const name = await greetFor(client, who ?? { id: offer.comicId, name: offer.comicName });
+  await sendRich(client, await chatOf(uid, offer.comicId), messageRich(settings, "offerFull"), { name }, null, { rewrite: (t) => inVoice(uid, "offerFull", t, { name }) });
+  if (!quiet) await notice(uid, "info", `${offer.comicName} said yes, but the ${showName(uid, offer.showId)} spot was already filled. They've been told.`, "offer");
+}
+
+/** Book an offer: slot (ad hoc), confirmation, group. Returns false when the show was full or called off (they're told). */
+export async function bookOffer(uid: string, client: WAWebJS.Client, offerRef: FirebaseFirestore.DocumentReference, offer: SpotOffer, reply: string | null): Promise<boolean> {
+  const comicId = offer.comicId;
   const { shows, settings } = watchUser(uid);
   const show = shows.find((s) => s.id === offer.showId);
   const lineupRef = col(uid, "lineups").doc(offer.lineupId);
@@ -63,8 +109,9 @@ async function settleOffer(uid: string, client: WAWebJS.Client, offerRef: Fireba
     if (lineup.slots.length >= show.slotCount) return null;
     const comic = (await tx.get(comicRef)).data() as Comic | undefined;
     const date = dateInWeek(lineup.weekOf, show.weekday);
-    tx.update(lineupRef, { slots: [...lineup.slots, { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null }] });
-    tx.set(comicRef, { lastPerformedWeek: lineup.weekOf, history: withHistory(comic?.history, { date, showId: show.id, showName: show.name, status: "confirmed" }) }, { merge: true });
+    tx.update(lineupRef, { slots: [...lineup.slots, { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null, adhoc: true }] });
+    // Ad hoc: in their history, but never counted against them by the cooldown (no lastPerformedWeek).
+    tx.set(comicRef, { history: withHistory(comic?.history, { date, showId: show.id, showName: show.name, status: "confirmed", adhoc: true }) }, { merge: true });
     const reqRef = col(uid, "requests").doc(`${lineup.weekOf}_${comicId}`);
     const req = (await tx.get(reqRef)).data() as SpotRequest | undefined;
     if (req) tx.update(reqRef, { status: "confirmed", updatedAt: Date.now() });
@@ -72,15 +119,12 @@ async function settleOffer(uid: string, client: WAWebJS.Client, offerRef: Fireba
   });
 
   if (!booked || !show) {
-    await offerRef.update({ status: "full", reply });
-    const who = (await col(uid, "comics").doc(comicId).get()).data() as Comic | undefined;
-    const name = await greetFor(client, who ?? { id: comicId, name: offer.comicName });
-    await sendRich(client, await chatOf(uid, comicId), messageRich(settings, "offerFull"), { name }, null, { rewrite: (t) => inVoice(uid, "offerFull", t, { name }) });
+    await tellFull(uid, client, offerRef, offer, reply, true);
     await notice(uid, "warn", `${offer.comicName} said yes, but ${show?.name ?? "the show"} was already full. They've been told.`, "offer");
-    return;
+    return false;
   }
 
-  await offerRef.update({ status: "accepted", reply });
+  await offerRef.update({ status: "accepted", ...(reply !== null && { reply }) });
   const comic = (await comicRef.get()).data() as Comic;
   await sendConfirmation(uid, client, show, comic, booked.weekOf);
   // On a confirmed lineup this counts as told, so "Send updates" doesn't confirm them a second time.
@@ -88,12 +132,33 @@ async function settleOffer(uid: string, client: WAWebJS.Client, offerRef: Fireba
     const fresh = (await lineupRef.get()).data() as Lineup;
     await lineupRef.update({ sent: sentWith(fresh.sent, fresh.slots, show, comicId, Date.now()) });
   }
-  // Show is today and its group is managed: add them now.
+  // Show is today and its group is managed: add them now (ad hoc comics join the group like everyone else).
   if (show.groupId && localNow(new Date(), settings.timezone).date === dateInWeek(booked.weekOf, show.weekday)) {
     const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;
     await group.addParticipants([comicId], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) }).catch(() => undefined);
   }
   await notice(uid, "info", `${offer.comicName} took the ${show.name} spot and got the confirmation.`, "offer");
+  return true;
+}
+
+/**
+ * The curator picked from an ad hoc round's yeses (Updates or the agent). The picked are booked in order while slots last.
+ * close: everyone else who said yes is told it's filled. Offers nobody answered stay open; a later yes is told it's filled
+ * once the round's slots are taken.
+ */
+export async function settleRound(uid: string, client: WAWebJS.Client, roundId: string, pick: string[], close: boolean) {
+  const round = await roundOffers(uid, roundId);
+  if (!round.length) throw new Error("That ad hoc request isn't there any more.");
+  const picked = new Set(pick);
+  let booked = 0;
+  for (const o of round) {
+    if (!picked.has(o.comicId) || (o.status !== "interested" && o.status !== "pending")) continue;
+    if (await bookOffer(uid, client, o.ref, o, null)) booked++;
+  }
+  const after = await roundOffers(uid, roundId);
+  const filled = after.filter((o) => o.status === "accepted").length >= (after[0].round?.slots ?? 1);
+  if (close || filled) for (const o of after.filter((x) => x.status === "interested")) await tellFull(uid, client, o.ref, o, null, true);
+  return { booked };
 }
 
 /** Reply to the onboarding question: fill in their profile. Returns true when handled. */

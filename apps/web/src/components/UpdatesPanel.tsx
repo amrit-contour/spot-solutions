@@ -13,6 +13,7 @@ import { FollowUpCard } from "./updates/FollowUpCard";
 import { IntroCard, OnboardCard } from "./updates/FaceCard";
 import { MicCard } from "./updates/MicCard";
 import { CleanupCard } from "./updates/CleanupCard";
+import { AdhocCard } from "./updates/AdhocCard";
 import { ServerCard } from "./updates/ServerCard";
 
 export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
@@ -100,6 +101,13 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
               const show = shows.find((s) => s.id === l.showId);
               return show ? <MicCard key={l.id} lineup={l} show={show} /> : null;
             })}
+          </Section>
+        )}
+        {u.adhoc.length > 0 && (
+          <Section key="adhoc" icon={IconUserPlus} title="Ad hoc yeses" count={u.adhoc.length} onExitComplete={restoreFocus}>
+            {u.adhoc.map((offers) => (
+              <AdhocCard key={offers[0].round!.id} offers={offers} />
+            ))}
           </Section>
         )}
         {u.cleanups.length > 0 && (

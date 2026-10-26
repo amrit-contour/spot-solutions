@@ -66,7 +66,7 @@ export function pickVoiceSamples(messages: { body: string; at: number }[], cap =
 }
 
 /** The facts a drafted message has to carry, exactly. */
-export type VoiceFacts = Partial<Record<"name" | "show" | "venue" | "day" | "date" | "time" | "minutes" | "mapsLink" | "opens" | "lastShow" | "lastDate" | "shows", string | number | null>>;
+export type VoiceFacts = Partial<Record<"name" | "show" | "venue" | "day" | "date" | "time" | "minutes" | "mapsLink" | "opens" | "lastShow" | "lastDate" | "shows" | "lastWhen" | "askAgain", string | number | null>>;
 
 const fold = (s: string) => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ");
 const numbers = (s: string) => s.match(/\d+/g) ?? [];
@@ -121,7 +121,7 @@ const KIND_GOAL: Record<VoiceKind, string> = {
   showInfo: "Share where and when the shows are, keeping the list exactly as given.",
   lastSpot: "Tell them when their last spot was, exactly as given.",
   heldWindow: "Tell them requests for the week aren't open yet and when they open.",
-  heldLastWeek: "Tell them they performed last week so you're giving others a turn, and to ask next week.",
+  heldLastWeek: "Tell them they performed recently (say when, as given) so you're giving others a turn, and when they can ask again.",
 };
 
 /** The prompt for one message. `reference` is the curator's template, already filled in. */

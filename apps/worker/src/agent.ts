@@ -17,7 +17,7 @@ import { AiPolicyError } from "./aiRouting.ts";
 import { generateJson } from "./llm.ts";
 import { loadComics, runHandler } from "./commands.ts";
 import { removeFromLineup, placeOnLineup } from "./lineupOps.ts";
-import { recordOutcome } from "./replies.ts";
+import { recordOutcome, settleRound } from "./replies.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { sessions } from "./sessions.ts";
 import { sendQueued } from "./sendQueue.ts";
@@ -255,6 +255,12 @@ async function runPlan(uid: string, p: ActionPlan) {
       case "outcome": {
         await recordOutcome(uid, p.lineupId, p.outcome);
         return void (await say(uid, `Done: ${show.name} marked as ${p.outcome === "happened" ? "happened" : "didn't happen"}.`));
+      }
+      case "adhoc_pick": {
+        const client = sessions.get(uid);
+        if (!client) return void (await say(uid, "Your own WhatsApp isn't connected right now, so I couldn't add them."));
+        const r = await settleRound(uid, client, p.roundId, [p.comicId], false);
+        return void (await say(uid, r.booked ? `Done: ${p.comicName} is on ${show.name} and got the confirmation.` : `${show.name} filled up, so ${p.comicName} couldn't be added. They've been told.`));
       }
       case "cleanup": {
         const l = (await col(uid, "lineups").doc(p.lineupId).get()).data() as Lineup | undefined;

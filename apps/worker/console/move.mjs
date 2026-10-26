@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   HEADROOM_BYTES, MARKER, modFor, pathKey, isInside, inspectTarget, measure, copyTree, verifyTree, removeTree,
-  rewriteEnvPaths, replacePaths, readPointer, writePointer, writeAtomic, readJson, fmtGb, makeFolder,
+  rewriteEnvPaths, replacePaths, readPointer, writePointer, writeAtomic, readJson, fmtGb, makeFolder, fingerprint, sameFingerprint, waitQuiet, STILL_CLOSING,
 } from "./storage.mjs";
 
 const exec = promisify(execFile);
@@ -119,6 +119,9 @@ export async function runMove({ ctx, request, ops, io, report = () => {}, now = 
     step("Stopping the worker", 4);
     stopped = true; // even a stop that fails halfway must be followed by a restart
     await ops.stop({ ...swap(plan), models: Boolean(plan.models?.separate) });
+    // Nothing may write to the data folder from here on. A browser that is still closing keeps changing its files, so wait for quiet.
+    if (io.quiet) { const q = await io.quiet(old); if (!q.ok) throw new Error(STILL_CLOSING); }
+    const pictureBefore = io.fingerprint ? await io.fingerprint(old) : null;
 
     step("Preparing the new folder", 6);
     created = !chk.existed;
@@ -133,6 +136,9 @@ export async function runMove({ ctx, request, ops, io, report = () => {}, now = 
     const c1 = await io.copy(old, target, { onProgress: prog(0), total: dataSize.bytes });
     done = c1.bytes;
     if (plan.models?.separate) await io.copy(plan.models.old, plan.models.new, { onProgress: prog(done), total: modelsSize.bytes });
+
+    // If the original changed while it was being copied, something was still writing: that is a retry, not a bad copy.
+    if (pictureBefore && !sameFingerprint(pictureBefore, await io.fingerprint(old))) throw new Error(STILL_CLOSING);
 
     step("Checking the copy", 70);
     const v = await io.verify(old, target, { ignore: plan.models?.separate ? [MODELS_DIR_NAME] : [] });
@@ -221,6 +227,8 @@ export function realIo(ctx, { run, chown = null, dry = false } = {}) {
     inspect: (target, o) => inspectTarget(target, { platform: p, current: ctx.current, forbidden: ctx.forbidden, run, strictLinks: p === "linux" && process.getuid?.() === 0, ...o }),
     copy: (a, b, o) => copyTree(a, b, { platform: p, chown, ...o }),
     verify: (a, b, o) => verifyTree(a, b, { platform: p, ...o }),
+    quiet: (dir) => (dry ? Promise.resolve({ ok: true }) : waitQuiet(dir, { platform: p })),
+    fingerprint: (dir) => fingerprint(dir, { platform: p }),
     // Settings the console rewrites while we copy (console.json holds the auto-update switch).
     syncSmall: async (a, b) => { for (const f of ["console.json", "console-token", "service-account.json"]) { try { if (existsSync(path.join(a, f))) { writeFileSync(path.join(b, f), readFileSync(path.join(a, f)), { mode: 0o600 }); if (chown) lchownSync(path.join(b, f), chown.uid, chown.gid); } } catch { /* verified already */ } } },
     health: (o) => (dry ? Promise.resolve({ ok: true }) : waitHealthy(o)),

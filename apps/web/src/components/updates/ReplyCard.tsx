@@ -17,6 +17,7 @@ const KIND: Record<string, { label: string; icon: typeof IconChat }> = {
   status_query: { label: "Asks if they're on", icon: IconMic },
   last_spot_query: { label: "Asks about their last spot", icon: IconClock },
   show_info: { label: "Asks where or when", icon: IconMap },
+  held: { label: "Held request: why", icon: IconSkip },
 };
 
 /** What sending a cancellation reply will do, in plain words. */
