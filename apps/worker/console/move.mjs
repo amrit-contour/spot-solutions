@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   HEADROOM_BYTES, MARKER, modFor, pathKey, isInside, inspectTarget, measure, copyTree, verifyTree, removeTree,
-  rewriteEnvPaths, replacePaths, readPointer, writePointer, writeAtomic, readJson, fmtGb,
+  rewriteEnvPaths, replacePaths, readPointer, writePointer, writeAtomic, readJson, fmtGb, makeFolder,
 } from "./storage.mjs";
 
 const exec = promisify(execFile);
@@ -123,7 +123,7 @@ export async function runMove({ ctx, request, ops, io, report = () => {}, now = 
     step("Preparing the new folder", 6);
     created = !chk.existed;
     await ops.prepare({ target, models: plan.models?.separate ? plan.models.new : null });
-    mkdirSync(target, { recursive: true });
+    makeFolder(target, { platform: ctx.platform });
     writeFileSync(path.join(target, MARKER), JSON.stringify({ from: old, at: now() }));
     if (io.own) io.own(path.join(target, MARKER));
 
@@ -292,8 +292,8 @@ for ($i = 0; $i -lt 15; $i++) { if (-not (Get-CimInstance Win32_Process -Filter 
     },
 
     async prepare({ target, models }) {
-      mkdirSync(target, { recursive: true });
-      if (models) mkdirSync(models, { recursive: true });
+      makeFolder(target, { platform: win ? "win32" : process.platform });
+      if (models) makeFolder(models, { platform: win ? "win32" : process.platform });
       if (win) {
         if (!dry) {
           // Only SYSTEM and Administrators (by well-known SID, so it works in any language), inherited by everything copied in.

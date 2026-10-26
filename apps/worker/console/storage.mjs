@@ -215,6 +215,27 @@ export async function inspectTarget(input, { platform = process.platform, curren
   }
   return { ok: true, path: target, free, total, needBytes, fsType: fsType ?? null, warnings, existed: near.dir === target };
 }
+/**
+ * Makes the folder (and any missing ones above it). `check` has already vetted the path. A sentence for the owner instead of a raw error code when it can't:
+ * no permission, a file with that name in the way, a name the drive refuses, a read-only or missing drive.
+ */
+export function makeFolder(input, { platform = process.platform, mkdir = mkdirSync } = {}) {
+  if (typeof input !== "string" || !modFor(platform).isAbsolute(input)) throw new Error("Couldn't create the folder: that isn't a full path.");
+  try {
+    mkdir(toFsPath(input, platform), { recursive: true });
+  } catch (e) {
+    const code = e.code;
+    const why = code === "EEXIST" || code === "ENOTDIR" ? `A file is already called that, or is in the way, so the folder can't be made there.`
+      : code === "EACCES" || code === "EPERM" ? `Spot Solutions isn't allowed to make a folder there. Pick a place it can write to.`
+      : code === "EROFS" ? `That disk is read-only.`
+      : code === "ENOENT" ? `That drive isn't available any more.`
+      : code === "ENOSPC" ? `That disk is full.`
+      : code === "EINVAL" || code === "ENAMETOOLONG" ? `That isn't a folder name the disk accepts.`
+      : `The disk said ${code || e.message}.`;
+    throw Object.assign(new Error(`Couldn't create ${input}. ${why}`), { code });
+  }
+  return input;
+}
 export const fmtGb = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(b / 1e6))} MB`);
 
 // ---------- walking ----------

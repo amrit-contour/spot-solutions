@@ -376,7 +376,7 @@ const sec = (id, title, summary, body, { open = true, cls = "" } = {}) => {
   const first = visibleIds()[0] === id, last = visibleIds().at(-1) === id;
   const tools = custMode ? { grip: `<button type="button" class="grip" data-grip="${id}" aria-label="Drag to move ${esc(TITLES[id] || title)}. Or press the up and down arrow keys." title="Drag to move">${gripSvg}</button>`,
     menu: `<span class="menuwrap"><button type="button" class="menubtn" data-menu="${id}" aria-haspopup="menu" aria-expanded="${menuFor === id}" aria-label="Options for ${esc(TITLES[id] || title)}">${dotsSvg}</button>${menuFor === id ? `<div class="menu" role="menu" aria-label="${esc(TITLES[id] || title)}"><button type="button" role="menuitem" data-move="${id}" data-dir="-1" ${first ? "disabled" : ""}>Move up</button><button type="button" role="menuitem" data-move="${id}" data-dir="1" ${last ? "disabled" : ""}>Move down</button><button type="button" role="menuitem" data-hide="${id}" ${forced(id) ? "disabled" : ""}>Hide</button></div>` : ""}</span>` } : { grip: "", menu: "" };
-  return `<details class="card sec ${cls}" data-sec="${id}" ${isOpen(id, open) ? "open" : ""}><summary>${tools.grip}<h2>${title}</h2><span class="muted small sum">${summary || ""}</span>${tools.menu}${chev}</summary><div class="secbody">${body}</div></details>`;
+  return `<details class="card sec ${cls}" data-sec="${id}" data-open="${isOpen(id, open) ? 1 : 0}" ${isOpen(id, open) ? "open" : ""}><summary>${tools.grip}<h2>${title}</h2><span class="muted small sum">${summary || ""}</span>${tools.menu}${chev}</summary><div class="secbody">${body}</div></details>`;
 };
 // Setup can't be hidden while the server isn't connected: it's the one thing the owner has to do.
 const forced = (id) => id === "setup" && state && !state.config.key;
@@ -400,7 +400,9 @@ const when = (ms) => (ms ? new Date(ms).toLocaleString([], { day: "numeric", mon
 const left = (ms) => { const t = Math.max(0, Math.round((ms - Date.now()) / 1000)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 const spin = `<span class="spin" aria-hidden="true"></span>`;
 const validKeyShape = (k) => /^[A-Za-z0-9_-]{20,200}$/.test(k);
-const holdRender = () => editing || ddOpen !== null || menuFor !== null || dragId !== null;
+// A text box with the cursor in it is never replaced by a refresh, whether or not its onfocus handler ran.
+const typing = () => { const a = document.activeElement; return Boolean(a && a.closest?.("#app") && a.matches?.("input:not([type=checkbox]):not([type=radio]):not([type=file]),textarea")); };
+const holdRender = () => editing || typing() || ddOpen !== null || menuFor !== null || dragId !== null;
 
 /** A dropdown that matches the console instead of the browser's native select. */
 const dd = (id, value, options, { placeholder = "Choose…", disabled = false } = {}) => {
@@ -721,11 +723,11 @@ function storageBody(s) {
   const d = stor.drive, m = stor.models, mv = stor.move;
   const dataPanel = `<div class="panel"><h3>Data folder</h3><div class="mono small path">${esc(stor.dataDir)}</div>
     ${stor.entries ? `<div class="${stor.scanning ? "scanning" : ""}">${stor.entries.map((e) => `<div class="kv"><span>${esc(e.label)}</span><b>${fmt(e.bytes)}</b></div>`).join("")}<div class="kv"><span><b>Total</b></span><b>${fmt(stor.bytes)}</b></div></div>` : `<div class="muted small">${spin} Counting what's in it…</div>`}
-    ${d.total ? meter("Drive", d.total - d.free, d.total, `${fmt(d.free)} free of ${fmt(d.total)}`) : ""}</div>`;
+    ${d.free != null ? `<div class="kv"><span>Free space</span><b>${fmt(d.free)} free</b></div>` : ""}</div>`;
   const modelsPanel = `<div class="panel"><h3>AI models folder</h3>${m.used ? `<div class="mono small path">${esc(m.dir)}</div>
     <div class="kv"><span>Models</span><b>${m.bytes ? fmt(m.bytes) : "none yet"}</b></div>
     ${m.inside ? `<div class="muted small">This folder is inside the data folder, so it moves with it.</div>` : ""}
-    ${m.total ? meter("Drive", m.total - m.free, m.total, `${fmt(m.free)} free of ${fmt(m.total)}`) : ""}` : `<div class="muted small" style="margin-top:6px">${esc(m.reason)} Nothing is stored for AI models here.</div>`}</div>`;
+    ${m.free != null ? `<div class="kv"><span>Free space</span><b>${fmt(m.free)} free</b></div>` : ""}` : `<div class="muted small" style="margin-top:6px">${esc(m.reason)} Nothing is stored for AI models here.</div>`}</div>`;
   let action;
   if (moveRunning() || mv?.phase === "running" || mv?.phase === "cleaning") {
     const idx = PHASES.findIndex((p) => (mv?.step || "").startsWith(p.split(" ")[0]));
@@ -820,6 +822,7 @@ function render() {
   const custBar = custMode ? `<div class="card custbar" role="region" aria-label="Customize sections"><div><b>Customize this page</b><div class="muted small">Drag a section by its handle to reorder it. On a phone, or from the keyboard, use the ⋯ menu (Move up, Move down, Hide). Warnings about low disk space, a stopped worker or an unconnected server always show at the top.</div></div>
       ${hiddenNow.length ? `<div><div class="muted small" style="margin-bottom:6px">Hidden sections</div><div class="hidden-chips">${hiddenNow.map((id) => `<button type="button" class="tonal sm" data-show="${id}">Show ${esc(TITLES[id])}</button>`).join("")}</div></div>` : `<div class="muted small">No sections are hidden.</div>`}
       <div class="actions"><button type="button" class="tonal" data-layout-reset>Reset layout</button><button type="button" data-cust-done>Done</button></div></div>` : "";
+  const at = typing() ? document.activeElement : null, keep = at?.id ? { id: at.id, from: at.selectionStart, to: at.selectionEnd } : null;
   $("#app").innerHTML = `
   <header>${logo}
     <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Spot Solutions <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
@@ -832,6 +835,8 @@ function render() {
   <div id="secs">${visibleIds().map((id) => blocks[id]).join("")}</div>
   ${!custMode && hiddenNow.length ? `<p class="muted small" style="margin-top:16px">${hiddenNow.length} section${hiddenNow.length === 1 ? " is" : "s are"} hidden. <a href="#" data-cust-toggle>Customize</a> to show ${hiddenNow.length === 1 ? "it" : "them"}.</p>` : ""}`;
   wire();
+  // A redraw that has to happen anyway (a button, a finished check) still hands the cursor back to the box it was in.
+  const back = keep && $("#" + keep.id); if (back && back !== document.activeElement) { back.focus({ preventScroll: true }); try { back.setSelectionRange(keep.from, keep.to); } catch { /* not a text box */ } }
 }
 
 
@@ -1017,12 +1022,12 @@ function pkRender(focus) {
   else if (root) {
     const rows = (pk.roots || []).map((r) => `<li><button type="button" class="pk-row" data-pk-go="${esc(r.path)}" ${r.error ? "disabled" : ""}>${r.kind === "home" ? IC.home : IC.drive}
       <span class="nm"><b>${esc(r.label)}${r.letter ? ` (${r.letter}:)` : ""}</b><span class="mono small muted">${esc(r.path)}</span>
-        <span class="tags">${pkFsBadge(r)}${r.total ? `<span class="chip neutral">${fmt(r.free ?? 0)} free of ${fmt(r.total)}</span>` : ""}${r.holdsData ? `<span class="chip ok">Data is here now</span>` : ""}</span>
+        <span class="tags">${pkFsBadge(r)}${r.total ? `<span class="chip neutral">${fmt(r.free ?? 0)} free</span>` : ""}${r.holdsData ? `<span class="chip ok">Data is here now</span>` : ""}</span>
         ${r.error ? `<span class="small">${esc(r.error)}</span>` : r.warning ? `<span class="small muted">${esc(r.warning)}</span>` : ""}</span>${r.error ? "" : IC.go}</button></li>`).join("");
     body = `${pk.err ? `<div class="pk-info bad" role="alert">${esc(pk.err)}</div>` : ""}${rows ? `<ul class="pk-list" aria-label="Drives and places">${rows}</ul>` : `<div class="pk-note muted">No drives found. Close this and use “Type a path instead”.</div>`}`;
   } else {
     const r = d.root;
-    const info = r.error ? `<div class="pk-info bad" role="alert">${esc(r.error)}</div>` : `<div class="pk-info">${r.fsName ? `<span class="chip neutral">${esc(r.fsName)}</span>` : ""}${r.total ? `<span>${fmt(r.free ?? 0)} free of ${fmt(r.total)} on ${esc(r.label)}</span>` : ""}${r.warning ? `<span class="muted">${esc(r.warning)}</span>` : ""}</div>`;
+    const info = r.error ? `<div class="pk-info bad" role="alert">${esc(r.error)}</div>` : `<div class="pk-info">${r.fsName ? `<span class="chip neutral">${esc(r.fsName)}</span>` : ""}${r.total ? `<span>${fmt(r.free ?? 0)} free on ${esc(r.label)}</span>` : ""}${r.warning ? `<span class="muted">${esc(r.warning)}</span>` : ""}</div>`;
     const rows = d.entries.map((e) => `<li><button type="button" class="pk-row" data-pk-go="${esc(e.path)}">${IC.folder}<span class="nm"><b>${esc(e.name)}</b></span>${IC.go}</button></li>`).join("");
     body = `${pk.err ? `<div class="pk-info bad" role="alert">${esc(pk.err)}</div>` : ""}${info}${rows ? `<ul class="pk-list" aria-label="Folders in ${esc(d.path)}">${rows}</ul>` : `<div class="pk-note muted">${pk.loading ? `${spin} Opening…` : "No folders in here."}</div>`}
       ${d.truncated ? `<div class="pk-note muted small">Showing the first ${d.entries.length} folders. Use “Type a path instead” for others.</div>` : ""}
@@ -1130,6 +1135,10 @@ function wire() {
     render();
   });
   document.querySelectorAll("details.sec").forEach((d) => d.ontoggle = () => {
+    // Browsers also fire "toggle" for a section that was just drawn already open. That is not the owner opening it, and acting on it
+    // re-drew the page again and again, taking the focus out of any box being typed in.
+    if (d.dataset.open === (d.open ? "1" : "0")) return;
+    d.dataset.open = d.open ? "1" : "0";
     const id = d.dataset.sec;
     secs[id] = d.open; saveSecs();
     if (id in liveBodies && d.open) { livePrev[id] = null; patchLive(); pollLive(); }

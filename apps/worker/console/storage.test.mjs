@@ -2,7 +2,7 @@ import { realpathSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, exis
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { MARKER, copyTree, fmtGb, inspectTarget, isInside, judgeFs, measure, pathKey, removeTree, replacePaths, rewriteEnvPaths, summariseData, toFsPath, validatePath, verifyTree } from "./storage.mjs";
+import { MARKER, copyTree, fmtGb, inspectTarget, isInside, judgeFs, makeFolder, measure, pathKey, removeTree, replacePaths, rewriteEnvPaths, summariseData, toFsPath, validatePath, verifyTree } from "./storage.mjs";
 import { planMove, readyCounts, runCleanup, runMove, waitHealthy } from "./move.mjs";
 
 const tmp = () => realpathSync.native(mkdtempSync(path.join(os.tmpdir(), "spot-store-")));
@@ -203,6 +203,36 @@ describe("inspecting a real folder", () => {
   });
 });
 const fsReal = (p) => realpathSync.native(p);
+
+describe("making a folder that doesn't exist yet", () => {
+  const base = { platform: "linux", current: "/nowhere/current", forbidden: [] };
+  it("creates every missing level, and is fine if it is already there", () => {
+    const t = path.join(tmp(), "a", "b", "data");
+    expect(makeFolder(t, { platform: "linux" })).toBe(t);
+    expect(lstatSync(t).isDirectory()).toBe(true);
+    expect(() => makeFolder(t, { platform: "linux" })).not.toThrow();
+  });
+  it("says why when it can't, in plain words", () => {
+    const d = tmp(); write(path.join(d, "taken"));
+    expect(() => makeFolder(path.join(d, "taken", "data"), { platform: "linux" })).toThrow(/Couldn't create .*A file is already called that/);
+    const fail = (code) => () => makeFolder("/x/y", { platform: "linux", mkdir: () => { throw Object.assign(new Error(code), { code }); } });
+    expect(fail("EACCES")).toThrow(/isn't allowed to make a folder there/);
+    expect(fail("EROFS")).toThrow(/read-only/);
+    expect(fail("ENOSPC")).toThrow(/full/);
+    expect(fail("EINVAL")).toThrow(/isn't a folder name/);
+    expect(() => makeFolder("relative/path", { platform: "linux" })).toThrow(/full path/);
+  });
+  it("check accepts a path whose folders don't exist yet and creates nothing", async () => {
+    const parent = tmp(), t = path.join(parent, "one", "two", "three");
+    const r = await inspectTarget(t, base);
+    expect(r).toMatchObject({ ok: true, existed: false });
+    expect(readdirSync(parent)).toEqual([]);
+  });
+  it("check refuses a path with a file in the way, before anything is stopped", async () => {
+    const d = tmp(); write(path.join(d, "taken"));
+    expect((await inspectTarget(path.join(d, "taken", "data"), base)).error).toMatch(/Part of that path is a file/);
+  });
+});
 
 // ---------- the orchestrator, with fake services ----------
 function rig({ failAt = null, healthy = true, models = false } = {}) {
