@@ -394,7 +394,11 @@ export type CommandType =
   | "test_agent"
   | "send_format_samples"
   | "preview_voice"
-  | "send_message";
+  | "send_message"
+  | "list_threads"
+  | "get_thread"
+  | "summarize_thread"
+  | "list_voice_sources";
 
 export interface Command {
   type: CommandType;

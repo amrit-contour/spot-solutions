@@ -181,6 +181,10 @@ Types are in `packages/shared/src/types.ts` and `packages/shared/src/fleet.ts`. 
 
 Cloud Storage holds one thing: `vault/{uid}/login-{gen}-{nonce}.bin` (and `vault/{uid}_agent/…` for the agent number), the AES-256-GCM encrypted login (Chromium `IndexedDB` and `Local Storage`). `storage.rules` denies every client read and write. `VaultMeta.object` names the committed object. Older and uncommitted objects are deleted after 10 minutes.
 
+## Messages (live reads, nothing stored)
+
+The Messages page reads chats on demand through three commands: `list_threads` (roster comics only, newest first, 80-character snippet, unread, "their message is waiting"), `get_thread` (about 50 messages, older pages with `before`) and `summarize_thread` (a sentence, a suggested reply and actions whose evidence quotes are checked against the chat; it never sends or applies anything). Sending uses the existing `send_message`, with an optional `voice` flag that rewrites plain text through `inVoice`. Their results are the only place chat text exists in Firestore: the app deletes the command document as soon as it has read it (`runCommand(..., { ephemeral: true })`), and the document carries `expireAt` (`TTL_DAYS.messages`) as a backstop. Rules let the owner create these commands, read them and delete only these types. `list_voice_sources` (names of every chat for the "Your voice" picker) follows the same rule. Pure rules (mapping, snippets, paging, day separators) are `packages/shared/src/threads.ts`; the model prompt and evidence check are `apps/worker/src/threadAssist.ts`. The demo builds sample chats from its own requests.
+
 ## Data retention
 
 Short-lived documents carry an `expireAt` Timestamp and Firestore TTL deletes them: `commands` (7 days, both `users/{uid}/commands` and `servers/{id}/commands`), `notices` (30 days), `contactsImport` (1 day) and `invites` (30 days). Set the policies once with `deploy/setup-cost-controls.sh`, then stamp existing documents with `apps/worker/scripts/backfill-expire-at.ts`. The same script turns off Cloud Storage soft delete on the bucket.

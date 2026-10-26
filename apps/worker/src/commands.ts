@@ -49,12 +49,13 @@ import { enqueueTask, sendQueued } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
 import { deliverDraft } from "./deliver.ts";
 import { greetFor } from "./greet.ts";
-import { inVoice, learnVoice, previewVoice } from "./voice.ts";
+import { inVoice, learnVoice, listVoiceSourceChats, previewVoice } from "./voice.ts";
 import { applyFollowUpAction } from "./followUp.ts";
 import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
+import { getThread, listThreads, summarizeThread } from "./chats.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
@@ -474,10 +475,28 @@ const handlers: Record<Command["type"], Handler> = {
     return out;
   },
 
-  async send_message(uid, { to, body, rich }) {
-    await deliverDraft(uid, sessions.require(uid), String(to), String(body ?? ""), rich as ComicAction["rich"] | undefined);
+  /**
+   * A message to one chat. `voice` (Messages page): write the text in the curator's voice first. The rewrite is checked against
+   * the typed text and falls back to it, so it can only change the wording. Returns what actually went out.
+   */
+  async send_message(uid, { to, body, rich, voice, name }) {
+    const r = rich as ComicAction["rich"] | undefined;
+    let text = String(body ?? "");
+    if (voice && text.trim() && (r?.kind ?? "text") === "text") text = await inVoice(uid, "reply", text, { name: String(name ?? "there") });
+    await deliverDraft(uid, sessions.require(uid), String(to), text, r);
+    return { body: text };
   },
+
+  // Messages page: read live from WhatsApp, returned as the (short-lived) command result, never stored elsewhere.
+  list_threads: (uid) => listThreads(uid),
+  get_thread: getThread,
+  summarize_thread: summarizeThread,
+  // "Your voice" → Choose chats: names of every chat, short-lived like the Messages results.
+  list_voice_sources: (uid) => listVoiceSourceChats(uid),
 };
+
+/** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */
+const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "summarize_thread", "list_voice_sources"]);
 
 /** The confirmation as the curator set it up: the text (in their voice), then the venue pin if that's on. */
 export async function sendConfirmation(uid: string, client: WAWebJS.Client, show: Show, comic: Comic, week: string, minutes?: number | null) {
@@ -637,10 +656,10 @@ export async function runCommand(uid: string, doc: QueryDocumentSnapshot) {
     const handler = handlers[cmd.type];
     if (!handler) throw new Error(`Unknown command ${cmd.type}`);
     const result = await handler(uid, cmd.payload ?? {}, doc.id);
-    await doc.ref.update({ status: "done", result: result ?? null, finishedAt: Date.now() });
+    await doc.ref.update({ status: "done", result: result ?? null, finishedAt: Date.now(), ...(CHAT_RESULT_COMMANDS.has(cmd.type) && { expireAt: expireAt(TTL_DAYS.messages) }) });
   } catch (e) {
     console.error(`[command] ${uid} ${cmd.type} failed`, e);
-    await doc.ref.update({ status: "error", error: (e as Error).message, finishedAt: Date.now() });
+    await doc.ref.update({ status: "error", error: (e as Error).message, finishedAt: Date.now(), ...(CHAT_RESULT_COMMANDS.has(cmd.type) && { expireAt: expireAt(TTL_DAYS.messages) }) });
   } finally {
     inFlight.delete(doc.id);
   }

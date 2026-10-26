@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   query,
@@ -49,9 +50,11 @@ export function useDocument<T>(path: string[] | null) {
 }
 
 /** Drop a command for the worker and resolve when it finishes. */
-export async function runCommand<R = unknown>(uid: string, type: CommandType, payload: Record<string, unknown> = {}, timeoutMs = 10 * 60_000) {
+export async function runCommand<R = unknown>(uid: string, type: CommandType, payload: Record<string, unknown> = {}, timeoutMs = 10 * 60_000, opts: { ephemeral?: boolean } = {}) {
   if (isDemoUser()) throw new Error("This needs a linked WhatsApp, so it's off in the demo. Sign in with Google to try it for real.");
-  const ref = await addDoc(userCol(uid, "commands"), { type, payload, status: "pending", createdAt: Date.now(), expireAt: expireAt(TTL_DAYS.commands) } satisfies Command);
+  // `ephemeral`: the result holds chat text (Messages page). It expires fast, and is deleted here the moment it has been read.
+  const ref = await addDoc(userCol(uid, "commands"), { type, payload, status: "pending", createdAt: Date.now(), expireAt: expireAt(opts.ephemeral ? TTL_DAYS.messages : TTL_DAYS.commands) } satisfies Command);
+  const forget = () => (opts.ephemeral ? void deleteDoc(ref).catch(() => undefined) : undefined);
   return new Promise<R>((resolve, reject) => {
     const timer = setTimeout(() => {
       unsub();
@@ -62,10 +65,12 @@ export async function runCommand<R = unknown>(uid: string, type: CommandType, pa
       if (d?.status === "done") {
         clearTimeout(timer);
         unsub();
+        forget();
         resolve(d.result as R);
       } else if (d?.status === "error") {
         clearTimeout(timer);
         unsub();
+        forget();
         reject(new Error(d.error ?? "Command failed"));
       }
     });

@@ -56,6 +56,8 @@ export const DAY_MS = 24 * 60 * 60_000;
 /** How long Firestore TTL (field `expireAt`, a Timestamp) keeps each kind of short-lived document. Policies: deploy/setup-cost-controls.sh. */
 export const TTL_DAYS = {
   commands: 7, // users/{uid}/commands and servers/{id}/commands (one collection group: both use this)
+  /** Results of list_threads / get_thread / summarize_thread hold chat text: the app deletes them once read, and TTL is the backstop. */
+  messages: 1,
   notices: 30,
   contactsImport: 1,
   invites: 30,

@@ -1,13 +1,14 @@
 // You already answered someone by hand in WhatsApp: apply what you said (place them, or close their request).
 import { useEffect, useState } from "react";
 import { updateDoc } from "firebase/firestore";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { ComicAction, SpotRequest } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand, timeAgo, useDocument, userDoc } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
 import { Avatar, Bubble, Button, Chip } from "../ui";
-import { IconCheck, IconGroup, IconSkip, IconUserCheck, IconUserMinus } from "../icons";
+import { IconChat, IconCheck, IconGroup, IconSkip, IconUserCheck, IconUserMinus } from "../icons";
 import { UpdateItem } from "./shared";
 
 export function FollowUpCard({ a }: { a: ComicAction }) {
@@ -63,6 +64,9 @@ export function FollowUpCard({ a }: { a: ComicAction }) {
         </div>
       </div>
       <div className="mt-3 flex items-center justify-end gap-2 border-t border-outline-variant/40 px-3 py-2">
+        <Link to={`/messages?c=${encodeURIComponent(a.comicId)}`} className="state-layer mr-auto inline-flex h-10 items-center gap-1.5 rounded-full px-3 type-label-l text-on-surface-variant">
+          <IconChat className="icon size-4" /> Open chat
+        </Link>
         <Button variant="text" icon={IconSkip} onClick={() => dismissAction(uid, a)}>
           Ignore
         </Button>

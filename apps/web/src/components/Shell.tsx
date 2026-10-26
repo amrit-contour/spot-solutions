@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { useApp } from "../lib/app";
 import { cx, type Icon } from "./ui";
-import { IconCalendar, IconCalendarMark, IconComics, IconInbox, IconMic, IconPhone, IconSettings } from "./icons";
+import { IconCalendar, IconCalendarMark, IconChat, IconComics, IconInbox, IconMic, IconPhone, IconSettings } from "./icons";
 import { Logo } from "./Logo";
 import { isDemoUser } from "../lib/demo";
 import { signInWithPopup } from "firebase/auth";
@@ -16,6 +16,7 @@ import { Count } from "./updates/shared";
 const NAV: { to: string; label: string; short?: string; icon: Icon }[] = [
   { to: "/", label: "Calendar", short: "Home", icon: IconCalendarMark },
   { to: "/requests", label: "Requests", icon: IconInbox },
+  { to: "/messages", label: "Messages", short: "Chats", icon: IconChat },
   { to: "/lineup", label: "Lineup", icon: IconMic },
   { to: "/comics", label: "Comics", icon: IconComics },
   { to: "/shows", label: "Shows", icon: IconCalendar },
@@ -45,10 +46,10 @@ function NavItem({ to, label, short, icon: I, rail }: { to: string; label: strin
   const { needsYou } = useUpdates();
   const badge = to === "/requests" ? needsYou : 0;
   return (
-    <NavLink to={to} end={to === "/"} className="group flex flex-1 flex-col items-center gap-1 outline-none sm:flex-none">
+    <NavLink to={to} end={to === "/"} className="group flex min-w-0 flex-1 flex-col items-center gap-1 outline-none sm:flex-none">
       {({ isActive }) => (
         <>
-          <span className={cx("state-layer relative grid h-8 w-14 place-items-center rounded-full transition-colors duration-200", isActive ? "text-on-nav-active" : "text-on-surface-variant", rail && "h-8")}>
+          <span className={cx("state-layer relative grid h-8 w-12 place-items-center sm:w-14 rounded-full transition-colors duration-200", isActive ? "text-on-nav-active" : "text-on-surface-variant", rail && "h-8")}>
             {isActive && <motion.span layoutId={rail ? "nav-rail" : "nav-bar"} className="absolute inset-0 rounded-full bg-nav-active" transition={{ type: "spring", duration: 0.45, bounce: 0.2 }} />}
             <I className="icon relative size-6" />
             {badge > 0 && (
@@ -58,7 +59,7 @@ function NavItem({ to, label, short, icon: I, rail }: { to: string; label: strin
               </span>
             )}
           </span>
-          <span className={cx("type-label-m transition-colors", isActive ? "text-on-surface" : "text-on-surface-variant")}>{short && !rail ? short : label}</span>
+          <span className={cx("type-label-m max-sm:text-[11px]! max-sm:tracking-normal! transition-colors", isActive ? "text-on-surface" : "text-on-surface-variant")}>{short && !rail ? short : label}</span>
         </>
       )}
     </NavLink>
@@ -110,7 +111,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
       </main>
 
       {/* Bottom bar < 600px */}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(5rem+env(safe-area-inset-bottom))] items-center bg-surface-container px-2 pb-[env(safe-area-inset-bottom)] sm:hidden">
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(5rem+env(safe-area-inset-bottom))] items-center bg-surface-container px-1 pb-[env(safe-area-inset-bottom)] sm:hidden">
         {NAV.map((n) => (
           <NavItem key={n.to} {...n} />
         ))}

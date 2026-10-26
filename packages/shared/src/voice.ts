@@ -17,10 +17,25 @@ export interface VoiceProfile {
 export interface VoiceSettings {
   enabled: boolean;
   profile?: VoiceProfile | null;
+  /** Which chats "Learn my voice" reads. Missing = recommended. */
+  sources?: VoiceSources;
+}
+
+/** A chat the curator picked for "Your voice". The name is kept so the summary reads without WhatsApp. */
+export interface VoiceSourceChat {
+  id: string;
+  name: string;
+  isGroup: boolean;
+}
+
+export interface VoiceSources {
+  /** recommended: your 80 most recent DMs and your show groups. selected: only `chats`. */
+  mode: "recommended" | "selected";
+  chats: VoiceSourceChat[];
 }
 
 /** Messages that can be written in the curator's voice. Group invite notes stay as typed. */
-export type VoiceKind = "ack" | "confirm" | "cancelSpot" | "reject" | Exclude<MessageKey, "groupWelcome">;
+export type VoiceKind = "ack" | "confirm" | "cancelSpot" | "reject" | "reply" | Exclude<MessageKey, "groupWelcome">;
 
 export const VOICE_SAMPLE_CAP = 300;
 export const VOICE_EXAMPLE_CAP = 15;
@@ -90,6 +105,7 @@ export function voiceDraftProblem(draft: string, template: string, facts: VoiceF
 
 const KIND_GOAL: Record<VoiceKind, string> = {
   ack: "Tell them you got their spot request and will confirm later. Don't promise a spot or say when.",
+  reply: "Say what the curator typed below, in their own voice. Change the wording only: no new facts.",
   confirm: "Confirm their spot with every detail below.",
   cancelSpot: "Tell them, kindly, that you've had to take them off the lineup.",
   reject: "Tell them, kindly, there's no spot for them this week.",
@@ -169,4 +185,69 @@ export function looksLikeTemplate(body: string, templates: string[]) {
     if (j / fixed.length >= 0.7) return true;
   }
   return false;
+}
+
+
+// ---- Choosing the chats "Your voice" learns from ----
+
+/** A chat as the voice picker sees it (a WhatsApp chat, trimmed to the fields used). `timestamp` is seconds. */
+export interface VoiceChatLike {
+  id: string;
+  name: string;
+  isGroup: boolean;
+  isReadOnly?: boolean;
+  timestamp: number;
+}
+
+export interface VoiceSourceItem extends VoiceSourceChat {
+  /** Epoch ms of the newest message. */
+  lastAt: number;
+}
+
+export const VOICE_SOURCES_CAP = 300;
+export const VOICE_RECOMMENDED_DMS = 80;
+
+/** Real conversations only: groups (@g.us) and 1:1 chats (@c.us, @lid). Status, broadcast lists and newsletters are not chats you wrote in. */
+export const isVoiceChatId = (id: string) => /@(g\.us|c\.us|lid)$/.test(id);
+
+/** The picker's list: names only, newest first, no status/broadcast/newsletters, not your own "message yourself" chat. */
+export function listVoiceSources(chats: VoiceChatLike[], me: string | undefined, cap = VOICE_SOURCES_CAP): VoiceSourceItem[] {
+  return chats
+    .filter((c) => isVoiceChatId(c.id) && c.id !== me)
+    .map((c) => ({ id: c.id, name: (c.name || "").trim() || `+${c.id.split("@")[0]}`, isGroup: c.isGroup, lastAt: (c.timestamp || 0) * 1000 }))
+    .sort((a, b) => b.lastAt - a.lastAt)
+    .slice(0, cap);
+}
+
+/**
+ * Which chats to read. Recommended: your show groups plus your newest DMs (today's behaviour). Selected: exactly the chats
+ * picked, in the order WhatsApp lists them. Never your own chat, and never a chat that isn't a conversation.
+ */
+export function pickVoiceChats<C extends VoiceChatLike>(sources: VoiceSources | undefined, chats: C[], opts: { groupIds: Set<string>; me?: string; maxDms?: number }): C[] {
+  const real = chats.filter((c) => isVoiceChatId(c.id) && c.id !== opts.me);
+  if (sources?.mode === "selected") {
+    const want = new Set(sources.chats.map((c) => c.id));
+    return real.filter((c) => want.has(c.id));
+  }
+  const dms = real
+    .filter((c) => !c.isGroup && !c.isReadOnly)
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, opts.maxDms ?? VOICE_RECOMMENDED_DMS);
+  return [...real.filter((c) => c.isGroup && opts.groupIds.has(c.id)), ...dms];
+}
+
+/** One line under the "Learn from" control. */
+export function voiceSourcesSummary(sources: VoiceSources | undefined, show = 3): string {
+  if (sources?.mode !== "selected") return "Your 80 most recent DMs and your show groups.";
+  const n = sources.chats.length;
+  if (!n) return "No chats picked yet.";
+  const names = sources.chats.slice(0, show).map((c) => c.name);
+  return `Learning from ${n} chat${n === 1 ? "" : "s"}: ${names.join(", ")}${n > show ? ` and ${n - show} more` : ""}.`;
+}
+
+/** Tick or untick chats in the picker. */
+export function toggleVoiceChats(chats: VoiceSourceChat[], items: VoiceSourceChat[], on: boolean): VoiceSourceChat[] {
+  const ids = new Set(items.map((i) => i.id));
+  const kept = chats.filter((c) => !ids.has(c.id));
+  return on ? [...kept, ...items.map(({ id, name, isGroup }) => ({ id, name, isGroup }))] : kept;
 }

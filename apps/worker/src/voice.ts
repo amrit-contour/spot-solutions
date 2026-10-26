@@ -7,13 +7,16 @@ import {
   VOICE_EXAMPLE_CAP,
   buildLearnPrompt,
   buildVoicePrompt,
+  listVoiceSources,
   looksLikeTemplate,
   messageTemplate,
   MESSAGE_TYPES,
+  pickVoiceChats,
   pickVoiceSamples,
   renderTemplate,
   voiceDraftProblem,
   type Settings,
+  type VoiceChatLike,
   type VoiceFacts,
   type VoiceKind,
   type VoiceProfile,
@@ -23,7 +26,6 @@ import { generateJson } from "./llm.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
 
-const MAX_DM_CHATS = 80;
 const PER_CHAT = 60;
 const DRAFT_TIMEOUT_MS = 30_000;
 
@@ -39,6 +41,15 @@ function allTemplates(settings: Settings) {
   return [settings.ack.template, settings.confirm.template, settings.cancelSpot.template, settings.reject.template, ...MESSAGE_TYPES.map((m) => messageTemplate(settings, m.key))];
 }
 
+const asVoiceChat = (c: WAWebJS.Chat): VoiceChatLike & { chat: WAWebJS.Chat } => ({ id: c.id._serialized, name: c.name, isGroup: c.isGroup, isReadOnly: c.isReadOnly, timestamp: c.timestamp, chat: c });
+
+/** list_voice_sources: every real chat (groups and people, not only comics) as names, for the "Choose chats" picker. No message content. */
+export async function listVoiceSourceChats(uid: string) {
+  const client = sessions.require(uid);
+  const chats = await client.getChats();
+  return { chats: listVoiceSources(chats.map(asVoiceChat), client.info?.wid?._serialized), at: Date.now() };
+}
+
 /** Read the curator's own sent messages (DMs and show groups) and build their voice profile. */
 export async function learnVoice(uid: string, _payload: Record<string, unknown>, commandId?: string) {
   const client = sessions.require(uid);
@@ -49,11 +60,10 @@ export async function learnVoice(uid: string, _payload: Record<string, unknown>,
   const me = client.info?.wid?._serialized;
   const groupIds = new Set(shows.map((s) => s.groupId).filter(Boolean) as string[]);
   const all = await client.getChats();
-  const dms = all
-    .filter((c) => !c.isGroup && !c.isReadOnly && ["c.us", "lid"].includes(c.id.server) && c.id._serialized !== me)
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, MAX_DM_CHATS);
-  const chats = [...all.filter((c) => c.isGroup && groupIds.has(c.id._serialized)), ...dms];
+  const sources = settings.voice?.sources;
+  const chats = pickVoiceChats(sources, all.map(asVoiceChat), { groupIds, me }).map((c) => c.chat);
+  if (sources?.mode === "selected" && !sources.chats.length) throw new Error("Pick at least one chat");
+  if (!chats.length) throw new Error(sources?.mode === "selected" ? "None of the chats you picked could be found in WhatsApp. Choose them again." : "No chats to read yet.");
 
   const templates = allTemplates(settings);
   const mine: { body: string; at: number }[] = [];
@@ -127,6 +137,7 @@ export async function previewVoice(uid: string, { kind }: Record<string, unknown
   const profile = settings.voice?.profile;
   if (!profile?.summary) throw new Error("Learn your voice first.");
   const k = (String(kind ?? "confirm") as VoiceKind);
+  if (k === "reply") throw new Error("Replies are written from what you type, so there is nothing to preview.");
   const template = k === "ack" ? settings.ack.template : k === "confirm" ? settings.confirm.template : k === "cancelSpot" ? settings.cancelSpot.template : k === "reject" ? settings.reject.template : messageTemplate(settings, k);
   const sample = MESSAGE_TYPES.find((m) => m.key === k)?.sample ?? {};
   const facts = { ...SAMPLE_VARS, ...sample } as VoiceFacts;

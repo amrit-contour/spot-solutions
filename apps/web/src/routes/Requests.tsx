@@ -33,7 +33,7 @@ import { UpdatesPanel } from "../components/UpdatesPanel";
 import { Count } from "../components/updates/shared";
 import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
-import { IconArrowDown, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
+import { IconArrowDown, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "../components/icons";
 
 export type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
 const LANES: { id: Lane; label: string }[] = [
@@ -60,13 +60,14 @@ export function Requests() {
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const [lane, setLane] = useState<Lane>("asked");
-  const [q, setQ] = useState("");
+  // Messages links here with ?q=name to land on that person's card.
+  const [params, setParams] = useSearchParams();
+  const [q, setQ] = useState(() => params.get("q") ?? "");
   const [clearOpen, setClearOpen] = useState(false);
   const [rereading, setRereading] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const lastWeek = shiftWeek(week, -1);
   // Phones and tablets show one view at a time; the URL keeps it linkable (/requests?view=updates). Desktop shows both.
-  const [params, setParams] = useSearchParams();
   const view: "requests" | "updates" = params.get("view") === "updates" ? "updates" : "requests";
   const setView = (v: "requests" | "updates") => setParams(v === "updates" ? { view: "updates" } : {}, { replace: true });
   const updates = useUpdates();
@@ -337,6 +338,10 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
         </button>
         <Confidence value={r.intent.confidence} />
         <div className="flex-1" />
+        <Link to={`/messages?c=${encodeURIComponent(r.comicId)}`} className="state-layer pressable inline-flex h-10 items-center gap-1.5 rounded-full px-3 type-label-l text-on-surface-variant" title={`Open the chat with ${r.comicName}`}>
+          <IconChat className="icon size-4" />
+          <span className="max-[400px]:sr-only">Open chat</span>
+        </Link>
         {held ? (
           <>
             <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} />

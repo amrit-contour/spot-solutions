@@ -20,6 +20,7 @@ import {
   snippetRich,
   storeMessage,
   pollProblem,
+  voiceSourcesSummary,
   type GroupInfo,
   type RichMessage,
   type MessageKind,
@@ -41,8 +42,10 @@ import { FleetCard } from "../components/FleetCard";
 import { NotifyCard } from "../components/NotifyCard";
 import { GoogleContactsCard } from "../components/GoogleContactsCard";
 import { AppearanceCard } from "../components/AppearanceCard";
+import { VoiceSourcesSheet } from "../components/VoiceSourcesSheet";
+import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "../components/rich/MessageComposer";
-import { Bubble, Button, Field, Info, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "../components/ui";
+import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "../components/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose } from "../components/icons";
 
 const TABS = [
@@ -617,10 +620,15 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
   const [summary, setSummary] = useState(profile?.summary ?? "");
   const [trying, setTrying] = useState(false);
   const [preview, setPreview] = useState<{ reference: string; drafts: { text: string; problem: string | null }[] } | null>(null);
+  const [picking, setPicking] = useState(false);
+  const sources = voice.sources ?? { mode: "recommended" as const, chats: [] };
+  const demo = isDemoUser();
   useEffect(() => setSummary(profile?.summary ?? ""), [profile?.summary]);
+  const setSources = (next: typeof sources) => saveSettings({ voice: { ...voice, sources: next } });
 
   const save = (patch: Partial<NonNullable<typeof profile>>) => profile && saveSettings({ voice: { ...voice, profile: { ...profile, ...patch } } });
   const learn = async () => {
+    if (sources.mode === "selected" && !sources.chats.length) return void toast.error("Pick at least one chat");
     setLearning(true);
     try {
       const r = await runCommand<{ samples: number; examples: number }>(uid, "learn_voice", {}, 15 * 60_000);
@@ -650,12 +658,33 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
       icon={IconSparkle}
       description={
         <>
-          Messages go out the way you write: your greetings, your Hinglish, your emoji, a little different for each comic. Spot Solutions reads only messages <b>you</b> sent (your recent DMs and show groups), keeps a short description and up to 15 examples, and never stores the chats. Your template below is the guide and the safety net: if a draft changes or drops a date, time, venue or link, or the model is busy, the template goes out instead. It uses your AI models setting, so on Local only nothing leaves your server.
+          Messages go out the way you write: your greetings, your Hinglish, your emoji, a little different for each comic. Spot Solutions reads only messages <b>you</b> sent, in the chats you choose (by default your recent DMs and show groups), keeps a short description and up to 15 examples, and never stores the chats. Your template below is the guide and the safety net: if a draft changes or drops a date, time, venue or link, or the model is busy, the template goes out instead. It uses your AI models setting, so on Local only nothing leaves your server.
         </>
       }
       aside={<Switch checked={voice.enabled && Boolean(profile)} disabled={!profile} onChange={(v) => saveSettings({ voice: { ...voice, enabled: v } })} label="Write messages in my voice" />}
     >
       <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <span className="type-label-l text-on-surface-variant">Learn from</span>
+          <Segmented
+            size="sm"
+            value={sources.mode}
+            onChange={(mode) => void setSources({ ...sources, mode })}
+            options={[
+              { value: "recommended", label: "Recommended" },
+              { value: "selected", label: "Only chats I pick" },
+            ]}
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            {sources.mode === "selected" && (
+              <Button size="sm" variant="tonal" disabled={demo} onClick={() => setPicking(true)}>
+                Choose chats…
+              </Button>
+            )}
+            <span className="min-w-0 flex-1 basis-56 type-body-s text-on-surface-variant">{demo && sources.mode === "selected" ? "The demo has no WhatsApp, so there are no chats to choose from. On a real account this lists your groups and people." : voiceSourcesSummary(sources)}</span>
+          </div>
+        </div>
+        <VoiceSourcesSheet open={picking} onClose={() => setPicking(false)} value={sources.chats} onSave={(chats) => setSources({ mode: "selected", chats })} />
         <div className="flex flex-wrap items-center gap-3">
           <Button variant={profile ? "outlined" : "filled"} icon={IconSparkle} loading={learning} onClick={learn}>
             {profile ? "Learn again" : "Learn my voice"}
