@@ -30,7 +30,7 @@ export function OnboardCard({ a }: { a: ComicAction }) {
     }
   };
   return (
-    <UpdateItem>
+    <UpdateItem onDismiss={() => dismissAction(uid, a)}>
       <div className="flex gap-3 px-4 pt-4">
         <Avatar name={a.comicName} size={40} tone="primary" />
         <div className="min-w-0 flex-1">
@@ -73,7 +73,7 @@ export function IntroCard({ intro }: { intro: Introduction }) {
   const match = comics.find((c) => c.name.toLowerCase() === intro.name.toLowerCase());
   const to = match ? `/comics?edit=${encodeURIComponent(match.id)}` : `/comics?add=${encodeURIComponent(intro.name)}`;
   return (
-    <UpdateItem>
+    <UpdateItem onDismiss={() => dismissNotice(uid, intro.notice)}>
       <div className="flex gap-3 px-4 pt-4">
         <Avatar name={intro.name} size={40} tone="secondary" />
         <div className="min-w-0 flex-1">

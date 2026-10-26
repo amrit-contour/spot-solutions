@@ -20,7 +20,7 @@ export function ServerCard({ n }: { n: AppNotice }) {
   const warn = n.level === "warn";
   const link = fix(n.text);
   return (
-    <UpdateItem className={warn ? "bg-error-container text-on-error-container" : "bg-surface-container"}>
+    <UpdateItem className={warn ? "bg-error-container text-on-error-container" : "bg-surface-container"} onDismiss={() => dismissNotice(uid, n)}>
       <div className="flex items-start gap-3 py-3 pr-2 pl-4">
         {warn ? <IconWarn className="icon mt-0.5 size-5 flex-none" /> : <IconHistory className="icon mt-0.5 size-5 flex-none text-primary" />}
         <div className="min-w-0 flex-1">
@@ -34,7 +34,7 @@ export function ServerCard({ n }: { n: AppNotice }) {
             )}
           </div>
         </div>
-        <IconButton icon={IconClose} label="Dismiss" className="-my-1 size-9 flex-none" onClick={() => dismissNotice(uid, n)} data-primary={link ? undefined : true} />
+        <IconButton icon={IconClose} label="Dismiss" className="size-9 flex-none self-center" onClick={() => dismissNotice(uid, n)} data-primary={link ? undefined : true} />
       </div>
     </UpdateItem>
   );

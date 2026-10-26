@@ -38,7 +38,7 @@ export function FollowUpCard({ a }: { a: ComicAction }) {
   };
 
   return (
-    <UpdateItem>
+    <UpdateItem onDismiss={() => dismissAction(uid, a)}>
       <div className="flex gap-3 px-4 pt-4">
         <Avatar name={a.comicName} size={40} tone="secondary" />
         <div className="min-w-0 flex-1">

@@ -113,3 +113,24 @@ export function answerMicCheck(uid: string, l: Lineup, outcome: "happened") {
   void updateDoc(userDoc(uid, "lineups", l.id), { outcome });
   toast("Saved", { description: "Marked as happened", action: { label: "Undo", onClick: () => void updateDoc(userDoc(uid, "lineups", l.id), { outcome: deleteField() }) } });
 }
+
+/** Updates → Clear all: dismiss every reply, new-face, follow-up and server card at once (mic checks need an answer). */
+export function clearAll(uid: string, actions: ComicAction[], notices: AppNotice[]) {
+  if (!actions.length && !notices.length) return;
+  const at = Date.now();
+  const batch = writeBatch(db);
+  for (const a of actions) batch.update(userDoc(uid, "actions", a.id), { status: "dismissed", dismissedAt: at });
+  for (const n of notices) batch.update(userDoc(uid, "notices", n.id), { read: true, dismissedAt: at });
+  void batch.commit();
+  toast(`Cleared ${actions.length + notices.length}`, {
+    action: {
+      label: "Undo",
+      onClick: () => {
+        const undo = writeBatch(db);
+        for (const a of actions) undo.update(userDoc(uid, "actions", a.id), { status: "pending", dismissedAt: deleteField() });
+        for (const n of notices) undo.update(userDoc(uid, "notices", n.id), { read: false, dismissedAt: deleteField() });
+        void undo.commit();
+      },
+    },
+  });
+}

@@ -53,7 +53,7 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
   };
 
   return (
-    <UpdateItem>
+    <UpdateItem onDismiss={() => dismissAction(uid, a)}>
       <div className="flex gap-3 px-4 pt-4">
         <Avatar name={a.comicName} size={40} tone="tertiary" />
         <div className="min-w-0 flex-1">

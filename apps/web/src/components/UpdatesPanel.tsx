@@ -4,7 +4,7 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import type { Lineup } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { dismissNotices, useUpdates } from "../lib/updates";
+import { clearAll, dismissNotices, useUpdates } from "../lib/updates";
 import { Button, cx, type Icon } from "./ui";
 import { IconArrowDown, IconChat, IconChatCheck, IconCheck, IconMic, IconServer, IconUserCheck, IconUserPlus } from "./icons";
 import { Count } from "./updates/shared";
@@ -40,6 +40,11 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
     (target ?? heading.current)?.focus({ preventScroll: false });
   }, []);
 
+  const clearList = [...u.replies, ...u.onboarding, ...u.followUps];
+  const clearNotices = [...u.server, ...u.introductions.map((i) => i.notice)];
+  const clearable = clearList.length + clearNotices.length;
+  const clear = () => clearAll(uid, clearList, clearNotices);
+
   return (
     <div ref={root} onFocusCapture={track} className="pb-2">
       <div className="mb-1 hidden items-center gap-2 pt-1 pb-2 lg:flex">
@@ -47,7 +52,21 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
           Updates
         </h2>
         <Count value={u.total} className={cx("rounded-full px-2 type-label-m", u.total ? "bg-primary text-on-primary" : "bg-surface-high text-on-surface-variant")} />
+        <div className="flex-1" />
+        {clearable > 0 && (
+          <Button size="sm" variant="text" onClick={clear}>
+            Clear all
+          </Button>
+        )}
       </div>
+      {/* Phones: the same Clear all, since the heading row above is desktop-only. */}
+      {clearable > 0 && (
+        <div className="mb-1 flex justify-end lg:hidden">
+          <Button size="sm" variant="text" onClick={clear}>
+            Clear all
+          </Button>
+        </div>
+      )}
 
       <AnimatePresence initial={false} onExitComplete={restoreFocus}>
         {u.replies.length > 0 && (
