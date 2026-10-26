@@ -106,6 +106,16 @@ export function LineupBoard() {
     return cols;
   }, [activeShows, lineupByShow, requests.data, comicsById, lastWeek]);
 
+  // Tiles glide between Waiting and lineups only for changes you make: while a week's data is still
+  // arriving (requests first, then lineups) they'd otherwise animate into place on every load.
+  const loaded = !lineups.loading && !requests.loading;
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    setSettled(false);
+    if (!loaded) return;
+    const t = setTimeout(() => setSettled(true), 500);
+    return () => clearTimeout(t);
+  }, [loaded, week]);
   const [cols, setCols] = useState<Columns>(remote);
   const colsRef = useRef(cols);
   colsRef.current = cols;
@@ -295,7 +305,7 @@ export function LineupBoard() {
                     comic={comicsById.get(cid)}
                     request={requestByComic.get(cid)}
                     lastWeek={lastWeek}
-                    shared={!activeId}
+                    shared={!activeId && settled}
                     action={
                       <Menu align="right" trigger={(t) => <IconButton icon={IconAdd} label="Add to a show" onClick={t} className="size-9" />}>
                         {(close) =>
@@ -328,7 +338,7 @@ export function LineupBoard() {
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} prev={prevLineups.data.find((l) => l.showId === show.id)} onAdd={(cid, seed) => addTo(cid, show, seed)} onAddTold={(cid, name) => addTold(cid, show, name)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId && settled} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} prev={prevLineups.data.find((l) => l.showId === show.id)} onAdd={(cid, seed) => addTo(cid, show, seed)} onAddTold={(cid, name) => addTold(cid, show, name)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
