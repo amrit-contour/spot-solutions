@@ -40,7 +40,7 @@ const weekOfPayload = (p: Record<string, unknown>) => {
 };
 
 /** Members of every grouped show this week, refreshing any list older than ten minutes. Returns who failed to refresh. */
-async function groupsFor(uid: string, shows: Show[]) {
+export async function groupsFor(uid: string, shows: Show[]) {
   const members = new Map<string, NonNullable<Show["groupMembers"]>["members"]>();
   const failed: string[] = [];
   for (const s of shows.filter((x) => x.groupId)) {
@@ -57,6 +57,24 @@ async function groupsFor(uid: string, shows: Show[]) {
     if (cache && cache.groupId === s.groupId) members.set(s.id, cache.members);
   }
   return { members, failed };
+}
+
+/** The curator's own text replies to this comic since they asked, oldest first, with when the newest was sent. */
+export async function curatorReplies(client: ReturnType<typeof sessions.require>, chatId: string, since: number) {
+  const chat = await client.getChatById(chatId);
+  const msgs = (await chat.fetchMessages({ limit: FETCH_LIMIT }))
+    .filter((m) => m.fromMe && m.type === "chat" && m.body?.trim() && m.timestamp * 1000 > since)
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-MAX_REPLIES);
+  return { replies: msgs.map((m) => m.body.slice(0, 1000)), lastAt: msgs.length ? msgs[msgs.length - 1].timestamp * 1000 : 0 };
+}
+
+/** What the curator decided, read from their replies. Throws AiPolicyError when no model is allowed. */
+export async function readDecision(uid: string, r: SpotRequest, replies: string[], shows: Show[]) {
+  const { settings, venues } = watchUser(uid);
+  const prompt = buildReconcilePrompt({ replies, ask: r.messages.map((m) => m.body).join(" / "), shows, venues });
+  const { text } = await generateJson(uid, settings.ai, prompt, RECONCILE_SCHEMA);
+  return parseReconcileDecision(text, replies, shows.map((s) => s.id));
 }
 
 export async function reconcileWaiting(uid: string, payload: Record<string, unknown>, commandId?: string) {
@@ -89,13 +107,7 @@ export async function reconcileWaiting(uid: string, payload: Record<string, unkn
     const since = Math.min(...r.messages.map((m) => m.at), r.createdAt);
     let replies: string[] = [];
     try {
-      const chat = await client.getChatById(comic?.chatId ?? r.comicId);
-      const msgs = await chat.fetchMessages({ limit: FETCH_LIMIT });
-      replies = msgs
-        .filter((m) => m.fromMe && m.type === "chat" && m.body?.trim() && m.timestamp * 1000 > since)
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .slice(-MAX_REPLIES)
-        .map((m) => m.body.slice(0, 1000));
+      replies = (await curatorReplies(client, comic?.chatId ?? r.comicId, since)).replies;
     } catch (e) {
       unreadable++;
       console.error(`[reconcile] ${uid} ${r.comicId} chat unreadable`, e);
@@ -104,9 +116,7 @@ export async function reconcileWaiting(uid: string, payload: Record<string, unkn
     let decision: ReconcileDecision | null = null;
     if (replies.length) {
       try {
-        const prompt = buildReconcilePrompt({ replies, ask: r.messages.map((m) => m.body).join(" / "), shows, venues });
-        const { text } = await generateJson(uid, settings.ai, prompt, RECONCILE_SCHEMA);
-        decision = parseReconcileDecision(text, replies, shows.map((s) => s.id));
+        decision = await readDecision(uid, r, replies, shows);
       } catch (e) {
         // A Local-only policy with no local model fails every comic the same way: stop and say so.
         if (e instanceof AiPolicyError) throw e;

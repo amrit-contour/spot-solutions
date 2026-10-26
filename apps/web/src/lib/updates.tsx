@@ -19,6 +19,8 @@ export interface UpdatesState {
   loading: boolean;
   /** Cancellations and questions with a drafted reply. */
   replies: ComicAction[];
+  /** You already answered them in WhatsApp: apply it. */
+  followUps: ComicAction[];
   /** "Who are you?" drafts for people who are not in your contacts. */
   onboarding: ComicAction[];
   /** Notices from comics who introduced themselves. */
@@ -52,7 +54,8 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   const today = localNow(new Date(), settings.timezone).date;
 
   const value = useMemo<UpdatesState>(() => {
-    const replies = actions.data.filter((a) => a.kind !== "onboard");
+    const replies = actions.data.filter((a) => a.kind !== "onboard" && a.kind !== "follow_up");
+    const followUps = actions.data.filter((a) => a.kind === "follow_up" && a.followUp);
     const onboarding = actions.data.filter((a) => a.kind === "onboard");
     const introductions: Introduction[] = [];
     const server: AppNotice[] = [];
@@ -62,9 +65,9 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       else server.push(n);
     }
     const micChecks = settings.micCheck.enabled ? confirmed.data.filter((l) => !l.outcome && l.date && l.date < today && shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5) : [];
-    const total = replies.length + onboarding.length + introductions.length + micChecks.length + server.length;
+    const total = replies.length + followUps.length + onboarding.length + introductions.length + micChecks.length + server.length;
     const needsYou = total - server.filter((n) => n.level !== "warn").length;
-    return { loading: actions.loading || notices.loading || confirmed.loading, replies, onboarding, introductions, micChecks, server, total, needsYou };
+    return { loading: actions.loading || notices.loading || confirmed.loading, replies, followUps, onboarding, introductions, micChecks, server, total, needsYou };
   }, [actions, notices, confirmed, settings.micCheck.enabled, today, shows]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

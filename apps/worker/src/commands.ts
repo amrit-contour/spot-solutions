@@ -40,6 +40,7 @@ import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice, learnVoice, previewVoice } from "./voice.ts";
+import { applyFollowUpAction } from "./followUp.ts";
 import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
@@ -391,6 +392,7 @@ const handlers: Record<Command["type"], Handler> = {
   reconcile_waiting: reconcileWaiting,
   apply_reconcile: applyReconcile,
   learn_voice: learnVoice,
+  apply_follow_up: (uid, { actionId }) => applyFollowUpAction(uid, sessions.require(uid), String(actionId)),
   preview_voice: previewVoice,
 
   async send_message(uid, { to, body }) {

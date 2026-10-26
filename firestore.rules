@@ -117,7 +117,7 @@ service cloud.firestore {
         allow read: if isOwner(uid) || (isAdmin() && resource.data.type == 'move_account');
         allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members', 'list_group_members', 'send_lineup_updates', 'reclassify_requests', 'scan_history', 'reconcile_waiting', 'apply_reconcile', 'learn_voice', 'preview_voice'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members', 'list_group_members', 'send_lineup_updates', 'reclassify_requests', 'scan_history', 'reconcile_waiting', 'apply_reconcile', 'learn_voice', 'preview_voice', 'apply_follow_up'];
         // Admins can move any approved curator's account to another server (Server page → Fleet).
         allow create: if isAdmin() && isApproved(uid)
           && request.resource.data.status == 'pending'

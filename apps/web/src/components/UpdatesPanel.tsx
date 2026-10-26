@@ -9,6 +9,7 @@ import { Button, cx, type Icon } from "./ui";
 import { IconArrowDown, IconChat, IconChatCheck, IconCheck, IconMic, IconServer, IconUserCheck, IconUserPlus } from "./icons";
 import { Count } from "./updates/shared";
 import { ReplyCard } from "./updates/ReplyCard";
+import { FollowUpCard } from "./updates/FollowUpCard";
 import { IntroCard, OnboardCard } from "./updates/FaceCard";
 import { MicCard } from "./updates/MicCard";
 import { ServerCard } from "./updates/ServerCard";
@@ -53,6 +54,13 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
           <Section key="reply" icon={IconChat} title="Needs a reply" count={u.replies.length} onExitComplete={restoreFocus}>
             {u.replies.map((a) => (
               <ReplyCard key={a.id} a={a} lineups={lineups} />
+            ))}
+          </Section>
+        )}
+        {u.followUps.length > 0 && (
+          <Section key="follow" icon={IconUserCheck} title="You already replied" count={u.followUps.length} onExitComplete={restoreFocus}>
+            {u.followUps.map((a) => (
+              <FollowUpCard key={a.id} a={a} />
             ))}
           </Section>
         )}

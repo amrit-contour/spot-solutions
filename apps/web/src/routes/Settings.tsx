@@ -283,6 +283,17 @@ export function SettingsPage() {
           </SettingRow>
         </Section>
 
+        <Section
+          title="Follow-ups from your replies"
+          icon={IconChatCheck}
+          description="Answered someone yourself in WhatsApp (“haan bhai, Monday done” or “sorry, full this week”)? Every 20 minutes Spot Solutions reads your own replies to people still Waiting this week. When your words are clear, it suggests placing them (and adding them to the show's group if they aren't in it) or closing their request. Nothing is sent to anyone. Group removals stay with each show's group update."
+          aside={<Switch checked={settings.followUp?.enabled ?? true} onChange={(v) => saveSettings({ followUp: { enabled: v, auto: settings.followUp?.auto ?? false } })} label="Check my replies" />}
+        >
+          <SettingRow label="Apply them without asking me" info={<>Off: each one lands in Updates → You already replied, for you to Apply or Ignore. On: clear ones are applied straight away and you get a note in Updates.</>} className={cx(!(settings.followUp?.enabled ?? true) && "pointer-events-none opacity-50")}>
+            <Switch checked={Boolean(settings.followUp?.auto)} onChange={(v) => saveSettings({ followUp: { enabled: settings.followUp?.enabled ?? true, auto: v } })} label="Apply follow-ups automatically" />
+          </SettingRow>
+        </Section>
+
         <DataSection />
 
           </>

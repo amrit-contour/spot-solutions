@@ -46,6 +46,8 @@ export interface Settings {
   snippets?: import("./messages.ts").Snippet[];
   /** Tell comics held by the request window or last-week rule why. Banned, ignored and hosts never get a reply. */
   heldReplies?: { enabled: boolean };
+  /** Check waiting requests against your own WhatsApp replies. auto: apply clear ones without asking. */
+  followUp?: { enabled: boolean; auto: boolean };
   /** Days "Scan past messages" looks back by default (1 to 21). Missing counts as 7. */
   scanDays?: number;
   /** Data retention. Missing on older docs: closedRequestsWeeks counts as 8. */
@@ -109,7 +111,7 @@ export interface SpotHistoryEntry {
 /** A comic asked something other than a spot: drafted reply waiting for the curator. */
 export interface ComicAction {
   id: string;
-  kind: "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "onboard";
+  kind: "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "onboard" | "follow_up";
   comicId: string;
   comicName: string;
   weekOf: string;
@@ -121,6 +123,22 @@ export interface ComicAction {
   createdAt: number;
   /** When the curator ignored it in the app (cleared again by Undo). */
   dismissedAt?: number;
+  /** follow_up: what the curator's own WhatsApp reply to a waiting request seems to say. */
+  followUp?: FollowUpSuggestion;
+}
+
+/** Read from the curator's own reply to someone still Waiting. Applied from Updates, or straight away on Auto. */
+export interface FollowUpSuggestion {
+  requestId: string;
+  action: "place" | "close_declined";
+  showId: string | null;
+  showName: string | null;
+  /** The show has a group and they aren't in it yet: applying adds them. */
+  addToGroup: boolean;
+  confidence: "high" | "low";
+  reason: string;
+  /** The curator's words it was read from. */
+  evidence: string;
 }
 
 export interface AppNotice {
@@ -243,6 +261,8 @@ export interface SpotRequest {
    * How to reach them. Unsure (Maybe) asks don't add anyone to Comics; placing one on a lineup does, from this.
    */
   contact?: { chatId: string; phone: string; nameSource: NonNullable<Comic["nameSource"]> } | null;
+  /** Newest of the curator's own replies the follow-up check has already read (epoch ms). */
+  followUpReplyAt?: number | null;
   /** When the comic was told why their request was held (heldReplies). Once per request. */
   heldRepliedAt?: number | null;
   /** Stamped once by the worker: this request created the comic, so they weren't on the roster before. */
@@ -332,6 +352,7 @@ export type CommandType =
   | "reconcile_waiting"
   | "apply_reconcile"
   | "learn_voice"
+  | "apply_follow_up"
   | "preview_voice"
   | "send_message";
 
