@@ -702,7 +702,7 @@ function Conversation({
         {newest.error && messages.length > 0 && <p role="status" className="pb-2 text-center type-body-s text-error">Couldn't refresh: {newest.error}</p>}
       </div>
 
-      <div className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 -mx-4 flex flex-none flex-col gap-2 border-t border-outline-variant bg-surface px-4 pt-3 pb-3 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:bg-surface-low lg:px-4">
+      <div className="sticky bottom-[var(--nav-h)] z-20 -mx-4 flex flex-none flex-col gap-2 border-t border-outline-variant bg-surface px-4 pt-3 pb-3 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:bg-surface-low lg:px-4">
         {aboveComposer}
         <div
           className="flex flex-col gap-2"

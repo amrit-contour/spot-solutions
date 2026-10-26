@@ -181,7 +181,7 @@ export function Comics() {
           </>
         )}
         {selecting && (
-          <div className="sticky bottom-[calc(6rem+env(safe-area-inset-bottom))] z-30 mt-4 flex items-center gap-2 rounded-full bg-inverse-surface py-2 pr-2 pl-5 text-inverse-on-surface shadow-lg sm:bottom-6">
+          <div className="sticky bottom-[calc(var(--nav-h)+1rem)] z-30 mt-4 flex items-center gap-2 rounded-full bg-inverse-surface py-2 pr-2 pl-5 text-inverse-on-surface shadow-lg sm:bottom-6">
             <span className="min-w-0 flex-1 truncate type-label-l tabular">{chosen.length} selected</span>
             <Button variant="text" onClick={exitSelect} className="text-inverse-on-surface!">Cancel</Button>
             <Button variant="danger" icon={IconTrash} disabled={!chosen.length} onClick={() => setConfirming(true)}>Remove</Button>

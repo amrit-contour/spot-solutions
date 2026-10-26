@@ -102,7 +102,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
         </NavLink>
       </nav>
 
-      <main className="min-w-0 flex-1 pt-[env(safe-area-inset-top)] pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-0">
+      <main className="min-w-0 flex-1 pt-[env(safe-area-inset-top)] pb-[calc(var(--nav-h)+1rem)] sm:pb-0">
         {isDemoUser() && <DemoBanner />}
         {/* CSS keyframes, not AnimatePresence: they always run to the end, so a route can never get stuck invisible. */}
         <div key={loc.pathname} className="page-enter">
@@ -111,7 +111,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
       </main>
 
       {/* Bottom bar < 600px */}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(5rem+env(safe-area-inset-bottom))] items-center bg-surface-container px-1 pb-[env(safe-area-inset-bottom)] sm:hidden">
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-[var(--nav-h)] items-center bg-surface-container px-1 pb-[var(--nav-pad)] sm:hidden">
         {/* Settings lives in the account menu (top right) on phones, so the bar keeps six roomy items. */}
         {NAV.filter((n) => n.to !== "/settings").map((n) => (
           <NavItem key={n.to} {...n} />
@@ -179,10 +179,13 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
       data-stuck={stuck || undefined}
       className={cx(
         // Frosted when pinned (90% + blur). One easing for every part.
-        "sticky top-[env(safe-area-inset-top)] z-30 border-b border-transparent px-4 transition-[padding,border-color,background-color] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none sm:px-8",
-        stuck ? "border-outline-variant bg-surface/90 pt-2 pb-2 backdrop-blur-md sm:pt-3 sm:pb-3" : "bg-surface pt-3 pb-4 sm:pt-10",
+        "sticky top-[env(safe-area-inset-top)] isolate z-30 border-b border-transparent px-4 transition-[padding,border-color] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none sm:px-8",
+        stuck ? "border-outline-variant pt-3 pb-2 sm:pt-3 sm:pb-3" : "pt-4 pb-4 sm:pt-10",
       )}
     >
+      {/* The frosted glass is its own layer behind everything in the bar (and runs up under the notch strip), so the
+          avatar, status and title always sit on top of it at full strength. */}
+      <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 -top-[env(safe-area-inset-top)] -z-10 transition-colors duration-300 motion-reduce:transition-none", stuck ? "bg-surface/90 backdrop-blur-md" : "bg-surface")} />
       {/* Phones: status + account on top. Desktop keeps both in the nav rail. */}
       <div className="mb-3 flex items-center gap-3 sm:hidden">
         <NavLink to="/settings#whatsapp" className="state-layer mr-auto inline-flex min-w-0 items-center gap-2 rounded-full px-2 py-1 type-label-m text-on-surface-variant">

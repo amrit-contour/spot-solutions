@@ -240,7 +240,7 @@ export function Segmented<T extends string | number>({ value, onChange, options,
 
 export function Stepper({ value, onChange, min = 0, max = 99, suffix }: { value: number; onChange: (v: number) => void; min?: number; max?: number; suffix?: string }) {
   return (
-    <div className="inline-flex h-10 items-center rounded-full border border-outline-variant">
+    <div className="inline-flex h-10 w-fit self-start items-center rounded-full border border-outline-variant">
       <button className="state-layer grid size-10 place-items-center rounded-full text-on-surface-variant disabled:opacity-30" disabled={value <= min} onClick={() => onChange(value - 1)} aria-label="Decrease">
         −
       </button>
