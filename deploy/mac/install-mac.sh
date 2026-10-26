@@ -5,7 +5,7 @@
 # Also reached through `curl -fsSL https://spot-solutions.web.app/install.sh | bash`, which hands Macs over to this script.
 set -euo pipefail
 TMP="$(mktemp -d)"
-echo "▸ Downloading Spot Server"
+echo "▸ Downloading Nothing BOT Server"
 curl -fSL --progress-bar https://spot-solutions.web.app/dl/SpotServer-mac.zip -o "$TMP/SpotServer.zip"
 echo "▸ Installing to /Applications"
 ditto -x -k "$TMP/SpotServer.zip" "$TMP"
@@ -18,7 +18,7 @@ echo "✓ App installed."
 # more, a local Gemma model). Skip with SPOT_SKIP_SETUP=1 and click "Set up this Mac" in the app instead.
 if [[ "${SPOT_SKIP_SETUP:-0}" != 1 ]]; then
   echo "▸ Setting up this Mac"
-  "/Applications/Spot Server.app/Contents/Resources/spotctl" setup || echo "Setup didn't finish. Open Spot Server and click Set up this Mac to retry."
+  "/Applications/Spot Server.app/Contents/Resources/spotctl" setup || echo "Setup didn't finish. Open Nothing BOT Server and click Set up this Mac to retry."
 fi
-echo "✓ Opening Spot Server. In its console, click Connect with Spot Solutions and sign in."
+echo "✓ Opening Nothing BOT Server. In its console, click Connect with Nothing BOT Curating and sign in."
 open "/Applications/Spot Server.app"

@@ -1,7 +1,7 @@
-SPOT SOLUTIONS - WINDOWS SERVER
+NOTHING BOT SERVER - WINDOWS
 ================================
 
-Turns this laptop into the always-on Spot Solutions server: WhatsApp + local Gemma.
+Turns this laptop into the always-on Nothing BOT Server: WhatsApp + local Gemma.
 
 BEFORE YOU START
   - Windows 10 or 11, 8 GB RAM recommended, plugged into power, on Wi-Fi/Ethernet.
@@ -13,18 +13,18 @@ BEFORE YOU START
 
 INSTALL
   1. Unzip this folder anywhere.
-  2. Double-click "Install Spot Solutions.cmd" and click Yes on the admin prompt.
+  2. Double-click "Install Nothing BOT Server.cmd" and click Yes on the admin prompt.
      It installs its own Node.js (C:\\SpotSolutions\\node) and Ollama, downloads Gemma (~3.5 GB), and sets up two
      startup tasks: the worker and the Server Console. It asks you nothing.
-     No room for Gemma (under ~8 GB RAM)? Double-click "Install Spot Solutions (Gemini
+     No room for Gemma (under ~8 GB RAM)? Double-click "Install Nothing BOT Server (Gemini
      only).cmd" instead: no Ollama, no download; AI runs on Gemini (add a key in the
      console or the app). That server can't host accounts set to "Local only".
-  3. The Server Console opens (also on your desktop as "Spot Server Console"):
+  3. The Server Console opens (also on your desktop as "Nothing BOT Server Console"):
      - drop in this laptop's own Firebase key (.json). One key per device: on the admin's
        Mac run deploy/new-server-key.sh <name> (see the Server guide, "Running several
        servers"). The worker starts by itself.
      - add your email under Admins, so the server shows in the app (Account -> Server).
-  4. Open "Spot Solutions" on the desktop -> Settings -> Show QR code, and scan it
+  4. Open "Nothing BOT Curating" on the desktop -> Settings -> Show QR code, and scan it
      from WhatsApp on your phone.
 
 Everything starts by itself at boot (even before anyone logs in), restarts if it
@@ -39,4 +39,4 @@ EVERYDAY
   Uninstall.cmd           - stop it, remove tasks and shortcuts (keeps your data)
 
 Files live in C:\SpotSolutions (app\ = code, data\ = WhatsApp session, key, logs).
-To update, run "Install Spot Solutions.cmd" again.
+To update, run "Install Nothing BOT Server.cmd" again.

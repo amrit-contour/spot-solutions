@@ -19,7 +19,7 @@ const EMAIL = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
 
 /** Ready-to-send message for an invite. */
 const inviteMessage = (email: string) =>
-  `You're invited to Spot Solutions, the comic lineup assistant.\n\nOpen ${APP_URL} and sign in with ${email}. Use that exact email: access is approved for you automatically, within a minute or two.\n\nThis invite works for ${TTL_DAYS.invites} days.`;
+  `You're invited to Nothing BOT Curating, the comic lineup assistant.\n\nOpen ${APP_URL} and sign in with ${email}. Use that exact email: access is approved for you automatically, within a minute or two.\n\nThis invite works for ${TTL_DAYS.invites} days.`;
 
 async function copy(text: string) {
   try {
@@ -125,7 +125,7 @@ export function Curators({ servers }: { servers: ServerStatus[] | null }) {
     if (status === "approved" && full) return toast.error(`You're at the limit of ${max} curators. Raise it or remove someone first.`);
     if (status === "removed" && !confirm(`Remove ${e.name ?? e.email}? Their WhatsApp session on this server stops right away.`)) return;
     await updateDoc(doc(db, "access", e.uid), { status, decidedAt: Date.now(), decidedBy: user.email ?? user.uid });
-    toast.success(status === "approved" ? `${e.name ?? e.email} can now use Spot Solutions` : status === "removed" ? "Access removed" : "Moved back to pending");
+    toast.success(status === "approved" ? `${e.name ?? e.email} can now use Nothing BOT Curating` : status === "removed" ? "Access removed" : "Moved back to pending");
   };
 
   const dataMenu = (e: AccessEntry, withRemove: boolean) => (

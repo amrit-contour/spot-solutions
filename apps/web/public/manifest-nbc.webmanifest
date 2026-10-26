@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Spot Solutions by Amrit Dash",
-  "short_name": "Spots",
+  "name": "Nothing BOT Curating by Amrit Dash",
+  "short_name": "NBot Curate",
   "description": "Open-mic lineups sorted from your WhatsApp by a Gemma model on your own laptop. By Amrit Dash.",
   "start_url": "/",
   "scope": "/",

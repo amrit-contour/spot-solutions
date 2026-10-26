@@ -146,7 +146,7 @@ export async function revokeAccount(deps: Deps, email: string) {
 
 export interface RemoveResult {
   revoked: string[];
-  /** No Spot Solutions account is linked to this server (for example the Mac using the project's default key). */
+  /** No Nothing BOT Curating account is linked to this server (for example the Mac using the project's default key). */
   keyNotRevoked: boolean;
 }
 

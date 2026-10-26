@@ -48,7 +48,7 @@ export function AgentCard() {
             </span>
             <h2 className="type-headline-s">{view === "ready" ? "Agent number is linked" : "Agent number"}</h2>
             <Info label="About the agent number">
-              A second WhatsApp number for Spot Solutions to talk to you from. It only ever messages your own number, and only reads messages you send it. It never messages comics, groups or anyone else: anything that goes to comics still goes out from your own WhatsApp, and only after you say yes.
+              A second WhatsApp number for Nothing BOT Curating to talk to you from. It only ever messages your own number, and only reads messages you send it. It never messages comics, groups or anyone else: anything that goes to comics still goes out from your own WhatsApp, and only after you say yes.
             </Info>
           </div>
           <AnimatePresence mode="wait" initial={false}>
@@ -59,7 +59,7 @@ export function AgentCard() {
                   {agent?.pushName ? ` (${agent.pushName})` : ""}. Save it in your contacts, then message it from <span className="text-on-surface tabular">+{session?.phone}</span>. Try “Monday lineup?”.
                 </p>
               )}
-              {view === "offline" && <p className="mt-3 type-body-l text-on-surface-variant">Your Spot Solutions server isn't reachable, so the agent is paused. This card updates by itself once it's back.</p>}
+              {view === "offline" && <p className="mt-3 type-body-l text-on-surface-variant">Your Nothing BOT Server isn't reachable, so the agent is paused. This card updates by itself once it's back.</p>}
               {(view === "idle" || view === "starting" || view === "qr") && (
                 <>
                   <p className="mt-3 type-body-l text-on-surface-variant">

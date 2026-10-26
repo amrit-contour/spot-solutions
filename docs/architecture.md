@@ -1,6 +1,6 @@
 # Architecture
 
-Spot Solutions has three parts: a React web app, Firestore, and one or more workers that run on the curator's own computers. Firestore is the only transport. The web app never talks to a worker directly, and a worker never opens a port.
+Nothing BOT Curating has three parts: a React web app, Firestore, and one or more workers that run on the curator's own computers. Firestore is the only transport. The web app never talks to a worker directly, and a worker never opens a port.
 
 ```mermaid
 flowchart LR

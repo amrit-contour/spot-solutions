@@ -1,10 +1,10 @@
 <#
-  Spot Solutions worker: native install for Windows 10/11.
+  Nothing BOT worker: native install for Windows 10/11.
 
   Installs its own Node.js (C:\SpotSolutions\node) and Ollama (via winget), pulls Gemma, clones the repo, and registers a Scheduled Task that starts the worker at boot
   (before anyone logs in) and restarts it if it crashes. Also stops the laptop sleeping on power.
 
-  Easiest: double-click "Install Spot Solutions.cmd". Or, in PowerShell as Administrator:
+  Easiest: double-click "Install Nothing BOT Server.cmd". Or, in PowerShell as Administrator:
 
     Set-ExecutionPolicy -Scope Process Bypass -Force
     irm https://spot-solutions.web.app/install.ps1 | iex
@@ -14,7 +14,7 @@
 
   Local model or Gemini only? You choose in the Server Console (AI models) and can switch any time. The installer picks
   for you: a local model on PCs with about 8 GB of memory or more, Gemini only on smaller ones. To force it, set
-  $env:SPOT_NO_LOCAL_MODEL = "1" (or "0") first, or use "Install Spot Solutions (Gemini only).cmd".
+  $env:SPOT_NO_LOCAL_MODEL = "1" (or "0") first, or use "Install Nothing BOT Server (Gemini only).cmd".
   Re-running without it keeps whatever the previous install chose.
 #>
 $ErrorActionPreference = "Stop"
@@ -58,7 +58,7 @@ function Step($msg) { Write-Host "`n> $msg" -ForegroundColor Yellow }
 function Ok($msg) { Write-Host "  $msg" -ForegroundColor Green }
 
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $admin) { throw "Run this as Administrator (double-click 'Install Spot Solutions.cmd')." }
+if (-not $admin) { throw "Run this as Administrator (double-click 'Install Nothing BOT Server.cmd')." }
 
 # Our own Node stays first: an older system Node (e.g. v18) must never run pnpm or the worker.
 function Refresh-Path {
@@ -145,7 +145,7 @@ for ($i = 0; $i -lt 30; $i++) {
 if ($LASTEXITCODE -ne 0) { throw "Downloading $Model failed. Check the internet connection and run this again." }
 } # end of: not Gemini-only
 
-Step "Spot Solutions code"
+Step "Nothing BOT Server code"
 [Environment]::SetEnvironmentVariable("PUPPETEER_CACHE_DIR", $ChromeDir, "Machine")
 $env:PUPPETEER_CACHE_DIR = $ChromeDir
 # Code comes as a tarball (Windows 10+ ships tar.exe). .env and node_modules aren't in it, so updates keep them.
@@ -265,7 +265,7 @@ $stub = "$Root\update.ps1"
 # replaced while it runs.
 $core = '__APPDIR__\deploy\windows\update-core.ps1'
 $run = '__ROOT__\update-core.run.ps1'
-if (-not (Test-Path $core)) { throw "update-core.ps1 isn't in the app folder. Run the Spot Solutions installer again." }
+if (-not (Test-Path $core)) { throw "update-core.ps1 isn't in the app folder. Run the Nothing BOT Server installer again." }
 Copy-Item $core $run -Force
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $run
 exit $LASTEXITCODE
@@ -275,8 +275,9 @@ $uSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGo
 Unregister-ScheduledTask -TaskName $UpdateTask -Confirm:$false -ErrorAction SilentlyContinue
 Register-ScheduledTask -TaskName $UpdateTask -Action $uAction -Principal $principal -Settings $uSettings | Out-Null
 # Reachable from phones/laptops on your home network (private profile only).
-Remove-NetFirewallRule -DisplayName "Spot Solutions Console" -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName "Spot Solutions Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private | Out-Null
+Remove-NetFirewallRule -DisplayName "Spot Solutions Console" -ErrorAction SilentlyContinue   # old display name
+Remove-NetFirewallRule -DisplayName "Nothing BOT Server Console" -ErrorAction SilentlyContinue
+New-NetFirewallRule -DisplayName "Nothing BOT Server Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private | Out-Null
 Ok "Console running, port 7420 open on private networks"
 
 Step "Desktop and Start Menu shortcuts"
@@ -285,12 +286,15 @@ $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
 $icon = "$Root\spot.ico"
 try { Invoke-WebRequest "https://spot-solutions.web.app/icons/spot.ico" -OutFile $icon } catch { $icon = $null }
-$places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Spot Solutions")
+$places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT")
+# Shortcuts from before the rename (display names only; nothing else depends on them).
+Remove-Item -Force -ErrorAction SilentlyContinue "$($places[0])\Spot Server Console.lnk", "$($places[0])\Spot Solutions.lnk"
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Spot Solutions"
 New-Item -ItemType Directory -Force -Path $places[1] | Out-Null
 foreach ($dir in $places) {
   foreach ($sc in @(
-    @{ Name = "Spot Server Console"; Url = "http://localhost:7420" },
-    @{ Name = "Spot Solutions"; Url = "https://spot-solutions.web.app" }
+    @{ Name = "Nothing BOT Server Console"; Url = "http://localhost:7420" },
+    @{ Name = "Nothing BOT Curating"; Url = "https://spot-solutions.web.app" }
   )) {
     $lnk = $shell.CreateShortcut("$dir\$($sc.Name).lnk")
     if (Test-Path $edge) { $lnk.TargetPath = $edge; $lnk.Arguments = "--app=$($sc.Url)" } else { $lnk.TargetPath = $sc.Url }
@@ -298,7 +302,7 @@ foreach ($dir in $places) {
     $lnk.Save()
   }
 }
-Ok "Shortcuts: 'Spot Server Console' and 'Spot Solutions' on the desktop and in Start"
+Ok "Shortcuts: 'Nothing BOT Server Console' and 'Nothing BOT Curating' on the desktop and in Start"
 
 Step "Keep the laptop awake on power"
 powercfg /change standby-timeout-ac 0
@@ -312,8 +316,8 @@ Start-Sleep 5
 $token = (Get-Content "$DataDir\console-token" -ErrorAction SilentlyContinue)
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Dhcp,Manual -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.*" } | Select-Object -First 1).IPAddress
 Write-Host ""
-Write-Host "Open 'Spot Server Console' on the desktop (it's opening now):" -ForegroundColor Green
-Write-Host "  1. Click Connect with Spot Solutions and sign in with Google (an admin account). The worker starts by itself."
+Write-Host "Open 'Nothing BOT Server Console' on the desktop (it's opening now):" -ForegroundColor Green
+Write-Host "  1. Click Connect with Nothing BOT Curating and sign in with Google (an admin account). The worker starts by itself."
 Write-Host "     No admin yet (a brand-new project)? Use 'First server ever? Use a key file' in the same card."
 if ($NoLocal) { Write-Host "     This server uses Gemini: add a Gemini key under AI models (or each curator in the app). A local model can be turned on there too." }
 else { Write-Host "     Local or Gemini only, and which models, is under AI models in the console." }

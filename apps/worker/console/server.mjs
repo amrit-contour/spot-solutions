@@ -1,10 +1,10 @@
-// Spot Solutions server console: a small local web UI on the server itself (port 7420).
+// Nothing BOT Server console: a small local web UI on the server itself (port 7420).
 // It solves the bootstrap problem (the worker can't reach Firebase until it has a key),
 // and shows service health, machine stats and logs. No dependencies, plain Node.
 //
 // Env: SPOT_DATA_DIR, SPOT_ENV_FILE, SPOT_CONSOLE_PORT (7420), SPOT_CONSOLE_TOKEN_FILE, SPOT_STATS_FILE (live-stats.json)
 // Test hooks: SPOT_CONSOLE_DRY_RUN=1 never restarts or updates anything on the machine; SPOT_FUNCTIONS_URL, SPOT_DIST_URL,
-// SPOT_WEB_URL and SPOT_GEMINI_URL point the console at stand-ins for Spot Solutions' servers.
+// SPOT_WEB_URL and SPOT_GEMINI_URL point the console at stand-ins for Nothing BOT Curating's servers.
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -348,7 +348,7 @@ createServer(async (req, res) => {
       return json(res, 200, { url: link, qr: qrText(link) });
     }
 
-    // Connect with a Spot Solutions account: a one-time link an admin approves in the web app (connect.mjs).
+    // Connect with a Nothing BOT Curating account: a one-time link an admin approves in the web app (connect.mjs).
     if (url.pathname === "/api/connect" && req.method === "GET") return json(res, 200, connect.state());
     if (url.pathname === "/api/connect/start" && req.method === "POST") {
       const b = await body(req);
@@ -373,7 +373,7 @@ createServer(async (req, res) => {
       const b = await body(req);
       await updater.check();
       const v = updater.view();
-      if (!v.latest) return json(res, 502, { error: "Couldn't reach Spot Solutions to look for an update. Check this server's internet." });
+      if (!v.latest) return json(res, 502, { error: "Couldn't reach Nothing BOT Curating to look for an update. Check this server's internet." });
       if (!v.available && !b.force) return json(res, 200, { ok: true, upToDate: true, to: v.current });
       const r = await updater.start({ by: String(b.by ?? "console").slice(0, 80) });
       return json(res, 200, { ...r, to: v.latest?.version ?? null });
@@ -450,10 +450,10 @@ createServer(async (req, res) => {
         });
         out = await r.json().catch(() => ({}));
       } catch {
-        return json(res, 502, { error: "Couldn't reach Spot Solutions. Check this server's internet and try again." });
+        return json(res, 502, { error: "Couldn't reach Nothing BOT Curating. Check this server's internet and try again." });
       }
       if (!r.ok) return json(res, r.status === 429 ? 429 : 400, { error: out.error || "That code didn't work." });
-      if (!isServiceAccountKey(out.key)) return json(res, 502, { error: "Spot Solutions sent back something that isn't a key." });
+      if (!isServiceAccountKey(out.key)) return json(res, 502, { error: "Nothing BOT Curating sent back something that isn't a key." });
       await installKey(out.key);
       return json(res, 200, { ok: true, projectId: out.key.project_id, serviceAccount: out.serviceAccount });
     }

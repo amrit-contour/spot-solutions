@@ -89,7 +89,7 @@ export async function connect(d: GcDeps, caller: Caller, data: { code?: unknown 
     if (refresh) await revokeToken(d.fetch, refresh);
     throw new AppError(code, message);
   };
-  if (!refresh) return refuse("Google didn't give lasting access. Remove Spot Solutions at myaccount.google.com/permissions, then try again.", "failed-precondition");
+  if (!refresh) return refuse("Google didn't give lasting access. Remove Nothing BOT Curating at myaccount.google.com/permissions, then try again.", "failed-precondition");
   if (!hasContactsScope(grant.scope)) return refuse("Contacts access wasn't ticked. Try again and leave the Contacts box ticked.", "failed-precondition");
   if (!grant.idToken) return refuse("Google didn't say which account this is. Try again.", "failed-precondition");
   let claims;

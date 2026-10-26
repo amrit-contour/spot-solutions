@@ -515,7 +515,7 @@ export interface ServerCommand {
   expireAt?: unknown;
 }
 
-/** access/{uid}: who may use this Spot Solutions install. Created "pending" on first sign-in. */
+/** access/{uid}: who may use this Nothing BOT Curating install. Created "pending" on first sign-in. */
 export interface AccessEntry {
   uid: string;
   email: string | null;

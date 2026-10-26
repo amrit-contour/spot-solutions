@@ -249,13 +249,13 @@ export function createBrowser({ platform = process.platform, run, home = os.home
     const roots = await rootsNow();
     let real;
     try { real = f.realpath(n.path); } catch (e) {
-      throw bad(e.code === "ENOENT" || e.code === "ENOTDIR" ? 404 : 403, e.code === "ENOENT" || e.code === "ENOTDIR" ? "That folder doesn't exist (any more)." : "Spot Solutions isn't allowed to open that folder.");
+      throw bad(e.code === "ENOENT" || e.code === "ENOTDIR" ? 404 : 403, e.code === "ENOENT" || e.code === "ENOTDIR" ? "That folder doesn't exist (any more)." : "Nothing BOT Server isn't allowed to open that folder.");
     }
     if (pathKey(real, platform) !== pathKey(n.path, platform)) throw bad(403, "That path goes through a shortcut (symlink). Pick the real folder.");
     const inside = roots.filter((r) => isInside(real, r.path, platform));
     if (!inside.length) throw bad(403, "That isn't on one of this computer's drives.");
     const exempt = (p) => roots.some((r) => !isFsRoot(r.path) && isInside(p, r.path, platform));
-    if (isSystemPath(real, platform) && !exempt(real)) throw bad(403, "That is a system folder. Spot Solutions keeps clear of those.");
+    if (isSystemPath(real, platform) && !exempt(real)) throw bad(403, "That is a system folder. Nothing BOT Server keeps clear of those.");
     const top = inside.reduce((a, b) => (b.path.length < a.path.length ? b : a));
     const near = inside.reduce((a, b) => (b.path.length > a.path.length ? b : a));
     return { real, roots, exempt, top, near };
@@ -272,7 +272,7 @@ export function createBrowser({ platform = process.platform, run, home = os.home
     try { dirents = f.readdir(real); } catch (e) {
       if (e.code === "ENOTDIR") throw bad(400, "That is a file, not a folder.");
       if (e.code === "ENOENT") throw bad(404, "That folder doesn't exist (any more).");
-      throw bad(403, "Spot Solutions isn't allowed to look inside that folder.");
+      throw bad(403, "Nothing BOT Server isn't allowed to look inside that folder.");
     }
     const r = filterEntries(dirents, { dir: real, platform, showHidden: hidden, home, exempt, cap });
     // Breadcrumb from the outermost drive that contains the folder, so /mnt/disk/x reads / › mnt › disk › x.
@@ -313,7 +313,7 @@ export function createBrowser({ platform = process.platform, run, home = os.home
       if (e.code === "EEXIST") throw bad(409, `A folder called "${k.name}" is already in there.`);
       // Ubuntu: the console isn't allowed to write most places; the root helper makes the folder when the move starts.
       if (platform === "linux" && ["EACCES", "EPERM", "EROFS"].includes(e.code)) return { ok: true, path: target, created: false };
-      throw bad(403, e.code === "EACCES" || e.code === "EPERM" ? "Spot Solutions isn't allowed to make a folder there." : `Couldn't make the folder (${e.code || e.message}).`);
+      throw bad(403, e.code === "EACCES" || e.code === "EPERM" ? "Nothing BOT Server isn't allowed to make a folder there." : `Couldn't make the folder (${e.code || e.message}).`);
     }
     return { ok: true, path: target, created: true };
   }

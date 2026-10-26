@@ -14,8 +14,8 @@ export default defineConfig({
       includeAssets: ["favicon.svg", "favicon-nbc.svg", "icons/apple-touch-icon.png", "icons/nbc/*.png", "manifest-nbc.webmanifest"],
       manifest: {
         id: "/",
-        name: "Spot Solutions by Amrit Dash",
-        short_name: "Spots",
+        name: "Nothing BOT Curating by Amrit Dash",
+        short_name: "NBot Curate",
         description: "Open-mic lineups sorted from your WhatsApp by a Gemma model on your own laptop. By Amrit Dash.",
         start_url: "/",
         scope: "/",

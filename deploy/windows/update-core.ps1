@@ -1,5 +1,5 @@
 <#
-  Spot Solutions server tasks on Windows: update, local-on, local-off.
+  Nothing BOT Server tasks on Windows: update, local-on, local-off.
 
   Run as SYSTEM by the scheduled task "SpotSolutionsUpdate" (registered by install.ps1), which the server console starts
   with `schtasks /run`. The task runs C:\SpotSolutions\update.ps1, a tiny stub that copies THIS file next to it and runs
@@ -109,7 +109,7 @@ try {
   # update.json itself. It runs as SYSTEM here, so the new folder is made with SYSTEM and Administrators access only.
   if ($Task -eq "move-data" -or $Task -eq "move-cleanup") {
     $mv = "$AppDir\apps\worker\console\move.mjs"
-    if (-not (Test-Path $mv)) { throw "move.mjs isn't in the app folder. Update Spot Solutions first." }
+    if (-not (Test-Path $mv)) { throw "move.mjs isn't in the app folder. Update Nothing BOT Server first." }
     $env:SPOT_ROOT = $Root
     & "$NodeDir\node.exe" $mv $Task
     $moveCode = $LASTEXITCODE
@@ -159,7 +159,7 @@ try {
   Set-Progress "running" "Checking the latest version"
   $v = Invoke-RestMethod "$Dist/dl/version.json?t=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" -TimeoutSec 30
   $latest = "$($v.version)"; $sha = "$($v.sha256)".ToLower(); $lmodel = "$($v.model)"
-  if ($latest -notmatch '^[0-9A-Za-z._-]{1,40}$' -or $sha -notmatch '^[0-9a-f]{64}$') { throw "The version file from Spot Solutions isn't valid." }
+  if ($latest -notmatch '^[0-9A-Za-z._-]{1,40}$' -or $sha -notmatch '^[0-9a-f]{64}$') { throw "The version file from Nothing BOT Curating isn't valid." }
   if ($lmodel -notmatch '^[A-Za-z0-9._:/-]{1,100}$') { $lmodel = "gemma3:4b" }
   $To = $latest
   if ($latest -eq $From) { Set-Progress "done" "Already up to date"; return }

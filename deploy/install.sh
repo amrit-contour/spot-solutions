@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spot Solutions server: one-shot install for Ubuntu 24.04+ / Debian / Kali (x86_64 or arm64).
+# Nothing BOT Server: one-shot install for Ubuntu 24.04+ / Debian / Kali (x86_64 or arm64).
 #
 #   curl -fsSL https://spot-solutions.web.app/install.sh | sudo bash
 #   # optional: | sudo ADMIN_EMAILS=you@gmail.com bash
@@ -18,7 +18,7 @@
 #   SPOT_NO_LOCAL_MODEL=1 (or --no-local-model), or SPOT_NO_LOCAL_MODEL=0. Re-running keeps the last choice.
 set -euo pipefail
 
-# One entry point: the Mac installer lives in install-mac.sh (it installs the Spot Server app and sets the Mac up).
+# One entry point: the Mac installer lives in install-mac.sh (it installs the Nothing BOT Server app and sets the Mac up).
 if [[ "$(uname -s)" == Darwin ]]; then
   exec bash -c "$(curl -fsSL "${SPOT_BASE_URL:-https://spot-solutions.web.app}/install-mac.sh")" install-mac.sh "$@"
 fi
@@ -133,7 +133,7 @@ install -d -m 0755 -o root -g root /usr/local/lib/spot-solutions "${STATE_DIR}"
 for f in move.mjs storage.mjs; do install -m 0644 -o root -g root "${APP_DIR}/apps/worker/console/${f}" "/usr/local/lib/spot-solutions/${f}"; done
 cat > /etc/systemd/system/spot-task@.service <<EOF
 [Unit]
-Description=Spot Solutions server task (%i)
+Description=Nothing BOT Server task (%i)
 After=network-online.target
 
 [Service]
@@ -153,7 +153,7 @@ step "systemd services"
 # Always ordered after Ollama when it exists, so turning the local model on later needs no unit change.
 cat > /etc/systemd/system/spot-worker.service <<EOF
 [Unit]
-Description=Spot Solutions worker (WhatsApp + Gemma)
+Description=Nothing BOT worker (WhatsApp + Gemma)
 After=network-online.target ollama.service
 Wants=network-online.target
 # Stays idle until a Firebase key is uploaded in the console.
@@ -177,7 +177,7 @@ EOF
 
 cat > /etc/systemd/system/spot-console.service <<EOF
 [Unit]
-Description=Spot Solutions server console (port ${PORT})
+Description=Nothing BOT Server console (port ${PORT})
 After=network-online.target
 
 [Service]
@@ -220,7 +220,7 @@ step "Done"
 echo "One-time setup: open the server console from a phone or laptop on THIS Wi-Fi:"
 /usr/local/bin/spot-console-url | sed 's/^/  /'
 echo
-echo "1. In the console, click Connect with Spot Solutions and sign in with Google (an admin account)."
+echo "1. In the console, click Connect with Nothing BOT Curating and sign in with Google (an admin account)."
 echo "   No admin yet (a brand-new project)? Use 'First server ever? Use a key file' in the same card."
 if [[ "${NO_LOCAL}" == 1 ]]; then echo "   This server uses Gemini: add a Gemini key under AI models (or each curator in the app). A local model can be turned on there too."; else echo "   Local or Gemini only, and which models, is under AI models in the console."; fi
 echo "2. Link WhatsApp at https://spot-solutions.web.app → Settings."

@@ -1,4 +1,4 @@
-// Where Spot Solutions keeps its data, and the safe building blocks for moving it to another drive: path validation,
+// Where Nothing BOT Server keeps its data, and the safe building blocks for moving it to another drive: path validation,
 // size scans, a copy that never follows symlinks, a verifier, and a delete that never leaves the folder it was given.
 // Node built-ins only. This file is also installed root-owned on Ubuntu (the root helper imports it), so keep it self-contained.
 import { lstatSync, readdirSync, statfsSync, realpathSync, mkdirSync, writeFileSync, readFileSync, renameSync, unlinkSync, rmdirSync, copyFileSync, symlinkSync, readlinkSync, lchownSync, utimesSync, chmodSync, existsSync } from "node:fs";
@@ -123,7 +123,7 @@ export function validatePath(input, { platform = process.platform, current = nul
   }
   for (const f of forbidden) {
     if (!f?.path) continue;
-    if (isInside(out, f.path, platform) || isInside(f.path, out, platform)) return fail(`The new folder can't be inside (or around) ${f.label || "the Spot Solutions program folder"}.`);
+    if (isInside(out, f.path, platform) || isInside(f.path, out, platform)) return fail(`The new folder can't be inside (or around) ${f.label || "the Nothing BOT Server program folder"}.`);
   }
   return { ok: true, path: out };
 }
@@ -214,7 +214,7 @@ export async function inspectTarget(input, { platform = process.platform, curren
       writeFileSync(toFsPath(file, platform), "ok");
       unlinkSync(toFsPath(file, platform));
     } catch (e) {
-      return { ok: false, error: `Spot Solutions can't write to ${near.dir} (${e.code || e.message}). Pick a folder it can write to.` };
+      return { ok: false, error: `Nothing BOT Server can't write to ${near.dir} (${e.code || e.message}). Pick a folder it can write to.` };
     }
   }
   let free = null, total = null;
@@ -243,7 +243,7 @@ export function makeFolder(input, { platform = process.platform, mkdir = mkdirSy
   } catch (e) {
     const code = e.code;
     const why = code === "EEXIST" || code === "ENOTDIR" ? `A file is already called that, or is in the way, so the folder can't be made there.`
-      : code === "EACCES" || code === "EPERM" ? `Spot Solutions isn't allowed to make a folder there. Pick a place it can write to.`
+      : code === "EACCES" || code === "EPERM" ? `Nothing BOT Server isn't allowed to make a folder there. Pick a place it can write to.`
       : code === "EROFS" ? `That disk is read-only.`
       : code === "ENOENT" ? `That drive isn't available any more.`
       : code === "ENOSPC" ? `That disk is full.`

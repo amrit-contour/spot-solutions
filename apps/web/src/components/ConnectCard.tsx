@@ -53,7 +53,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
               )}
               {view === "offline" && (
                 <p className="mt-2 type-body-l text-on-surface-variant">
-                  Your Spot Solutions server isn't reachable. Make sure the laptop running it is on and connected to the internet; this card updates by itself once it's back.
+                  Your Nothing BOT Server isn't reachable. Make sure the laptop running it is on and connected to the internet; this card updates by itself once it's back.
                 </p>
               )}
               {(view === "idle" || view === "starting" || view === "qr") && (
@@ -86,7 +86,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
           </div>
           <p className="mt-5 flex items-start gap-2 type-body-s text-on-surface-variant">
             <IconWarn className="icon mt-px size-4 flex-none" />
-            Uses WhatsApp Web through whatsapp-web.js, an unofficial client. Keep message volume human: Spot Solutions spaces out every send.
+            Uses WhatsApp Web through whatsapp-web.js, an unofficial client. Keep message volume human: Nothing BOT Curating spaces out every send.
           </p>
         </div>
 

@@ -1,4 +1,4 @@
-// Spot Server for macOS: sets up and controls the Spot Solutions server on this Mac.
+// Nothing BOT Server for macOS: sets up and controls the Nothing BOT Server on this Mac.
 // A thin native shell around `spotctl` (bundled in Resources) plus the server console
 // (http://127.0.0.1:7420), embedded so the Mac shows the same UI as Linux and Windows.
 import AppKit
@@ -138,7 +138,7 @@ struct SetupView: View {
             HStack(alignment: .top, spacing: 28) {
                 VStack(alignment: .leading, spacing: 18) {
                     Logo(size: 56)
-                    Text("Turn this Mac into a\nSpot Solutions server").font(.system(size: 30, weight: .semibold, design: .rounded))
+                    Text("Turn this Mac into a\nNothing BOT Server").font(.system(size: 30, weight: .semibold, design: .rounded))
                     VStack(alignment: .leading, spacing: 10) {
                         Bullet("cpu", "Downloads Node.js and, if this Mac has about 8 GB of memory, a local Gemma model (about 3.5 GB). No Homebrew needed.")
                         Bullet("lock.shield", "Local model or Gemini? You choose in the console afterwards, and can switch any time.")
@@ -206,7 +206,7 @@ struct DashboardView: View {
             HStack(spacing: 16) {
                 Logo()
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Spot Server").font(.title2.weight(.semibold))
+                    Text("Nothing BOT Server").font(.title2.weight(.semibold))
                     HStack(spacing: 6) {
                         Circle().fill(server.allUp ? .green : server.running ? .orange : .secondary).frame(width: 8, height: 8)
                         Text(server.allUp ? "Running" : server.running ? "Starting…" : "Stopped").foregroundStyle(.secondary)
@@ -261,16 +261,16 @@ struct DashboardView: View {
         }
         .toolbar {
             ToolbarItemGroup {
-                Button { NSWorkspace.shared.open(webAppURL) } label: { Label("Open Spot Solutions", systemImage: "safari") }
+                Button { NSWorkspace.shared.open(webAppURL) } label: { Label("Open Nothing BOT Curating", systemImage: "safari") }
                 Button { NSWorkspace.shared.open(consoleURL) } label: { Label("Console in browser", systemImage: "rectangle.on.rectangle") }
                 Button { NSWorkspace.shared.open(supportDir.appendingPathComponent("logs")) } label: { Label("Logs folder", systemImage: "doc.text.magnifyingglass") }
                 Menu {
-                    Button("Update Spot Solutions") { server.perform("Updating", ["update"]) }
+                    Button("Update Nothing BOT Server") { server.perform("Updating", ["update"]) }
                     Button("Restart worker") { server.perform("Restarting", ["restart", "worker"]) }
                     if server.localModel { Button("Restart Ollama") { server.perform("Restarting", ["restart", "ollama"]) } }
                     Divider()
                     Button("Uninstall (keep WhatsApp session and keys)…") {
-                        if confirm("Uninstall Spot Server?", "Stops the server and removes the code. Your WhatsApp session and keys stay, so reinstalling picks up where you left off.") {
+                        if confirm("Uninstall Nothing BOT Server?", "Stops the server and removes the code. Your WhatsApp session and keys stay, so reinstalling picks up where you left off.") {
                             server.perform("Uninstalling", ["uninstall"])
                         }
                     }
@@ -302,7 +302,7 @@ final class FolderPicker: NSObject, WKScriptMessageHandler {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Choose"
-        panel.message = "Choose a new or empty folder for Spot Solutions' data. A drive that is not APFS or Mac OS Extended won't work."
+        panel.message = "Choose a new or empty folder for Nothing BOT Server's data. A drive that is not APFS or Mac OS Extended won't work."
         var dir = URL(fileURLWithPath: "/Volumes")
         if start.hasPrefix("/") {
             // Open at the nearest folder that already exists.
@@ -378,14 +378,14 @@ struct MenuContent: View {
     @EnvironmentObject var server: Server
     @Environment(\.openWindow) var openWindow
     var body: some View {
-        Text(server.allUp ? "Spot Server is running" : server.running ? "Spot Server is starting" : "Spot Server is stopped")
+        Text(server.allUp ? "Nothing BOT Server is running" : server.running ? "Nothing BOT Server is starting" : "Nothing BOT Server is stopped")
         Divider()
         if server.installed {
             if server.running { Button("Stop server") { server.perform("Stopping", ["stop"]) } }
             else { Button("Start server") { server.perform("Starting", ["start"]) } }
         }
-        Button("Open Spot Server…") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
-        Button("Open Spot Solutions") { NSWorkspace.shared.open(webAppURL) }
+        Button("Open Nothing BOT Server…") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
+        Button("Open Nothing BOT Curating") { NSWorkspace.shared.open(webAppURL) }
         Divider()
         Button("Quit (server keeps running)") { NSApp.terminate(nil) }
     }
@@ -395,7 +395,7 @@ struct MenuContent: View {
 struct SpotServerApp: App {
     @StateObject private var server = Server()
     var body: some Scene {
-        Window("Spot Server", id: "main") {
+        Window("Nothing BOT Server", id: "main") {
             ContentView().environmentObject(server)
         }
         .defaultSize(width: 1040, height: 720)

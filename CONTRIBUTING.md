@@ -84,7 +84,7 @@ That runs the web build, adds the installers and a source tarball to the build (
 
 ## Anything that messages comics must be opt-in
 
-Spot Solutions sends WhatsApp messages on a curator's behalf. A wrong message goes to a real person, from the curator's own number. So:
+Nothing BOT Curating sends WhatsApp messages on a curator's behalf. A wrong message goes to a real person, from the curator's own number. So:
 
 - New automatic messaging is **off by default**, behind a setting the curator turns on. Auto-acknowledge (`ack.enabled`) and auto-send of drafted replies (`selfService.autoSend`) both start off.
 - Keep the existing guards: no replies to backlog messages, none to business accounts, none for low-confidence requests, none for messages older than 10 minutes.

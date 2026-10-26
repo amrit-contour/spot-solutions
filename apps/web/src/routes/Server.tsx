@@ -148,7 +148,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
         <Card tone="container" className="overflow-hidden">
           <h3 className="px-4 pt-4 pb-1 type-title-s">Services</h3>
           <ul className="divide-y divide-outline-variant/40">
-            <Service name="Spot Solutions worker" up={online} detail={online ? `Heartbeat ${timeAgo(s.lastSeen, now)}` : undefined} action={<RestartButton serverId={s.id} type="restart_worker" label="Restart" disabled={!online} />} />
+            <Service name="Nothing BOT worker" up={online} detail={online ? `Heartbeat ${timeAgo(s.lastSeen, now)}` : undefined} action={<RestartButton serverId={s.id} type="restart_worker" label="Restart" disabled={!online} />} />
             <Service name="Ollama" up={online && s.ollama.up} action={<RestartButton serverId={s.id} type="restart_ollama" label="Restart" disabled={!online} />} detail={s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"}${s.ollama.loaded.length ? ` · ${s.ollama.loaded.join(", ")} loaded` : ""}` : undefined} />
             <Service name="WhatsApp sessions" up={online && linked > 0} detail={`${linked} linked of ${s.sessions.length}`} />
             <Service name="Server Gemini key" up={s.geminiServerKey} detail={s.geminiServerKey ? "Set (used when a curator has none)" : "Not set (curators use their own)"} />
@@ -231,7 +231,7 @@ export function ServerPage() {
   const admin = isAdmin(useAccessConfig(), user.email);
   return (
     <div className="w-full">
-      <PageHeader title="Server" subtitle="Health of the machines running Spot Solutions" trailing={admin ? <Link to="/help" aria-label="Server guide" title="Server guide" className="state-layer inline-flex h-10 items-center gap-2 rounded-full border border-outline-variant px-3 type-label-l text-on-surface-variant sm:px-4"><IconLightbulb className="icon size-5" /><span className="max-sm:hidden">Server guide</span></Link> : undefined} />
+      <PageHeader title="Server" subtitle="Health of the machines running Nothing BOT Server" trailing={admin ? <Link to="/help" aria-label="Server guide" title="Server guide" className="state-layer inline-flex h-10 items-center gap-2 rounded-full border border-outline-variant px-3 type-label-l text-on-surface-variant sm:px-4"><IconLightbulb className="icon size-5" /><span className="max-sm:hidden">Server guide</span></Link> : undefined} />
       <div className="flex flex-col gap-10 px-4 pb-12 sm:px-8">
         {admin && <AddServerCard />}
         {admin && <FleetView servers={servers} />}

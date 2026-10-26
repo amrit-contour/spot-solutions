@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spot Solutions server tasks on Ubuntu/Debian, run as root by systemd: spot-task@update, spot-task@local-on, spot-task@local-off,
+# Nothing BOT Server tasks on Ubuntu/Debian, run as root by systemd: spot-task@update, spot-task@local-on, spot-task@local-off,
 # spot-task@move-data and spot-task@move-cleanup (move the data to another disk; delete the old copy after a verified move).
 #
 # The server console runs as the unprivileged "spot" user. Its sudoers rule lets it start exactly these five units and
@@ -92,7 +92,7 @@ pull_model() { # pull_model <name>
 
 # ---------------------------------------------------------------- move the data to another disk / delete the old copy
 if [[ "$TASK" == move-data || "$TASK" == move-cleanup ]]; then
-  [[ -f "$HELPER_DIR/move.mjs" && -f "$HELPER_DIR/storage.mjs" ]] || fail "The move helper isn't installed. Update Spot Solutions (or run the install command) first."
+  [[ -f "$HELPER_DIR/move.mjs" && -f "$HELPER_DIR/storage.mjs" ]] || fail "The move helper isn't installed. Update Nothing BOT Server (or run the install command) first."
   install -d -m 0755 "$STATE_DIR" 2>/dev/null || true
   SPOT_STATE_DIR="$STATE_DIR" "$NODE" "$HELPER_DIR/move.mjs" "$TASK"
   exit $?
@@ -129,7 +129,7 @@ fi
 
 # ---------------------------------------------------------------- update
 progress running "Checking the latest version"
-curl -fsSL --max-time 30 "$DIST/dl/version.json?t=$(date +%s)" -o "$TMP/version.json" || fail "Couldn't reach Spot Solutions to check for an update."
+curl -fsSL --max-time 30 "$DIST/dl/version.json?t=$(date +%s)" -o "$TMP/version.json" || fail "Couldn't reach Nothing BOT Curating to check for an update."
 # Validated before anything is used: only a plain version, a sha256 and a model name get through.
 eval "$("$NODE" -e '
   const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
@@ -138,7 +138,7 @@ eval "$("$NODE" -e '
   console.log(`SHA=${ok(j.sha256, /^[0-9a-f]{64}$/)}`);
   console.log(`LMODEL=${ok(j.model, /^[A-Za-z0-9._:\/-]{1,100}$/)}`);
 ' "$TMP/version.json")"
-[[ -n "${LATEST:-}" && -n "${SHA:-}" ]] || fail "The version file from Spot Solutions isn't valid."
+[[ -n "${LATEST:-}" && -n "${SHA:-}" ]] || fail "The version file from Nothing BOT Curating isn't valid."
 TO="$LATEST"
 if [[ "$LATEST" == "$FROM" ]]; then progress done "Already up to date"; exit 0; fi
 

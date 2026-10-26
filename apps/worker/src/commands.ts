@@ -94,7 +94,7 @@ const handlers: Record<Command["type"], Handler> = {
   async test_agent(uid) {
     if (!agentSessions.get(uid)) throw new Error("The agent number isn't connected yet");
     if (!(await curatorPhone(uid))) throw new Error("Your own WhatsApp isn't linked, so the agent doesn't know your number");
-    const ok = await sendToCurator(uid, "Hello from your Spot Solutions agent. I'm linked and I only talk to you. Send *help* to see what I can do.", { ignoreSwitch: true });
+    const ok = await sendToCurator(uid, "Hello from your Nothing BOT Curating agent. I'm linked and I only talk to you. Send *help* to see what I can do.", { ignoreSwitch: true });
     if (!ok) throw new Error("Couldn't send: the agent hit its hourly limit, try again later");
   },
 
@@ -500,7 +500,7 @@ const handlers: Record<Command["type"], Handler> = {
         out[name] = `failed: ${(e as Error).message.slice(0, 120)}`;
       }
     };
-    await tryOne("text", "🧪 Spot Solutions format test (only you see this)\n\n*bold* _italic_ ~strike~ ```mono```\n> a quote\n* a bullet\n1. a numbered line\n`inline code`");
+    await tryOne("text", "🧪 Nothing BOT Curating format test (only you see this)\n\n*bold* _italic_ ~strike~ ```mono```\n> a quote\n* a bullet\n1. a numbered line\n`inline code`");
     await tryOne("poll", new WAWebJS.Poll("🧪 Poll test: want the Monday 8:30 PM spot?", ["Yes, I'll take it", "Pass"], { allowMultipleAnswers: false, messageSecret: undefined }));
     await tryOne("location", new WAWebJS.Location(12.9784, 77.6408, { name: "Test venue pin", address: "Indiranagar, Bengaluru" }));
     await tryOne("buttons", new WAWebJS.Buttons("🧪 Buttons test: do you see two buttons below?", [{ body: "Yes" }, { body: "No" }], "Buttons", "Deprecated by WhatsApp"));

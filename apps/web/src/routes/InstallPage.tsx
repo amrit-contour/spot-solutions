@@ -47,9 +47,9 @@ export function InstallPage() {
     <div className="min-h-dvh bg-surface px-4 py-10">
       <div className="mx-auto w-full max-w-xl">
         <Logo className="size-14" />
-        <h1 className="mt-6 type-display-s text-balance">Install Spot Server</h1>
+        <h1 className="mt-6 type-display-s text-balance">Install Nothing BOT Server</h1>
         <p className="mt-3 type-body-l text-on-surface-variant">
-          Turn a computer that stays on into your Spot Solutions server. It keeps WhatsApp linked and reads DMs with a model on that computer or Gemini. Same steps and same console on every system.
+          Turn a computer that stays on into your Nothing BOT Server. It keeps WhatsApp linked and reads DMs with a model on that computer or Gemini. Same steps and same console on every system.
         </p>
         <div className="mt-6">
           <Segmented<Os>
@@ -71,7 +71,7 @@ export function InstallPage() {
               <p className="mt-3 type-body-m">Open Terminal and run:</p>
               <Cmd>{`curl -fsSL ${BASE}/install.sh | bash`}</Cmd>
               <p className="type-body-s text-on-surface-variant">
-                It installs the Spot Server app, sets the Mac up and opens it. Prefer to click? Download <a className="text-primary underline-offset-4 hover:underline" href="/dl/SpotServer-mac.zip" download>SpotServer-mac.zip</a>, drag the app to Applications, open it and click Set up this Mac (macOS may ask you to allow it under Privacy &amp; Security).
+                It installs the Nothing BOT Server app, sets the Mac up and opens it. Prefer to click? Download <a className="text-primary underline-offset-4 hover:underline" href="/dl/SpotServer-mac.zip" download>SpotServer-mac.zip</a>, drag the app to Applications, open it and click Set up this Mac (macOS may ask you to allow it under Privacy &amp; Security).
               </p>
             </>
           )}
@@ -82,7 +82,7 @@ export function InstallPage() {
                   Download for Windows
                 </a>
               </div>
-              <p className="mt-3 type-body-s text-on-surface-variant">Unzip it, double-click Install Spot Solutions.cmd and click Yes on the admin prompt. Or run this in PowerShell as Administrator:</p>
+              <p className="mt-3 type-body-s text-on-surface-variant">Unzip it, double-click Install Nothing BOT Server.cmd and click Yes on the admin prompt. Or run this in PowerShell as Administrator:</p>
               <Cmd>{`Set-ExecutionPolicy -Scope Process Bypass -Force\nirm ${BASE}/install.ps1 | iex`}</Cmd>
             </>
           )}
@@ -98,7 +98,7 @@ export function InstallPage() {
         <Card className="mt-4 p-5 sm:p-6">
           <h2 className="type-title-m">2. Connect it</h2>
           <p className="mt-1 type-body-m text-on-surface-variant">
-            In the server console (it opens by itself, or use the link the installer printed), click <b>Connect with Spot Solutions</b>. Open the link or scan the QR with your phone, sign in with Google as an admin, and approve. No key files.
+            In the server console (it opens by itself, or use the link the installer printed), click <b>Connect with Nothing BOT Curating</b>. Open the link or scan the QR with your phone, sign in with Google as an admin, and approve. No key files.
           </p>
           <h2 className="mt-5 type-title-m">3. Pick its AI</h2>
           <p className="mt-1 type-body-m text-on-surface-variant">

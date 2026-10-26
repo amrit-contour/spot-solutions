@@ -53,4 +53,4 @@ for r in "${PROJECT_ROLES[@]}"; do
 done
 run gcloud iam service-accounts delete "$SA_EMAIL" --project "$PROJECT" --quiet
 
-(( DRY )) || echo "Revoked $SA_EMAIL. Wipe the device or uninstall Spot Solutions there; its key no longer works."
+(( DRY )) || echo "Revoked $SA_EMAIL. Wipe the device or uninstall Nothing BOT Server there; its key no longer works."

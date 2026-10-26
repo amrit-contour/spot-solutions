@@ -83,7 +83,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
       <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-50 h-[env(safe-area-inset-top)] bg-surface" />
       {/* Rail ≥ 600px */}
       <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-24 flex-none flex-col items-center gap-3 bg-surface pt-[calc(1.25rem+env(safe-area-inset-top))] pb-5 sm:flex">
-        <NavLink to="/" aria-label="Spot Solutions home" className="mb-5">
+        <NavLink to="/" aria-label="Nothing BOT Curating home" className="mb-5">
           <Logo className="size-11" />
         </NavLink>
         {NAV.map((n) => (

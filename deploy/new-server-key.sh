@@ -78,7 +78,7 @@ $( (( DRY )) && echo "Would create" || echo "Created" ) key for "$DEVICE":
   file     $KEY_FILE
 
 Put it on the server:
-  1. Open the Server Console on that device (Mac: inside the Spot Server app; Windows: the "Spot Server Console"
+  1. Open the Server Console on that device (Mac: inside the Nothing BOT Server app; Windows: the "Nothing BOT Server Console"
      shortcut; Ubuntu: sudo spot-console-url).
   2. Drop $SA_ID.json onto "Drop your service-account .json here". The worker restarts by itself.
   3. Delete the file from this machine once it's uploaded (it is a password).

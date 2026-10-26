@@ -1,6 +1,6 @@
 # Run the server on Windows
 
-Turn any Windows 10 or 11 PC into the Spot Solutions server: WhatsApp sessions, local Gemma and the server console. It starts at boot, even before anyone logs in, and restarts itself if it crashes.
+Turn any Windows 10 or 11 PC into the Nothing BOT Server: WhatsApp sessions, local Gemma and the server console. It starts at boot, even before anyone logs in, and restarts itself if it crashes.
 
 You need:
 
@@ -15,7 +15,7 @@ You need:
 ### Option 1: the zip
 
 1. Download [SpotSolutions-Windows.zip](https://spot-solutions.web.app/dl/SpotSolutions-Windows.zip) and unzip it anywhere.
-2. Double-click **Install Spot Solutions.cmd** and click **Yes** on the admin prompt.
+2. Double-click **Install Nothing BOT Server.cmd** and click **Yes** on the admin prompt.
 
 It asks you nothing. It takes a few minutes, mostly the Gemma download (about 3.5 GB).
 
@@ -32,7 +32,7 @@ To set your admin email at the same time, run this first: `$env:ADMIN_EMAILS = "
 
 ### Local model or Gemini only
 
-There is one installer. A PC with about 8 GB of RAM or more starts with Ollama and Gemma; a smaller one starts on Gemini. You can switch any time in the console under **AI models**, which installs or turns off the local model for you. `Install Spot Solutions (Gemini only).cmd` still exists and forces Gemini at install time. A Gemini-only server can't host accounts set to **Local only**. See [multi-server.md](multi-server.md).
+There is one installer. A PC with about 8 GB of RAM or more starts with Ollama and Gemma; a smaller one starts on Gemini. You can switch any time in the console under **AI models**, which installs or turns off the local model for you. `Install Nothing BOT Server (Gemini only).cmd` still exists and forces Gemini at install time. A Gemini-only server can't host accounts set to **Local only**. See [multi-server.md](multi-server.md).
 
 ## What the installer does
 
@@ -45,17 +45,17 @@ There is one installer. A PC with about 8 GB of RAM or more starts with Ollama a
 | Worker | A scheduled task `SpotSolutionsWorker` that starts at boot as SYSTEM and restarts after a crash. It waits until a Firebase key exists, starts Ollama if needed, and logs to `data\worker.log`. |
 | Console | A second task, `SpotSolutionsConsole`, serves the server console on port 7420 (log: `data\console.log`). |
 | Updates | A third task, `SpotSolutionsUpdate` (SYSTEM, no trigger), started by the console to update the server or turn the local model on or off. It runs `update.ps1`, which runs the release's `deploy\windows\update-core.ps1`. |
-| Firewall | An inbound rule "Spot Solutions Console" for TCP 7420, **private networks only**. |
-| Shortcuts | **Spot Server Console** and **Spot Solutions** on the desktop (all users) and in the Start menu. They open in an Edge app window when Edge is installed. |
+| Firewall | An inbound rule "Nothing BOT Curating Console" for TCP 7420, **private networks only**. |
+| Shortcuts | **Nothing BOT Server Console** and **Nothing BOT Curating** on the desktop (all users) and in the Start menu. They open in an Edge app window when Edge is installed. |
 | Power | No standby or hibernate on power, and closing the lid on power does nothing. |
 
 At the end the console opens and the installer prints a link for a phone on the same Wi-Fi.
 
 ## Finish setup in the console
 
-1. Click **Connect with Spot Solutions**, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The worker starts by itself and your email is added as an admin, so the server shows in the app under **Account, Server**. A join code from the app works too; a key file is only for the very first server of a brand-new project (**First server ever?**).
+1. Click **Connect with Nothing BOT Curating**, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The worker starts by itself and your email is added as an admin, so the server shows in the app under **Account, Server**. A join code from the app works too; a key file is only for the very first server of a brand-new project (**First server ever?**).
 2. Optional: under **AI models**, add a Gemini key, pick and test models, or turn the local model on or off.
-4. Open **Spot Solutions** from the desktop, go to **Settings, Show QR code**, and scan it from WhatsApp on your phone (**Linked devices**).
+4. Open **Nothing BOT Curating** from the desktop, go to **Settings, Show QR code**, and scan it from WhatsApp on your phone (**Linked devices**).
 
 ## Everyday
 

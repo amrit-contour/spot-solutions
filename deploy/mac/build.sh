@@ -26,8 +26,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Spot Server</string>
-  <key>CFBundleDisplayName</key><string>Spot Server</string>
+  <key>CFBundleName</key><string>Nothing BOT Server</string>
+  <key>CFBundleDisplayName</key><string>Nothing BOT Server</string>
   <key>CFBundleIdentifier</key><string>app.spotsolutions.server</string>
   <key>CFBundleExecutable</key><string>SpotServer</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -60,7 +60,7 @@ STAGE="$TMP/dmg"; mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$OUT/SpotServer.dmg"
-hdiutil create -quiet -volname "Spot Server" -srcfolder "$STAGE" -ov -format UDZO "$OUT/SpotServer.dmg"
+hdiutil create -quiet -volname "Nothing BOT Server" -srcfolder "$STAGE" -ov -format UDZO "$OUT/SpotServer.dmg"
 rm -rf "$TMP"
 echo "✓ $APP"
 echo "✓ $OUT/SpotServer.dmg"

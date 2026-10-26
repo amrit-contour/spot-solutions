@@ -2,7 +2,7 @@
   "name": "functions",
   "version": "0.1.0",
   "private": true,
-  "description": "Spot Solutions Cloud Functions: join codes and server removal (docs/multi-server.md).",
+  "description": "Nothing BOT Curating Cloud Functions: join codes and server removal (docs/multi-server.md).",
   "main": "lib/index.js",
   "engines": { "node": "22" },
   "scripts": {

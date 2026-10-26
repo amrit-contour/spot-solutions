@@ -76,7 +76,7 @@ export function pickServiceAccountId(device: unknown, taken: (id: string) => boo
 
 export const serviceAccountEmail = (id: string, project = PROJECT_ID) => `${id}@${project}.iam.gserviceaccount.com`;
 
-/** The only accounts Spot Solutions may ever delete: its own per-server accounts. Never firebase-adminsdk, never the enroller. */
+/** The only accounts Nothing BOT Curating may ever delete: its own per-server accounts. Never firebase-adminsdk, never the enroller. */
 export function isManagedAccount(email: string, project = PROJECT_ID) {
   const m = new RegExp(`^(spot-[a-z0-9-]+)@${project.replace(/\./g, "\\.")}\\.iam\\.gserviceaccount\\.com$`).exec(email);
   return Boolean(m && m[1] !== ENROLLER_ID);

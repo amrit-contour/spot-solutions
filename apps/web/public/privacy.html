@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Privacy Policy · Spot Solutions by Amrit Dash</title>
-<meta name="description" content="How Spot Solutions handles your data: what it stores, where, and what it never does." />
+<title>Privacy Policy · Nothing BOT Curating by Amrit Dash</title>
+<meta name="description" content="How Nothing BOT Curating handles your data: what it stores, where, and what it never does." />
 <link rel="canonical" href="https://spot-solutions.web.app/privacy" />
-<meta property="og:site_name" content="Spot Solutions by Amrit Dash" />
+<meta property="og:site_name" content="Nothing BOT Curating by Amrit Dash" />
 <meta property="og:image" content="https://spot-solutions.web.app/brand/og.jpg" />
 <link rel="icon" href="/favicon.svg" />
 <link rel="stylesheet" href="/legal.css" />
 </head>
 <body>
-<header><a class="brand" href="/"><img src="/brand/logo-120.png" alt="" width="36" height="36" /><span>Spot Solutions<small>by Amrit Dash</small></span></a></header>
+<header><a class="brand" href="/"><img src="/brand/logo-120.png" alt="" width="36" height="36" /><span>Nothing BOT Curating<small>by Amrit Dash</small></span></a></header>
 <main>
 <h1>Privacy Policy</h1>
 <p class="meta">Effective 26 October 2026 · Updated 26 October 2026 (agent number)</p>
 
-<p>Spot Solutions is an open-source tool that helps open-mic comedy curators manage spot requests that arrive on WhatsApp. Spot Solutions is made by Amrit Dash. This policy explains what the hosted app at <b>spot-solutions.web.app</b> stores, where it is stored, and what it never does. The source code is public at <a href="https://github.com/amrit-contour/spot-solutions">github.com/amrit-contour/spot-solutions</a>, so every statement here can be checked.</p>
+<p>Nothing BOT Curating is an open-source tool that helps open-mic comedy curators manage spot requests that arrive on WhatsApp. Nothing BOT Curating is made by Amrit Dash. This policy explains what the hosted app at <b>spot-solutions.web.app</b> stores, where it is stored, and what it never does. The source code is public at <a href="https://github.com/amrit-contour/spot-solutions">github.com/amrit-contour/spot-solutions</a>, so every statement here can be checked.</p>
 
 <h2>Who this applies to</h2>
 <ul>
@@ -64,15 +64,15 @@
 <p>It never deletes contacts and never changes anything other than names and phone numbers. Bulk changes (for example "Sync all comics now") are shown to you for confirmation first, and an import of many comics at once is never saved automatically.</p>
 <p>There are two ways to connect:</p>
 <ul>
-  <li><b>Keep connected</b> (recommended). You approve once in Google's own popup. Spot Solutions then stores a long-lived access token for your Google account, so your comic names are saved to Google Contacts even when the app is closed. We store: (1) that token, <b>encrypted</b> with AES-256-GCM, with the key held in Google Cloud Secret Manager and not in the database; and (2) the email address of the Google account you connected, and the date. They live in Cloud Firestore in the asia-south1 (Mumbai) region, in documents that no signed-in user, including you, can read or write through the app: the token is never sent back to your browser. Only the app's Cloud Functions, acting for you, can decrypt it, and only to exchange it with Google for a short-lived access token. We check that the Google account you pick has the same verified email as the one you signed in with, and refuse it otherwise.</li>
+  <li><b>Keep connected</b> (recommended). You approve once in Google's own popup. Nothing BOT Curating then stores a long-lived access token for your Google account, so your comic names are saved to Google Contacts even when the app is closed. We store: (1) that token, <b>encrypted</b> with AES-256-GCM, with the key held in Google Cloud Secret Manager and not in the database; and (2) the email address of the Google account you connected, and the date. They live in Cloud Firestore in the asia-south1 (Mumbai) region, in documents that no signed-in user, including you, can read or write through the app: the token is never sent back to your browser. Only the app's Cloud Functions, acting for you, can decrypt it, and only to exchange it with Google for a short-lived access token. We check that the Google account you pick has the same verified email as the one you signed in with, and refuse it otherwise.</li>
   <li><b>For this visit only.</b> The access token is kept in your browser's memory for about an hour and is never stored on our servers.</li>
 </ul>
 <p>In both cases your Google contact list is not copied to our database. When names are saved from the server, the list of your contacts' phone numbers and names is read into the function's memory for the few seconds it takes to match numbers and write names, and is then discarded.</p>
 <p><b>Disconnecting.</b> Press <b>Disconnect</b> under Settings, Google Contacts. The app revokes the token with Google and deletes the stored copy straight away. You can also remove access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>; the app notices the next time it tries to save a name, marks Google Contacts as disconnected and leaves a note in Updates.</p>
-<p><b>Spot Solutions' use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</b> We do not use Google user data for advertising, do not sell it, do not transfer it to third parties except as needed to provide the feature you asked for, and do not allow humans to read it except with your consent, for security purposes, or as required by law.</p>
+<p><b>Nothing BOT Curating's use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</b> We do not use Google user data for advertising, do not sell it, do not transfer it to third parties except as needed to provide the feature you asked for, and do not allow humans to read it except with your consent, for security purposes, or as required by law.</p>
 
 <h2>The agent number</h2>
-<p>The agent number is optional and off until you link it. It is a second WhatsApp number, linked the same way as yours, that Spot Solutions uses to message <b>you</b>: mic checks, new-request summaries, a morning summary, and answers to what you ask it. You can also ask it to make changes (for example "add Rohan to Tuesday"); it repeats what it understood and does nothing until you reply yes.</p>
+<p>The agent number is optional and off until you link it. It is a second WhatsApp number, linked the same way as yours, that Nothing BOT Curating uses to message <b>you</b>: mic checks, new-request summaries, a morning summary, and answers to what you ask it. You can also ask it to make changes (for example "add Rohan to Tuesday"); it repeats what it understood and does nothing until you reply yes.</p>
 <ul>
   <li><b>What it reads:</b> only messages sent to it from <b>your own number</b>, in a one-to-one chat. Messages from anyone else, and everything in groups, are ignored: they are not read, not logged and not stored. Optionally it can answer a stranger with one fixed polite line; that setting is off by default, and it keeps only a one-way hash of who it told, never the message.</li>
   <li><b>What it stores:</b> its own WhatsApp login (encrypted, backed up like yours so another server can take over), what it is waiting for you to answer (for up to 10 minutes), and when it last sent your morning summary. Your messages to it are not kept.</li>
@@ -106,7 +106,7 @@
 <p>Access to data is enforced by Firestore security rules: each curator can read only their own data, and server-only data (such as encryption keys, login backups and the encrypted Google Contacts token) is not readable by any app user. WhatsApp login backups are encrypted before upload. See <a href="https://github.com/amrit-contour/spot-solutions/blob/main/SECURITY.md">SECURITY.md</a> for details and how to report a problem.</p>
 
 <h2>Children</h2>
-<p>Spot Solutions is not intended for anyone under 18.</p>
+<p>Nothing BOT Curating is not intended for anyone under 18.</p>
 
 <h2>Changes</h2>
 <p>If this policy changes, the new version will be posted here with a new effective date.</p>

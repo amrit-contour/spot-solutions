@@ -152,7 +152,7 @@ export function moveText(from: string, to: string, crashed: boolean) {
 /** Notices for the pre-fleet guard: one per (old server, user), so a long-running old server doesn't spam. */
 export const preFleetNoticeKey = (oldId: string, uid: string) => `${oldId}:${uid}`;
 export const preFleetText = (hostname: string) =>
-  `Another Spot Solutions server ("${hostname}") is running an old version. Your WhatsApp is paused on the newer servers until that one is stopped or updated, so two servers never answer the same chats.`;
+  `Another Nothing BOT Server ("${hostname}") is running an old version. Your WhatsApp is paused on the newer servers until that one is stopped or updated, so two servers never answer the same chats.`;
 
 /**
  * Sessions.stop() on an account whose launch is still in flight (`starting`) can't stop a client that doesn't exist yet.

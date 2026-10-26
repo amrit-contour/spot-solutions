@@ -54,7 +54,7 @@ export function createStorage({ data, envFile, platform = process.platform, env 
         dir: c.currentModels, bytes: cache.models || apiBytes || 0, free: modelsDrive?.free ?? null, total: modelsDrive?.total ?? null,
         used: !gemini, inside,
         movable: !gemini && !external,
-        reason: gemini ? "This server runs without a local model." : external ? "This Mac uses an Ollama that isn't Spot Solutions' own, so its models stay where Ollama keeps them." : null,
+        reason: gemini ? "This server runs without a local model." : external ? "This Mac uses an Ollama that isn't Nothing BOT Server's own, so its models stay where Ollama keeps them." : null,
       },
       move: st.phase ? {
         phase: st.phase, step: st.step ?? null, pct: st.pct ?? null, error: st.error ?? null, old: st.old ?? null, target: st.target ?? null,

@@ -1,4 +1,4 @@
-// Moves Spot Solutions' data (and optionally the Ollama models) to another folder, safely, on Windows, macOS and Ubuntu.
+// Moves Nothing BOT Server's data (and optionally the Ollama models) to another folder, safely, on Windows, macOS and Ubuntu.
 //
 // The console never does this itself: it writes the request into DATA/task.json and starts the platform's task runner
 // (update-core.ps1 as SYSTEM on Windows, `spotctl task` on macOS, spot-task as root on Ubuntu), which runs
@@ -39,7 +39,7 @@ export function contextFor(platform = process.platform, env = process.env) {
   }
   c.platform = platform;
   c.envFile = m.join(c.app, "apps", "worker", ".env");
-  c.forbidden = [{ path: c.app, label: "the Spot Solutions program folder" }, ...c.forbid.map((p) => ({ path: p, label: "Spot Solutions' own program files" }))];
+  c.forbidden = [{ path: c.app, label: "the Nothing BOT Server program folder" }, ...c.forbid.map((p) => ({ path: p, label: "Nothing BOT Server's own program files" }))];
   c.current = readPointer(c.stateDir, "data-dir") || env.SPOT_DATA_DIR || c.defaultData;
   c.currentModels = readPointer(c.stateDir, "models-dir") || env.OLLAMA_MODELS || c.defaultModels;
   c.stateFile = m.join(c.stateDir, "move.json");

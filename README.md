@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/web/public/press/cover.gif" alt="Spot Solutions: WhatsApp spot requests, sorted by Gemma on an old laptop" width="100%" />
+  <img src="apps/web/public/press/cover.gif" alt="Nothing BOT Curating: WhatsApp spot requests, sorted by Gemma on an old laptop" width="100%" />
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@ I'm a stand-up comic in Bangalore and I curate the Monday and Tuesday open-mic l
 
 **That was about 3 hours a week. Now it's about 15 minutes.**
 
-Version 1 ran for 7 months across 2024 and 2025 on Google Apps Script, Sheets and Twilio (2,200+ requests from 150+ comics). Spot Solutions keeps every rule V1 learned and hands the messy human part to an open-weight model that runs on hardware you already own.
+Version 1 ran for 7 months across 2024 and 2025 on Google Apps Script, Sheets and Twilio (2,200+ requests from 150+ comics). Nothing BOT Curating keeps every rule V1 learned and hands the messy human part to an open-weight model that runs on hardware you already own.
 
 <p align="center">
   <img src="apps/web/public/press/hero.gif" alt="Gemma tagging DMs and filling the Monday and Tuesday lineups" width="720" />
@@ -168,11 +168,11 @@ The user guide is in [docs/multi-server.md](docs/multi-server.md) and the protoc
 | Platform | How |
 | --- | --- |
 | **Ubuntu** (laptop, mini PC, or a USB stick) | `curl -fsSL https://spot-solutions.web.app/install.sh \| sudo bash` · [guide](docs/ubuntu-usb-server.md) |
-| **Windows 10/11** | Download [SpotSolutions-Windows.zip](https://spot-solutions.web.app/dl/SpotSolutions-Windows.zip), unzip, double-click **Install Spot Solutions.cmd** · [guide](docs/windows-server.md) |
-| **macOS** | `curl -fsSL https://spot-solutions.web.app/install.sh \| bash` (installs the Spot Server menu-bar app; `install-mac.sh` still works) · [guide](docs/mac-server.md) |
+| **Windows 10/11** | Download [SpotSolutions-Windows.zip](https://spot-solutions.web.app/dl/SpotSolutions-Windows.zip), unzip, double-click **Install Nothing BOT Server.cmd** · [guide](docs/windows-server.md) |
+| **macOS** | `curl -fsSL https://spot-solutions.web.app/install.sh \| bash` (installs the Nothing BOT Server menu-bar app; `install-mac.sh` still works) · [guide](docs/mac-server.md) |
 | **Docker** | `docker compose -f deploy/docker-compose.yml up -d` |
 
-[spot-solutions.web.app/install](https://spot-solutions.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Spot Solutions** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves.
+[spot-solutions.web.app/install](https://spot-solutions.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Nothing BOT Curating** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves.
 
 > [!IMPORTANT]
 > Upgrading from an older release? Stop the old server before the new one links. Servers from before multi-server support don't know about leases, so new servers pause and show a notice while one is online.
@@ -218,7 +218,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 - Security details and how to report a problem: [SECURITY.md](SECURITY.md).
 
 > [!NOTE]
-> Spot Solutions uses [whatsapp-web.js](https://wwebjs.dev), an unofficial WhatsApp Web client. It isn't affiliated with WhatsApp, and automated use can get a number restricted. Every send is queued with a 3 to 8 second gap and a typing indicator to keep volume human. Use it at your own risk.
+> Nothing BOT Curating uses [whatsapp-web.js](https://wwebjs.dev), an unofficial WhatsApp Web client. It isn't affiliated with WhatsApp, and automated use can get a number restricted. Every send is queued with a 3 to 8 second gap and a typing indicator to keep volume human. Use it at your own risk.
 
 ## Credits
 

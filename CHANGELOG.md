@@ -1,5 +1,9 @@
 # Changelog
 
+## 27 October 2026 (rename)
+
+- **Renamed to Nothing BOT Curating; servers are Nothing BOT Server.** New names across the app, installers, the server console and notices. Nothing under the hood changed: addresses, data folders, services and commands keep their old ids, so installed servers update as normal. The Windows installer is now "Install Nothing BOT Server.cmd" and replaces the old shortcuts. A comic-side app, Nothing BOT Comedy, is planned.
+
 ## 27 October 2026 (ad hoc offers)
 
 ### Ad hoc spots

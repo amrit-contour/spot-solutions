@@ -159,7 +159,7 @@ class SessionManager {
     } catch (e) {
       this.prepareFails.set(uid, fails + 1);
       console.warn(`[session] ${uid} can't read its login backup yet (attempt ${fails + 1}); retrying in ${PREPARE_RETRY_MS / 1000}s:`, (e as Error).message);
-      if (fails + 1 === MAX_PREPARE_FAILS) void notice(uid, "warn", "Spot Solutions can't read the saved copy of your WhatsApp login right now. It keeps trying; if this server has an older copy it will use that next.");
+      if (fails + 1 === MAX_PREPARE_FAILS) void notice(uid, "warn", "Nothing BOT Curating can't read the saved copy of your WhatsApp login right now. It keeps trying; if this server has an older copy it will use that next.");
       this.scheduleRestart(uid, PREPARE_RETRY_MS);
       return;
     }

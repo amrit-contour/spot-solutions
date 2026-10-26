@@ -13,7 +13,7 @@ export interface JoinCode {
 
 export interface RemoveResult {
   revoked: string[];
-  /** No key made by Spot Solutions was linked to this server, so nothing was revoked. */
+  /** No key made by Nothing BOT Curating was linked to this server, so nothing was revoked. */
   keyNotRevoked: boolean;
 }
 

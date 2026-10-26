@@ -120,7 +120,7 @@ export function useForegroundPush() {
     const on = (e: MessageEvent) => {
       const d = e.data as { type?: string; title?: string; body?: string } | undefined;
       if (d?.type !== "spot-push") return;
-      toast(d.title ?? "Spot Solutions", { description: d.body });
+      toast(d.title ?? "Nothing BOT Curating", { description: d.body });
     };
     navigator.serviceWorker.addEventListener("message", on);
     return () => navigator.serviceWorker.removeEventListener("message", on);

@@ -1,4 +1,4 @@
-// Spot Solutions Cloud Functions (2nd gen, asia-south1). Join codes and server removal: docs/multi-server.md.
+// Nothing BOT Curating Cloud Functions (2nd gen, asia-south1). Join codes and server removal: docs/multi-server.md.
 import { initializeApp } from "firebase-admin/app";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
@@ -50,7 +50,7 @@ export const createJoinCode = onCall(async (req) => {
   }
 });
 
-/** Admin: remove a server, revoke its key if Spot Solutions made it. */
+/** Admin: remove a server, revoke its key if Nothing BOT Curating made it. */
 export const removeServer = onCall({ timeoutSeconds: 120 }, async (req) => {
   try {
     return await removeOne(deps(), caller(req.auth), (req.data ?? {}) as { serverId?: unknown; force?: unknown });

@@ -4,7 +4,7 @@ Status: planned, not built. Captured 26 October 2026 from Amrit's description.
 
 ## The problem
 
-Spot Solutions handles one side of open mics: comics asking *me* for spots. The other side is me asking *other rooms* for spots, and that's still manual. Every room has its own rules:
+Nothing BOT Curating handles one side of open mics: comics asking *me* for spots. The other side is me asking *other rooms* for spots, and that's still manual. Every room has its own rules:
 
 - One curator for the whole room, or different curators for different days.
 - Different ask windows: ping at the start of the week, the day before, the morning of, a fixed day.

@@ -10,7 +10,7 @@ import { cx } from "./ui";
 // Each option previews itself in its own fixed colours (light face), whatever brand is active now.
 const OPTIONS: { id: Brand; name: string; note: string; bg: string; fg: string; swatches: string[] }[] = [
   { id: "nbc", name: "NBC", note: "Black, white and one green", bg: "#FFFFFF", fg: "#0A0A0A", swatches: ["#0A0A0A", "#FFFFFF", NBC_GREEN] },
-  { id: "classic", name: "Classic", note: "Spot Solutions marigold", bg: "#FFF8F4", fg: "#231A10", swatches: ["#7A5416", "#FFDDB0", "#E8A33D"] },
+  { id: "classic", name: "Classic", note: "Warm brown and marigold", bg: "#FFF8F4", fg: "#231A10", swatches: ["#7A5416", "#FFDDB0", "#E8A33D"] },
 ];
 
 export function AppearanceCard() {

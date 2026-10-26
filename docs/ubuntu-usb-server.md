@@ -1,6 +1,6 @@
 # A pocket server on a pen drive
 
-Turn an old laptop into the always-on Spot Solutions server, with Ubuntu installed **onto a USB drive**. The laptop's own disk is never touched: boot from the stick and it's a server, boot without it and it's the laptop you had.
+Turn an old laptop into the always-on Nothing BOT Server, with Ubuntu installed **onto a USB drive**. The laptop's own disk is never touched: boot from the stick and it's a server, boot without it and it's the laptop you had.
 
 You need:
 
@@ -56,7 +56,7 @@ sudo apt install -y unattended-upgrades
 
 Optional, but handy: install [Tailscale](https://tailscale.com/download/linux) (`curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up`) to SSH in from anywhere, without opening ports on your router.
 
-## 4. Install Spot Solutions
+## 4. Install Nothing BOT Server
 
 On the server (in its own terminal, or over SSH):
 
@@ -84,7 +84,7 @@ At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it 
 
 The console shows services, CPU/RAM/disk, installed models and live worker logs, with Restart buttons.
 
-1. **Connect with Spot Solutions:** click it, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The server gets its own key and the worker starts by itself. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is only for a brand-new project (see [multi-server.md](multi-server.md)).
+1. **Connect with Nothing BOT Curating:** click it, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The server gets its own key and the worker starts by itself. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is only for a brand-new project (see [multi-server.md](multi-server.md)).
 2. **Admins:** signing in adds your email. It opens **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere. Add other admins in the console's **Admin emails**.
 3. **Server Gemini key:** optional on a server with Gemma. Leave it blank; each curator adds their own in the app under **Settings → AI models**, where they can test it, browse models and pick a primary and a fallback. On a Gemini-only server, add one here or have each curator add theirs.
 

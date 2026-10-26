@@ -137,14 +137,14 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
       try { await exec("launchctl", ["print", label], { timeout: 5000 }); } catch { loaded = false; }
       if (loaded) { await exec("launchctl", ["kickstart", label], { timeout: 15000 }); return; }
       const ctl = path.join(macRoot, "spotctl");
-      if (!existsSync(ctl)) throw new Error("This Mac needs one manual update first: open Spot Server and choose More, Update Spot Solutions. After that, updates work from here.");
+      if (!existsSync(ctl)) throw new Error("This Mac needs one manual update first: open Nothing BOT Server and choose More, Update Nothing BOT Server. After that, updates work from here.");
       // Its own session, so launchd restarting this console doesn't take the updater with it.
       spawn("/bin/bash", [ctl, "task", task], { detached: true, stdio: "ignore" }).unref();
       return;
     }
     if (WIN) {
       try { await exec("schtasks.exe", ["/run", "/tn", "SpotSolutionsUpdate"], { timeout: 15000 }); }
-      catch { throw new Error("This PC needs one manual update first: run the Spot Solutions installer again. After that, updates work from here."); }
+      catch { throw new Error("This PC needs one manual update first: run the Nothing BOT Server installer again. After that, updates work from here."); }
       return;
     }
     try { await exec("sudo", ["-n", "/usr/bin/systemctl", "start", "--no-block", `spot-task@${task}.service`], { timeout: 15000 }); }

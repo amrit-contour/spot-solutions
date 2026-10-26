@@ -56,7 +56,7 @@ if (( ! DRY )) && gcloud iam service-accounts describe "$SA_EMAIL" --project "$P
   echo "  already exists"
 else
   run gcloud iam service-accounts create "$SA_ID" --project "$PROJECT" \
-    --display-name "Spot enroller" --description "Runtime identity of the Spot Solutions Cloud Functions (join codes, server removal)."
+    --display-name "Spot enroller" --description "Runtime identity of the Nothing BOT Server Cloud Functions (join codes, server removal)."
 fi
 
 echo "3. Project roles"

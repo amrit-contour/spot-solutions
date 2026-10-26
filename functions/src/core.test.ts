@@ -235,7 +235,7 @@ describe("removeServer", () => {
     expect(f.serverKeys.has(other)).toBe(true);
   });
 
-  it("never revokes a reported account Spot Solutions didn't create", async () => {
+  it("never revokes a reported account Nothing BOT Curating didn't create", async () => {
     f.servers.set("old-mac", { hostname: "old-mac", lastSeen: 0, serviceAccount: "firebase-adminsdk-x@spot-solutions.iam.gserviceaccount.com" });
     expect(await removeServer(f.deps, ADMIN, { serverId: "old-mac" })).toEqual({ revoked: [], keyNotRevoked: true });
   });
@@ -260,7 +260,7 @@ describe("removeServer", () => {
     expect(f.servers.size).toBe(0);
   });
 
-  it("just deletes the docs for a server with no Spot Solutions account (the default firebase-adminsdk key)", async () => {
+  it("just deletes the docs for a server with no Nothing BOT Curating account (the default firebase-adminsdk key)", async () => {
     f.servers.set("old-mac", { hostname: "Old-Mac", lastSeen: 0 });
     const r = await removeServer(f.deps, ADMIN, { serverId: "old-mac" });
     expect(r).toEqual({ revoked: [], keyNotRevoked: true });

@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-<title>Spot Server</title>
+<title>Nothing BOT Server</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,300..800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
@@ -421,7 +421,7 @@ const testErr = (key) => (testRes[key] && !testRes[key].ok ? `<div class="small 
 function updateBanner(s) {
   const u = s.update, p = u.progress;
   const move = p?.task === "move-data" || p?.task === "move-cleanup";
-  const what = p?.task === "local-on" ? "Setting up the local model" : p?.task === "local-off" ? "Turning off the local model" : p?.task === "move-data" ? "Moving the data to another drive" : p?.task === "move-cleanup" ? "Deleting the old copy" : "Updating Spot Solutions";
+  const what = p?.task === "local-on" ? "Setting up the local model" : p?.task === "local-off" ? "Turning off the local model" : p?.task === "move-data" ? "Moving the data to another drive" : p?.task === "move-cleanup" ? "Deleting the old copy" : "Updating Nothing BOT Server";
   if (restarting || u.running) {
     const pct = move && stor?.move?.pct != null ? stor.move.pct : null;
     const note = p?.task === "move-data" ? "Keep this page open. The worker is stopped while the data is copied, so WhatsApp is offline for a few minutes. If anything fails, the data goes back to the old folder." : move ? "This can take a few minutes." : "This page reloads by itself when it's done; the worker restarts, WhatsApp reconnects within a minute.";
@@ -439,8 +439,8 @@ function alerts(s) {
   if (ub) out.push(ub);
   const moving = s.update.running && ["move-data", "move-cleanup"].includes(s.update.progress?.task);
   const st = s.storage;
-  if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Spot Solutions keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
-  if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Spot Solutions below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
+  if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Nothing BOT Server keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
+  if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Nothing BOT Curating below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
   else if (!s.services.worker && !s.update.running) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The worker isn't running</b><div class="small">WhatsApp is offline until it starts. Try restarting it; the logs say why it stopped.</div></div><button data-restart="worker">Restart worker</button></div>`);
   return out.length ? `<div class="alerts">${out.join("")}</div>` : "";
 }
@@ -461,7 +461,7 @@ function connectBlock(s) {
   if (c.phase === "waiting")
     return `<div class="panel"><div class="conn">
       <div class="grow"><b>Open this link and sign in</b>
-        <ol class="steps small muted"><li>Open the link on this computer, or scan the code with your phone.</li><li>Sign in to Spot Solutions with Google. Only admins can connect a server.</li><li>Check that it shows <b class="mono check">${esc(c.verify)}</b>, then approve <b>${esc(c.deviceName)}</b>.</li></ol>
+        <ol class="steps small muted"><li>Open the link on this computer, or scan the code with your phone.</li><li>Sign in to Nothing BOT Curating with Google. Only admins can connect a server.</li><li>Check that it shows <b class="mono check">${esc(c.verify)}</b>, then approve <b>${esc(c.deviceName)}</b>.</li></ol>
         <div class="linkbox mono">${esc(c.link)}</div>
         <div class="actions"><a class="btn" href="${esc(c.link)}" target="_blank" rel="noreferrer">Open sign-in page ↗</a><button class="tonal" data-copy-link>Copy link</button><button class="text" data-connect-cancel>Cancel</button></div>
         <div class="muted small" style="margin-top:10px">${spin} Waiting for approval · expires in <span id="cd" class="mono">${left(c.expiresAt)}</span></div></div>
@@ -471,12 +471,12 @@ function connectBlock(s) {
   if (c.phase === "done") return `<div class="panel"><b>Connected</b><div class="muted small" style="margin-top:2px">Approved by ${esc(c.approvedBy || "an admin")}. The worker is starting; this server will show up under Server in the app within a minute.</div><div class="actions"><button class="text" data-connect-cancel>Connect again</button></div></div>`;
   const msg = c.phase === "error" ? c.error : c.phase === "expired" ? "That link expired. Make a new one." : "";
   return `<div class="panel">
-      <b>Connect with your Spot Solutions account</b>
+      <b>Connect with your Nothing BOT Curating account</b>
       <div class="muted small" style="margin-top:2px">Sign in with Google, on this computer or your phone, and approve this server. It gets its own key automatically, and you become one of its admins.</div>
       <label for="devname">Name for this server</label>
       <input type="text" id="devname" placeholder="${esc(s.hostname)}" value="${name}">
       ${msg ? `<div class="small err-text" style="margin-top:8px" role="alert">${esc(msg)}</div>` : ""}
-      <div class="actions"><button data-connect-start>Connect with Spot Solutions</button></div>
+      <div class="actions"><button data-connect-start>Connect with Nothing BOT Curating</button></div>
     </div>`;
 }
 
@@ -777,8 +777,8 @@ function render() {
   const s = state, c = s.config, k = c.key;
   const allUp = s.services.worker && (s.services.ollama || !s.localModel); // Gemini-only servers have no Ollama
   const steps = [
-    { done: !!(k && k.projectId), title: "Connected to Spot Solutions", body: k && k.projectId ? `Project <b>${esc(k.projectId)}</b> · <span class="mono">${esc(k.clientEmail)}</span>` : "Sign in with your Spot Solutions account below, or use a join code. <a href=\"https://spot-solutions.web.app/help#several-servers\" target=\"_blank\" rel=\"noreferrer\">How ↗</a>" },
-    { done: c.admins.length > 0, title: "Admins", body: c.admins.length ? c.admins.map(esc).join(", ") : "Emails that can see this server's page in the Spot Solutions app. Connecting with your account adds yours." },
+    { done: !!(k && k.projectId), title: "Connected to Nothing BOT Curating", body: k && k.projectId ? `Project <b>${esc(k.projectId)}</b> · <span class="mono">${esc(k.clientEmail)}</span>` : "Sign in with your Nothing BOT Curating account below, or use a join code. <a href=\"https://spot-solutions.web.app/help#several-servers\" target=\"_blank\" rel=\"noreferrer\">How ↗</a>" },
+    { done: c.admins.length > 0, title: "Admins", body: c.admins.length ? c.admins.map(esc).join(", ") : "Emails that can see this server's page in the Nothing BOT Curating app. Connecting with your account adds yours." },
     { done: !!c.geminiServerKey, optional: s.localModel, title: s.localModel ? "Server Gemini key (optional)" : "Gemini key (this server has no local model)", body: c.geminiServerKey ? `Set · <span class="mono">${esc(c.geminiServerKey)}</span>. Manage it under AI models.` : "Curators add their own key in the app (Settings → AI models), or set a shared one under AI models below." },
   ];
   const stepList = steps.map((st, i) => `<div class="step"><span class="num ${st.done ? "done" : ""}">${st.done ? "✓" : i + 1}</span><div class="grow"><b>${st.title}</b><div class="muted small" style="margin-top:2px">${st.body}</div></div></div>`).join("");
@@ -788,14 +788,14 @@ function render() {
     <form id="cfg" style="margin-top:8px">
       <label for="admins">Admin emails (comma separated)</label>
       <input type="text" id="admins" value="${esc(c.admins.join(", "))}" placeholder="you@gmail.com">
-      <div class="actions"><button type="submit">Save &amp; restart worker</button><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app" target="_blank" rel="noreferrer">Open Spot Solutions ↗</a><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app/help" target="_blank" rel="noreferrer">Server guide ↗</a></div>
+      <div class="actions"><button type="submit">Save &amp; restart worker</button><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app" target="_blank" rel="noreferrer">Open Nothing BOT Curating ↗</a><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app/help" target="_blank" rel="noreferrer">Server guide ↗</a></div>
     </form>`;
   const cpuPct = Math.round(s.cpu.usage * 100), memPct = Math.round((1 - s.memory.free / s.memory.total) * 100);
   const lowDisk = s.storage?.low;
   const serverSummary = `<span class="dot ${allUp ? "ok" : "bad"}" style="display:inline-block;width:8px;height:8px;margin-right:6px"></span>${allUp ? "All running" : "Needs attention"} · CPU ${cpuPct}% · memory ${memPct}%${s.disk ? ` · ${lowDisk ? `<span class="err-text">${fmt(s.disk.free)} free</span>` : `${fmt(s.disk.free)} free`}` : ""}`;
   const serverBody = `<div class="eq">
       <div class="panel flush"><h3>Services</h3>
-        <div class="row"><span class="dot ${s.services.worker ? "ok" : "bad"}"></span><div class="grow"><b>Spot Solutions worker</b><div class="muted small">${s.services.worker ? "Running" : k ? "Stopped. Check the logs below." : "Waits for the Firebase key"}</div></div><button class="tonal sm" data-restart="worker">Restart</button></div>
+        <div class="row"><span class="dot ${s.services.worker ? "ok" : "bad"}"></span><div class="grow"><b>Nothing BOT worker</b><div class="muted small">${s.services.worker ? "Running" : k ? "Stopped. Check the logs below." : "Waits for the Firebase key"}</div></div><button class="tonal sm" data-restart="worker">Restart</button></div>
         ${s.localModel ? `<div class="row"><span class="dot ${s.services.ollama ? "ok" : "bad"}"></span><div class="grow"><b>Ollama</b><div class="muted small">${s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"} installed` : "Not responding"}</div></div><button class="tonal sm" data-restart="ollama">Restart</button></div>` : `<div class="row"><span class="dot ok"></span><div class="grow"><b>Local model</b><div class="muted small">Off: this server answers with Gemini only. Turn it on under AI models.</div></div></div>`}
         ${s.ollama.models.length ? `<div class="row"><div class="models">${s.ollama.models.map((m) => `<span class="chip neutral mono">${esc(m.name)} · ${fmt(m.size)}</span>`).join("")}</div></div>` : ""}
       </div>
@@ -825,7 +825,7 @@ function render() {
   const at = typing() ? document.activeElement : null, keep = at?.id ? { id: at.id, from: at.selectionStart, to: at.selectionEnd } : null;
   $("#app").innerHTML = `
   <header>${logo}
-    <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Spot Solutions <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
+    <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Nothing BOT Server <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
     <span class="chip ${allUp ? "ok" : "bad"}">${allUp ? "All services running" : "Needs attention"}</span>
     <button type="button" class="tonal sm" data-cust-toggle aria-pressed="${custMode}">${custMode ? "Done customizing" : "Customize"}</button>
     <div class="theme" role="group" aria-label="Theme">${["system", "light", "dark"].map((t) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
@@ -931,7 +931,7 @@ function wireStorage() {
   const go = $("[data-move-go]");
   if (go) go.onclick = async () => {
     const where = moveCheck?.path || moveInput.trim();
-    if (!confirm(`Move all of Spot Solutions' data${moveModels ? " and the AI models" : ""} to ${where}?\n\nWhatsApp goes offline for a few minutes while it is copied and checked. If anything fails, everything goes back to the old folder. The old copy stays until you delete it.`)) return;
+    if (!confirm(`Move all of Nothing BOT Server's data${moveModels ? " and the AI models" : ""} to ${where}?\n\nWhatsApp goes offline for a few minutes while it is copied and checked. If anything fails, everything goes back to the old folder. The old copy stays until you delete it.`)) return;
     startingMove = true; render();
     try { await post("/api/storage/move", { path: where, models: moveModels }); restarting = false; toast("Moving the data. Keep this page open."); moveCheck = null; }
     catch (err) { toast(err.message); }
@@ -1034,7 +1034,7 @@ function pkRender(focus) {
       ${d.hiddenCount && !pk.hidden ? `<div class="pk-note muted small">${d.hiddenCount} hidden folder${d.hiddenCount === 1 ? "" : "s"} not shown.</div>` : ""}`;
   }
   const mk = pk.mk;
-  const hint = root ? "Pick a drive or place to start." : d.choose.ok ? `${d.empty ? "Empty folder." : "This folder has things in it; make a new folder inside it if you want a clean place."} Spot Solutions' data would go in <span class="mono">${esc(d.path)}</span>.` : esc(d.choose.error || "");
+  const hint = root ? "Pick a drive or place to start." : d.choose.ok ? `${d.empty ? "Empty folder." : "This folder has things in it; make a new folder inside it if you want a clean place."} Nothing BOT Server's data would go in <span class="mono">${esc(d.path)}</span>.` : esc(d.choose.error || "");
   host.innerHTML = `<div class="pk" role="dialog" aria-modal="true" aria-labelledby="pk-t">
     <div class="pk-h"><h2 id="pk-t" tabindex="-1">Choose a folder</h2><button type="button" class="text pk-x" data-pk-close aria-label="Close">${IC.x}</button></div>
     <nav class="pk-crumbs" aria-label="Folder path"><ol>${crumbs}</ol></nav>
@@ -1075,7 +1075,7 @@ async function pkSubmit(e) {
   try {
     const r = await api("/api/fs/mkdir", { parent, name });
     if (!pk) return;
-    if (!r.created) toast("Spot Solutions will make that folder when the move starts.");
+    if (!r.created) toast("Nothing BOT Server will make that folder when the move starts.");
     if (r.created) { pk.mk = null; await pkGo(r.path); return; }
     closePicker(); pickedFolder(r.path); return;
   } catch (err) { if (!pk) return; pk.mk = { name, busy: false, err: err.message, sel: true }; }
@@ -1308,7 +1308,7 @@ async function refresh(force = false) {
     if (!holdRender() || force) { if (force) { editing = false; ddOpen = null; } render(); }
     else { const l = $("#logs"); if (l) l.textContent = state.logs; }
   } catch (e) {
-    if (e.status === 401) $("#app").innerHTML = `<div class="locked">${logo}<h1 style="margin-top:16px">Locked</h1><p class="muted">Open this page with the link the installer printed (it ends in <span class="mono">?token=…</span>).<br>Forgot it? On the server run <span class="mono">sudo spot-console-url</span> (Linux), or open the <b>Spot Server Console</b> shortcut on the server's desktop (Windows), or use the Spot Server app (Mac).</p></div>`;
+    if (e.status === 401) $("#app").innerHTML = `<div class="locked">${logo}<h1 style="margin-top:16px">Locked</h1><p class="muted">Open this page with the link the installer printed (it ends in <span class="mono">?token=…</span>).<br>Forgot it? On the server run <span class="mono">sudo spot-console-url</span> (Linux), or open the <b>Nothing BOT Server Console</b> shortcut on the server's desktop (Windows), or use the Nothing BOT Server app (Mac).</p></div>`;
     else if (state?.update?.running || restarting) { restarting = true; render(); } // the console restarts itself during an update; keep trying
     else toast(e.message);
   }

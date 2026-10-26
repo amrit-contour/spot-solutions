@@ -30,9 +30,9 @@ Which server gets an account, best first: the pinned server, then servers with a
 
 ## Connect a server with your account
 
-The quickest way, and the only one most people need. On a freshly installed server, the console starts with **Connect with your Spot Solutions account**.
+The quickest way, and the only one most people need. On a freshly installed server, the console starts with **Connect with your Nothing BOT Curating account**.
 
-1. Click **Connect with Spot Solutions**. The console shows a link, a QR code and a 4-character check (like `K7QF`).
+1. Click **Connect with Nothing BOT Curating**. The console shows a link, a QR code and a 4-character check (like `K7QF`).
 2. Open the link on the same computer, or scan the QR code with your phone. Sign in with Google.
 3. The page asks **Connect server <name>?** and shows the same 4 characters. Check they match, then click **Connect server**.
 4. The console collects its own key, restarts the worker, and adds your email to its admins. The server shows up under **Account, Server** within a minute.
@@ -46,7 +46,7 @@ How it works: the console makes a random secret and sends only its sha256 to `st
 The other way, for when signing in on the server's side isn't convenient. Every server has its own Firebase service-account key. Never copy one key between computers. With a join code the app makes that key for you, so nobody needs the Google Cloud CLI.
 
 1. Sign in to the app as an admin and open **Account, Server**. Click **Add a server**. Optionally name it, then click **Make a code**. You get a code like `SPOT-7K3F-Q9TX`, a copy button, a QR of the code text and a countdown. A code works once and lasts 15 minutes.
-2. On the new computer, install Spot Solutions (see the guide for [Mac](mac-server.md), [Windows](windows-server.md) or [Ubuntu](ubuntu-usb-server.md)) and open its server console. Type the code under **Have a join code from the app?**. The device name is filled in with the computer's name; change it if you like. Click **Join**.
+2. On the new computer, install Nothing BOT Curating (see the guide for [Mac](mac-server.md), [Windows](windows-server.md) or [Ubuntu](ubuntu-usb-server.md)) and open its server console. Type the code under **Have a join code from the app?**. The device name is filled in with the computer's name; change it if you like. Click **Join**.
 3. The console trades the code for a key, saves it and restarts the worker. Under **Admins** in the console, add your email if it isn't there yet. The server shows up under **Account, Server** within a minute, and the Add a server card says it joined.
 
 What happens behind the scenes: the code is hashed in Firestore (`joinCodes`), and the console calls the `redeemJoinCode` Cloud Function over HTTPS, at most 10 tries per 15 minutes per IP address. The function creates the service account `spot-<device-name>` (a number is added if the name is taken) with only what the worker uses: `roles/datastore.user` and `roles/firebasecloudmessaging.admin` on the project, and `roles/storage.objectAdmin` on the default bucket only. It returns the key once and records the account in `serverKeys`. If setting up fails, the account is cleaned up and the code works again.
@@ -56,9 +56,9 @@ The functions run as their own service account, `spot-enroller`. Set that up onc
 **Remove a server.** On **Account, Server**, each server has **Remove server**. It deletes the server's key, its Google Cloud account and its roles, and its entries on the Server page. This is how you clear out old or offline servers.
 
 - If the server is online and still runs WhatsApp accounts, you are told so and can remove it anyway. Its key is cut at once, but the computer may keep answering chats until its access runs out (up to an hour), and another server starts those accounts after about 150 seconds. Moving the accounts first is cleaner.
-- A server that was set up before join codes, or with the project's default `firebase-adminsdk` key, has no Spot Solutions account. Remove only deletes it from the list and says its key wasn't revoked. The default key is never deleted. Rotate it in the Firebase console if you need to.
+- A server that was set up before join codes, or with the project's default `firebase-adminsdk` key, has no Nothing BOT Curating account. Remove only deletes it from the list and says its key wasn't revoked. The default key is never deleted. Rotate it in the Firebase console if you need to.
 
-If the computer is still on, uninstall Spot Solutions there afterwards.
+If the computer is still on, uninstall Nothing BOT Curating there afterwards.
 
 ### Fallback: the key scripts
 
@@ -106,7 +106,7 @@ To reset the whole fleet and bring servers back one at a time:
 
 1. On **Account, Server**, click **Remove server** on every server. This revokes the keys made by join codes.
 2. Click **Add a server** to make a code.
-3. On a computer with Spot Solutions installed, open its console and enter the code. Repeat for each server you want.
+3. On a computer with Nothing BOT Server installed, open its console and enter the code. Repeat for each server you want.
 
 Curators keep their data. Each account's login backup stays in the cloud, so the first server to join takes the accounts over without a new QR scan. If a server came from the default key, its old key is not revoked by Remove, so rotate it in the Firebase console.
 
@@ -163,7 +163,7 @@ The Server page and the Settings card also show a server as "isn't responding" o
 
 ## Upgrading safely
 
-Stop any server running an older Spot Solutions release before you link a new one.
+Stop any server running an older Nothing BOT Curating release before you link a new one.
 
 Servers from before the fleet release heartbeat but ignore leases: they start every approved account themselves. If one stays on next to a fleet server, both would answer the same chats. So fleet servers check for them. While a server without fleet support is online, every fleet server:
 
@@ -197,7 +197,7 @@ To update a server by hand, run its installer again (see the guide for [Mac](mac
 | A server shows no capacity bar | It is running an older release. Update it. |
 | `new-server-key.sh` says the name is too long | Use a device name of 25 characters or fewer. (Join codes shorten the name for you.) |
 | The console says the code isn't valid | Codes work once and last 15 minutes. Make a new one under **Add a server**. After 10 wrong tries from one network, wait 15 minutes. |
-| The console can't reach Spot Solutions when joining | The server needs internet, and the functions must be deployed. Use the key scripts as a fallback. |
+| The console can't reach Nothing BOT Curating when joining | The server needs internet, and the functions must be deployed. Use the key scripts as a fallback. |
 | A removed or revoked server still seems alive | Its token can last up to an hour. Stop the worker on the device. |
 | Two servers answer the same chat | Look for a server on an older release. The lease stops two fleet servers running one account. |
 | A cloned laptop disk shows up as a new server | Expected. A cloned disk gets a new server id, so two servers never merge. |

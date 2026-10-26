@@ -1,4 +1,4 @@
-// Signed-out front page: what Spot Solutions is, a live animated demo of the flow, and two ways in.
+// Signed-out front page: what Nothing BOT Curating is, a live animated demo of the flow, and two ways in.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { AnimatePresence, motion, useInView, useScroll, useTransform } from "motion/react";
@@ -218,10 +218,10 @@ export function Landing() {
       {/* Stays put while the page scrolls. The top padding is the status bar / notch when installed, so nothing sits under it. */}
       <header className="sticky top-0 z-30 border-b border-outline-variant/40 bg-surface/80 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-5 sm:px-8">
-          <a href="#top" aria-label="Spot Solutions, back to top" className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:outline-2 focus-visible:outline-primary">
+          <a href="#top" aria-label="Nothing BOT Curating, back to top" className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:outline-2 focus-visible:outline-primary">
             <Logo className="size-10 flex-none" />
             <span className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate type-title-m">Spot Solutions</span>
+              <span className="truncate type-title-m">Nothing BOT Curating</span>
               <span className="truncate type-label-s text-on-surface-variant">by Amrit Dash</span>
             </span>
           </a>
@@ -275,12 +275,12 @@ export function Landing() {
       <section className="relative z-10 border-y border-outline-variant/50 bg-surface-low">
         <div className="mx-auto grid max-w-6xl gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[1.1fr_1fr]">
           <SectionHead kicker="The chore" title="Every week, the same three hours.">
-            Comics DM over the weekend. You scroll back through chats, check who performed last week, decide whether last week's cancelled mic repeats, weigh day preferences, message everyone, then add and remove people from show groups by hand. Spot Solutions came out of doing exactly that for a Bangalore club's Monday and Tuesday mics.
+            Comics DM over the weekend. You scroll back through chats, check who performed last week, decide whether last week's cancelled mic repeats, weigh day preferences, message everyone, then add and remove people from show groups by hand. Nothing BOT Curating came out of doing exactly that for a Bangalore club's Monday and Tuesday mics.
           </SectionHead>
           <div className="grid grid-cols-2 gap-3 self-center">
             {[
               { n: 3, s: " hrs", l: "a week, curating by hand", tone: "bg-surface-container" },
-              { n: 15, s: " min", l: "a week, with Spot Solutions", tone: "bg-primary-container text-on-primary-container" },
+              { n: 15, s: " min", l: "a week, with Nothing BOT Curating", tone: "bg-primary-container text-on-primary-container" },
               { n: 0, s: "", l: "messages sent without your OK", tone: "bg-surface-container" },
               { n: 0, s: " ₹", l: "to run, on an old laptop", tone: "bg-surface-container" },
             ].map((c, i) => (
@@ -370,7 +370,7 @@ export function Landing() {
             {[
               ["Ubuntu", "curl … | sudo bash"],
               ["Windows", "Double-click install"],
-              ["macOS", "Spot Server app"],
+              ["macOS", "Nothing BOT Server app"],
             ].map(([os, how]) => (
               <div key={os} className="rounded-xl bg-surface-low p-5 text-center ring-1 ring-outline-variant/40">
                 <IconServer className="icon mx-auto size-8 text-primary" />
@@ -409,7 +409,7 @@ export function Landing() {
 
       <footer className="relative z-10 border-t border-outline-variant/50 pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-5 py-8 type-body-s text-on-surface-variant sm:px-8">
-          <span>Spot Solutions by Amrit Dash · open source (MIT) · built for Hacktoberfest 2026 with Gemma</span>
+          <span>Nothing BOT Curating by Amrit Dash · open source (MIT) · built for Hacktoberfest 2026 with Gemma</span>
           <div className="flex-1" />
           <a className="hover:text-on-surface" href="/privacy">Privacy</a>
           <a className="hover:text-on-surface" href="/terms">Terms</a>

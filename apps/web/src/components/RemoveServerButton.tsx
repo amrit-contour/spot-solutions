@@ -1,4 +1,4 @@
-// Server page (admins): remove a server and, when Spot Solutions made its key, revoke it. Lingering old or offline servers go here.
+// Server page (admins): remove a server and, when Nothing BOT Curating made its key, revoke it. Lingering old or offline servers go here.
 import { useState } from "react";
 import { toast } from "sonner";
 import type { ServerStatus } from "@spot/shared";
@@ -23,7 +23,7 @@ export function RemoveServerButton({ server }: { server: Pick<ServerStatus, "id"
       const r = await removeServer(server.id, force);
       toast.success(
         r.keyNotRevoked
-          ? `Removed ${server.hostname}. Its key wasn't created by Spot Solutions, so it isn't revoked. Delete it in Google Cloud if the computer is gone.`
+          ? `Removed ${server.hostname}. Its key wasn't created by Nothing BOT Curating, so it isn't revoked. Delete it in Google Cloud if the computer is gone.`
           : `Removed ${server.hostname} and revoked its key.`,
       );
     } catch (e) {
@@ -36,9 +36,9 @@ export function RemoveServerButton({ server }: { server: Pick<ServerStatus, "id"
     <>
       <CompactButton variant="danger" icon={IconTrash} label="Remove server" onClick={() => setOpen(true)} />
       <ConfirmDialog open={open} onClose={() => setOpen(false)} title={`Remove ${server.hostname}?`} confirmLabel="Remove server" onConfirm={() => run(false)}>
-        <p>This takes the server off the list. If Spot Solutions made its key (from a join code), the key and its Google Cloud account are deleted, so the computer can no longer reach your data.</p>
+        <p>This takes the server off the list. If Nothing BOT Curating made its key (from a join code), the key and its Google Cloud account are deleted, so the computer can no longer reach your data.</p>
         <p>Servers set up with the project's default key (older installs) are only removed from the list. Their key is not revoked.</p>
-        <p>The computer itself keeps running until its access runs out, up to an hour. Uninstall Spot Solutions there too.</p>
+        <p>The computer itself keeps running until its access runs out, up to an hour. Uninstall Nothing BOT Server there too.</p>
       </ConfirmDialog>
       <ConfirmDialog
         open={holds !== null}

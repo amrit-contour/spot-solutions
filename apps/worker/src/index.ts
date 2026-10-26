@@ -1,4 +1,4 @@
-// Spot Solutions worker: keeps every curator's WhatsApp session alive and executes
+// Nothing BOT worker: keeps every curator's WhatsApp session alive and executes
 // commands the web app drops into Firestore. Only outbound connections — no ports.
 import "./logbuf.ts";
 import { col, db, sessionRef } from "./firebase.ts";
@@ -135,7 +135,7 @@ async function main() {
     (e) => {
       console.log(`[access] ${e.email ?? e.uid} asked to join`);
       for (const [uid, u] of users) {
-        if (isAdminEmail(u.email)) void notice(uid, "info", `${e.name ?? e.email ?? "Someone"} (${e.email ?? "no email"}) asked to use Spot Solutions. Approve them in Account → Server.`);
+        if (isAdminEmail(u.email)) void notice(uid, "info", `${e.name ?? e.email ?? "Someone"} (${e.email ?? "no email"}) asked to use Nothing BOT Curating. Approve them in Account → Server.`);
       }
     },
   );

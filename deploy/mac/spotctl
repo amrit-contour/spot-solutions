@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Spot Solutions server control for macOS (Apple Silicon and Intel). No Homebrew or Xcode needed.
+# Nothing BOT Server control for macOS (Apple Silicon and Intel). No Homebrew or Xcode needed.
 #
 #   spotctl setup        download Node, Ollama, Gemma and the worker; install launch agents
 #                        A local model is set up when this Mac has about 8 GB of memory or more, Gemini only on less.
@@ -197,7 +197,7 @@ cmd_setup() {
   fi
   fi
 
-  step "Spot Solutions code"
+  step "Nothing BOT Server code"
   curl -fsSL "$SRC_URL" | tar -xz -C "$APP"
   ok "Version $(cat "$APP/VERSION" 2>/dev/null || echo dev)"
   (cd "$APP" && PATH="$RT/node/bin:$PATH" PUPPETEER_CACHE_DIR="$ROOT/chrome" "$RT/node/bin/npx" -y pnpm@9.15.4 install --frozen-lockfile --filter "@spot/worker...") || die "Installing dependencies failed"
@@ -218,7 +218,7 @@ EOF
   # Record the choice (the worker reads this to report localModel: false and route AI to Gemini).
   { grep -v '^SPOT_NO_LOCAL_MODEL=' "$env" || true; echo "SPOT_NO_LOCAL_MODEL=$(no_local && echo 1 || echo 0)"; } > "$env.tmp" && mv "$env.tmp" "$env"
   chmod 600 "$env"; chmod 700 "$DATA"
-  ok "Keys go in through the console (Spot Server app, or http://localhost:7420)"
+  ok "Keys go in through the console (Nothing BOT Server app, or http://localhost:7420)"
 
   step "Background services"
   touch "$ROOT/.start-at-login"
@@ -311,11 +311,11 @@ pull_model() {
 
 cmd_update() {
   TASK_NAME=update; STARTED="$(( $(date +%s) * 1000 ))"; FROM="$(cat "$APP/VERSION" 2>/dev/null || echo none)"
-  [[ -x "$(node_bin)" && -f "$APP/apps/worker/package.json" ]] || task_fail "Spot Solutions isn't set up on this Mac yet. Run setup first."
+  [[ -x "$(node_bin)" && -f "$APP/apps/worker/package.json" ]] || task_fail "Nothing BOT Server isn't set up on this Mac yet. Run setup first."
   local tmp; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' RETURN
   step "Checking the latest version"; progress running "Checking the latest version"
   local base="${SPOT_DIST_URL:-https://spot-solutions.web.app}"
-  curl -fsSL --max-time 30 "$base/dl/version.json?t=$(date +%s)" -o "$tmp/version.json" || task_fail "Couldn't reach Spot Solutions to check for an update."
+  curl -fsSL --max-time 30 "$base/dl/version.json?t=$(date +%s)" -o "$tmp/version.json" || task_fail "Couldn't reach Nothing BOT Curating to check for an update."
   local latest sha lmodel
   eval "$("$(node_bin)" -e '
     const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
@@ -324,7 +324,7 @@ cmd_update() {
     console.log(`sha=${ok(j.sha256, /^[0-9a-f]{64}$/)}`);
     console.log(`lmodel=${ok(j.model, /^[A-Za-z0-9._:\/-]{1,100}$/)}`);
   ' "$tmp/version.json")"
-  [[ -n "$latest" && -n "$sha" ]] || task_fail "The version file from Spot Solutions isn't valid."
+  [[ -n "$latest" && -n "$sha" ]] || task_fail "The version file from Nothing BOT Curating isn't valid."
   TO="$latest"
   if [[ "$latest" == "$FROM" ]]; then progress done "Already up to date"; ok "Already up to date ($FROM)"; return 0; fi
 
@@ -397,7 +397,7 @@ cmd_local() {
 # Moving the data to another drive (the console's Storage section): move.mjs copies, verifies, switches (this script's `apply`
 # rewrites the launch agents from the data-dir file) and restarts, or puts everything back if anything fails.
 cmd_move() { # move-data | move-cleanup
-  [[ -x "$(node_bin)" && -f "$APP/apps/worker/console/move.mjs" ]] || task_fail "move.mjs isn't in the app folder. Update Spot Solutions first."
+  [[ -x "$(node_bin)" && -f "$APP/apps/worker/console/move.mjs" ]] || task_fail "move.mjs isn't in the app folder. Update Nothing BOT Server first."
   SPOT_ROOT="$ROOT" "$(node_bin)" "$APP/apps/worker/console/move.mjs" "$1"
 }
 
@@ -419,8 +419,8 @@ cmd_task() {
 
 cmd_awake() {
   case "${1:-}" in
-    on)  /usr/bin/osascript -e 'do shell script "pmset -a disablesleep 1 && pmset -c sleep 0 && pmset -c disksleep 0" with administrator privileges with prompt "Spot Server wants to keep this Mac running with the lid closed."' >/dev/null && ok "Mac stays awake, even with the lid closed" ;;
-    off) /usr/bin/osascript -e 'do shell script "pmset -a disablesleep 0 && pmset -c sleep 1" with administrator privileges with prompt "Spot Server wants to restore normal sleep."' >/dev/null && ok "Normal sleep restored" ;;
+    on)  /usr/bin/osascript -e 'do shell script "pmset -a disablesleep 1 && pmset -c sleep 0 && pmset -c disksleep 0" with administrator privileges with prompt "Nothing BOT Server wants to keep this Mac running with the lid closed."' >/dev/null && ok "Mac stays awake, even with the lid closed" ;;
+    off) /usr/bin/osascript -e 'do shell script "pmset -a disablesleep 0 && pmset -c sleep 1" with administrator privileges with prompt "Nothing BOT Server wants to restore normal sleep."' >/dev/null && ok "Normal sleep restored" ;;
     *) die "usage: spotctl awake on|off" ;;
   esac
 }

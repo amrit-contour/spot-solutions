@@ -1,6 +1,6 @@
 # Run the server on a Mac
 
-**Spot Server** is a small Mac app that turns any Mac (Apple Silicon or Intel, macOS 13+) into the Spot Solutions server: WhatsApp sessions, local Gemma and the server console, running in the background.
+**Nothing BOT Server** is a small Mac app that turns any Mac (Apple Silicon or Intel, macOS 13+) into the Nothing BOT Server: WhatsApp sessions, local Gemma and the server console, running in the background.
 
 ## Install
 
@@ -10,13 +10,13 @@ Easiest, in Terminal:
 curl -fsSL https://spot-solutions.web.app/install-mac.sh | bash
 ```
 
-Or download [SpotServer-mac.zip](https://spot-solutions.web.app/dl/SpotServer-mac.zip), double-click it, drag **Spot Server** into Applications, then open it. The first time macOS says it can't verify the developer: open **System Settings → Privacy & Security** and click **Open Anyway**. (The app isn't notarized by Apple; the Terminal install avoids this prompt.)
+Or download [SpotServer-mac.zip](https://spot-solutions.web.app/dl/SpotServer-mac.zip), double-click it, drag **Nothing BOT Server** into Applications, then open it. The first time macOS says it can't verify the developer: open **System Settings → Privacy & Security** and click **Open Anyway**. (The app isn't notarized by Apple; the Terminal install avoids this prompt.)
 
 ## Set up
 
-1. Open **Spot Server** and type your email.
+1. Open **Nothing BOT Server** and type your email.
 2. Click **Set up this Mac** (the Terminal install command already did this). It downloads Node.js and, on a Mac with about 8 GB of memory or more, Ollama and Gemma (about 3.5 GB) into `~/Library/Application Support/SpotSolutions`. It needs no Homebrew and no admin password. If Ollama is already running on the Mac, it uses that.
-3. The server console appears inside the app. Click **Connect with Spot Solutions**, open the link (or scan the QR with your phone), sign in with Google, check the 4-character code and approve. The worker starts by itself, with a key made for this Mac only, and your email becomes one of its admins. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is for a brand-new project (see [multi-server.md](multi-server.md)).
+3. The server console appears inside the app. Click **Connect with Nothing BOT Curating**, open the link (or scan the QR with your phone), sign in with Google, check the 4-character code and approve. The worker starts by itself, with a key made for this Mac only, and your email becomes one of its admins. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is for a brand-new project (see [multi-server.md](multi-server.md)).
 4. Link WhatsApp at spot-solutions.web.app → Settings → Show QR code.
 
 **Local model or Gemini only.** A Mac with little memory (under about 8 GB) starts on Gemini, and any Mac can switch in the console under **AI models** (**Local model on this computer**, with progress). Add a Gemini key there, or each curator under Settings → AI models. A Gemini-only server can't host accounts set to **Local only**. From Terminal: `spotctl local on` or `spotctl local off`. Updates keep the choice.
@@ -57,7 +57,7 @@ In the console, **Storage**, type the new folder (for example `/Volumes/Backup H
 
 ## Updating
 
-The server updates itself: the console checks every 30 minutes and installs a new release a few minutes after it appears (turn that off under **Updates** in the console), or press **Update now** there or **Update** on the Server page of the app. A Mac set up before this release needs one manual update first: **More → Update Spot Solutions**, or run the install command again. Either keeps your key and WhatsApp session. If you run several servers, stop any still on an older release first, see [multi-server.md](multi-server.md).
+The server updates itself: the console checks every 30 minutes and installs a new release a few minutes after it appears (turn that off under **Updates** in the console), or press **Update now** there or **Update** on the Server page of the app. A Mac set up before this release needs one manual update first: **More → Update Nothing BOT Server**, or run the install command again. Either keeps your key and WhatsApp session. If you run several servers, stop any still on an older release first, see [multi-server.md](multi-server.md).
 
 ## For a Mac that stays on
 
