@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { where } from "firebase/firestore";
 import { Link } from "react-router-dom";
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import { createPortal } from "react-dom";
+import { LayoutGroup, motion } from "motion/react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -37,6 +38,7 @@ import {
   sentSnapshot,
   shiftWeek,
   type Comic,
+  type GroupTag,
   type Lineup,
   type Show,
   type Slot,
@@ -53,25 +55,19 @@ import { PageHeader } from "../components/Shell";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "../components/Menu";
 import { GroupSyncSheet } from "../components/GroupSyncSheet";
-import { GroupPanel } from "../components/GroupPanel";
+import { GroupPopover, GroupTab, MemberTileBody } from "../components/GroupPanel";
+import { Popover, ToolButton } from "../components/Popover";
+import { PillRow, Pill, comicPills, type TellState } from "../components/Pills";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
-import { Avatar, Button, Chip, Empty, IconButton, Stepper, cx } from "../components/ui";
-import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar } from "../components/icons";
+import { Avatar, Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "../components/ui";
+import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "../components/icons";
 
 const BENCH = "bench";
-// Droppables inside a show column that aren't lineup lists: the group panel adds to the lineup, the leave zone is for members.
-const GROUP = "group:";
+// Droppables that aren't lineup lists: a group member's leave zone (in the Waiting column's Group tab).
 const LEAVE = "leave:";
 const MEMBER = "gm:";
-
-/** Member drags only count on a leave zone; comic drags ignore leave zones. */
-const collide: CollisionDetection = (args) => {
-  const leave = (c: { id: string | number }) => String(c.id).startsWith(LEAVE);
-  if (String(args.active.id).startsWith(MEMBER)) return pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter(leave) });
-  return closestCorners({ ...args, droppableContainers: args.droppableContainers.filter((c) => !leave(c)) });
-};
 
 type Columns = Record<string, string[]>;
 
@@ -110,6 +106,20 @@ export function LineupBoard() {
   }, [activeShows, lineupByShow, requests.data, comicsById, lastWeek]);
 
   const [cols, setCols] = useState<Columns>(remote);
+  const colsRef = useRef(cols);
+  colsRef.current = cols;
+  // A member drag lands on a show (its column or any tile in it) or on a leave zone; Waiting is never a target.
+  // A comic drag lands on any list and ignores leave zones.
+  const collide = useCallback<CollisionDetection>((args) => {
+    const leave = (c: { id: string | number }) => String(c.id).startsWith(LEAVE);
+    if (String(args.active.id).startsWith(MEMBER)) {
+      const onShow = new Set(Object.entries(colsRef.current).filter(([k]) => k !== BENCH).flatMap(([k, v]) => [k, ...v]));
+      return pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter((c) => leave(c) || onShow.has(String(c.id))) });
+    }
+    return closestCorners({ ...args, droppableContainers: args.droppableContainers.filter((c) => !leave(c)) });
+  }, []);
+  const [tab, setTab] = useState<"waiting" | "group">("waiting");
+  const [dragMember, setDragMember] = useState<{ name: string; tags: GroupTag[] } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const dragFrom = useRef<string | null>(null);
   useEffect(() => {
@@ -133,15 +143,19 @@ export function LineupBoard() {
   /** A group member's name from any show's cached member list. */
   const memberName = (showId: string, id: string) => shows.find((s) => s.id === showId)?.groupMembers?.members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
   const removeFrom = (cid: string, show: Show) => unplaceComic(uid, week, show, cid, lineupByShow.get(show.id));
-  const containerOf = (id: string) => (id.startsWith(GROUP) ? id.slice(GROUP.length) : id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
+  const containerOf = (id: string) => (id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
   // Confirmed lineups stay editable (changes are reviewed in Send updates); only called-off ones are closed.
   const closed = (showId: string) => ["cancelled", "canned"].includes(lineupByShow.get(showId)?.status ?? "draft");
-  // A member dragged out of a group panel, waiting for its panel to confirm the removal.
+  // A member dropped on the Leaving zone, waiting for its show's group popover to confirm the removal.
   const [leaveReq, setLeaveReq] = useState<{ showId: string; id: string } | null>(null);
+  const groupShows = activeShows.filter((s) => s.groupId);
+  const showGroup = tab === "group" && groupShows.length > 0;
   const dragKind = activeId ? (activeId.startsWith(MEMBER) ? "member" : "tile") : null;
 
   const onStart = ({ active }: DragStartEvent) => {
     setActiveId(String(active.id));
+    const d = active.data.current as { name?: string; tags?: GroupTag[] } | undefined;
+    setDragMember(String(active.id).startsWith(MEMBER) && d?.name ? { name: d.name, tags: d.tags ?? [] } : null);
     dragFrom.current = containerOf(String(active.id)) ?? null;
   };
 
@@ -168,8 +182,8 @@ export function LineupBoard() {
       const [showId, ...rest] = id.slice(MEMBER.length).split(":");
       const memberId = rest.join(":");
       if (over && String(over.id) === `${LEAVE}${showId}`) return setLeaveReq({ showId, id: memberId });
-      // Dropped on a show's slots: put them on that lineup (the group panel itself isn't a target, so tidying the list never adds anyone).
-      const target = over && !String(over.id).startsWith(GROUP) && !String(over.id).startsWith(LEAVE) ? containerOf(String(over.id)) : null;
+      // Dropped on a show's slots: put them on that lineup.
+      const target = over && !String(over.id).startsWith(LEAVE) ? containerOf(String(over.id)) : null;
       const show = target && target !== BENCH ? activeShows.find((s) => s.id === target) : undefined;
       if (show && !closed(show.id) && !(cols[show.id] ?? []).includes(memberId)) {
         if ((cols[show.id] ?? []).length >= show.slotCount) return void toast.error(`${show.name} is full`);
@@ -248,13 +262,28 @@ export function LineupBoard() {
       <DndContext sensors={sensors} collisionDetection={collide} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActiveId(null), setCols(remote))}>
         <div className="flex flex-col gap-4 px-4 pb-10 sm:px-8 lg:flex-row lg:items-start">
           <Column id={BENCH} className="lg:sticky lg:top-4 lg:w-72 lg:flex-none">
+            {groupShows.length > 0 && (
+              <div className="mb-3">
+                <Segmented full size="sm" value={showGroup ? "group" : "waiting"} onChange={setTab} options={[{ value: "waiting", label: "Waiting" }, { value: "group", label: "Group" }]} />
+              </div>
+            )}
             <div className="mb-3 flex items-center justify-between px-1">
               <div>
-                <h2 className="type-title-m">Waiting</h2>
-                <p className="type-body-s text-on-surface-variant"><span className="sm:hidden">Tap + or long-press to drag</span><span className="hidden sm:inline">Drag into a show</span></p>
+                <h2 className="type-title-m">{showGroup ? "Group members" : "Waiting"}</h2>
+                <p className="type-body-s text-on-surface-variant">
+                  {showGroup ? (
+                    <><span className="sm:hidden">Long-press a member to drag</span><span className="hidden sm:inline">Drag onto a show as already told</span></>
+                  ) : (
+                    <><span className="sm:hidden">Tap + or long-press to drag</span><span className="hidden sm:inline">Drag into a show</span></>
+                  )}
+                </p>
               </div>
-              <span className="rounded-full bg-surface-high px-2 py-0.5 type-label-m tabular">{cols[BENCH]?.length ?? 0}</span>
+              {!showGroup && <span className="rounded-full bg-surface-high px-2 py-0.5 type-label-m tabular">{cols[BENCH]?.length ?? 0}</span>}
             </div>
+            {showGroup ? (
+              <GroupTab shows={groupShows} idsOf={(id) => cols[id] ?? []} lineupOf={(id) => lineupByShow.get(id)} dragging={dragKind === "member"} openShows={activeShows.filter((s) => !closed(s.id))} onAddTold={addTold} />
+            ) : (
+              <>
             <div className="mb-3"><ReconcileButton lineups={lineups.data} /></div>
             <SortableContext items={cols[BENCH] ?? []} strategy={verticalListSortingStrategy}>
               <ul className="flex min-h-24 flex-col gap-2">
@@ -292,6 +321,8 @@ export function LineupBoard() {
                 )}
               </ul>
             </SortableContext>
+              </>
+            )}
           </Column>
 
           <div className="grid flex-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
@@ -300,20 +331,21 @@ export function LineupBoard() {
             ))}
           </div>
         </div>
+        {/* Portalled to <body>: an ancestor with a transform (the page-enter animation, layout motion) would otherwise become the containing block of the overlay's position:fixed and offset it from the cursor. */}
+        {createPortal(
         <DragOverlay dropAnimation={{ duration: 220, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}>
           {activeId ? (
             <motion.div initial={{ transform: "scale(1)" }} animate={{ transform: "scale(1.03)", rotate: -1 }} transition={{ type: "spring", duration: 0.3, bounce: 0.3 }} className="rounded-md shadow-xl">
               {activeMember ? (
-                <div className="flex min-h-12 items-center gap-2.5 rounded-md bg-surface-highest py-1 pl-2 pr-4">
-                  <Avatar name={activeComic?.name ?? activeMember} size={28} tone="secondary" />
-                  <span className="type-label-l">{activeComic?.name ?? `+${activeMember.split("@")[0]}`}</span>
-                </div>
+                <MemberTileBody name={dragMember?.name ?? activeComic?.name ?? `+${activeMember.split("@")[0]}`} tags={dragMember?.tags ?? []} lifted />
               ) : (
                 <TileBody comic={activeComic} id={activeId} request={requestByComic.get(activeId)} lastWeek={lastWeek} lifted />
               )}
             </motion.div>
           ) : null}
-        </DragOverlay>
+        </DragOverlay>,
+          document.body,
+        )}
       </DndContext>
       </LayoutGroup>
     </div>
@@ -329,9 +361,10 @@ function Column({ id, children, className }: { id: string; children: React.React
   );
 }
 
-function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action, note, onMinutes }: { comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode; note?: string; onMinutes?: (m: number) => void }) {
+function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action, show, states, onMinutes }: { comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void }) {
   const name = comic?.name ?? request?.comicName ?? `+${id.split("@")[0]}`;
   const performed = comic?.lastPerformedWeek === lastWeek;
+  const pills = comicPills({ comic, request, show, lastWeek, states }, id);
   return (
     <div className={cx("flex min-h-14 items-center gap-3 rounded-md py-2 pl-3", action ? "pr-1" : "pr-3", lifted ? "bg-surface-highest" : "bg-surface-container")}>
       {index !== undefined ? <span className="w-5 text-center type-label-l text-on-surface-variant tabular">{index + 1}</span> : <Avatar name={name} size={32} tone={performed ? "secondary" : "primary"} />}
@@ -340,15 +373,7 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action
           <span className="truncate type-title-s">{name}</span>
           {comic?.tier && comic.tier !== "open" && <IconStar className="icon size-3.5 flex-none text-tertiary" aria-label={comic.tier} />}
         </div>
-        <div className="flex items-center gap-1.5 type-body-s text-on-surface-variant">
-          {performed && (
-            <span className="inline-flex items-center gap-0.5">
-              <IconHistory className="icon size-3.5" /> last week
-            </span>
-          )}
-          {request?.intent.preferredDays.length ? <span>{request.intent.preferredDays.map((d) => DAY_SHORT[d]).join(" · ")}</span> : !performed && <span>any day</span>}
-        </div>
-        {note && <div className="truncate type-label-m text-tertiary">{note}</div>}
+        <PillRow pills={pills} className="mt-0.5" />
       </div>
       {minutes && onMinutes ? (
         // Tap to change the set length. Stops the drag sensors like the other buttons.
@@ -383,7 +408,7 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action
   );
 }
 
-function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action, note, onMinutes, shared }: { id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode; note?: string; onMinutes?: (m: number) => void; shared?: boolean }) {
+function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action, show, states, onMinutes, shared }: { id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void; shared?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
   return (
     <li
@@ -395,7 +420,7 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
     >
       {/* Shared layout: the card glides between Waiting and a lineup. Off while dragging, where dnd-kit moves it. */}
       <motion.div layoutId={shared ? `tile-${id}` : undefined} layout={shared ? "position" : false} transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}>
-        <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} note={note} onMinutes={onMinutes} />
+        <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} show={show} states={states} onMinutes={onMinutes} />
       </motion.div>
     </li>
   );
@@ -441,13 +466,19 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
   // What the comics were last told. Lineups confirmed before that was recorded start from how they stand now.
   const baseline = confirmed && lineup ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
   const changes = baseline && lineup ? diffLineup(lineup.slots, baseline, show) : null;
-  const noteFor = (cid: string) => {
-    if (!changes) return lineup?.sent?.[cid] ? "Already told" : undefined;
-    if (changes.added.includes(cid)) return "New · not told yet";
-    const m = changes.moved.find((x) => x.comicId === cid);
-    const t = changes.minutes.find((x) => x.comicId === cid);
-    return [m && `Moved from ${m.from}`, t && `Was ${t.from ?? "?"} min`].filter(Boolean).join(" · ") || undefined;
+  const statesFor = (cid: string): TellState[] => {
+    if (changes?.added.includes(cid)) return [{ kind: "new", text: "Not told yet" }];
+    if (changes) {
+      const m = changes.moved.find((x) => x.comicId === cid);
+      const t = changes.minutes.find((x) => x.comicId === cid);
+      const out: TellState[] = [];
+      if (m) out.push({ kind: "moved", text: `Moved from ${m.from}` });
+      if (t) out.push({ kind: "minutes", text: `Was ${t.from ?? "?"} min` });
+      return out.length ? out : [{ kind: "told", text: "Already told" }];
+    }
+    return lineup?.sent?.[cid] ? [{ kind: "told", text: "Already told" }] : [];
   };
+  const nameOf = (cid: string) => comicsById.get(cid)?.name ?? requestByComic.get(cid)?.comicName ?? `+${cid.split("@")[0]}`;
 
   // Open the group review when a plan becomes pending during this visit, after the curator pressed confirm, send or sync.
   // The ref starts from the first value seen, so a plan left pending from an earlier visit never pops the sheet.
@@ -552,35 +583,107 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
             {ids.length}/{show.slotCount}
           </span>
         </div>
-        {(show.groupId || (changes && changes.total > 0)) && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {show.groupId && (
-              <Chip icon={IconGroup} className="text-on-surface-variant">
-                {mode === "manual" ? "Group: when I sync" : mode === "confirm" ? "Group: on confirm" : `Group: show day ${formatTime(show.showDaySyncTime ?? "12:00")}${lineup?.showDaySyncedOn ? " · done" : ""}`}
-              </Chip>
-            )}
-            <AnimatePresence>
-              {changes && changes.total > 0 && (
-                <motion.span key="changed" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
-                  <Chip tone="tertiary" icon={IconPen}>Changed since confirmed · {changes.total}</Chip>
-                </motion.span>
-              )}
-            </AnimatePresence>
+        <div className="mt-2 flex h-9 items-center gap-1">
+          <div className="min-w-0 flex-1">
+            {(changes && changes.total > 0) || lineup?.dropped?.length ? (
+              <Popover
+                title="Needs a look"
+                width={360}
+                trigger={(toggle, open) => (
+                  <Chip tone={lineup?.dropped?.length ? "error" : "tertiary"} icon={IconPen} selected={open} onClick={toggle} className="max-w-full">
+                    <span className="truncate">{(changes?.total ?? 0) === 0 ? `Dropped out · ${lineup?.dropped?.length}` : `Changed · ${(changes?.total ?? 0) + (lineup?.dropped?.length ?? 0)}`}</span>
+                  </Chip>
+                )}
+              >
+                {(close) => (
+                  <div className="flex flex-col gap-3">
+                    {changes && changes.total > 0 && (
+                      <section>
+                        <p className="type-label-l text-on-surface-variant">Since you confirmed</p>
+                        <ul className="mt-1 flex flex-col">
+                          {changes.added.map((id) => <NoteRow key={`a${id}`} name={nameOf(id)} pill={<Pill tone="warn">Not told yet</Pill>} />)}
+                          {changes.moved.map((m) => <NoteRow key={`m${m.comicId}`} name={nameOf(m.comicId)} pill={<Pill tone="warn">Moved from {m.from}</Pill>} />)}
+                          {changes.minutes.map((m) => <NoteRow key={`t${m.comicId}`} name={nameOf(m.comicId)} pill={<Pill tone="warn" icon={IconClock}>Was {m.from ?? "?"} min</Pill>} />)}
+                          {changes.removed.map((id) => <NoteRow key={`r${id}`} name={nameOf(id)} pill={<Pill tone="plain">Removed, not told</Pill>} />)}
+                        </ul>
+                        {confirmed && (
+                          <Button size="sm" icon={IconSend} className="mt-2" onClick={() => (close(), setUpdatesOpen(true))}>
+                            Send updates
+                          </Button>
+                        )}
+                      </section>
+                    )}
+                    {lineup?.dropped?.length ? (
+                      <section>
+                        <p className="type-label-l text-on-surface-variant">Dropped out</p>
+                        <ul className="mt-1 flex flex-col">
+                          {lineup.dropped.map((d) => <NoteRow key={d.comicId} name={nameOf(d.comicId)} pill={<Pill tone="error">Dropped out</Pill>} />)}
+                        </ul>
+                      </section>
+                    ) : null}
+                  </div>
+                )}
+              </Popover>
+            ) : null}
           </div>
-        )}
+          {pendingOffers.length > 0 && (
+            <Popover
+              title="Offers out"
+              trigger={(toggle, open) => <ToolButton icon={IconUserPlus} label="Offers waiting for a reply" count={pendingOffers.length} active={open} onClick={toggle} />}
+            >
+              {(close) => (
+                <div>
+                  <ul className="flex flex-col">
+                    {pendingOffers.map((o) => <NoteRow key={o.id} name={o.comicName} pill={<Pill tone="reading">Waiting for a reply</Pill>} />)}
+                  </ul>
+                  <Button size="sm" variant="tonal" icon={IconUserPlus} className="mt-2" disabled={past || cancelled || ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>
+                    Offer another spot…
+                  </Button>
+                </div>
+              )}
+            </Popover>
+          )}
+          {hostsFree.length > 0 && (
+            <Popover
+              title="Hosts free"
+              trigger={(toggle, open) => <ToolButton icon={IconUserCheck} label="Hosts free for this show" count={hostsFree.length} active={open} onClick={toggle} />}
+            >
+              {(close) => (
+                <div>
+                  <p className="type-body-s text-on-surface-variant">Said they're free for {show.name} in the hosts poll.</p>
+                  <ul className="mt-1 flex flex-col">
+                    {hostsFree.map((h) => {
+                      const onLineup = ids.includes(h.id);
+                      const known = comicsById.has(h.id);
+                      return (
+                        <li key={h.id} className="flex min-h-12 items-center gap-2.5 py-1">
+                          <Avatar name={h.name} size={28} tone="secondary" />
+                          <span className="min-w-0 flex-1 truncate type-label-l">{h.name}</span>
+                          {onLineup ? <Pill tone="told" icon={IconCheck}>On lineup</Pill> : (
+                            <Button size="sm" variant="tonal" disabled={!known || cancelled || ids.length >= show.slotCount} onClick={() => (close(), void onAdd(h.id))}>
+                              Add
+                            </Button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </Popover>
+          )}
+          {!cancelled && (
+            <GroupPopover show={show} lineup={lineup} ids={ids} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? onAddTold : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />
+          )}
+        </div>
       </header>
 
       {repeatable.length > 0 && !hideRepeat && (
-        <div className="mb-3 flex items-start gap-3 rounded-md bg-tertiary-container/60 px-3 py-2.5 text-on-tertiary-container">
-          <IconRepeat className="icon mt-0.5 size-5 flex-none" />
-          <div className="min-w-0 flex-1">
-            <p className="type-body-m">Last week's {show.name} was called off.</p>
-            <p className="type-body-s opacity-80">Bring back {repeatable.length === 1 ? "its comic" : `its ${repeatable.length} comics`}: {repeatable.slice(0, 3).map((id) => (comicsById.get(id)?.name ?? "comic").split(" ")[0]).join(", ")}{repeatable.length > 3 ? ` +${repeatable.length - 3}` : ""}</p>
-            <div className="mt-2 flex gap-2">
-              <Button size="sm" onClick={() => void repeat()}>Bring them back</Button>
-              <Button size="sm" variant="text" onClick={() => setHideRepeat(true)}>Not now</Button>
-            </div>
-          </div>
+        <div className="mb-3 flex h-11 items-center gap-2 rounded-md bg-tertiary-container/60 pl-3 pr-1 text-on-tertiary-container">
+          <IconRepeat className="icon size-4 flex-none" />
+          <p className="min-w-0 flex-1 truncate type-body-s" title={`Last week's ${show.name} was called off. Bring back ${repeatable.map((id) => nameOf(id)).join(", ")}`}>Last week was called off</p>
+          <Button size="sm" variant="text" className="flex-none text-on-tertiary-container" onClick={() => void repeat()}>Bring back {repeatable.length}</Button>
+          <IconButton icon={IconClose} label="Not now" onClick={() => setHideRepeat(true)} className="size-9 flex-none" />
         </div>
       )}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
@@ -595,7 +698,8 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
               request={requestByComic.get(cid)}
               lastWeek={lastWeek}
               minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null}
-              note={noteFor(cid)}
+              show={show}
+              states={statesFor(cid)}
               onMinutes={lineup && !cancelled ? (m) => void setMinutes(uid, week, show, lineup, cid, m).catch((e: Error) => toast.error(e.message)) : undefined}
               disabled={cancelled}
               action={cancelled ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />}
@@ -609,28 +713,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
         </ol>
       </SortableContext>
 
-      {changes && changes.removed.length > 0 && (
-        <p className="mt-2 px-1 type-body-s text-tertiary">Removed, not told yet: {changes.removed.map((d) => (comicsById.get(d)?.name ?? "comic").split(" ")[0]).join(", ")}</p>
-      )}
-      {pendingOffers.length > 0 && (
-        <p className="mt-2 px-1 type-body-s text-on-surface-variant">Offer out to {pendingOffers.map((o) => o.comicName.split(" ")[0]).join(", ")}, waiting for a reply</p>
-      )}
-      {hostsFree.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
-          <span className="type-label-m text-on-surface-variant">Hosts free:</span>
-          {hostsFree.map((h) => (
-            <Chip key={h.id} tone="tertiary" onClick={comicsById.has(h.id) && !cancelled ? () => void onAdd(h.id) : undefined}>
-              {h.name}
-            </Chip>
-          ))}
-        </div>
-      )}
-      {lineup?.dropped?.length ? (
-        <p className="mt-2 px-1 type-body-s text-error">Dropped out: {lineup.dropped.map((d) => comicsById.get(d.comicId)?.name ?? "comic").join(", ")}</p>
-      ) : null}
-
       <div className="flex-1" />
-      {!cancelled && <GroupPanel show={show} lineup={lineup} ids={ids} dragging={dragKind} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? onAddTold : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />}
 
       <footer className="mt-3 flex flex-wrap items-center gap-2">
         {canned ? null : cancelled ? (
@@ -667,6 +750,15 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
       <OfferSheet open={offerOpen} onClose={() => setOfferOpen(false)} show={show} exclude={ids} />
       {lineup && <GroupSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} show={show} lineup={lineup} />}
     </Column>
+  );
+}
+
+function NoteRow({ name, pill }: { name: string; pill: React.ReactNode }) {
+  return (
+    <li className="flex min-h-10 items-center gap-2.5 py-1">
+      <span className="min-w-0 flex-1 truncate type-label-l">{name}</span>
+      {pill}
+    </li>
   );
 }
 

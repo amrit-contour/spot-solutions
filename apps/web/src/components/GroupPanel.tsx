@@ -1,63 +1,64 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { groupPanel, type GroupRow, type GroupTag, type Lineup, type Show } from "@spot/shared";
+import { formatTime, groupModeOf, groupPanel, type GroupRow, type GroupTag, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useNow } from "../lib/data";
 import { setGroupLeaving, tagMember, untagMember } from "../lib/lineup";
 import { Menu, MenuItem } from "./Menu";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { Avatar, Button, IconButton, Spinner, cx } from "./ui";
-import { IconArrowDown, IconCrown, IconGroup, IconMenuDots, IconMic, IconRefresh, IconShield, IconStar, IconUserMinus } from "./icons";
+import { Popover, ToolButton } from "./Popover";
+import { Pill, PillRow, type PillSpec } from "./Pills";
+import { Avatar, Button, IconButton, Select, Spinner, TextInput, cx } from "./ui";
+import { IconAdd, IconCrown, IconGroup, IconMenuDots, IconMic, IconRefresh, IconSearch, IconShield, IconStar, IconUserMinus } from "./icons";
 
-/** Subtle tags from the M3 container tokens: who they are to this show, and what the next sync does with them. */
-const TAGS: Record<GroupTag, { label: string; cls: string; icon: typeof IconStar }> = {
-  admin: { label: "Admin", cls: "bg-primary-container text-on-primary-container", icon: IconShield },
-  cohost: { label: "Co-host", cls: "bg-tertiary-container text-on-tertiary-container", icon: IconCrown },
-  regular: { label: "Regular", cls: "bg-secondary-container text-on-secondary-container", icon: IconStar },
-  lineup: { label: "On lineup", cls: "bg-surface-highest text-on-surface", icon: IconMic },
-  joining: { label: "Joining", cls: "border border-dashed border-primary text-primary", icon: IconMic },
-  leaving: { label: "Leaving", cls: "bg-error-container text-on-error-container", icon: IconUserMinus },
+/** Who they are to this show, and what the next sync does with them. */
+const TAGS: Record<GroupTag, Omit<PillSpec, "key">> = {
+  admin: { label: "Admin", tone: "primary", icon: IconShield },
+  cohost: { label: "Co-host", tone: "warn", icon: IconCrown },
+  regular: { label: "Regular", tone: "secondary", icon: IconStar },
+  lineup: { label: "On lineup", tone: "fact", icon: IconMic },
+  joining: { label: "Joining", tone: "joining", icon: IconMic },
+  leaving: { label: "Leaving", tone: "error", icon: IconUserMinus },
 };
-
-function TagPill({ tag }: { tag: GroupTag }) {
-  const t = TAGS[tag];
-  return (
-    <motion.span layout="position" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className={cx("inline-flex h-5 items-center gap-1 rounded-sm px-1.5 type-label-m whitespace-nowrap", t.cls)}>
-      <t.icon className="icon -ml-0.5 size-3.5" />
-      {t.label}
-    </motion.span>
-  );
-}
+export const tagPills = (tags: GroupTag[]): PillSpec[] => tags.map((t) => ({ key: t, ...TAGS[t] }));
 
 const RANK: Record<GroupTag, number> = { joining: 0, lineup: 1, cohost: 2, admin: 3, regular: 4, leaving: 6 };
 const rankOf = (r: GroupRow) => (r.tags.includes("leaving") ? 6 : Math.min(...r.tags.map((t) => RANK[t]), 5));
 
-/**
- * A show's WhatsApp group inside its column: who's in it, how they're tagged, and what a sync would do.
- * Drop a Waiting comic anywhere on the panel to put them on the lineup (and so, after a sync, in the group).
- * Drag a member to the Leaving zone, or use their menu, to take them out on the next sync.
- */
-export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveHandled, onRemoveFromLineup, onAddToLineup, onSync, onReview }: { show: Show; lineup?: Lineup; ids: string[]; dragging: "member" | "tile" | null; pendingLeave: string | null; onLeaveHandled: () => void; onRemoveFromLineup: (cid: string) => void; onAddToLineup?: (cid: string, name: string) => void; onSync: () => Promise<void>; onReview: () => void }) {
-  const { uid, week, comicsById } = useApp();
-  const now = useNow(30_000);
-  const [open, setOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [warn, setWarn] = useState<GroupRow | null>(null);
-  const { setNodeRef, isOver } = useDroppable({ id: `group:${show.id}` });
+/** The cached WhatsApp members of a show, tagged against its lineup. Shared by the column popover and the Waiting "Group" tab. */
+export function useGroupRows(show: Show, ids: string[], lineup?: Lineup) {
+  const { comicsById } = useApp();
   const cache = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers : null;
   const names = useMemo(() => new Map((cache?.members ?? []).map((m) => [m.id, m.name])), [cache]);
   const nameOf = (id: string) => comicsById.get(id)?.name ?? names.get(id) ?? `+${id.split("@")[0]}`;
   const leaving = lineup?.groupLeaving ?? [];
-
   const panel = useMemo(
     () => groupPanel({ members: cache?.members ?? [], lineup: ids, regulars: show.regulars ?? [], protected: show.protected ?? [], forceRemove: leaving }),
     [cache, ids, show.regulars, show.protected, leaving],
   );
   const rows = useMemo(() => [...panel.rows].sort((a, b) => rankOf(a) - rankOf(b) || nameOf(a.id).localeCompare(nameOf(b.id))), [panel.rows, names, comicsById]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { cache, nameOf, leaving, panel, rows };
+}
+
+const modeLabel = (show: Show, lineup?: Lineup) => {
+  const mode = groupModeOf(show);
+  return mode === "manual" ? "Syncs when you press sync" : mode === "confirm" ? "Syncs when you confirm" : `Syncs on show day, ${formatTime(show.showDaySyncTime ?? "12:00")}${lineup?.showDaySyncedOn ? " (done)" : ""}`;
+};
+
+/**
+ * A show's WhatsApp group, from a toolbar icon: members and their tags, what a sync would do, refresh and sync.
+ * Dragging members onto a lineup happens in the Waiting column's Group tab. This stays mounted (closed) so a member
+ * dropped on the Leaving zone there can still raise its confirmation here.
+ */
+export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, onRemoveFromLineup, onAddToLineup, onSync, onReview }: { show: Show; lineup?: Lineup; ids: string[]; pendingLeave: string | null; onLeaveHandled: () => void; onRemoveFromLineup: (cid: string) => void; onAddToLineup?: (cid: string, name: string) => void; onSync: () => Promise<void>; onReview: () => void }) {
+  const { uid, week } = useApp();
+  const now = useNow(30_000);
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [warn, setWarn] = useState<GroupRow | null>(null);
+  const { cache, nameOf, leaving, panel, rows } = useGroupRows(show, ids, lineup);
 
   const kept = new Set(panel.kept);
   const stayers = panel.rows.filter((r) => kept.has(r.id));
@@ -84,7 +85,6 @@ export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveH
     }
   };
 
-  // Tag menus are the tap alternative to dragging.
   const toggleTag = (id: string, tag: "regulars" | "protected", on: boolean) => void tagMember(uid, show, id, tag, on).catch((e: Error) => toast.error(e.message));
   const askLeave = (row: GroupRow) => {
     if (row.tags.includes("lineup") || row.tags.includes("joining")) return toast("They're on the lineup. Take them off it first.");
@@ -97,117 +97,98 @@ export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveH
     if (row.isAdmin) await setGroupLeaving(uid, week, show, [...new Set([...leaving, row.id])]);
     toast.success(`${nameOf(row.id)} will leave the group on the next sync`);
   };
+  // A member dropped on the Leaving zone in the Waiting column's Group tab.
   useEffect(() => {
     if (!pendingLeave) return;
     const row = rows.find((r) => r.id === pendingLeave);
     onLeaveHandled();
-    if (row) {
-      setOpen(true);
-      askLeave(row);
-    }
+    if (row) askLeave(row);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingLeave]);
-
-  if (!show.groupId) {
-    return (
-      <div className="mt-3 flex items-center gap-3 rounded-md border border-dashed border-outline-variant px-3 py-3">
-        <IconGroup className="icon size-5 flex-none text-on-surface-variant" />
-        <p className="min-w-0 flex-1 type-body-s text-on-surface-variant">No WhatsApp group linked to this show.</p>
-        <Link to={`/shows?edit=${show.id}`}>
-          <Button size="sm" variant="tonal">Link a group</Button>
-        </Link>
-      </div>
-    );
-  }
 
   const status = lineup?.groupSync?.status;
   const reviewWaiting = status === "pending";
   const busy = syncing || status === "computing" || status === "applying";
-  const dropTarget = dragging === "tile";
+  const changes = panel.toAdd.length + panel.toRemove.length;
 
   return (
-    <div ref={setNodeRef} className={cx("mt-3 rounded-md bg-surface-container transition-[box-shadow] duration-150", dropTarget && "shadow-[inset_0_0_0_1px_var(--md-sys-color-outline-variant)]", isOver && dropTarget && "shadow-[inset_0_0_0_2px_var(--md-sys-color-primary)]")}>
-      <div className="flex items-center gap-1 pr-1">
-        <button onClick={() => setOpen(!open)} aria-expanded={open} className="state-layer flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-md px-3 text-left">
-          <IconGroup className="icon size-5 flex-none text-primary" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate type-title-s">
-              Group{cache ? ` · ${cache.members.length} member${cache.members.length === 1 ? "" : "s"}` : ""}
-            </span>
-            <span className="block truncate type-body-s text-on-surface-variant">{dropTarget ? "Drop to add to the lineup and the group" : cache ? `+${panel.toAdd.length} add · −${panel.toRemove.length} remove` : "Members not read yet"}</span>
-          </span>
-          <IconArrowDown className={cx("icon size-5 flex-none text-on-surface-variant transition-transform duration-200", open && "rotate-180")} />
-        </button>
-      </div>
-
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }} className="overflow-hidden">
-            <div className="px-3 pb-3">
+    <>
+      <Popover
+        title={`${show.name} group`}
+        trigger={(toggle, open) => <ToolButton icon={IconGroup} label={show.groupId ? "WhatsApp group" : "Link a WhatsApp group"} count={show.groupId ? changes : undefined} tone={reviewWaiting ? "attention" : "plain"} active={open} onClick={toggle} />}
+      >
+        {() =>
+          !show.groupId ? (
+            <div className="flex flex-col items-start gap-3 pt-1">
+              <p className="type-body-m text-on-surface-variant">No WhatsApp group is linked to this show.</p>
+              <Link to={`/shows?edit=${show.id}`}>
+                <Button size="sm" variant="tonal">Link a group</Button>
+              </Link>
+            </div>
+          ) : (
+            <div>
               <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate type-body-s text-on-surface-variant">{cache ? `Synced ${timeAgo(cache.at, now)}` : "Read the members to see who's in the group"}</span>
+                <span className="min-w-0 flex-1 truncate type-body-s text-on-surface-variant">{cache ? `${cache.members.length} members · synced ${timeAgo(cache.at, now)}` : "Members not read yet"}</span>
                 <Button size="sm" variant="text" icon={IconRefresh} loading={refreshing} onClick={refresh}>
                   Refresh
                 </Button>
               </div>
+              <p className="type-body-s text-on-surface-variant">{modeLabel(show, lineup)}</p>
 
               {cache && (
-                <ul className="mt-1 flex max-h-72 flex-col gap-0.5 overflow-y-auto overscroll-contain">
-                  <AnimatePresence initial={false}>
-                    {rows.map((r) => (
-                      <MemberRow
-                        key={r.id}
-                        show={show}
-                        row={r}
-                        name={nameOf(r.id)}
-                        forced={leaving.includes(r.id)}
-                        menu={
-                          <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label={`Options for ${nameOf(r.id)}`} onClick={t} className="size-9" />}>
-                            {(close) => (
-                              <>
-                                {r.member ? (
-                                  <>
-                                    {r.tags.includes("lineup") ? (
-                                      <MenuItem onClick={() => (close(), onRemoveFromLineup(r.id))}>
-                                        Take off this lineup
-                                        <span className="block type-body-s text-on-surface-variant">Stays in the group</span>
-                                      </MenuItem>
-                                    ) : (
-                                      onAddToLineup && (
-                                        <MenuItem onClick={() => (close(), onAddToLineup(r.id, nameOf(r.id)))}>
-                                          Put on this lineup
-                                          <span className="block type-body-s text-on-surface-variant">As already told: you gave them the spot</span>
-                                        </MenuItem>
-                                      )
-                                    )}
-                                    <MenuItem disabled={!r.known} hint={r.tags.includes("regular") ? "on" : undefined} onClick={() => (close(), toggleTag(r.id, "regulars", !r.tags.includes("regular")))}>
-                                      Regular
-                                      <span className="block type-body-s text-on-surface-variant">Always stays in the group</span>
-                                    </MenuItem>
-                                    <MenuItem disabled={!r.known} hint={r.tags.includes("cohost") ? "on" : undefined} onClick={() => (close(), toggleTag(r.id, "protected", !r.tags.includes("cohost")))}>
-                                      Co-host
-                                      <span className="block type-body-s text-on-surface-variant">Never removed</span>
-                                    </MenuItem>
-                                    {leaving.includes(r.id) ? (
-                                      <MenuItem onClick={() => (close(), void setGroupLeaving(uid, week, show, leaving.filter((x) => x !== r.id)))}>Keep in group</MenuItem>
-                                    ) : (
-                                      <MenuItem onClick={() => (close(), askLeave(r))}>Remove from group…</MenuItem>
-                                    )}
-                                  </>
-                                ) : (
-                                  <MenuItem onClick={() => (close(), onRemoveFromLineup(r.id))}>Take off the lineup</MenuItem>
-                                )}
-                              </>
-                            )}
-                          </Menu>
+                <ul className="mt-2 flex max-h-72 flex-col gap-0.5 overflow-y-auto overscroll-contain">
+                  {rows.map((r) => (
+                    <li key={r.id} className={cx("flex min-h-12 items-center gap-2.5 rounded-md py-1 pl-1", r.tags.includes("leaving") && "opacity-70")}>
+                      <Avatar name={nameOf(r.id)} size={28} tone={r.member ? "secondary" : "primary"} />
+                      <div className="min-w-0 flex-1">
+                        <div className={cx("truncate type-label-l", r.tags.includes("leaving") && "line-through decoration-error/60")}>{nameOf(r.id)}</div>
+                        <div className="mt-0.5 flex flex-wrap gap-1">
+                          {tagPills(r.tags).map((p) => (
+                            <Pill key={p.key} tone={p.tone} icon={p.icon}>{p.label}</Pill>
+                          ))}
+                          {!r.known && <span className="type-body-s text-on-surface-variant">Number unknown</span>}
+                        </div>
+                      </div>
+                      <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label={`Options for ${nameOf(r.id)}`} onClick={t} className="size-9" />}>
+                        {(close) =>
+                          r.member ? (
+                            <>
+                              {r.tags.includes("lineup") ? (
+                                <MenuItem onClick={() => (close(), onRemoveFromLineup(r.id))}>
+                                  Take off this lineup
+                                  <span className="block type-body-s text-on-surface-variant">Stays in the group</span>
+                                </MenuItem>
+                              ) : (
+                                onAddToLineup && (
+                                  <MenuItem onClick={() => (close(), onAddToLineup(r.id, nameOf(r.id)))}>
+                                    Put on this lineup
+                                    <span className="block type-body-s text-on-surface-variant">As already told: you gave them the spot</span>
+                                  </MenuItem>
+                                )
+                              )}
+                              <MenuItem disabled={!r.known} hint={r.tags.includes("regular") ? "on" : undefined} onClick={() => (close(), toggleTag(r.id, "regulars", !r.tags.includes("regular")))}>
+                                Regular
+                                <span className="block type-body-s text-on-surface-variant">Always stays in the group</span>
+                              </MenuItem>
+                              <MenuItem disabled={!r.known} hint={r.tags.includes("cohost") ? "on" : undefined} onClick={() => (close(), toggleTag(r.id, "protected", !r.tags.includes("cohost")))}>
+                                Co-host
+                                <span className="block type-body-s text-on-surface-variant">Never removed</span>
+                              </MenuItem>
+                              {leaving.includes(r.id) ? (
+                                <MenuItem onClick={() => (close(), void setGroupLeaving(uid, week, show, leaving.filter((x) => x !== r.id)))}>Keep in group</MenuItem>
+                              ) : (
+                                <MenuItem onClick={() => (close(), askLeave(r))}>Remove from group…</MenuItem>
+                              )}
+                            </>
+                          ) : (
+                            <MenuItem onClick={() => (close(), onRemoveFromLineup(r.id))}>Take off the lineup</MenuItem>
+                          )
                         }
-                      />
-                    ))}
-                  </AnimatePresence>
+                      </Menu>
+                    </li>
+                  ))}
                 </ul>
               )}
-
-              {cache && <LeaveZone showId={show.id} active={dragging === "member"} />}
 
               <div className="mt-3 rounded-md bg-surface-high px-3 py-3">
                 <p className="type-body-s text-on-surface-variant">{preview}</p>
@@ -225,9 +206,9 @@ export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveH
                 <p className="mt-2 type-body-s text-on-surface-variant">You review every change before anything happens in the group.</p>
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )
+        }
+      </Popover>
 
       <ConfirmDialog
         open={Boolean(warn)}
@@ -248,52 +229,104 @@ export function GroupPanel({ show, lineup, ids, dragging, pendingLeave, onLeaveH
           </>
         )}
       </ConfirmDialog>
+    </>
+  );
+}
+
+/* ---------- Waiting column, "Group" tab ---------- */
+
+/**
+ * Members of one show's group as draggable tiles. Drop one on any show to put them on that lineup as already told.
+ * The ids are `gm:{showId}:{memberId}`, which the board's drag handler already understands.
+ */
+export function GroupTab({ shows, idsOf, lineupOf, dragging, openShows, onAddTold }: { shows: Show[]; idsOf: (showId: string) => string[]; lineupOf: (showId: string) => Lineup | undefined; dragging: boolean; openShows: Show[]; onAddTold: (cid: string, show: Show, name: string) => void }) {
+  const [pick, setPick] = useState(shows[0]?.id ?? "");
+  const show = shows.find((s) => s.id === pick) ?? shows[0];
+  if (!show) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      {shows.length > 1 && (
+        <Select label="Group" value={show.id} onChange={setPick} options={shows.map((s) => ({ value: s.id, label: s.name }))} />
+      )}
+      <GroupTabBody key={show.id} show={show} ids={idsOf(show.id)} lineup={lineupOf(show.id)} dragging={dragging} openShows={openShows} onAddTold={onAddTold} />
     </div>
   );
 }
 
-function MemberRow({ show, row, name, forced, menu }: { show: Show; row: GroupRow; name: string; forced: boolean; menu: React.ReactNode }) {
-  // Joining rows are lineup comics who aren't members yet: nothing to drag out of the group.
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `gm:${show.id}:${row.id}`, disabled: !row.member });
-  const leaving = row.tags.includes("leaving");
+function GroupTabBody({ show, ids, lineup, dragging, openShows, onAddTold }: { show: Show; ids: string[]; lineup?: Lineup; dragging: boolean; openShows: Show[]; onAddTold: (cid: string, show: Show, name: string) => void }) {
+  const { cache, nameOf, rows } = useGroupRows(show, ids, lineup);
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const list = rows.filter((r) => r.member && (!needle || nameOf(r.id).toLowerCase().includes(needle) || r.id.includes(needle.replace(/\D/g, "") || "\u0000")));
+  if (!cache) return <p className="rounded-md border border-dashed border-outline-variant px-4 py-6 text-center type-body-s text-on-surface-variant">Members haven't been read yet. Open the group button on {show.name} and press Refresh.</p>;
   return (
-    <motion.li
-      ref={setNodeRef}
-      layoutId={`gm-${show.id}-${row.id}`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: isDragging ? 0.3 : 1 }}
-      exit={{ opacity: 0, transition: { duration: 0.12 } }}
-      transition={{ type: "spring", duration: 0.35, bounce: 0.15 }}
-      className={cx("flex min-h-12 select-none items-center gap-2.5 rounded-md py-1 pl-1 [-webkit-touch-callout:none]", row.member && "cursor-grab active:cursor-grabbing", leaving && "opacity-70")}
-      {...attributes}
-      {...listeners}
-    >
-      <Avatar name={name} size={28} tone={row.member ? "secondary" : "primary"} />
-      <div className="min-w-0 flex-1">
-        <div className={cx("truncate type-label-l", leaving && "line-through decoration-error/60")}>{name}</div>
-        <div className="mt-0.5 flex flex-wrap gap-1">
-          <AnimatePresence initial={false}>
-            {row.tags.map((t) => (
-              <TagPill key={t} tag={t} />
-            ))}
-          </AnimatePresence>
-          {!row.known && <span className="type-body-s text-on-surface-variant">Number unknown</span>}
-          {forced && <span className="sr-only">Marked to leave</span>}
-        </div>
+    <>
+      <div className="relative">
+        <IconSearch className="icon pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" />
+        <TextInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${cache.members.length} members`} aria-label="Search group members" className="h-10 pl-9" />
       </div>
-      <span onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-        {menu}
-      </span>
-    </motion.li>
+      <ul className="flex max-h-[min(60dvh,520px)] min-h-24 flex-col gap-2 overflow-y-auto overscroll-contain">
+        {list.map((r) => (
+          <MemberTile key={r.id} show={show} row={r} name={nameOf(r.id)} openShows={openShows} onAddTold={onAddTold} />
+        ))}
+        {!list.length && <li className="grid min-h-24 place-items-center rounded-md border border-dashed border-outline-variant px-4 text-center type-body-s text-on-surface-variant">{needle ? "No one matches." : "No members."}</li>}
+      </ul>
+      <LeaveZone showId={show.id} active={dragging} />
+    </>
+  );
+}
+
+export function MemberTileBody({ name, tags, lifted, action }: { name: string; tags: GroupTag[]; lifted?: boolean; action?: React.ReactNode }) {
+  return (
+    <div className={cx("flex min-h-14 items-center gap-3 rounded-md py-2 pl-3", action ? "pr-1" : "pr-3", lifted ? "bg-surface-highest" : "bg-surface-container")}>
+      <Avatar name={name} size={32} tone="secondary" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate type-title-s">{name}</div>
+        <PillRow pills={tagPills(tags)} className="mt-0.5" />
+      </div>
+      {action && (
+        <span onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          {action}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function MemberTile({ show, row, name, openShows, onAddTold }: { show: Show; row: GroupRow; name: string; openShows: Show[]; onAddTold: (cid: string, show: Show, name: string) => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `gm:${show.id}:${row.id}`, data: { name, tags: row.tags } });
+  return (
+    <li ref={setNodeRef} className={cx("cursor-grab select-none [-webkit-touch-callout:none] active:cursor-grabbing", isDragging && "opacity-30")} {...attributes} {...listeners}>
+      <MemberTileBody
+        name={name}
+        tags={row.tags}
+        action={
+          <Menu align="right" trigger={(t) => <IconButton icon={IconAdd} label={`Put ${name} on a show`} onClick={t} className="size-9" />}>
+            {(close) =>
+              openShows.length ? (
+                openShows.map((s) => (
+                  <MenuItem key={s.id} onClick={() => (close(), onAddTold(row.id, s, name))}>
+                    {s.name}
+                    <span className="block type-body-s text-on-surface-variant">As already told</span>
+                  </MenuItem>
+                ))
+              ) : (
+                <MenuItem disabled onClick={() => undefined}>No open shows</MenuItem>
+              )
+            }
+          </Menu>
+        }
+      />
+    </li>
   );
 }
 
 function LeaveZone({ showId, active }: { showId: string; active: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id: `leave:${showId}` });
   return (
-    <div ref={setNodeRef} className={cx("mt-2 grid h-10 place-items-center rounded-md border border-dashed type-body-s transition-colors duration-150", isOver ? "border-error bg-error-container text-on-error-container" : active ? "border-error/60 text-error" : "border-outline-variant text-on-surface-variant/70")}>
-      <span className="hidden sm:inline">Drag a member here to take them out on the next sync</span>
-      <span className="sm:hidden">Use ⋯ to remove someone</span>
+    <div ref={setNodeRef} className={cx("grid h-10 place-items-center rounded-md border border-dashed type-body-s transition-colors duration-150", isOver ? "border-error bg-error-container text-on-error-container" : active ? "border-error/60 text-error" : "border-outline-variant text-on-surface-variant/70")}>
+      <span className="hidden sm:inline">Drag here to take someone out on the next sync</span>
+      <span className="sm:hidden">Remove from group: use the group button</span>
     </div>
   );
 }

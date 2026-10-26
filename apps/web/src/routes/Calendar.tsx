@@ -1,6 +1,6 @@
 // Landing page: the week as a calendar. Shows sit on their weekday with the lineup, what still needs doing, and a
 // side column for requests, next week's asks and Updates. Every action here is the same one the Lineup page runs.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { updateDoc, where } from "firebase/firestore";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import {
   diffLineup,
   formatDate,
   formatTime,
+  groupModeOf,
   localNow,
   pendingRejections,
   sentSnapshot,
@@ -30,6 +31,8 @@ import { WeekSwitcher } from "../components/WeekSwitcher";
 import { ConfirmSheet } from "../components/ConfirmSheet";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { OfferSheet } from "../components/OfferSheet";
+import { GroupSyncSheet } from "../components/GroupSyncSheet";
+import { PillRow, comicPills, type TellState } from "../components/Pills";
 import { Count } from "../components/updates/shared";
 import { Avatar, Button, Chip, Empty, buttonClass, cx } from "../components/ui";
 import { IconArrowRight, IconCalendarMark, IconCheck, IconClock, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "../components/icons";
@@ -182,10 +185,12 @@ function EventCard({ show, date, today, lineup, loading, asks, comicsById, regre
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status;
   const confirmed = status === "confirmed";
   const off = status === "cancelled" || status === "canned";
+  const mode = groupModeOf(show);
   const isToday = date === today;
   const past = date < today;
   const slots = lineup?.slots ?? [];
@@ -194,17 +199,35 @@ function EventCard({ show, date, today, lineup, loading, asks, comicsById, regre
 
   const baseline = confirmed && lineup ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
   const changes = baseline && lineup ? diffLineup(lineup.slots, baseline, show) : null;
-  const noteFor = (cid: string) => {
-    if (changes?.added.includes(cid)) return { text: "Not told yet", tone: "warn" as const };
+  const statesFor = (cid: string): TellState[] => {
+    if (changes?.added.includes(cid)) return [{ kind: "new", text: "Not told yet" }];
     if (changes) {
       const m = changes.moved.find((x) => x.comicId === cid);
-      if (m) return { text: `Moved from ${m.from}`, tone: "warn" as const };
+      if (m) return [{ kind: "moved", text: `Moved from ${m.from}` }];
     }
-    if (lineup?.sent?.[cid] || (confirmed && !lineup?.sent)) return { text: "Already told", tone: "quiet" as const };
-    if (show.protected?.includes(cid)) return { text: "Co-host", tone: "quiet" as const };
-    if (show.regulars?.includes(cid)) return { text: "Regular", tone: "quiet" as const };
-    return null;
+    return lineup?.sent?.[cid] || (confirmed && !lineup?.sent) ? [{ kind: "told", text: "Already told" }] : [];
   };
+  const lastWeek = shiftWeek(week, -1);
+
+  // Same as the Lineup page: when this show's group mode is "confirm", open the group review once the plan lands
+  // after the curator pressed Confirm & send or Send updates. A plan left pending from before never pops the sheet.
+  const lineupLoaded = !loading;
+  const syncStatus = lineup?.groupSync?.status;
+  const armed = useRef(false);
+  const seen = useRef<{ status: string | undefined } | null>(null);
+  useEffect(() => {
+    if (!lineupLoaded) return;
+    if (!seen.current) {
+      seen.current = { status: syncStatus };
+      return;
+    }
+    const before = seen.current.status;
+    seen.current.status = syncStatus;
+    if (before !== "pending" && syncStatus === "pending" && armed.current) {
+      armed.current = false;
+      setSyncOpen(true);
+    }
+  }, [syncStatus, lineupLoaded]);
 
   // Who asked for this weekday and isn't placed yet. People with no day preference are counted apart.
   const waiting = asks.filter((r) => {
@@ -258,13 +281,13 @@ function EventCard({ show, date, today, lineup, loading, asks, comicsById, regre
       ) : (
         <ol className={cx("mt-3 flex flex-col gap-1.5", off && "opacity-60")}>
           {slots.map((s, i) => {
-            const n = noteFor(s.comicId);
+            const pills = comicPills({ comic: comicsById.get(s.comicId), request: asks.find((r) => r.comicId === s.comicId), show, lastWeek, states: statesFor(s.comicId), days: false }, s.comicId);
             return (
               <li key={s.comicId} className="flex h-10 items-center gap-2.5 rounded-md bg-surface-container pr-3 pl-2">
                 <span className="w-4 flex-none text-center type-label-m text-on-surface-variant tabular">{i + 1}</span>
                 <Avatar name={name(s.comicId)} size={28} />
                 <span className="min-w-0 flex-1 truncate type-body-m">{name(s.comicId)}</span>
-                {n && <span className={cx("flex-none type-label-s", n.tone === "warn" ? "text-tertiary" : "text-on-surface-variant")}>{n.text}</span>}
+                <PillRow pills={pills} max={1} className="flex-none" />
               </li>
             );
           })}
@@ -332,9 +355,10 @@ function EventCard({ show, date, today, lineup, loading, asks, comicsById, regre
         </Link>
       </footer>
 
-      <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} onSending={() => undefined} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
-      {lineup && baseline && <SendUpdatesSheet open={updatesOpen} onClose={() => setUpdatesOpen(false)} show={show} lineup={lineup} baseline={baseline} onSent={() => undefined} />}
+      <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} onSending={() => (armed.current = mode === "confirm")} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
+      {lineup && baseline && <SendUpdatesSheet open={updatesOpen} onClose={() => setUpdatesOpen(false)} show={show} lineup={lineup} baseline={baseline} onSent={() => void (armed.current = mode === "confirm")} />}
       <OfferSheet open={offerOpen} onClose={() => setOfferOpen(false)} show={show} exclude={ids} />
+      {lineup && <GroupSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} show={show} lineup={lineup} />}
     </li>
   );
 }
