@@ -90,3 +90,32 @@ describe("cleanNote", () => {
     expect(cleanNote(undefined)).toBeNull();
   });
 });
+
+// Regression from production: unrelated chats scored 0.95, and a "spot available?" ask was filed as where/when.
+describe("spot signal", () => {
+  const ask = (evidence: string, o: object = {}) => JSON.stringify({ evidence, kind: "spot_request", is_spot_request: true, confidence: 0.95, preferred_days: [], note: "Asks for a spot", tags: [], venue_id: "", ...o });
+  const terms = ["Bloom Indiranagar", "Indiranagar", "bloom"];
+  it.each([
+    [["Mu aga porter dekhe kete paduchi", "Sei hisab re", "Hau lunch kariki kahuchi model"], "Sei hisab re"],
+    [["Bro", "Is month ka maintenance pay ho gya hai kya ?", "I cant recall if you paid it or me"], "Is month ka maintenance pay ho gya hai kya"],
+    [["Pls come whenever", "It is semi furnished", "Location is murugeshpalya"], "Pls come whenever"],
+    [["Bhai 5k patheibu?"], "Bhai 5k patheibu"],
+  ])("caps a chat with no spot, day or venue to Maybe", (msgs, ev) => {
+    const i = parseIntent(ask(ev), "m", msgs, ["v_bloom"], terms);
+    expect(i.confidence).toBeLessThanOrEqual(0.45);
+  });
+  it.each([
+    [["yoo can i get bloom tomorrow?"]],
+    [["Bhai kal tuesday ko bloom karlu?"]],
+    [["Hello Bro. Kal please spot dena"]],
+    [["can I come up next week"]],
+  ])("keeps real asks", (msgs) => {
+    expect(parseIntent(ask(msgs[0]), "m", msgs, ["v_bloom"], terms).confidence).toBe(0.95);
+  });
+  it("treats 'spot available at Bloom 9 pm today?' as a spot request", () => {
+    const msgs = ["Hello, spot available at Bloom 9 pm today?"];
+    const i = parseIntent(ask("spot available at Bloom 9 pm today", { kind: "show_info", is_spot_request: false }), "m", msgs, ["v_bloom"], terms);
+    expect(i.kind).toBe("spot_request");
+    expect(i.isSpotRequest).toBe(true);
+  });
+});

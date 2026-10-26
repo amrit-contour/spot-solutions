@@ -83,6 +83,7 @@ Comics who already have a spot may also write about it:
 - last_spot_query: they ask when they last performed here.
 Anyone may ask about the mic itself:
 - show_info: where or when the mic happens, venue, timings, location ("where is the mic?", "what time does it start?").
+Asking whether a spot or slot is free ("spot available at Bloom 9 pm today?", "any slot tonight?") is spot_request, not show_info.
 
 Think step by step:
 1. kind: one of spot_request, cancel_spot, status_query, last_spot_query, show_info, other.
@@ -133,7 +134,27 @@ export function validVenueId(raw: unknown, venueIds: string[]) {
   return id && venueIds.includes(id) ? id : null;
 }
 
-export function parseIntent(raw: string, model: string, messages: string[], venueIds: string[] = []): Intent {
+/**
+ * Words a real spot ask almost always carries: the ask itself, a day, or one of the curator's venues.
+ * A small model sometimes calls unrelated chat (rent, money, family, other languages) a spot request
+ * with high confidence; without one of these, it can only ever land in Maybe.
+ */
+const SPOT_WORDS = /\b(spots?|slots?|mic|open ?mic|line ?up|sets?|perform\w*|stage|gig|show|chance|space|book(ing)?|put me|come up|try out|minutes?|mins?|mon(day)?|tue(s|sday)?|wed(nesday)?|thu(r|rs|rsday)?|fri(day)?|sat(urday)?|sun(day)?|today|tonight|tomorrow|tmrw|tmr|aaj|kal|parso|weekend|next week|this week)\b/i;
+export function hasSpotSignal(messages: string[], venueTerms: string[] = []) {
+  const text = norm(messages.join(" "));
+  if (SPOT_WORDS.test(text)) return true;
+  return venueTerms.some((t) => {
+    const v = norm(t);
+    return v.length >= 3 && new RegExp(`\\b${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(text);
+  });
+}
+/** "is a spot available at 9 today?" is asking for a spot, even though it names a place and a time. */
+const ASKS_FOR_SPOT = /\b(spots?|slots?)\b/i;
+
+/** Most a request with no spot word, day or venue in it can score: the bottom of Maybe. */
+export const NO_SIGNAL_CAP = 0.45;
+
+export function parseIntent(raw: string, model: string, messages: string[], venueIds: string[] = [], venueTerms: string[] = []): Intent {
   const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
   const o = JSON.parse(json) as Record<string, unknown>;
   let kind = (KINDS.includes(o.kind as IntentKind) ? o.kind : o.is_spot_request ? "spot_request" : "other") as IntentKind;
@@ -142,11 +163,21 @@ export function parseIntent(raw: string, model: string, messages: string[], venu
     kind = "other";
     o.note = "No actual ask found in the messages";
   }
+  // The model sometimes files a spot ask as "where/when" because it names a venue and a time.
+  if (kind === "show_info" && messages.some((m) => ASKS_FOR_SPOT.test(m))) {
+    kind = "spot_request";
+    o.confidence = Math.max(Number(o.confidence) || 0, 0.7);
+  }
   o.is_spot_request = kind === "spot_request";
   const days = (Array.isArray(o.preferred_days) ? o.preferred_days : [])
     .map((d) => DAY_NAMES.findIndex((n) => n.toLowerCase() === String(d).toLowerCase()))
     .filter((d) => d >= 0) as Weekday[];
-  const confidence = Math.max(0, Math.min(1, Number(o.confidence) || 0));
+  let confidence = Math.max(0, Math.min(1, Number(o.confidence) || 0));
+  const signal = hasSpotSignal(messages, venueTerms);
+  if (kind === "spot_request" && !signal) {
+    confidence = Math.min(confidence, NO_SIGNAL_CAP);
+    o.note = "No spot, day or venue mentioned: check it";
+  }
   const quoted = kind !== "other";
   return {
     kind,
@@ -167,7 +198,8 @@ export async function classify(uid: string | null, messages: string[], shows: Sh
   const trimmed = messages.map((m) => (m.length > 400 ? `${m.slice(0, 400)}…` : m));
   const venues = ctx.venues ?? [];
   const { text, model } = await generateJson(uid, ai, buildPrompt(trimmed, shows, venues, ctx.sender), SCHEMA);
-  return parseIntent(text, model, trimmed, venues.map((v) => v.id));
+  const venueTerms = venues.flatMap((v) => [v.name, v.area ?? "", ...(v.aliases ?? [])]).filter(Boolean);
+  return parseIntent(text, model, trimmed, venues.map((v) => v.id), venueTerms);
 }
 
 const PROFILE_SCHEMA = {
