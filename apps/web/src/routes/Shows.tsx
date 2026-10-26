@@ -219,16 +219,17 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
         <Field label="Venue">
           <Select value={draft.venueId ?? ""} onChange={(v) => set("venueId", v)} options={venues.map((v) => ({ value: v.id, label: v.name }))} />
         </Field>
-        <Field label="Day">
-          <div className="flex flex-wrap gap-1.5">
+        <div className="flex items-center gap-3" role="group" aria-label="Day">
+          <span className="flex-none type-label-l text-on-surface-variant">Day</span>
+          <div className="grid min-w-0 flex-1 grid-cols-7 gap-1">
             {WEEKDAYS.map((d) => (
-              <Chip key={d} selected={draft.weekday === d} onClick={() => set("weekday", d)}>
+              <Chip key={d} selected={draft.weekday === d} onClick={() => set("weekday", d)} className="h-9 justify-center rounded-full px-0">
                 {DAY_SHORT[d]}
               </Chip>
             ))}
           </div>
-        </Field>
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 sm:grid-cols-2">
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <Field label="Starts at">
             <TimePicker value={draft.startTime ?? "20:00"} onChange={(v) => set("startTime", v)} label="Start time" />
           </Field>
@@ -241,7 +242,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
           <div className="flex items-center gap-4">
             <div className="flex-1">
               <div className="type-title-s">Mention set length</div>
-              <div className="type-body-s text-on-surface-variant">Adds "⏱ 5 min set" to confirmations. Leave off for shows without a fixed limit.</div>
+              <div className="type-body-s text-on-surface-variant">Adds the set length (e.g. 5 min) to confirmations. Leave off for shows without a fixed limit.</div>
             </div>
             <Switch checked={Boolean(draft.includeSlotTime)} onChange={(v) => set("includeSlotTime", v)} label="Mention set length" />
           </div>
