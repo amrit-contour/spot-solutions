@@ -284,4 +284,10 @@ if ($token -and $ip) {
   & $Node "$AppDir\apps\worker\console\qr.mjs" $phoneUrl 2>$null
   Write-Host $phoneUrl -ForegroundColor Cyan
 }
+# The console reads its page once at start. Now that the new files are in place, restart its node so it serves them;
+# the task's loop brings it straight back (spared earlier because it may be what started this install).
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -like '*SpotSolutions*console*server.mjs*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep 6
 if (Test-Path $edge) { Start-Process $edge "--app=http://localhost:7420" } else { Start-Process "http://localhost:7420" }
