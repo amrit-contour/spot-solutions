@@ -69,7 +69,6 @@ export function SignIn() {
           <Logo className="size-10" />
           <span className="flex flex-col leading-tight">
             <span className="type-title-m">Nothing BOT Curating</span>
-            <span className="type-label-s text-on-surface-variant">by Amrit Dash</span>
           </span>
         </div>
         <div className="my-12 max-w-xl">

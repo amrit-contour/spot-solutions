@@ -222,7 +222,6 @@ export function Landing() {
             <Logo className="size-10 flex-none" />
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate type-title-m">Nothing BOT Curating</span>
-              <span className="truncate type-label-s text-on-surface-variant">by Amrit Dash</span>
             </span>
           </a>
           <div className="flex-1" />
@@ -409,7 +408,7 @@ export function Landing() {
 
       <footer className="relative z-10 border-t border-outline-variant/50 pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-5 py-8 type-body-s text-on-surface-variant sm:px-8">
-          <span>Nothing BOT Curating by Amrit Dash · open source (MIT) · built for Hacktoberfest 2026 with Gemma</span>
+          <span>Nothing BOT Curating · Made by Amrit Dash · open source (MIT) · built for Hacktoberfest 2026 with Gemma</span>
           <div className="flex-1" />
           <a className="hover:text-on-surface" href="/privacy">Privacy</a>
           <a className="hover:text-on-surface" href="/terms">Terms</a>

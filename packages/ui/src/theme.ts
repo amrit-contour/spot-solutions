@@ -105,17 +105,17 @@ const THEME_COLOR: Record<Brand, { light: string; dark: string }> = {
   nbc: { light: "#ffffff", dark: "#0a0a0a" },
 };
 
-/** Cached choice so the first paint matches. With no cache (first visit, signed out) the public pages stay Classic. */
+/** Cached choice so the first paint matches. With no cache (first visit, signed out) the app is NBC; Classic stays selectable. */
 export function savedBrand(): Brand {
   try {
     const b = localStorage.getItem(BRAND_KEY);
-    return b === "nbc" || b === "classic" ? b : "classic";
+    return b === "nbc" || b === "classic" ? b : "nbc";
   } catch {
-    return "classic";
+    return "nbc";
   }
 }
 
-let current: Brand = "classic";
+let current: Brand = "nbc";
 const listeners = new Set<() => void>();
 
 /** Keeps <meta name="theme-color"> in step with the brand and any forced light/dark mode. */
@@ -167,9 +167,10 @@ export function setBrand(brand: Brand, opts: { persist?: boolean; animate?: bool
 function syncBrandIcons(brand: Brand) {
   const nbc = brand === "nbc";
   const set = (sel: string, href: string) => document.querySelectorAll<HTMLLinkElement>(sel).forEach((l) => l.getAttribute("href") !== href && l.setAttribute("href", href));
+  // NBC is the default: its assets are what index.html and the generated manifest.webmanifest serve before any JS runs.
   set('link[rel="icon"]', nbc ? "/favicon-nbc.svg" : "/favicon.svg");
   set('link[rel="apple-touch-icon"]', nbc ? "/icons/nbc/apple-touch-icon.png" : "/icons/apple-touch-icon.png");
-  set('link[rel="manifest"]', nbc ? "/manifest-nbc.webmanifest" : "/manifest.webmanifest");
+  set('link[rel="manifest"]', nbc ? "/manifest.webmanifest" : "/manifest-classic.webmanifest");
 }
 
 export function useBrand(): Brand {
