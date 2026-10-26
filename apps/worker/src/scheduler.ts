@@ -3,6 +3,8 @@ import { localNow, type Lineup } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { notice, runShowDaySync } from "./commands.ts";
 import { sessions } from "./sessions.ts";
+import { agentSessions } from "./agentSession.ts";
+import { agentTick } from "./agent.ts";
 import { watchUser } from "./userData.ts";
 import { expireOffers, sendMicChecks } from "./replies.ts";
 import { maybeCheckFollowUps } from "./followUp.ts";
@@ -37,6 +39,8 @@ async function tick(uid: string) {
 export function startScheduler(uids: () => Iterable<string>) {
   setInterval(() => {
     for (const uid of uids()) {
+      // The agent number's own notices and morning digest (it runs wherever the account's lease is held).
+      if (agentSessions.get(uid)) void agentTick(uid).catch((e) => console.error("[agent]", e));
       const client = sessions.get(uid);
       if (!client) continue;
       void tick(uid).catch((e) => console.error("[scheduler]", e));

@@ -15,3 +15,4 @@ export * from "./scanHistory.ts";
 export * from "./reconcile.ts";
 export * from "./messages.ts";
 export * from "./voice.ts";
+export * from "./agent.ts";

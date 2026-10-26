@@ -171,6 +171,12 @@ function ServerCard({ s }: { s: ServerStatus }) {
         ))}
       </div>
 
+      {s.live && (
+        <div className="type-label-m text-on-surface-variant">
+          Last 24 h: {s.live.in24h} read · {s.live.spot24h} spot requests · {s.live.sent24h} sent · {s.live.err24h} errors · {s.live.ready} of {s.live.accounts} accounts connected{s.live.queue ? ` · ${s.live.queue} waiting to send` : ""}
+        </div>
+      )}
+
       <Collapsible id={`server:${s.id}:curators`} title="Connected curators" icon={IconComics} summary={`${linked} linked`} summaryTone={linked ? "success" : "neutral"}>
         <ul className="divide-y divide-outline-variant/40">
           {s.sessions.map((x) => (

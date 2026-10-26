@@ -21,6 +21,7 @@ import { sendQueued } from "./sendQueue.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
+import { sendMicCheck } from "./agentOutbox.ts";
 
 /** A pending offer's yes/no. Returns true when the messages were an answer to it. */
 export async function handleOfferReply(uid: string, client: WAWebJS.Client, comicId: string, texts: string[]) {
@@ -38,7 +39,7 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
 
   if (!answer) {
     await doc.ref.update({ status: "declined", reply });
-    await notice(uid, "info", `${offer.comicName} passed on the ${showName(uid, offer.showId)} spot.`);
+    await notice(uid, "info", `${offer.comicName} passed on the ${showName(uid, offer.showId)} spot.`, "offer");
     return true;
   }
 
@@ -66,7 +67,7 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
     const who = (await col(uid, "comics").doc(comicId).get()).data() as Comic | undefined;
     const name = await greetFor(client, who ?? { id: comicId, name: offer.comicName });
     await sendQueued(client, await chatOf(uid, comicId), await inVoice(uid, "offerFull", renderMessage(settings, "offerFull", { name }), { name }));
-    await notice(uid, "warn", `${offer.comicName} said yes, but ${show?.name ?? "the show"} was already full. They've been told.`);
+    await notice(uid, "warn", `${offer.comicName} said yes, but ${show?.name ?? "the show"} was already full. They've been told.`, "offer");
     return true;
   }
 
@@ -83,7 +84,7 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
     const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;
     await group.addParticipants([comicId], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) }).catch(() => undefined);
   }
-  await notice(uid, "info", `${offer.comicName} took the ${show.name} spot and got the confirmation.`);
+  await notice(uid, "info", `${offer.comicName} took the ${show.name} spot and got the confirmation.`, "offer");
   return true;
 }
 
@@ -166,10 +167,12 @@ export async function sendMicChecks(uid: string, client: WAWebJS.Client) {
     const l = d.data() as Lineup;
     if (l.outcome || l.micCheckSentOn || !l.date || l.date >= now.date) continue;
     await d.ref.update({ micCheckSentOn: now.date });
+    const show = shows.find((s) => s.id === l.showId);
+    // With the agent number linked (and its notices on), it asks you there and reads your yes/no; no "Message yourself" chat.
+    if (await sendMicCheck(uid, `🎤 Did *${show?.name ?? "the show"}* on ${formatDate(l.date)} happen? Reply *yes* or *no* here.`)) continue;
     if (!settings.micCheck.whatsapp) continue;
     const self = client.info?.wid?._serialized;
     if (!self) continue;
-    const show = shows.find((s) => s.id === l.showId);
     await sendQueued(client, self, `🎤 Did *${show?.name ?? "the show"}* on ${formatDate(l.date)} happen? Reply *yes* or *no* here.`);
   }
 }
@@ -180,7 +183,7 @@ export async function expireOffers(uid: string) {
     const o = d.data() as SpotOffer;
     if (o.expiresAt > Date.now()) continue;
     await d.ref.update({ status: "expired" });
-    await notice(uid, "info", `No reply from ${o.comicName} about the ${showName(uid, o.showId)} spot. The offer expired.`);
+    await notice(uid, "info", `No reply from ${o.comicName} about the ${showName(uid, o.showId)} spot. The offer expired.`, "offer");
   }
 }
 

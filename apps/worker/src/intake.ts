@@ -32,7 +32,7 @@ import { watchUser } from "./userData.ts";
 import { sendQueued } from "./sendQueue.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice } from "./voice.ts";
-import { counters } from "./stats.ts";
+import { counters, live } from "./stats.ts";
 import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
 
 const MAX_CONTEXT = 12;
@@ -87,6 +87,7 @@ export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.
   const since = liveSince.get(uid);
   if (!opts.quiet && (!since || msg.timestamp * 1000 < since - 5_000)) return;
   counters.messagesIn++;
+  live.noteIn(uid);
   const contact = await resolveContact(client, msg);
   const key = `${uid}|${contact.id}`;
   const p = pending.get(key);
@@ -136,6 +137,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
 
   // Privacy: chats that aren't spot requests are never stored.
   if (!existing && intent.confidence < MAYBE_THRESHOLD) return;
+  if (intent.isSpotRequest) live.noteSpot(uid);
 
   const now = Date.now();
   const locked = existing && ["confirmed", "dismissed", "assigned", "rejected"].includes(existing.status);

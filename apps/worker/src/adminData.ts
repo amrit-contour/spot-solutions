@@ -1,7 +1,7 @@
 // Admin-only data tools, run from servers/{id}/commands (see stats.ts). They cross user
 // boundaries, which the browser can't do, so they use the Admin SDK and re-check the requester here.
 import type { CollectionReference, DocumentReference } from "firebase-admin/firestore";
-import { DEMO_SOURCE_UID, TTL_DAYS, collectionsForScope, demoSandboxIds, expiredSandboxIds, isDataScope, type AdminDataPayload, type AdminDataResult, type DataScope } from "@spot/shared";
+import { DEMO_SOURCE_UID, TTL_DAYS, agentVaultId, collectionsForScope, demoSandboxIds, expiredSandboxIds, isDataScope, type AdminDataPayload, type AdminDataResult, type DataScope } from "@spot/shared";
 import { col, db, expireAt, userRef } from "./firebase.ts";
 import { SERVER_ID } from "./serverIdentity.ts";
 import { wipeLogin } from "./vault.ts";
@@ -53,8 +53,8 @@ export async function userData(uid: string, scope: DataScope, dryRun: boolean): 
     if (n) counts[name] = n;
   }
   if (scope === "everything") {
-    // Lease and prefs go; the vault doc (tombstone) stays so a late upload from a holder can't resurrect the login.
-    const docs = (await userRef(uid).collection("fleet").get()).docs.filter((d) => d.id !== "vault");
+    // Lease and prefs go; the vault docs (tombstones, the agent number's too) stay so a late upload from a holder can't resurrect the login.
+    const docs = (await userRef(uid).collection("fleet").get()).docs.filter((d) => d.id !== "vault" && d.id !== "vault_agent");
     if (docs.length) counts.fleet = docs.length;
     if (!dryRun) await Promise.all(docs.map((d) => d.ref.delete()));
   }
@@ -111,8 +111,12 @@ async function logout(uid: string) {
   // Mid-handoff: the account is about to be run by another server. Wait for the move to land (up to the same budget),
   // then the holder branch below sends it the logout. Unlinking here now would miss the session the new holder starts.
   for (const end = Date.now() + UNLINK_WAIT_MS; fleet.isMoving(uid) && Date.now() < end; ) await new Promise((r) => setTimeout(r, 1_000));
-  if (fleet.holds(uid)) await sessions.logout(uid);
-  else if (fleet.hasRemoteHolder(uid)) {
+  const { agentSessions } = await import("./agentSession.ts");
+  if (fleet.holds(uid)) {
+    await sessions.logout(uid);
+    await agentSessions.logout(uid); // the agent number goes with the account
+  } else if (fleet.hasRemoteHolder(uid)) {
+    await col(uid, "commands").add({ type: "logout_agent", status: "pending", by: "admin-data-tool", createdAt: Date.now(), expireAt: expireAt(TTL_DAYS.commands) });
     const ref = await col(uid, "commands").add({ type: "logout", status: "pending", by: "admin-data-tool", createdAt: Date.now(), expireAt: expireAt(TTL_DAYS.commands) });
     const end = Date.now() + UNLINK_WAIT_MS;
     let status = "pending";
@@ -123,6 +127,7 @@ async function logout(uid: string) {
     if (status !== "done") console.warn(`[admin] ${uid}: holder didn't confirm the unlink (${status}); wiping the vault anyway`);
   }
   await wipeLogin(uid, SERVER_ID);
+  await wipeLogin(agentVaultId(uid), SERVER_ID);
 }
 
 /** Throws unless `by` is a server admin. The return value is stored as the command's result. */

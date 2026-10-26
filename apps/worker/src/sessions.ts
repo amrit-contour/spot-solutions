@@ -11,6 +11,7 @@ import { catchUpSince, enqueue, markLive } from "./intake.ts";
 import { handleSelfReply, handleVote } from "./replies.ts";
 import { unwatchUser, watchUser } from "./userData.ts";
 import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
+import { live } from "./stats.ts";
 import { wipeLogin } from "./vault.ts";
 import { prepareLoginSafe } from "./vaultCalls.ts";
 import { launchDecision, orphanPids, shouldFlagAbort } from "./fleetPlan.ts";
@@ -54,7 +55,7 @@ async function restoreSession(uid: string) {
  * Kill any process still running on this profile (a Chromium orphaned by a crashed worker, a SIGKILLed parent, or a destroy()
  * that hung): its `--user-data-dir=<profile>` is the only reliable link. Only then are the Singleton* lock files safe to delete.
  */
-async function killOrphanChromium(uid: string) {
+export async function killOrphanChromium(uid: string) {
   const profile = path.resolve(profileDir(uid));
   try {
     let lines: string[];
@@ -82,8 +83,10 @@ async function killOrphanChromium(uid: string) {
 const notice = (uid: string, level: "info" | "warn", text: string) => col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
 
 // lastSeen drives the app's online dot (zeroed on shutdown); aliveAt is when we last processed messages (never zeroed).
-const setState = (uid: string, s: Partial<SessionState>) =>
-  sessionRef(uid).set({ ...s, lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true });
+const setState = (uid: string, s: Partial<SessionState>) => {
+  live.recordSession(uid, s); // the server console's live view
+  return sessionRef(uid).set({ ...s, lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true });
+};
 
 /** Set by fleet.ts: sessions only run while this server holds the account's lease. */
 interface Hooks {
@@ -200,6 +203,7 @@ class SessionManager {
       return;
     }
     this.clients.set(uid, client);
+    live.bindClient(uid, client); // sends through this client count toward this account
 
     client.on("qr", async (qr) => {
       if (!sawQr && wasLinked) {
@@ -343,6 +347,7 @@ class SessionManager {
     await this.stop(uid);
     await this.wipe(uid);
     await userRef(uid).set({ waEnabled: false }, { merge: true });
+    live.recordSession(uid, { status: "idle", phone: null });
     await sessionRef(uid).set({ status: "idle", qr: null, phone: null, pushName: null, error: null, lastSeen: Date.now() });
     this.hooks.onLogout?.(uid);
   }

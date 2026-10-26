@@ -5,6 +5,8 @@ import { col, db, sessionRef } from "./firebase.ts";
 import { notice, runCommand } from "./commands.ts";
 import { isAdminEmail, startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
+import { agentSessions } from "./agentSession.ts";
+import { onAgentMessage } from "./agent.ts";
 import { fleet } from "./fleet.ts";
 import { DEFAULT_AI_POLICY, type AiPolicy } from "@spot/shared";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
@@ -69,14 +71,16 @@ async function main() {
   const rescanCommands = (uid: string) =>
     void col(uid, "commands").where("status", "==", "pending").get().then((q) => q.docs.forEach((d) => void runCommand(uid, d))).catch(() => undefined);
   const reconcile = () => {
-    const known = new Map<string, { policy: AiPolicy; enabled: boolean }>();
+    const known = new Map<string, { policy: AiPolicy; enabled: boolean; agent?: boolean }>();
     for (const uid of allowed) {
       const data = userDocs.get(uid);
       if (!data) continue;
       watchCommands(uid);
       const policy: AiPolicy = data.settings?.ai?.policy === "local_only" ? "local_only" : DEFAULT_AI_POLICY;
-      known.set(uid, { policy, enabled: Boolean(data.waEnabled) });
+      known.set(uid, { policy, enabled: Boolean(data.waEnabled), agent: Boolean(data.waEnabled && data.agentEnabled) });
       if (data.waEnabled && fleet.holds(uid) && !sessions.running(uid)) void sessions.start(uid);
+      // The agent number rides on the same lease: it starts here too, once the account's own WhatsApp is on its way.
+      if (data.waEnabled && data.agentEnabled && fleet.holds(uid) && !agentSessions.running(uid)) startAgentSoon(uid);
     }
     fleet.sync(known);
     for (const uid of [...commandListeners.keys()]) {
@@ -88,11 +92,24 @@ async function main() {
       if (fleet.holds(uid)) void sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined);
     }
   };
+  // A second Chromium at the same moment as the first doubles the start-up load: give the account's own WhatsApp a head start.
+  const agentDue = new Set<string>();
+  const startAgentSoon = (uid: string, delayMs = 20_000) => {
+    if (agentDue.has(uid)) return;
+    agentDue.add(uid);
+    setTimeout(() => {
+      agentDue.delete(uid);
+      const d = userDocs.get(uid);
+      if (d?.waEnabled && d.agentEnabled && fleet.holds(uid)) void agentSessions.start(uid);
+    }, delayMs).unref();
+  };
+  agentSessions.hooks.onMessage = onAgentMessage;
   fleet.start({
     retryPending: rescanCommands,
     onAcquire: (uid) => {
       if (userDocs.get(uid)?.waEnabled) void sessions.start(uid); // pending commands are replayed once it is ready
       else rescanCommands(uid);
+      if (userDocs.get(uid)?.waEnabled && userDocs.get(uid)?.agentEnabled) startAgentSoon(uid);
     },
   });
   sessions.hooks.onReady = ((prev) => (uid, source) => {
@@ -137,7 +154,7 @@ async function main() {
     const mine = fleet.heldUids();
     await fleet.drain();
     await Promise.all(mine.map((uid) => sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined)));
-    await sessions.stopAll();
+    await Promise.all([sessions.stopAll(), agentSessions.stopAll()]);
     process.exit(code);
   };
   // SIGHUP too (terminal closed, ssh dropped): puppeteer's own handlers are off, so this drain is the only thing that closes Chromium cleanly.

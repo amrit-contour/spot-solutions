@@ -159,14 +159,16 @@ Types are in `packages/shared/src/types.ts` and `packages/shared/src/fleet.ts`. 
 
 | Path | Holds | Client access | Written by |
 | --- | --- | --- | --- |
-| `users/{uid}` | Profile, `settings` (AI, rules, templates, timezone), `waEnabled`, `selfId`, `aiKeys` summary | Owner reads, creates, updates. Owner cannot change `waEnabled`, `selfId` or `demo`. | App, worker |
+| `users/{uid}` | Profile, `settings` (AI, rules, templates, timezone), `waEnabled`, `selfId`, `aiKeys` summary | Owner reads, creates, updates. Owner cannot change `waEnabled`, `selfId`, `agentEnabled` or `demo`. | App, worker |
 | `users/{uid}/venues`, `shows`, `comics`, `requests`, `lineups`, `actions`, `notices` | The curator's working data | Owner read and write | App, worker |
 | `users/{uid}/session/state` | WhatsApp status, QR, phone, heartbeat | Owner reads | Worker |
+| `users/{uid}/session/agent` | The agent number: status, QR, phone, and what it is waiting for you to answer (`pending`), digest and notice cursors ([agent.md](agent.md)) | Owner reads | Worker |
 | `users/{uid}/groups`, `contactsImport`, `offers`, `polls` | WhatsApp groups, imported contacts, spot offers, host polls | Owner reads | Worker |
 | `users/{uid}/secrets/ai` | The curator's Gemini key | Owner can create, update, delete. Nobody can read it back. | App writes, worker reads |
 | `users/{uid}/commands/{id}` | Commands (see above) | Approved owner creates pending commands of allowed types and reads them. Admins read and create `move_account` only. | App creates, worker updates |
 | `users/{uid}/fleet/lease` | Which server runs the account: `server`, `epoch`, `state`, `renewedAt`, `moveTo` | Owner and admins read | Servers only |
 | `users/{uid}/fleet/vault` | Metadata of the encrypted login copy: `gen`, `savedAt`, `object`, `sha256` | Owner and admins read | Servers only |
+| `users/{uid}/fleet/vault_agent` | Same, for the agent number's login | None (servers only) | Servers only |
 | `users/{uid}/fleet/prefs` | `pinned`: the server to keep the account on | Owner and admins read and write (only the `pinned` key) | App |
 | `users/{uid}/devices/{token}` | Push tokens, one per browser | Owner reads, creates, updates, deletes | App |
 | `access/{uid}` | Invite-only access: `pending`, `approved`, `removed` | Owner and admins read. Owner creates a `pending` entry. Admins change `status`, `decidedAt`, `decidedBy`. | App, worker (auto-approves admins) |
@@ -174,10 +176,10 @@ Types are in `packages/shared/src/types.ts` and `packages/shared/src/fleet.ts`. 
 | `servers/{id}` | Full heartbeat: health, Ollama, sessions, logs, admin emails, `fleet` capacity | Admins listed in that doc read | Server |
 | `servers/{id}/commands/{id}` | Admin actions: `restart_worker`, `restart_ollama`, `delete_user_data`, `remove_user`, `wipe_demo` | That server's admins read and create | Admin creates, server updates |
 | `fleetServers/{id}` | Public summary of a server: hostname, platform, capacity (no logs or emails) | Approved curators and admins read | Server |
-| `vaultKeys/{uid}` | The account's AES-256 login key | None. `allow read, write: if false`. | Servers only |
+| `vaultKeys/{uid}`, `vaultKeys/{uid}_agent` | The AES-256 login key of the account and of its agent number | None. `allow read, write: if false`. | Servers only |
 | `users/demo-curator/...` | Read-only demo template (venues, shows, comics, requests, lineups, actions, notices) | Any signed-in user reads | Seed script |
 
-Cloud Storage holds one thing: `vault/{uid}/login-{gen}-{nonce}.bin`, the AES-256-GCM encrypted login (Chromium `IndexedDB` and `Local Storage`). `storage.rules` denies every client read and write. `VaultMeta.object` names the committed object. Older and uncommitted objects are deleted after 10 minutes.
+Cloud Storage holds one thing: `vault/{uid}/login-{gen}-{nonce}.bin` (and `vault/{uid}_agent/…` for the agent number), the AES-256-GCM encrypted login (Chromium `IndexedDB` and `Local Storage`). `storage.rules` denies every client read and write. `VaultMeta.object` names the committed object. Older and uncommitted objects are deleted after 10 minutes.
 
 ## Data retention
 

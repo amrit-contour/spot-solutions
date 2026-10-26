@@ -124,11 +124,19 @@ export function pickServerId(o: { env?: string; persisted?: string | null; hostn
 }
 
 
-/** Accounts to hand away when over capacity: newest claims first, accounts pinned here last. */
-export function pickShed(held: { uid: string; claimedAt: number; pinnedHere: boolean }[], max: number) {
-  const extra = held.length - Math.max(0, max);
-  if (extra <= 0) return [];
-  return [...held].sort((a, b) => Number(a.pinnedHere) - Number(b.pinnedHere) || b.claimedAt - a.claimedAt).slice(0, extra).map((h) => h.uid);
+/**
+ * Accounts to hand away when over capacity: newest claims first, accounts pinned here last.
+ * `units` is how many browsers the account runs (1, or 2 with an agent number); the default counts each account once.
+ */
+export function pickShed(held: { uid: string; claimedAt: number; pinnedHere: boolean; units?: number }[], max: number) {
+  let load = held.reduce((n, h) => n + (h.units ?? 1), 0);
+  const out: string[] = [];
+  for (const h of [...held].sort((a, b) => Number(a.pinnedHere) - Number(b.pinnedHere) || b.claimedAt - a.claimedAt)) {
+    if (load <= Math.max(0, max)) break;
+    out.push(h.uid);
+    load -= h.units ?? 1;
+  }
+  return out;
 }
 
 /** Only one online server announces a peer going silent: the lowest id. */

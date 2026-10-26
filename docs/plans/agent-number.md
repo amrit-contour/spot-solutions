@@ -1,6 +1,6 @@
 # Plan: an "agent" WhatsApp number next to your own
 
-Status: research note, not built. 26 October 2026.
+Status: research note. Phase 1 (plain text, no buttons) is built on whatsapp-web.js; see [../agent.md](../agent.md). The Cloud API prototype below is still the route to real buttons. 26 October 2026.
 
 ## Idea
 

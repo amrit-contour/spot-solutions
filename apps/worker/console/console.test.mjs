@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createAi, maskKey, pickModels, scrub, validKey, validModel } from "./ai.mjs";
 import { connectLink, createConnect, qrSvg } from "./connect.mjs";
+import { createLive, safePhone, shape } from "./live.mjs";
 import { createUpdater, isUpdateAvailable, parseLatest, staggerMs } from "./update.mjs";
 
 const SHA = "a".repeat(64);
@@ -136,5 +137,50 @@ describe("connect flow", () => {
     await c2.start();
     await new Promise((r) => setTimeout(r, 80));
     expect(c2.state().phase).toBe("expired");
+  });
+});
+
+describe("live stats", () => {
+  const HOUR = 3600_000, now = 100 * HOUR + 5000;
+  const raw = (over = {}) => ({
+    v: 1, server: { id: "s", hostname: "studio" }, version: "abc", startedAt: now - 2 * HOUR, writtenAt: now - 1000,
+    hourly: [{ h: 100 * HOUR, in: 4, spot: 2, sent: 3, err: 1, ai: 2, aiLocal: 1, aiGemini: 1, aiMs: 3000, aiFail: 1, aiFallback: 0 }, { h: 10 * HOUR, in: 99 }],
+    totals: { in: 10, spot: 3, sent: 5, err: 1, ai: 4, aiLocal: 3, aiGemini: 1, aiMs: 6000, aiFail: 0, aiFallback: 0 },
+    accounts: [{ key: "u:client", role: "client", status: "ready", since: now - 5000, phone: "919812345612", name: "Asha", email: "a@x.com", in: 4, spot: 2, sent: 3, err: 0 }, { key: "v:agent", role: "agent", status: "qr", phone: null, in: 0, spot: 0, sent: 0, err: 0 }],
+    queue: { pending: 2, lastSendAt: now - 3000 }, ...over,
+  });
+  it("shapes 24 fixed hourly slots and sums them", () => {
+    const v = shape(raw(), now);
+    expect(v.series).toHaveLength(24);
+    expect(v.series[23]).toMatchObject({ h: 100 * HOUR, in: 4 });
+    expect(v.day).toEqual({ in: 4, spot: 2, sent: 3, err: 1 }); // the old hour is outside the window
+    expect(v.counts).toMatchObject({ accounts: 2, ready: 1, qr: 1 });
+    expect(v.ai).toMatchObject({ day: 2, local: 1, gemini: 1, avgMs: 1500, fail: 1, avgMsAll: 1500 });
+    expect(v.state).toBe("live");
+    expect(v.uptimeMs).toBe(2 * HOUR - 1000);
+  });
+  it("masks a raw number even if the file has one, and keeps the role", () => {
+    expect(safePhone("919812345612")).toBe("+91 98•••12");
+    expect(safePhone("+91 98•••12")).toBe("+91 98•••12");
+    expect(safePhone("hello; drop")).toBeNull();
+    const v = shape(raw(), now);
+    expect(v.accounts[0].phone).toBe("+91 98•••12");
+    expect(v.accounts[1].role).toBe("agent");
+  });
+  it("says stale when the worker stopped writing, and refuses a file it doesn't know", () => {
+    expect(shape(raw({ writtenAt: now - 60_000 }), now).state).toBe("stale");
+    expect(shape({ v: 2 }, now)).toBeNull();
+    expect(shape(null, now)).toBeNull();
+    expect(shape({ v: 1 }, now).accounts).toEqual([]);
+  });
+  it("reads the file, survives a half-written one, and goes quiet when it's gone", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "spot-live-"));
+    const file = path.join(dir, "live-stats.json");
+    const l = createLive({ file, now: () => now });
+    expect(l.view()).toBeNull();
+    writeFileSync(file, JSON.stringify(raw()));
+    expect(l.view().day.in).toBe(4);
+    writeFileSync(file, '{"v":1,"hourly":[');
+    expect(l.view().day.in).toBe(4); // keeps the last good copy
   });
 });

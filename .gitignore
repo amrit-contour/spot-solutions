@@ -10,3 +10,4 @@ service-account*.json
 *.log
 .DS_Store
 deploy/mac/dist/
+apps/worker/live-stats.json

@@ -3,11 +3,12 @@
 // packages/shared/src/fleet.ts so they can be tested.
 import os from "node:os";
 import {
-  DEFAULT_AI_POLICY, LEASE_FENCE_MS, TTL_DAYS, LEASE_RENEW_MS, SERVER_ONLINE_MS, VAULT_UPLOAD_EVERY_MS, defaultMaxAccounts, preFleetServers, rankCandidates,
+  DEFAULT_AI_POLICY, LEASE_FENCE_MS, agentVaultId, TTL_DAYS, LEASE_RENEW_MS, SERVER_ONLINE_MS, VAULT_UPLOAD_EVERY_MS, defaultMaxAccounts, preFleetServers, rankCandidates,
   type AiPolicy, type CandidateServer, type FleetCapacity, type FleetPrefs, type FleetServerSummary, type Lease, type ServerBeat,
 } from "@spot/shared";
 import { col, db, expireAt } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
+import { agentSessions } from "./agentSession.ts";
 import { setFleetProvider } from "./stats.ts";
 import { INSTALLED_AT, SERVER_ID } from "./serverIdentity.ts";
 import { notify } from "./notify.ts";
@@ -49,6 +50,8 @@ interface Held {
 interface Known {
   policy: AiPolicy;
   enabled: boolean;
+  /** The account has an agent number linked: it runs under the same lease, as a second browser (docs/agent.md). */
+  agent?: boolean;
 }
 
 const held = new Map<string, Held>();
@@ -81,7 +84,9 @@ function maxAccounts() {
   const env = Number(process.env.SPOT_MAX_ACCOUNTS);
   return Number.isInteger(env) && env > 0 ? env : defaultMaxAccounts(os.totalmem(), localModel);
 }
-export const capacity = (): FleetCapacity => ({ installedAt: INSTALLED_AT, maxAccounts: maxAccounts(), hosting: held.size, localModel, draining });
+/** Browsers this server runs for its leases: one per account, plus one for each account's agent number. maxAccounts is counted in these. */
+const units = () => held.size + [...held.keys()].filter((uid) => known.get(uid)?.agent).length;
+export const capacity = (): FleetCapacity => ({ installedAt: INSTALLED_AT, maxAccounts: maxAccounts(), hosting: units(), localModel, draining });
 setFleetProvider(capacity);
 
 export async function publishFleet() {
@@ -137,7 +142,7 @@ async function claim(uid: string, opts: { requireWanted: boolean }): Promise<boo
   if (draining || held.has(uid)) return held.has(uid);
   if (oldServerRunning()) return false;
   if (opts.requireWanted && !known.get(uid)?.enabled) return false;
-  if (held.size >= capacity().maxAccounts) return false;
+  if (units() >= capacity().maxAccounts) return false;
   const res = await db.runTransaction(async (tx) => {
     const snap = await tx.get(leaseRef(uid));
     const cur = snap.exists ? (snap.data() as Lease) : null;
@@ -159,7 +164,10 @@ async function claim(uid: string, opts: { requireWanted: boolean }): Promise<boo
   if (!res) return false;
   const { next, crashed } = res;
   const h: Held = { epoch: next.epoch, claimedAt: Date.now(), lastOkMono: mono(), lastOkWall: Date.now(), handingOff: false, handingOffAt: null, renewing: false, timers: [] };
-  h.timers.push(setInterval(() => void uploadNow(uid, true), VAULT_UPLOAD_EVERY_MS).unref());
+  h.timers.push(setInterval(() => {
+    void uploadNow(uid, true);
+    void uploadNow(uid, true, "agent");
+  }, VAULT_UPLOAD_EVERY_MS).unref());
   held.set(uid, h);
   freshReady.delete(uid);
   leases.set(uid, next);
@@ -167,7 +175,7 @@ async function claim(uid: string, opts: { requireWanted: boolean }): Promise<boo
   publish();
   if (next.from && next.from !== ME) {
     const text = moveText(nameOf(next.from), nameOf(ME), crashed && next.reason === "failover");
-    void col(uid, "notices").add({ level: "info", text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
+    void col(uid, "notices").add({ level: "info", kind: "server", text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
     void notify(uid, "account_moved", text).catch((e) => console.warn("[fleet] notify failed:", e.message));
   }
   hooks.onAcquire(uid);
@@ -273,6 +281,7 @@ function drop(uid: string, why: "lost" | "fenced") {
   h.timers.forEach(clearTimeout);
   console.warn(`[fleet] ${uid} ${why === "lost" ? "lease lost to another server" : "fenced (couldn't renew)"}: stopping`);
   void sessions.stop(uid);
+  void agentSessions.stop(uid);
   publish();
   if (why === "fenced") void releaseLease(uid, h.epoch);
 }
@@ -298,19 +307,23 @@ function enqueueUpload<T>(uid: string, job: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** `periodic`: the timer-driven kind, which the vault skips when the login folders haven't changed. */
-function uploadNow(uid: string, periodic = false) {
+/**
+ * `periodic`: the timer-driven kind, which the vault skips when the login folders haven't changed.
+ * `which`: the account's own WhatsApp, or its agent number (a second login, saved under `{uid}_agent`; both ride the one lease).
+ */
+function uploadNow(uid: string, periodic = false, which: "main" | "agent" = "main") {
+  const id = which === "agent" ? agentVaultId(uid) : uid;
   return enqueueUpload(uid, async () => {
     // Checked when the job runs, not when it was queued: a handoff may have started meanwhile.
     const h = held.get(uid);
-    if (!h || h.handingOff || !sessions.get(uid)) return;
+    if (!h || h.handingOff || !(which === "agent" ? agentSessions.get(uid) : sessions.get(uid))) return;
     try {
       if (!(await touch(uid, h))) return; // not ours any more: the lease watcher will stop the session
-      const meta = await within(uploadLogin(uid, ME, { sessionReady: true, epoch: h.epoch, freshLink: freshReady.has(uid), periodic }), UPLOAD_TIMEOUT_MS);
-      if (meta === TIMED_OUT) console.warn(`[fleet] ${uid} vault upload timed out; will retry`);
-      else if (!meta) console.log(`[fleet] ${uid} vault upload skipped (unchanged, not ready, behind the cloud, or another writer won)`);
+      const meta = await within(uploadLogin(id, ME, { sessionReady: true, epoch: h.epoch, freshLink: freshReady.has(id), periodic }), UPLOAD_TIMEOUT_MS);
+      if (meta === TIMED_OUT) console.warn(`[fleet] ${id} vault upload timed out; will retry`);
+      else if (!meta) console.log(`[fleet] ${id} vault upload skipped (unchanged, not ready, behind the cloud, or another writer won)`);
     } catch (e) {
-      console.warn(`[fleet] ${uid} vault upload failed, will retry:`, (e as Error).message);
+      console.warn(`[fleet] ${id} vault upload failed, will retry:`, (e as Error).message);
     }
   });
 }
@@ -320,25 +333,34 @@ async function finishRelease(uid: string, h: Held, o: { upload: boolean; moveTo:
   h.handingOff = true;
   h.handingOffAt ??= Date.now();
   // Read before stop(): stopping clears readiness, and an unlinked profile (QR showing) must never be uploaded.
-  const wasReady = Boolean(sessions.get(uid));
-  const stopped = await within(sessions.stop(uid, { backup: true }), STOP_TIMEOUT_MS);
-  const stopTimedOut = stopped === TIMED_OUT;
-  if (stopTimedOut) {
-    // Chromium may still be alive: kill it before the lease goes, or two servers could run one account.
-    console.warn(`[fleet] ${uid} stop timed out after ${STOP_TIMEOUT_MS / 1000}s; killing the browser and releasing without an upload`);
-    sessions.kill(uid);
-  }
+  // The account's agent number (a second browser under the same lease) is stopped, saved and released together with it.
+  const logins = [
+    { id: uid, wasReady: Boolean(sessions.get(uid)), stop: () => sessions.stop(uid, { backup: true }), kill: () => sessions.kill(uid) },
+    { id: agentVaultId(uid), wasReady: Boolean(agentSessions.get(uid)), stop: () => agentSessions.stop(uid), kill: () => agentSessions.kill(uid) },
+  ];
+  const timedOut = await Promise.all(
+    logins.map(async (l) => {
+      const stopped = (await within(l.stop(), STOP_TIMEOUT_MS)) === TIMED_OUT;
+      if (stopped) {
+        // Chromium may still be alive: kill it before the lease goes, or two servers could run one account.
+        console.warn(`[fleet] ${l.id} stop timed out after ${STOP_TIMEOUT_MS / 1000}s; killing the browser and releasing without an upload`);
+        l.kill();
+      }
+      return stopped;
+    }),
+  );
   if (held.get(uid) !== h) return;
-  if (shouldUploadOnRelease({ wantUpload: o.upload, wasReady, stopTimedOut })) {
+  for (const [i, l] of logins.entries()) {
+    if (!shouldUploadOnRelease({ wantUpload: o.upload, wasReady: l.wasReady, stopTimedOut: timedOut[i] })) continue;
     try {
       const res = await enqueueUpload(uid, async () => {
         if (!(await touch(uid, h))) return undefined;
-        return within(uploadLogin(uid, ME, { sessionReady: wasReady, epoch: h.epoch, freshLink: freshReady.has(uid) }), UPLOAD_TIMEOUT_MS);
+        return within(uploadLogin(l.id, ME, { sessionReady: l.wasReady, epoch: h.epoch, freshLink: freshReady.has(l.id) }), UPLOAD_TIMEOUT_MS);
       });
-      if (res === TIMED_OUT) console.warn(`[fleet] ${uid} handoff upload timed out; releasing anyway`);
-      else if (res === null) console.warn(`[fleet] ${uid} handoff upload returned nothing; peer falls back to its local copy or a QR`);
+      if (res === TIMED_OUT) console.warn(`[fleet] ${l.id} handoff upload timed out; releasing anyway`);
+      else if (res === null) console.warn(`[fleet] ${l.id} handoff upload returned nothing; peer falls back to its local copy or a QR`);
     } catch (e) {
-      console.warn(`[fleet] ${uid} handoff upload failed, releasing anyway:`, (e as Error).message);
+      console.warn(`[fleet] ${l.id} handoff upload failed, releasing anyway:`, (e as Error).message);
     }
     if (held.get(uid) !== h) return;
   }
@@ -545,6 +567,11 @@ function evaluate() {
     console.warn(`[fleet] ${uid} has a session but this server doesn't hold the account; stopping it`);
     void sessions.stop(uid);
   }
+  for (const uid of agentSessions.activeUids()) {
+    if (held.has(uid)) continue;
+    console.warn(`[fleet] ${uid} has an agent session but this server doesn't hold the account; stopping it`);
+    void agentSessions.stop(uid);
+  }
 
   for (const [uid, h] of held) {
     if (!known.get(uid)?.enabled && now - h.claimedAt > NEW_CLAIM_GRACE_MS && !h.handingOff) {
@@ -553,8 +580,8 @@ function evaluate() {
     }
   }
 
-  if (held.size > cap.maxAccounts) {
-    const order = [...held].filter(([, h]) => !h.handingOff).map(([uid, h]) => ({ uid, claimedAt: h.claimedAt, pinnedHere: prefs.get(uid)?.pinned === ME }));
+  if (units() > cap.maxAccounts) {
+    const order = [...held].filter(([, h]) => !h.handingOff).map(([uid, h]) => ({ uid, claimedAt: h.claimedAt, pinnedHere: prefs.get(uid)?.pinned === ME, units: known.get(uid)?.agent ? 2 : 1 }));
     for (const uid of pickShed(order, cap.maxAccounts)) {
       const to = rank(uid, now).find((s) => s.id !== ME);
       const h = held.get(uid)!;
@@ -579,7 +606,7 @@ function evaluate() {
       continue;
     }
     const r = rank(uid, now).findIndex((s) => s.id === ME);
-    if (r < 0 || held.size >= cap.maxAccounts) {
+    if (r < 0 || units() >= cap.maxAccounts) {
       cancelClaim(uid);
       continue;
     }
@@ -629,9 +656,10 @@ export function start(h: { onAcquire(uid: string): void; retryPending?(uid: stri
   hooks = h;
   started = true;
   sessions.hooks.canRun = (uid) => holds(uid) && !oldServerRunning();
-  sessions.hooks.onReady = (uid, source) => {
-    if (source === "fresh") freshReady.add(uid);
-    else freshReady.delete(uid);
+  /** A login (the account's own, or its agent number's: `id` is the vault id) reached ready: save it soon. */
+  const onLoginReady = (uid: string, id: string, source: "local" | "cloud" | "fresh", which: "main" | "agent") => {
+    if (source === "fresh") freshReady.add(id);
+    else freshReady.delete(id);
     if (source === "cloud") return; // just downloaded: the cloud is already current; the periodic upload follows
     const held1 = held.get(uid);
     if (!held1) return;
@@ -642,21 +670,25 @@ export function start(h: { onAcquire(uid: string): void; retryPending?(uid: stri
         for (let i = 0; ; i++) {
           if (held.get(uid) !== held1) return;
           try {
-            await adoptCloudGen(uid);
+            await adoptCloudGen(id);
             break;
           } catch (e) {
-            console.warn(`[fleet] ${uid} adoptCloudGen failed${i < ADOPT_BACKOFF_MS.length ? ", retrying" : ", leaving it to the upload"}:`, (e as Error).message);
+            console.warn(`[fleet] ${id} adoptCloudGen failed${i < ADOPT_BACKOFF_MS.length ? ", retrying" : ", leaving it to the upload"}:`, (e as Error).message);
             if (i >= ADOPT_BACKOFF_MS.length) break;
             await new Promise((r) => setTimeout(r, ADOPT_BACKOFF_MS[i]));
           }
         }
       }
-      if (held.get(uid) === held1) held1.timers.push(setTimeout(() => void uploadNow(uid), FIRST_UPLOAD_MS).unref());
+      if (held.get(uid) === held1) held1.timers.push(setTimeout(() => void uploadNow(uid, false, which), FIRST_UPLOAD_MS).unref());
     })();
   };
+  sessions.hooks.onReady = (uid, source) => onLoginReady(uid, uid, source, "main");
+  agentSessions.hooks.canRun = (uid) => holds(uid) && !oldServerRunning();
+  agentSessions.hooks.onReady = (uid, source) => onLoginReady(uid, agentVaultId(uid), source, "agent");
   sessions.hooks.onScanNeeded = (uid) => void notify(uid, "scan_needed", "WhatsApp needs to be linked again. Open Settings, then Show QR code, and scan it.").catch(() => undefined);
   sessions.hooks.onLogout = (uid) => {
     const h1 = held.get(uid);
+    void agentSessions.stop(uid); // the agent number talks to your number: with no linked WhatsApp it has nothing to do
     if (h1) void releaseLease(uid, h1.epoch).then(() => { held.delete(uid); h1.timers.forEach(clearInterval); h1.timers.forEach(clearTimeout); publish(); });
   };
   db.collectionGroup("fleet").onSnapshot(

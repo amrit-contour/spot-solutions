@@ -33,7 +33,7 @@ function ServerRow({ s, now }: { s: ServerStatus; now: number }) {
             <div className={cx("h-full rounded-full transition-[width] duration-500", pct >= 1 ? "bg-error" : pct > 0.75 ? "bg-tertiary" : "bg-primary")} style={{ width: `${pct * 100}%` }} />
           </div>
           <span className="type-body-s text-on-surface-variant tabular">
-            {f.hosting} of {f.maxAccounts} accounts · installed {new Date(f.installedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+            {f.hosting} of {f.maxAccounts} WhatsApp sessions · installed {new Date(f.installedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
           </span>
         </div>
       ) : (

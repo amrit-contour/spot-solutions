@@ -30,6 +30,7 @@ import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
 import { StickyBar } from "../components/StickyBar";
 import { ConnectCard } from "../components/ConnectCard";
+import { AgentCard } from "../components/AgentCard";
 import { AiModels } from "../components/AiModels";
 import { AiPolicyPicker } from "../components/AiPolicy";
 import { FleetCard } from "../components/FleetCard";
@@ -202,6 +203,7 @@ export function SettingsPage() {
         {tab === "whatsapp" && (
           <>
             <ConnectCard />
+            <AgentCard />
             <FleetCard />
             <NotifyCard />
             <GoogleContactsCard />
@@ -440,7 +442,7 @@ function AfterShowSection() {
               <SettingRow label="Ask from">
                 <TimePicker value={m.time} onChange={(v) => saveSettings({ micCheck: { ...m, time: v } })} className="h-10" wrapperClassName="w-36" label="Ask from" />
               </SettingRow>
-              <SettingRow label="Also ask on WhatsApp" info="In your “Message yourself” chat. Reply yes or no there.">
+              <SettingRow label="Also ask on WhatsApp" info="In your “Message yourself” chat, or from the agent number when it's linked (see Agent number). Reply yes or no there.">
                 <Switch checked={m.whatsapp} onChange={(v) => saveSettings({ micCheck: { ...m, whatsapp: v } })} label="Ask on WhatsApp" />
               </SettingRow>
             </>

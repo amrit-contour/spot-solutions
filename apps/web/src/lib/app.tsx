@@ -112,6 +112,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...s.hostPoll },
       offers: { ...DEFAULT_SETTINGS.offers, ...s.offers },
       googleContacts: { ...DEFAULT_SETTINGS.googleContacts, ...s.googleContacts },
+      agent: { ...DEFAULT_SETTINGS.agent!, ...s.agent },
       retention: { closedRequestsWeeks: closedRequestsWeeks(s) },
       ai: { ...aiFromLegacy(s), policy: s.ai?.policy ?? DEFAULT_AI_POLICY },
     };

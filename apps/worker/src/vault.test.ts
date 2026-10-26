@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { VaultMeta } from "@spot/shared";
-import { VAULT_OBJECT_MIN_AGE_MS, vaultObjectPath } from "@spot/shared";
+import { VAULT_OBJECT_MIN_AGE_MS, agentVaultId, vaultObjectPath } from "@spot/shared";
 import { packFolders, unpackInto } from "./vault-archive.ts";
 import { decrypt, encrypt, newKey, sha256 } from "./vault-crypto.ts";
 import { VaultFailure, createVault, type VaultDeps } from "./vault.ts";
@@ -598,5 +598,74 @@ describe("vault: marker lag, transient errors, fresh links", () => {
     m.s.objects.clear();
     reads = 10;
     await expect(createVault({ ...m.deps, dataDir: path.join(tmp, "C") }, { missingRecheckMs: 0 }).prepareLogin("u1")).rejects.toBeInstanceOf(VaultFailure);
+  });
+});
+
+describe("an account's agent number is a second login under the same vault", () => {
+  const uid = "u1";
+  const aid = agentVaultId(uid);
+
+  it("keeps its own profile folder, gens, key and Storage prefix, so the two logins never touch each other", async () => {
+    const A = path.join(tmp, "A");
+    await mkdir(A);
+    const m = mockDeps(A);
+    const v = createVault(m.deps);
+    await fakeProfile(path.join(A, `session-${uid}`), "main");
+    await fakeProfile(path.join(A, `session-${aid}`), "agent");
+    expect((await v.uploadLogin(uid, "S", up))?.gen).toBe(1);
+    expect((await v.uploadLogin(aid, "S", up))?.gen).toBe(1);
+    expect((await v.uploadLogin(aid, "S", up))?.gen).toBe(2); // the agent's gens move alone
+    expect(m.s.meta.get(uid)?.gen).toBe(1);
+    expect(m.s.meta.get(uid)?.object).toMatch(NAME(uid, 1));
+    expect(m.s.meta.get(aid)?.object).toMatch(NAME(aid, 2));
+    expect(m.s.keys.get(uid)!.equals(m.s.keys.get(aid)!)).toBe(false);
+  });
+
+  it("fails over together: another server restores both logins from the cloud", async () => {
+    const A = path.join(tmp, "A");
+    const B = path.join(tmp, "B");
+    await mkdir(A);
+    await mkdir(B);
+    const mA = mockDeps(A);
+    const vA = createVault(mA.deps);
+    const main = await fakeProfile(path.join(A, `session-${uid}`), "main");
+    const agent = await fakeProfile(path.join(A, `session-${aid}`), "agent");
+    await vA.uploadLogin(uid, "A", up);
+    await vA.uploadLogin(aid, "A", up);
+    const vB = createVault({ ...mA.deps, dataDir: B });
+    expect(await vB.prepareLogin(uid)).toBe("cloud");
+    expect(await vB.prepareLogin(aid)).toBe("cloud");
+    for (const [rel, b] of Object.entries(main)) expect((await readFile(path.join(B, `session-${uid}`, rel))).equals(b)).toBe(true);
+    for (const [rel, b] of Object.entries(agent)) expect((await readFile(path.join(B, `session-${aid}`, rel))).equals(b)).toBe(true);
+  });
+
+  it("a login encrypted for the main account can't be opened as the agent's (and the reverse)", async () => {
+    const A = path.join(tmp, "A");
+    await mkdir(A);
+    const m = mockDeps(A);
+    const v = createVault(m.deps);
+    await fakeProfile(path.join(A, `session-${uid}`));
+    await v.uploadLogin(uid, "A", up);
+    const obj = m.s.objects.get(m.s.meta.get(uid)!.object!)!;
+    expect(() => decrypt(obj, m.s.keys.get(uid)!, aid)).toThrow();
+  });
+
+  it("unlinking the agent wipes only the agent's login; the account's own stays", async () => {
+    const A = path.join(tmp, "A");
+    await mkdir(A);
+    const m = mockDeps(A);
+    const v = createVault(m.deps);
+    await fakeProfile(path.join(A, `session-${uid}`));
+    await fakeProfile(path.join(A, `session-${aid}`));
+    await v.uploadLogin(uid, "A", up);
+    await v.uploadLogin(aid, "A", up);
+    await v.wipeLogin(aid, "A");
+    expect(m.s.meta.get(aid)?.wiped).toBe(true);
+    expect(m.s.keys.has(aid)).toBe(false);
+    await expect(stat(path.join(A, `session-${aid}`))).rejects.toThrow();
+    expect(m.s.meta.get(uid)?.wiped).toBeUndefined();
+    expect(m.s.keys.has(uid)).toBe(true);
+    await stat(path.join(A, `session-${uid}`));
+    expect(await v.prepareLogin(aid)).toBe("fresh"); // the next link starts with a QR
   });
 });

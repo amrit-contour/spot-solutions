@@ -100,12 +100,13 @@ service cloud.firestore {
         && (request.auth.token.firebase.sign_in_provider == 'anonymous'
           || !request.resource.data.keys().hasAny(['demo', 'demoClonedAt']));
       allow update: if isOwner(uid)
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['waEnabled', 'selfId', 'demo'])
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['waEnabled', 'selfId', 'demo', 'agentEnabled'])
         // demoClonedAt: the anonymous sandbox stamps it when a (re-)clone finishes, nobody else.
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['demoClonedAt'])
           || (request.auth.token.firebase.sign_in_provider == 'anonymous' && resource.data.get('demo', false) == true));
 
-      // Written only by the worker (Admin SDK bypasses rules).
+      // Written only by the worker (Admin SDK bypasses rules). `state` is your WhatsApp, `agent` is the agent number
+      // (its QR, status, and what it is waiting for you to answer): both readable by you, writable by no client.
       match /session/{doc} { allow read: if isOwner(uid); }
       match /groups/{doc}  { allow read: if isOwner(uid); }
       // list_contacts results, in chunks. Written only by the worker.
@@ -121,7 +122,7 @@ service cloud.firestore {
         allow read: if isOwner(uid) || (isAdmin() && resource.data.type == 'move_account');
         allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
-          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members', 'list_group_members', 'send_lineup_updates', 'reclassify_requests', 'scan_history', 'reconcile_waiting', 'apply_reconcile', 'learn_voice', 'preview_voice', 'apply_follow_up'];
+          && request.resource.data.type in ['connect', 'logout', 'list_groups', 'send_confirmations', 'send_rejections', 'send_action', 'send_offer', 'send_host_poll', 'list_models', 'list_gemini_models', 'test_ai', 'pull_model', 'plan_group_sync', 'sync_group', 'send_message', 'move_account', 'list_contacts', 'pull_group_members', 'list_group_members', 'send_lineup_updates', 'reclassify_requests', 'scan_history', 'reconcile_waiting', 'apply_reconcile', 'learn_voice', 'preview_voice', 'apply_follow_up', 'connect_agent', 'logout_agent', 'test_agent'];
         // Admins can move any approved curator's account to another server (Server page → Fleet).
         allow create: if isAdmin() && isApproved(uid)
           && request.resource.data.status == 'pending'

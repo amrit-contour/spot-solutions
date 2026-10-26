@@ -11,6 +11,7 @@ import { SERVICE_ACCOUNT, db, FieldValue } from "./firebase.ts";
 import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
 import { recentLogs } from "./logbuf.ts";
 import { ADMIN_DATA_COMMANDS, runAdminDataCommand } from "./adminData.ts";
+import { createLiveStats } from "./liveStats.ts";
 
 const exec = promisify(execFile);
 
@@ -40,6 +41,14 @@ function version() {
   }
 }
 const VERSION = version();
+
+/**
+ * Live numbers for the local console: written to a small JSON file every 3 s (liveStats.ts). SPOT_STATS_FILE overrides
+ * the path; by default it sits next to the console token, in the folder above the WhatsApp data (the console's SPOT_DATA_DIR).
+ */
+export const STATS_FILE = process.env.SPOT_STATS_FILE ?? path.join(path.dirname(DATA_DIR), "live-stats.json");
+export const live = createLiveStats({ file: STATS_FILE, serverId: SERVER_ID, version: VERSION, startedAt });
+live.start();
 
 let lastCpu = os.cpus().map((c) => c.times);
 function cpuUsage() {
@@ -138,6 +147,7 @@ function consoleInfo(): ServerStatus["console"] {
 }
 
 export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "sessions" | "geminiServerKey">) {
+  live.setDirectory(extra.sessions);
   const cpus = os.cpus();
   const status: ServerStatus = {
     id: SERVER_ID,
@@ -154,6 +164,7 @@ export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "se
     console: consoleInfo(),
     disk: await disk(),
     counters: { ...counters },
+    live: live.summary(),
     admins: ADMINS,
     ...extra,
     ...(fleetCapacity ? { fleet: fleetCapacity() } : {}),

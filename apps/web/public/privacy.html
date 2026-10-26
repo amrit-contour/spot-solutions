@@ -15,7 +15,7 @@
 <header><a class="brand" href="/"><img src="/brand/logo-120.png" alt="" width="36" height="36" /><span>Spot Solutions<small>by Amrit Dash</small></span></a></header>
 <main>
 <h1>Privacy Policy</h1>
-<p class="meta">Effective 26 October 2026 · Updated 26 October 2026 (Google Contacts kept connected)</p>
+<p class="meta">Effective 26 October 2026 · Updated 26 October 2026 (agent number)</p>
 
 <p>Spot Solutions is an open-source tool that helps open-mic comedy curators manage spot requests that arrive on WhatsApp. Spot Solutions is made by Amrit Dash. This policy explains what the hosted app at <b>spot-solutions.web.app</b> stores, where it is stored, and what it never does. The source code is public at <a href="https://github.com/amrit-contour/spot-solutions">github.com/amrit-contour/spot-solutions</a>, so every statement here can be checked.</p>
 
@@ -66,6 +66,16 @@
 <p>In both cases your Google contact list is not copied to our database. When names are saved from the server, the list of your contacts' phone numbers and names is read into the function's memory for the few seconds it takes to match numbers and write names, and is then discarded.</p>
 <p><b>Disconnecting.</b> Press <b>Disconnect</b> under Settings, Google Contacts. The app revokes the token with Google and deletes the stored copy straight away. You can also remove access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>; the app notices the next time it tries to save a name, marks Google Contacts as disconnected and leaves a note in Updates.</p>
 <p><b>Spot Solutions' use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</b> We do not use Google user data for advertising, do not sell it, do not transfer it to third parties except as needed to provide the feature you asked for, and do not allow humans to read it except with your consent, for security purposes, or as required by law.</p>
+
+<h2>The agent number</h2>
+<p>The agent number is optional and off until you link it. It is a second WhatsApp number, linked the same way as yours, that Spot Solutions uses to message <b>you</b>: mic checks, new-request summaries, a morning summary, and answers to what you ask it. You can also ask it to make changes (for example "add Rohan to Tuesday"); it repeats what it understood and does nothing until you reply yes.</p>
+<ul>
+  <li><b>What it reads:</b> only messages sent to it from <b>your own number</b>, in a one-to-one chat. Messages from anyone else, and everything in groups, are ignored: they are not read, not logged and not stored. Optionally it can answer a stranger with one fixed polite line; that setting is off by default, and it keeps only a one-way hash of who it told, never the message.</li>
+  <li><b>What it stores:</b> its own WhatsApp login (encrypted, backed up like yours so another server can take over), what it is waiting for you to answer (for up to 10 minutes), and when it last sent your morning summary. Your messages to it are not kept.</li>
+  <li><b>What it never does:</b> message comics, groups or anyone but you. Anything that goes to a comic still goes out from your own WhatsApp, and only after you say yes.</li>
+  <li><b>AI:</b> your short message to it may be read by the same AI model as the rest of the app, under your AI models setting, only to work out what you meant. The answer is always built from your own data, not written by the model.</li>
+</ul>
+<p>You can switch each part off, or unlink the agent number in Settings; that deletes its saved login.</p>
 
 <h2>What we never do</h2>
 <ul>

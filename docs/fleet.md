@@ -63,6 +63,32 @@ over-capacity server sheds its most recently claimed accounts.
   `PATCH https://storage.googleapis.com/storage/v1/b/<bucket>` with `{"softDeletePolicy":{"retentionDurationSeconds":"0"}}`.
 - Logout: delete the local profile, marker, cloud object, vault meta and key.
 
+## The agent number rides on the lease
+
+An account may have a second WhatsApp login, its **agent number** ([agent.md](agent.md)). It is not a second account in the fleet: it has
+no lease of its own and runs in the same worker, on whichever server holds the account's lease.
+
+- **Start:** only while this server holds the lease (`agentSessions.hooks.canRun = holds(uid)`), and after the account's own WhatsApp
+  (20 s later, so two Chromiums don't start at the same instant). Linking is `connect_agent`, run by the holder.
+- **Stop:** every path that stops the account stops the agent with it: lost or fenced lease (`drop`), planned stop (`finishRelease`),
+  logout of the account's own WhatsApp, shutdown, and the "not ours, stop it" sweep in `evaluate`. A hung stop kills both browsers.
+- **Vault:** the agent's login is a second vault entry under the id `{uid}_agent`: profile `session-{uid}_agent`, marker
+  `vault-{uid}_agent.json`, meta `users/{uid}/fleet/vault_agent`, key `vaultKeys/{uid}_agent`, objects `vault/{uid}_agent/`. The
+  upload commit still checks the account's one lease (`server`, `epoch`), so a fenced holder can't overwrite it either. Uploads run on the same schedule
+  (first upload 60 s after ready, hourly, on stop and on every handoff). Another server restores both logins when it claims the account.
+- **Failover:** the new holder starts the account's WhatsApp, then the agent from its vault copy: no QR. Both can fail independently
+  (a deterministic restore failure shows the agent's QR in Settings; the account's own login is unaffected).
+- **Capacity:** the agent is a second Chromium (about 450 MB), so it counts as one more unit of `hosting` against `maxAccounts` (now
+  "WhatsApp sessions"). A server at capacity stops claiming; shedding counts an account with an agent as two.
+- **Admin wipe / remove user** also logs out and tombstones the agent's vault entry.
+
+**Leasing the agent separately later:** give it its own `users/{uid}/fleet/lease_agent` (same `Lease` type), claimed with the same rules but
+ranked by free memory only, and let the two leases land on different servers. Everything keyed by `{uid}_agent` (profile, marker, vault
+meta, key, objects) already exists, so what changes is: `commitMeta` checks `lease_agent` for the agent id, `canRun` asks for that lease,
+and `finishRelease` is split in two. The agent only needs Firestore (not the main session) to answer, except "confirm", which
+needs the main session's server: it would hand that one request to the account's holder (a command) instead of calling the handler
+directly.
+
 ## AI policy
 
 - `local_only`: only servers with `localModel` may host the account, and Gemini is never called for it.

@@ -12,14 +12,18 @@ interface Cache {
 
 const caches = new Map<string, Cache>();
 
+/** A user doc's `settings`, filled in with defaults (older docs miss newer fields). */
+export function settingsFromDoc(data: Partial<Settings> | undefined): Settings {
+  return { ...DEFAULT_SETTINGS, ...data, ack: { ...DEFAULT_SETTINGS.ack, ...data?.ack }, confirm: { ...DEFAULT_SETTINGS.confirm, ...data?.confirm }, cancelSpot: { ...DEFAULT_SETTINGS.cancelSpot, ...data?.cancelSpot }, reject: { ...DEFAULT_SETTINGS.reject, ...data?.reject }, rules: { ...DEFAULT_SETTINGS.rules, ...data?.rules, window: { ...DEFAULT_SETTINGS.rules.window, ...data?.rules?.window } }, selfService: { ...DEFAULT_SETTINGS.selfService, ...data?.selfService }, onboarding: { ...DEFAULT_SETTINGS.onboarding, ...data?.onboarding }, micCheck: { ...DEFAULT_SETTINGS.micCheck, ...data?.micCheck }, hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...data?.hostPoll }, offers: { ...DEFAULT_SETTINGS.offers, ...data?.offers }, googleContacts: { ...DEFAULT_SETTINGS.googleContacts, ...data?.googleContacts }, agent: { ...DEFAULT_SETTINGS.agent!, ...data?.agent }, retention: { closedRequestsWeeks: closedRequestsWeeks(data) }, ai: defaultAiFor(data) ?? aiFromLegacy(data) };
+}
+
 export function watchUser(uid: string): Cache {
   let c = caches.get(uid);
   if (c) return c;
   const cache: Cache = { settings: DEFAULT_SETTINGS, shows: [], venues: [], unsub: [] };
   cache.unsub.push(
     userRef(uid).onSnapshot((s) => {
-      const data = s.data()?.settings as Partial<Settings> | undefined;
-      cache.settings = { ...DEFAULT_SETTINGS, ...data, ack: { ...DEFAULT_SETTINGS.ack, ...data?.ack }, confirm: { ...DEFAULT_SETTINGS.confirm, ...data?.confirm }, cancelSpot: { ...DEFAULT_SETTINGS.cancelSpot, ...data?.cancelSpot }, reject: { ...DEFAULT_SETTINGS.reject, ...data?.reject }, rules: { ...DEFAULT_SETTINGS.rules, ...data?.rules, window: { ...DEFAULT_SETTINGS.rules.window, ...data?.rules?.window } }, selfService: { ...DEFAULT_SETTINGS.selfService, ...data?.selfService }, onboarding: { ...DEFAULT_SETTINGS.onboarding, ...data?.onboarding }, micCheck: { ...DEFAULT_SETTINGS.micCheck, ...data?.micCheck }, hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...data?.hostPoll }, offers: { ...DEFAULT_SETTINGS.offers, ...data?.offers }, googleContacts: { ...DEFAULT_SETTINGS.googleContacts, ...data?.googleContacts }, retention: { closedRequestsWeeks: closedRequestsWeeks(data) }, ai: defaultAiFor(data) ?? aiFromLegacy(data) };
+      cache.settings = settingsFromDoc(s.data()?.settings);
     }),
     col(uid, "shows").onSnapshot((q) => {
       cache.shows = q.docs.map((d) => ({ ...(d.data() as Show), id: d.id }));

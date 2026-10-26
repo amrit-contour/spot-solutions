@@ -2,7 +2,7 @@
 // It solves the bootstrap problem (the worker can't reach Firebase until it has a key),
 // and shows service health, machine stats and logs. No dependencies, plain Node.
 //
-// Env: SPOT_DATA_DIR, SPOT_ENV_FILE, SPOT_CONSOLE_PORT (7420), SPOT_CONSOLE_TOKEN_FILE
+// Env: SPOT_DATA_DIR, SPOT_ENV_FILE, SPOT_CONSOLE_PORT (7420), SPOT_CONSOLE_TOKEN_FILE, SPOT_STATS_FILE (live-stats.json)
 // Test hooks: SPOT_CONSOLE_DRY_RUN=1 never restarts or updates anything on the machine; SPOT_FUNCTIONS_URL, SPOT_DIST_URL,
 // SPOT_WEB_URL and SPOT_GEMINI_URL point the console at stand-ins for Spot Solutions' servers.
 import { createServer } from "node:http";
@@ -16,6 +16,7 @@ import { createRequire } from "node:module";
 import { createConnect } from "./connect.mjs";
 import { createUpdater } from "./update.mjs";
 import { createAi } from "./ai.mjs";
+import { createLive } from "./live.mjs";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
@@ -33,6 +34,8 @@ const VERSION = process.env.SPOT_VERSION ?? (() => { try { return readFileSync(n
 const BOOT = Date.now();
 const TOKEN_FILE = process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(DATA, "console-token");
 const KEY_FILE = path.join(DATA, "service-account.json");
+// The worker writes its live numbers here every few seconds (apps/worker/src/liveStats.ts); the dashboard reads them.
+const live = createLive({ file: process.env.SPOT_STATS_FILE ?? path.join(DATA, "live-stats.json") });
 // Cloud Function that trades a join code for this server's own key (functions/src/index.ts redeemJoinCode).
 const JOIN_URL = process.env.SPOT_JOIN_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net/redeemJoinCode";
 const OLLAMA = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
@@ -315,6 +318,7 @@ createServer(async (req, res) => {
     if (!authed(req)) return json(res, 401, { error: "Open the link with ?token=… printed by the installer (sudo cat " + TOKEN_FILE + ")" });
 
     if (url.pathname === "/api/status") return json(res, 200, await status());
+    if (url.pathname === "/api/live") return json(res, 200, { live: live.view(), at: Date.now() });
     if (url.pathname === "/api/boot") return json(res, 200, { boot: BOOT });
 
     // Only for someone at this machine: the link carries the access token.

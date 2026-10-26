@@ -13,7 +13,7 @@
     --tertiary-c: #d7e8cd; --on-tertiary-c: #121f0e;
     --error: #ba1a1a; --error-c: #ffdad6; --on-error-c: #410002;
     --surface: #fff8f4; --s-low: #fcf2e9; --s-cont: #f6ece3; --s-high: #f1e7dd; --s-highest: #ebe1d8;
-    --on-surface: #201a14; --on-surface-v: #51453a; --outline-v: #d5c4b5; --ok: #2f9a46;
+    --on-surface: #201a14; --on-surface-v: #51453a; --outline-v: #d5c4b5; --ok: #2f9a46; --chart-2: #2b7a78;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
@@ -21,7 +21,7 @@
     --tertiary-c: #3a4b33; --on-tertiary-c: #d7e8cd;
     --error: #ffb4ab; --error-c: #93000a; --on-error-c: #ffdad6;
     --surface: #18120c; --s-low: #211a14; --s-cont: #251e18; --s-high: #302822; --s-highest: #3b332c;
-    --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950;
+    --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950; --chart-2: #6fcfc8;
     color-scheme: dark;
   } }
   :root[data-theme="dark"] {
@@ -29,7 +29,7 @@
     --tertiary-c: #3a4b33; --on-tertiary-c: #d7e8cd;
     --error: #ffb4ab; --error-c: #93000a; --on-error-c: #ffdad6;
     --surface: #18120c; --s-low: #211a14; --s-cont: #251e18; --s-high: #302822; --s-highest: #3b332c;
-    --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950;
+    --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950; --chart-2: #6fcfc8;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -163,6 +163,56 @@
   .switch[aria-checked="true"] { background: var(--primary); border-color: var(--primary); }
   .switch[aria-checked="true"]::after { transform: translateX(20px); background: var(--on-primary); }
   @media (prefers-reduced-motion: reduce) { .switch::after { transition: none; } }
+
+  /* ---- live dashboard ---- */
+  .dot.warn { background: var(--primary); }
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  @media (min-width: 560px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 900px) { .tiles { grid-template-columns: repeat(6, 1fr); } }
+  .tile { appearance: none; border: 1px solid transparent; height: auto; min-width: 0; padding: 12px 14px; border-radius: 12px; background: var(--s-cont); color: var(--on-surface); font: 400 13px/1.35 "Roboto Flex", system-ui, sans-serif; letter-spacing: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 2px; text-align: left; cursor: default; transition: background .15s, border-color .15s, transform .16s cubic-bezier(.23,1,.32,1); }
+  button.tile { cursor: pointer; }
+  button.tile:hover { border-color: var(--outline-v); }
+  button.tile[aria-pressed="true"] { background: var(--primary-c); color: var(--on-primary-c); }
+  button.tile:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .tile .tl { font-size: 12px; font-weight: 600; letter-spacing: .02em; opacity: .8; }
+  .tile .tv { font-size: 28px; line-height: 1.15; font-weight: 600; font-variant-numeric: tabular-nums; font-variation-settings: "wdth" 110, "opsz" 36; }
+  .tile .tv.bad { color: var(--error); }
+  .tile .tf { font-size: 12px; opacity: .75; overflow-wrap: anywhere; }
+  .lv { margin-top: 16px; }
+  .lv-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+  .plot { height: 104px; margin-top: 10px; }
+  .plot svg { display: block; width: 100%; height: 100%; --bar: var(--primary); }
+  .plot svg.m-sent { --bar: var(--chart-2); }
+  .plot svg.m-err { --bar: var(--error); }
+  .plot .grid-l { stroke: color-mix(in srgb, var(--outline-v) 60%, transparent); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .plot .bar { fill: var(--bar); }
+  .plot .bar.now { opacity: .6; }
+  .plot .zero { fill: var(--outline-v); }
+  .plot .hit { fill: transparent; }
+  .plot g:hover .hit { fill: color-mix(in srgb, var(--on-surface) 7%, transparent); }
+  .axis { position: relative; height: 18px; margin-top: 4px; font-size: 11px; color: var(--on-surface-v); }
+  .axis span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .lv-panels { display: grid; gap: 12px; margin-top: 16px; }
+  @media (min-width: 760px) { .lv-panels { grid-template-columns: 1fr 1fr; } }
+  .lv-panels .panel { height: 100%; }
+  .kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; font-size: 13px; }
+  .kv + .kv { border-top: 1px solid color-mix(in srgb, var(--outline-v) 40%, transparent); }
+  .kv > span:first-child { color: var(--on-surface-v); }
+  .kv > b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+  .meter.split { display: flex; margin-top: 4px; }
+  .meter.split > i { transition: width .5s cubic-bezier(.23,1,.32,1); }
+  .meter.split > i + i { background: var(--chart-2); }
+  .acclist { max-height: 420px; overflow: auto; }
+  .acc { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 4px 12px; padding: 12px 0; }
+  .acc + .acc { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
+  .acc .who { min-width: 0; }
+  .acc .who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acc .who > div { overflow-wrap: anywhere; }
+  .acc .who b { display: block; }
+  .acc .nums { color: var(--on-surface-v); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  @media (max-width: 640px) { .acc { grid-template-columns: auto minmax(0, 1fr) auto; } .acc .nums { grid-column: 2 / -1; white-space: normal; } }
+  .dimmed { opacity: .55; }
+  .empty { padding: 18px 0 6px; }
 </style>
 </head>
 <body>
@@ -348,6 +398,144 @@ function aiCard(s) {
     </div>`, { open: false, style: "margin-top:16px" });
 }
 
+// ---------- live dashboard (numbers come from /api/live: the worker's stats file, read every few seconds) ----------
+let liveData = null, liveAt = 0, metric = "in";
+try { metric = localStorage.getItem("spot-console-metric") || "in"; } catch {}
+const METRICS = { in: ["Messages read", "read"], spot: ["Spot requests", "spot requests"], sent: ["Messages sent", "sent"], err: ["Errors", "errors"] };
+const hourLabel = (h) => new Date(h).toLocaleTimeString([], { hour: "numeric" });
+const n = (v) => Number(v || 0).toLocaleString();
+const ago = (ms) => { const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : when(ms); };
+const dur = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s}s` : up(s); };
+const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+const STATUS = { ready: ["Ready", "ok", "ok"], qr: ["Scan QR", "neutral", "warn"], starting: ["Starting", "neutral", "warn"], authenticated: ["Starting", "neutral", "warn"], disconnected: ["Disconnected", "bad", "bad"], error: ["Error", "bad", "bad"], idle: ["Not linked", "neutral", "warn"] };
+
+function liveChart(l) {
+  const vals = l.series.map((b) => b[metric]);
+  const peak = Math.max(0, ...vals), total = vals.reduce((a, b) => a + b, 0);
+  const W = 240, H = 64, max = peak || 1;
+  const [name, unit] = METRICS[metric];
+  const bars = l.series.map((b, i) => {
+    const v = b[metric], h = v ? Math.max(2, (v / max) * (H - 3)) : 0, x = i * 10 + 2;
+    return `<g><title>${esc(`${hourLabel(b.h)}: ${v} ${unit}`)}</title><rect class="hit" x="${i * 10}" y="0" width="10" height="${H}"/>${v ? `<rect class="bar${i === 23 ? " now" : ""}" x="${x}" y="${(H - h).toFixed(1)}" width="6" height="${h.toFixed(1)}"/>` : `<rect class="zero" x="${x}" y="${H - 1}" width="6" height="1"/>`}</g>`;
+  }).join("");
+  const peakAt = peak ? l.series[vals.lastIndexOf(peak)].h : null;
+  const ticks = [0, 6, 12, 18, 23].map((i) => `<span style="left:${(((i + .5) / 24) * 100).toFixed(2)}%">${i === 23 ? "now" : esc(hourLabel(l.series[i].h))}</span>`).join("");
+  return `<div class="lv"><div class="lv-head"><b>${name}, last 24 hours</b><span class="muted small">${n(total)} total${peak ? ` · busiest hour ${esc(hourLabel(peakAt))} (${n(peak)})` : " · nothing yet"}</span></div>
+    <div class="plot"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="m-${metric}" role="img" aria-label="${esc(`${name} per hour, last 24 hours: ${total} in total`)}"><line class="grid-l" x1="0" x2="${W}" y1="0.5" y2="0.5"/><line class="grid-l" x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}"/>${bars}</svg></div>
+    <div class="axis" aria-hidden="true">${ticks}</div></div>`;
+}
+
+function lastUpdateText() {
+  const p = state?.update?.progress;
+  if (!p) return "None since install";
+  if (p.state === "error") return `Failed: ${p.error || "see logs"}`;
+  if (p.state === "running") return "Running now";
+  return `${p.task === "local-on" || p.task === "local-off" ? "Local model changed" : p.to ? `Updated to ${shortV(p.to)}` : "Done"}`;
+}
+
+function liveBody() {
+  const l = liveData;
+  if (!l) return `<div class="muted empty">Waiting for the worker's first report. It writes its numbers every few seconds once it is running${state && !state.services.worker ? ", and it isn't running right now" : ""}.</div>`;
+  const stale = l.state === "stale";
+  const tile = (key, label, value, foot, o = {}) => {
+    const inner = `<span class="tl">${label}</span><span class="tv ${o.bad ? "bad" : ""}">${value}</span><span class="tf">${foot}</span>`;
+    return key ? `<button type="button" class="tile" data-metric="${key}" aria-pressed="${metric === key}" title="Chart ${esc(METRICS[key][0].toLowerCase())}">${inner}</button>` : `<div class="tile">${inner}</div>`;
+  };
+  const q = l.queue, a = l.ai, local = a.local, gem = a.gemini, aiSplit = local + gem;
+  return `${stale ? `<div class="banner bad" style="margin-bottom:12px" role="status"><div class="grow"><b>The worker isn't reporting</b><div class="small">Last report ${esc(ago(Date.now() - l.ageMs))}. ${state && !state.services.worker ? "It's stopped: check Services below." : "The numbers below are the last ones it sent."}</div></div></div>` : ""}
+    <div class="${stale ? "dimmed" : ""}">
+    <div class="tiles">
+      ${tile(null, "Connected", n(l.counts.ready), `of ${n(l.counts.accounts)} account${l.counts.accounts === 1 ? "" : "s"} here`)}
+      ${tile("in", "Messages read", n(l.day.in), `${n(l.totals.in)} since start`)}
+      ${tile("spot", "Spot requests", n(l.day.spot), `${n(l.totals.spot)} since start`)}
+      ${tile("sent", "Sent", n(l.day.sent), `${n(l.totals.sent)} since start`)}
+      ${tile("err", "Errors", n(l.day.err), `${n(l.totals.err)} since start`, { bad: l.day.err > 0 })}
+      ${tile(null, "Send queue", n(q.pending), q.lastSendAt ? `last sent ${esc(ago(q.lastSendAt))}` : "nothing sent yet")}
+    </div>
+    <div class="muted small" style="margin-top:8px">Counts are for the last 24 hours. Tap Messages read, Spot requests, Sent or Errors to chart it.</div>
+    ${liveChart(l)}
+    <div class="lv-panels">
+      <div class="panel"><b>AI</b>
+        <div class="kv"><span>Classifications</span><b>${n(a.day)} <span class="muted small" style="font-weight:400">· ${n(a.total)} since start</span></b></div>
+        <div class="kv" style="display:block"><div style="display:flex;justify-content:space-between;gap:12px"><span>Local vs Gemini</span><b>${aiSplit ? `${pct(local, aiSplit)}% / ${pct(gem, aiSplit)}%` : "none yet"}</b></div>${aiSplit ? `<div class="meter split" role="img" aria-label="${pct(local, aiSplit)} percent local, ${pct(gem, aiSplit)} percent Gemini"><i style="width:${pct(local, aiSplit)}%"></i><i style="width:${100 - pct(local, aiSplit)}%"></i></div>` : ""}</div>
+        <div class="kv"><span>Average latency</span><b>${a.avgMs == null ? "no calls yet" : `${(a.avgMs / 1000).toFixed(a.avgMs < 10000 ? 1 : 0)} s`}</b></div>
+        <div class="kv"><span>Failed attempts</span><b class="${a.fail ? "err-text" : ""}">${n(a.fail)}</b></div>
+        <div class="kv"><span>Fell back to the other model</span><b>${n(a.fallback)}</b></div>
+      </div>
+      <div class="panel"><b>Worker</b>
+        <div class="kv"><span>Running for</span><b>${l.uptimeMs == null ? "unknown" : esc(dur(l.uptimeMs))}</b></div>
+        <div class="kv"><span>Version</span><b class="mono">${esc(shortV(l.version || state?.version || "dev"))}</b></div>
+        <div class="kv"><span>Pending sends</span><b>${n(q.pending)}</b></div>
+        <div class="kv"><span>Last message sent</span><b>${q.lastSendAt ? esc(ago(q.lastSendAt)) : "none yet"}</b></div>
+        <div class="kv"><span>Last update</span><b>${esc(lastUpdateText())}</b></div>
+      </div>
+    </div></div>`;
+}
+
+function accountsBody() {
+  const l = liveData;
+  if (!l) return `<div class="muted empty">No report from the worker yet.</div>`;
+  if (!l.accounts.length) return `<div class="muted empty">No accounts on this server right now. Curators show up here once they link WhatsApp in the app and this server takes them on.</div>`;
+  return `<div class="acclist ${l.state === "stale" ? "dimmed" : ""}">${l.accounts.map((a) => {
+    const st = STATUS[a.status] || [a.status, "neutral", "warn"];
+    const title = a.name || a.email || "Account";
+    const sub = [a.name && a.email ? a.email : null, a.phone, a.since ? `${st[0].toLowerCase()} since ${when(a.since)}` : null].filter(Boolean).map(esc).join(" · ");
+    return `<div class="acc"><span class="dot ${st[2]}"></span><div class="who"><b>${esc(title)}${a.role === "agent" ? ` <span class="chip neutral" style="height:20px;padding:0 6px;font-size:11px">agent</span>` : ""}</b><div class="muted small">${sub}</div></div><span class="chip ${st[1]}">${esc(st[0])}</span><div class="nums small">${n(a.in)} read · ${n(a.spot)} spot · ${n(a.sent)} sent${a.err ? ` · <span class="err-text">${n(a.err)} err</span>` : ""}</div></div>`;
+  }).join("")}</div><div class="muted small" style="margin-top:10px">Totals since the worker started. Phone numbers are masked and message text never leaves WhatsApp and the app.</div>`;
+}
+
+function liveSummaries() {
+  const l = liveData;
+  const dot = (c) => `<span class="dot ${c}" style="display:inline-block;width:8px;height:8px;margin-right:6px"></span>`;
+  return {
+    live: !l ? "Waiting for the worker" : l.state === "stale" ? `${dot("bad")}Worker not reporting` : `${dot("ok")}Live · ${n(l.day.in)} read · ${n(l.day.sent)} sent (24 h)`,
+    accounts: !l ? "No report yet" : `${n(l.counts.ready)} of ${n(l.counts.accounts)} connected${l.counts.qr ? ` · ${l.counts.qr} need a scan` : ""}`,
+  };
+}
+const livePrev = {};
+const liveSecs = () => {
+  const sm = liveSummaries(), live = liveBody(), acc = accountsBody();
+  Object.assign(livePrev, { live, accounts: acc, lives: sm.live, accountss: sm.accounts }); // what the DOM now shows
+  return `${sec("live", "Live", sm.live, live, { style: "margin-bottom:16px" })}${sec("accounts", `Accounts${liveData?.server?.hostname ? ` on ${esc(liveData.server.hostname)}` : " on this server"}`, sm.accounts, acc, { style: "margin-bottom:16px" })}`;
+};
+// Patch only what changed, so the 3 s refresh never replaces unchanged DOM (no flicker, no lost hover or scroll).
+function patchLive() {
+  const sm = liveSummaries();
+  const bodies = { live: liveBody, accounts: accountsBody };
+  for (const id of ["live", "accounts"]) {
+    const d = document.querySelector(`details.sec[data-sec="${id}"]`);
+    if (!d) continue;
+    const sum = d.querySelector("summary .sum");
+    if (sum && livePrev[id + "s"] !== sm[id]) { sum.innerHTML = sm[id]; livePrev[id + "s"] = sm[id]; }
+    if (!d.open) continue;
+    const html = bodies[id]();
+    if (livePrev[id] === html && d.querySelector(".secbody").firstChild) continue;
+    const body = d.querySelector(".secbody"), list = body.querySelector(".acclist"), top = list ? list.scrollTop : 0;
+    body.innerHTML = html; livePrev[id] = html;
+    const l2 = body.querySelector(".acclist"); if (l2) l2.scrollTop = top;
+  }
+}
+async function pollLive() {
+  clearTimeout(pollLive.t);
+  let wait = 3000;
+  if (document.hidden) return; // resumes on visibilitychange
+  try {
+    const r = await api("/api/live");
+    liveData = r.live; liveAt = Date.now();
+    if (state) patchLive();
+  } catch { wait = 6000; }
+  const open = ["live", "accounts"].some((id) => isOpen(id, true));
+  pollLive.t = setTimeout(pollLive, open ? wait : 10000);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollLive(); });
+document.addEventListener("click", (e) => {
+  const t = e.target.closest?.("[data-metric]");
+  if (!t) return;
+  metric = t.dataset.metric;
+  try { localStorage.setItem("spot-console-metric", metric); } catch {}
+  patchLive();
+});
+
 function render() {
   const s = state, c = s.config, k = c.key;
   const allUp = s.services.worker && (s.services.ollama || !s.localModel); // Gemini-only servers have no Ollama
@@ -372,6 +560,8 @@ function render() {
     <div class="theme" role="group" aria-label="Theme">${["system", "light", "dark"].map((t) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
   </header>
   ${(() => { const b = updateBanner(s); return b ? `<div style="margin-bottom:16px">${b}</div>` : ""; })()}
+
+  ${liveSecs()}
 
   <div class="grid g2">
 ${sec("services", "Services", allUp ? "All running" : "Needs attention", `
@@ -415,6 +605,7 @@ function wire() {
   document.querySelectorAll("details.sec").forEach((d) => d.ontoggle = () => {
     secs[d.dataset.sec] = d.open;
     try { localStorage.setItem("spot-console-sections", JSON.stringify(secs)); } catch {}
+    if ((d.dataset.sec === "live" || d.dataset.sec === "accounts") && d.open) { livePrev[d.dataset.sec] = null; patchLive(); pollLive(); }
     if (d.dataset.sec === "logs" && d.open) { const l = $("#logs"); if (l) l.scrollTop = l.scrollHeight; }
   });
   const logs = $("#logs"); if (logs) logs.scrollTop = logs.scrollHeight;
@@ -588,6 +779,7 @@ async function refresh(force = false) {
 }
 setInterval(() => { const cd = $("#cd"); if (cd && conn?.expiresAt) cd.textContent = left(conn.expiresAt); }, 1000);
 refresh();
+pollLive();
 </script>
 </body>
 </html>

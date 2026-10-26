@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { VAULT_OBJECT_MIN_AGE_MS, mayUpload, pickLoginSource, resolveMarker, vaultObjectPath, vaultObjectPrefix, type VaultMeta } from "@spot/shared";
+import { VAULT_OBJECT_MIN_AGE_MS, mayUpload, splitVaultId, pickLoginSource, resolveMarker, vaultObjectPath, vaultObjectPrefix, type VaultMeta } from "@spot/shared";
 import { decrypt, encrypt, newKey, sha256 } from "./vault-crypto.ts";
 import { packFolders, unpackInto } from "./vault-archive.ts";
 
@@ -49,7 +49,12 @@ export interface VaultDeps {
 function firebaseDeps(): VaultDeps {
   // Lazy: importing firebase.ts initialises the admin app, which tests must not do.
   const fb = () => import("./firebase.ts");
-  const vaultDoc = async (uid: string) => (await fb()).userRef(uid).collection("fleet").doc("vault");
+  // The "uid" given to every function here is a vault id: an account's uid, or `{uid}_agent` for its agent number's login.
+  // Both live under the same account: their own meta doc and key, but the one lease (the agent runs wherever the account does).
+  const vaultDoc = async (vid: string) => {
+    const { uid, agent } = splitVaultId(vid);
+    return (await fb()).userRef(uid).collection("fleet").doc(agent ? "vault_agent" : "vault");
+  };
   const keyDoc = async (uid: string) => (await fb()).db.collection("vaultKeys").doc(uid);
   const bucket = async () => (await import("firebase-admin/storage")).getStorage().bucket();
   return {
@@ -61,7 +66,7 @@ function firebaseDeps(): VaultDeps {
     async commitMeta(uid, expectedGen, meta, lease) {
       const { db, userRef } = await fb();
       const ref = await vaultDoc(uid);
-      const leaseRef = userRef(uid).collection("fleet").doc("lease");
+      const leaseRef = userRef(splitVaultId(uid).uid).collection("fleet").doc("lease");
       return db.runTransaction(async (tx) => {
         const [curSnap, leaseSnap] = await Promise.all([tx.get(ref), tx.get(leaseRef)]);
         const cur = curSnap.data() as VaultMeta | undefined;

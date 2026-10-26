@@ -63,6 +63,17 @@ describe("misc", () => {
     expect(pickShed(h, 2)).toEqual(["u3"]);
     expect(pickShed(h, 0)).toEqual(["u3", "u1", "u2"]);
   });
+  it("pickShed counts an agent number as a second browser", () => {
+    const h = [
+      { uid: "u1", claimedAt: 1, pinnedHere: false, units: 2 },
+      { uid: "u2", claimedAt: 3, pinnedHere: false, units: 1 },
+      { uid: "u3", claimedAt: 2, pinnedHere: false, units: 2 },
+    ];
+    expect(pickShed(h, 5)).toEqual([]);
+    expect(pickShed(h, 4)).toEqual(["u2"]);
+    expect(pickShed(h, 3)).toEqual(["u2", "u3"]);
+    expect(pickShed(h, 0)).toEqual(["u2", "u3", "u1"]);
+  });
   it("one notifier", () => {
     expect(isDesignatedNotifier(["z", "m", "b"], "b")).toBe(true);
     expect(isDesignatedNotifier(["z", "m", "b"], "m")).toBe(false);

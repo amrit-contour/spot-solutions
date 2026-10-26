@@ -4,7 +4,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AiRoute, AiSettings } from "@spot/shared";
 import { col } from "./firebase.ts";
-import { counters } from "./stats.ts";
+import { counters, live } from "./stats.ts";
 import { AiPolicyError, planRoutes } from "./aiRouting.ts";
 
 export const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
@@ -103,21 +103,26 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
     const routes = planRoutes(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY));
     if (!routes.length) {
       counters.errors++;
+      live.noteError();
       throw new AiPolicyError("AI policy is Local only, but no local model is selected for this account.");
     }
     let last: unknown;
     for (const [i, route] of routes.entries()) {
+      const t0 = Date.now();
       try {
         const text = await run(uid, route, prompt, schema, opts.temperature);
         counters.classified++;
+        live.noteAi(route.provider, Date.now() - t0, i > 0);
         return { text, model: `${route.provider}/${route.model}` };
       } catch (err) {
         last = err;
+        live.noteAiFail();
         const next = routes[i + 1];
         if (next) console.warn(`[llm] ${route.provider}/${route.model} failed, trying ${next.provider}/${next.model}:`, (err as Error).message);
       }
     }
     counters.errors++;
+    live.noteError();
     throw last;
   });
   gate = task;

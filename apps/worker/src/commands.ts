@@ -29,11 +29,14 @@ import {
   type Comic,
   type GroupSyncPlan,
   type Lineup,
+  type NoticeKind,
   type Show,
   type SpotRequest,
 } from "@spot/shared";
 import { col, db, expireAt, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
+import { agentSessions } from "./agentSession.ts";
+import { curatorPhone, forgetSettings, sendToCurator } from "./agentOutbox.ts";
 import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
 import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
@@ -56,6 +59,30 @@ const handlers: Record<Command["type"], Handler> = {
 
   async logout(uid) {
     await sessions.logout(uid);
+  },
+
+  /**
+   * Link the agent number (a second WhatsApp that talks only to you). The QR shows in users/{uid}/session/agent. It starts on
+   * this server because this server holds the account; if the account moves, the agent moves with it (docs/agent.md).
+   */
+  async connect_agent(uid) {
+    sessions.require(uid); // the agent talks to your number, so your own WhatsApp has to be linked first
+    await userRef(uid).set({ agentEnabled: true }, { merge: true });
+    void agentSessions.start(uid);
+  },
+
+  /** Unlink the agent number. Your own WhatsApp stays as it is. */
+  async logout_agent(uid) {
+    await agentSessions.logout(uid);
+    forgetSettings(uid);
+  },
+
+  /** "Send me a hello from the agent": the one message that proves the link works. */
+  async test_agent(uid) {
+    if (!agentSessions.get(uid)) throw new Error("The agent number isn't connected yet");
+    if (!(await curatorPhone(uid))) throw new Error("Your own WhatsApp isn't linked, so the agent doesn't know your number");
+    const ok = await sendToCurator(uid, "Hello from your Spot Solutions agent. I'm linked and I only talk to you. Send *help* to see what I can do.", { ignoreSwitch: true });
+    if (!ok) throw new Error("Couldn't send: the agent hit its hourly limit, try again later");
   },
 
   // Runs on the current holder, or on the target when nobody holds the account (see fleet.gate).
@@ -489,12 +516,16 @@ export async function dropFromLineup(uid: string, client: WAWebJS.Client, comicI
     const lid = (await lidMap(client, group)).get(comicId);
     await group.removeParticipants([lid ?? comicId]).catch(() => undefined);
   }
-  await notice(uid, "info", `${comic?.name ?? "A comic"} dropped out of ${show?.name ?? "a show"}. A slot is open.`);
+  await notice(uid, "info", `${comic?.name ?? "A comic"} dropped out of ${show?.name ?? "a show"}. A slot is open.`, "lineup");
 }
 
-export async function notice(uid: string, level: "info" | "warn", text: string) {
-  await col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) });
+/** `kind` marks the notices the agent number also forwards to the curator's WhatsApp (offer outcomes, lineup changes, server moves); warnings always go. */
+export async function notice(uid: string, level: "info" | "warn", text: string, kind?: NoticeKind) {
+  await col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices), ...(kind ? { kind } : {}) });
 }
+
+/** Run one command handler directly (the agent's "confirm Monday" uses the same code as the Confirm button). */
+export const runHandler = (type: Command["type"], uid: string, payload: Record<string, unknown> = {}) => handlers[type](uid, payload);
 
 /**
  * Show-day group update: one automatic pass on the day of the show.

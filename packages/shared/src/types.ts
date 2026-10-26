@@ -54,6 +54,26 @@ export interface Settings {
   retention?: { closedRequestsWeeks: number };
   /** App look, per user. Missing counts as "nbc" (demo sandboxes count as "classic"). */
   appearance?: { brand: "nbc" | "classic" };
+  /** The agent number: a second WhatsApp that talks only to you (agent.ts). Missing counts as DEFAULT_SETTINGS.agent. */
+  agent?: AgentSettings;
+}
+
+/** What the agent number may do for you. Linking it is the opt-in; these switch each part off again. */
+export interface AgentSettings {
+  /** Master switch: off and the agent stays linked but silent and deaf. */
+  enabled: boolean;
+  /** Tell you about mic checks, new requests, follow-ups, offer outcomes and warnings. */
+  notify: boolean;
+  /** Answer your questions ("Monday lineup?"). */
+  answer: boolean;
+  /** Do things you ask, after you reply yes. */
+  actions: boolean;
+  /** One morning message with today and what needs you. */
+  digest: boolean;
+  /** HH:MM in your timezone. */
+  digestTime: string;
+  /** Anyone else who messages the agent gets one polite line. Off by default (they get nothing). */
+  politeNote: boolean;
 }
 
 export interface ComicProfile {
@@ -141,9 +161,14 @@ export interface FollowUpSuggestion {
   evidence: string;
 }
 
+/** What a notice is about, so the agent number only forwards the ones that matter ("offer" outcomes, "lineup" changes, "server" moves). */
+export type NoticeKind = "offer" | "lineup" | "server";
+
 export interface AppNotice {
   id: string;
   level: "info" | "warn";
+  /** Set by the worker on notices the agent number forwards. */
+  kind?: NoticeKind;
   text: string;
   createdAt: number;
   read: boolean;
@@ -355,6 +380,9 @@ export type CommandType =
   | "apply_reconcile"
   | "learn_voice"
   | "apply_follow_up"
+  | "connect_agent"
+  | "logout_agent"
+  | "test_agent"
   | "send_format_samples"
   | "preview_voice"
   | "send_message";
@@ -418,6 +446,8 @@ export interface ServerStatus {
   geminiServerKey: boolean;
   sessions: { uid: string; email?: string | null; name?: string | null; status: string; phone?: string | null }[];
   counters: { messagesIn: number; classified: number; sent: number; errors: number };
+  /** Last 24 h at a glance (rides on the heartbeat; the full live view is in the server's own console). Missing on older servers. */
+  live?: { accounts: number; ready: number; in24h: number; spot24h: number; sent24h: number; err24h: number; queue: number };
   admins: string[]; // lower-case emails
   logs?: string[]; // most recent last; only written while someone is watching (logsWanted)
   /** Set by the Server page (ms) while its log section is open, refreshed every minute. The worker sends logs only while it is fresh. */
