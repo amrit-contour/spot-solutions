@@ -16,8 +16,10 @@ Or download [SpotServer-mac.zip](https://spot-solutions.web.app/dl/SpotServer-ma
 
 1. Open **Spot Server** and type your email.
 2. Click **Set up this Mac**. It downloads Node.js, Ollama and Gemma (about 3.5 GB) into `~/Library/Application Support/SpotSolutions`. It needs no Homebrew and no admin password. If Ollama is already running on the Mac, it uses that.
-3. The server console appears inside the app. Drop in your Firebase service-account key there; the worker starts by itself.
-4. Link WhatsApp at spot-solutions.web.app → Settings.
+3. The server console appears inside the app. Drop in this Mac's own Firebase service-account key; the worker starts by itself. Use one key per device: the admin makes it with `deploy/new-server-key.sh <name>` (see [multi-server.md](multi-server.md)). Delete the file once it's uploaded.
+4. Link WhatsApp at spot-solutions.web.app → Settings → Show QR code.
+
+**Gemini only.** A Mac with little memory can skip the local model. Tick **Gemini only** before **Set up this Mac**: it downloads Node.js only, and AI runs on Gemini (add a Gemini key in the console, or each curator under Settings → AI models). That server can't host accounts set to **Local only**. From Terminal: `SPOT_NO_LOCAL_MODEL=1 spotctl setup`; switch back with `SPOT_NO_LOCAL_MODEL=0 spotctl setup`. Updates keep the choice.
 
 ## Everyday
 
@@ -26,8 +28,8 @@ Or download [SpotServer-mac.zip](https://spot-solutions.web.app/dl/SpotServer-ma
 | **Start server / Stop server** | Starts or stops Ollama, the worker and the console |
 | **Keep awake, even with the lid closed** | Turns off sleep (asks for your password once). Turn it off to restore normal sleep. |
 | **Start when I log in** | Brings the server back after a restart |
-| Menu bar 🎙 | Status, start/stop, open the app. Closing the window doesn't stop the server. |
-| More → Update / Restart / Uninstall | Updates the code, restarts a part, or removes it (keeping your WhatsApp session and keys) |
+| Menu bar icon | Status, start/stop, open the app. Closing the window doesn't stop the server. |
+| More → Update / Restart / Uninstall | Updates the code, restarts the worker or Ollama, or removes it (keeping your WhatsApp session and keys) |
 
 From Terminal, the same controls are in `spotctl` inside the app:
 
@@ -35,7 +37,23 @@ From Terminal, the same controls are in `spotctl` inside the app:
 "/Applications/Spot Server.app/Contents/Resources/spotctl" status
 ```
 
+| Command | What it does |
+|---|---|
+| `spotctl setup` | Installs or updates (re-run to update) |
+| `spotctl start` / `stop` | Starts or stops Ollama, the worker and the console |
+| `spotctl restart [worker\|ollama\|console]` | Restarts one part, or all |
+| `spotctl awake on\|off` | Keep running with the lid closed (asks for your password) |
+| `spotctl login on\|off` | Start the server when you log in |
+| `spotctl logs` | Follows the worker log |
+| `spotctl uninstall [--all]` | Removes the code and services; `--all` also removes your WhatsApp session and keys |
+
+Everything lives in `~/Library/Application Support/SpotSolutions` (`app`, `data` with the key and WhatsApp logins, `logs`, `runtime`).
+
+## Updating
+
+In the app: **More → Update Spot Solutions**, or run `spotctl setup` again. It keeps your key and WhatsApp session. If you run several servers, stop any still on an older release first, see [multi-server.md](multi-server.md).
+
 ## For a Mac that stays on
 
-- Keep it on power, and turn on **Keep awake, even with the lid closed**.
+- Keep it on power, and turn on **Keep awake, even with the lid closed**. With a second server in the fleet, an account moves there if this Mac goes to sleep or offline (see [multi-server.md](multi-server.md)).
 - macOS runs background services only while you're logged in. For an always-on Mac, turn on **automatic login** (System Settings → Users & Groups) together with **Start when I log in**. Don't use FileVault automatic login on a Mac others can reach.

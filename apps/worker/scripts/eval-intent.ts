@@ -1,4 +1,4 @@
-// Runs the intent prompt against local Gemma on a fixture set. `pnpm eval`
+// Runs the intent prompt against local Gemma on a fixture set. Run: pnpm --filter @spot/worker exec tsx scripts/eval-intent.ts gemma3:4b
 import { classify } from "../src/gemma.ts";
 import { DEFAULT_SETTINGS, type Show } from "@spot/shared";
 

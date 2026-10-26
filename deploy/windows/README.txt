@@ -5,16 +5,16 @@ Turns this laptop into the always-on Spot Solutions server: WhatsApp + local Gem
 
 BEFORE YOU START
   - Windows 10 or 11, 8 GB RAM recommended, plugged into power, on Wi-Fi/Ethernet.
-  - Have your Firebase service-account key (.json) on this laptop, e.g. in Downloads.
-    Get it: console.firebase.google.com -> your project -> gear icon -> Project settings
-    -> Service accounts -> Generate new private key.
-  - "App Installer" (winget) must be present. It is on most Windows 10/11 machines;
-    if not, install it from the Microsoft Store.
+  - Have this laptop's own service-account key (.json) on it, e.g. in Downloads.
+    Make one per device on the admin's Mac: bash deploy/new-server-key.sh <name>
+    (it lands in ~/.spot-keys/). Revoke it later with deploy/revoke-server-key.sh.
+  - "App Installer" (winget) is used to install Ollama. It is on most Windows 10/11
+    machines; if not, install it from the Microsoft Store (not needed for Gemini only).
 
 INSTALL
   1. Unzip this folder anywhere.
   2. Double-click "Install Spot Solutions.cmd" and click Yes on the admin prompt.
-     It installs Node.js and Ollama, downloads Gemma (~3.3 GB), and sets up two
+     It installs its own Node.js (C:\\SpotSolutions\\node) and Ollama, downloads Gemma (~3.5 GB), and sets up two
      startup tasks: the worker and the Server Console. It asks you nothing.
      No room for Gemma (under ~8 GB RAM)? Double-click "Install Spot Solutions (Gemini
      only).cmd" instead: no Ollama, no download; AI runs on Gemini (add a key in the

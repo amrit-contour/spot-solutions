@@ -64,13 +64,15 @@ On the server (in its own terminal, or over SSH):
 curl -fsSL https://spot-solutions.web.app/install.sh | sudo ADMIN_EMAILS=you@gmail.com bash
 ```
 
-It asks nothing. It installs Node, Chrome's libraries, Ollama and Gemma (about a 3.3 GB download), and three services that start on boot and restart on crash:
+It installs Node 22, Chrome's libraries, Ollama and Gemma (about a 3.5 GB download), and three services that start on boot and restart on crash. If you run it in a terminal on a first install, it asks one question: run AI on this machine with Ollama and Gemma? (30 seconds, then yes). Set `SPOT_NO_LOCAL_MODEL=1` to skip the question and the download:
 
 | Service | What it does |
 |---|---|
 | `ollama` | Local AI |
 | `spot-worker` | WhatsApp + curation. Idle until a Firebase key is added. |
 | `spot-console` | Local web console on port **7420** |
+
+**Gemini only.** A machine with little memory can skip the local model: `curl -fsSL https://spot-solutions.web.app/install.sh | sudo SPOT_NO_LOCAL_MODEL=1 bash` (or `... | sudo bash -s -- --no-local-model`). It installs no Ollama or Gemma, AI runs on Gemini (add a key in the console, or each curator under Settings → AI models), and the server can't host accounts set to **Local only**. Re-running keeps the choice; set `SPOT_NO_LOCAL_MODEL=0` to switch back. See [multi-server.md](multi-server.md).
 
 At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it from your phone or Mac on the same Wi-Fi. The console is served from the laptop itself, so it's only reachable on your home network, and you only need it once, for the key.
 
@@ -80,9 +82,9 @@ At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it 
 
 The console shows services, CPU/RAM/disk, installed models and live worker logs, with Restart buttons.
 
-1. **Firebase key:** Firebase console → Spot Solutions → gear icon → Project settings → Service accounts → **Generate new private key**. Drag the downloaded `.json` onto the console. The worker starts by itself.
-2. **Admins:** your email (already set if you passed `ADMIN_EMAILS`). It unlocks **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere.
-3. **Server Gemini key:** optional. Leave it blank; each curator adds their own in the app under **Settings → AI models**, where they can test it, browse models and pick a primary and a fallback.
+1. **Firebase key:** one key per device. The admin makes this server's key on their own machine with `deploy/new-server-key.sh <name>` (see [multi-server.md](multi-server.md)). Drag the `.json` onto the console, then delete the file. The worker starts by itself.
+2. **Admins:** your email (already set if you passed `ADMIN_EMAILS`). It opens **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere.
+3. **Server Gemini key:** optional on a server with Gemma. Leave it blank; each curator adds their own in the app under **Settings → AI models**, where they can test it, browse models and pick a primary and a fallback. On a Gemini-only server, add one here or have each curator add theirs.
 
 Lost the link? `sudo spot-console-url`.
 
@@ -92,19 +94,20 @@ Open **spot-solutions.web.app → Settings → Show QR code** on a computer and 
 
 ## Several curators on one server
 
-Every curator who signs in gets their own WhatsApp session on this server. Rough sizing:
+Every approved curator gets their own WhatsApp session on this server. Each session is one headless Chromium, using roughly 300 to 450 MB. Gemma is shared and handles one message burst at a time.
 
-| RAM | Gemma model | WhatsApp sessions |
+The server stops taking accounts at a limit worked out from its memory: (RAM minus 5.5 GB) / 450 MB with Gemma, (RAM minus 1.5 GB) / 450 MB without it. Set `SPOT_MAX_ACCOUNTS` in `/opt/spot-solutions/apps/worker/.env` to change it.
+
+| RAM | Default limit with Gemma | Gemini-only |
 |---|---|---|
-| 8 GB | `gemma3:4b` | about 6 |
-| 8 GB | `gemma3:1b` | about 10 |
-| 16 GB | `gemma3:4b` | 20+ |
+| 8 GB | about 5 | about 14 |
+| 16 GB | about 23 | about 32 |
 
-Each session is one headless Chromium, using roughly 300–400 MB. Gemma is shared and handles one message burst at a time.
+Add a second server and accounts spread across both, and move to the other if one goes offline: see [multi-server.md](multi-server.md).
 
 ## Updating
 
-Run the same install command again. It pulls the latest code and restarts the worker. Your WhatsApp sessions survive, because they live in `/var/lib/spot-solutions`.
+Run the same install command again. It pulls the latest code and restarts the worker. Your WhatsApp sessions, key and `.env` survive, because they live in `/var/lib/spot-solutions` and `/opt/spot-solutions/apps/worker/.env`. If you run several servers, stop any still on an older release first (see [multi-server.md](multi-server.md)).
 
 ## If something's off
 
@@ -112,5 +115,17 @@ Run the same install command again. It pulls the latest code and restarts the wo
 |---|---|
 | App says "Server offline" | `systemctl status spot-worker`; check the laptop is awake and online |
 | QR never appears | `journalctl -u spot-worker -n 100`; try `sudo systemctl restart spot-worker` |
-| Very slow replies | Switch to `gemma3:1b` in Settings → Model, or add a Gemini API key for fallback |
+| Very slow replies | Switch to `gemma3:1b` in Settings → AI models, or add a Gemini API key for fallback |
 | Laptop won't boot the stick | BIOS: USB first in boot order, Secure Boot off |
+| Console link lost | `sudo spot-console-url` |
+
+## Uninstall
+
+```bash
+sudo systemctl disable --now spot-worker spot-console
+sudo rm -rf /opt/spot-solutions /etc/systemd/system/spot-*.service /etc/sudoers.d/spot-console
+# also removes the WhatsApp link and key:
+sudo rm -rf /var/lib/spot-solutions
+```
+
+On your phone, also remove the old entry under **WhatsApp → Linked devices**.

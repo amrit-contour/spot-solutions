@@ -7,7 +7,7 @@ const ADMINS = (process.env.SPOT_ADMIN_EMAILS ?? "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
-const DEFAULT_MAX = Number(process.env.SPOT_MAX_CURATORS ?? 6);
+const DEFAULT_MAX = Number(process.env.SPOT_MAX_CURATORS || 6);
 
 const configRef = db.collection("config").doc("access");
 let maxCurators = DEFAULT_MAX;

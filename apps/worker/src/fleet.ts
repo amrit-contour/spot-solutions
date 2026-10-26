@@ -414,7 +414,7 @@ export async function requestMove(uid: string, to: string) {
   if (to === ME) return { ok: true, to };
   const h = held.get(uid);
   if (!h) throw new Error("This server isn't running that account");
-  if (!rank(uid).some((s) => s.id === to)) throw new Error(`${nameOf(to)} can't take this account right now (offline, full, paused, or it has no local AI model).`);
+  if (!rank(uid).some((s) => s.id === to)) throw new Error(`${nameOf(to)} can't take this account right now (offline, full, shutting down, or it has no local AI model).`);
   if (!(await setMoveTo(uid, to, "move", ME, h.epoch))) throw new Error("The account changed hands meanwhile; try again");
   return { ok: true, to };
 }

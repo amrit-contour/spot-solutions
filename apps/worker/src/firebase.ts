@@ -7,7 +7,7 @@ const keyPath = process.env.FIREBASE_SERVICE_ACCOUNT;
 initializeApp({
   credential: keyPath ? cert(JSON.parse(readFileSync(keyPath, "utf8"))) : applicationDefault(),
   projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.SPOT_STORAGE_BUCKET ?? "spot-solutions.firebasestorage.app",
+  storageBucket: process.env.SPOT_STORAGE_BUCKET || "spot-solutions.firebasestorage.app",
 });
 
 export const db = getFirestore();

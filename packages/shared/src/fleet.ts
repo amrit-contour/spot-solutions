@@ -114,7 +114,7 @@ export interface FleetCapacity {
   hosting: number;
   /** A local model is reachable and has at least one model pulled. */
   localModel: boolean;
-  /** Not taking new accounts (draining for shutdown, or an admin paused it). */
+  /** Not taking new accounts (draining for a graceful shutdown). */
   draining: boolean;
 }
 
