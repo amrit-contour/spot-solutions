@@ -172,7 +172,7 @@ The user guide is in [docs/multi-server.md](docs/multi-server.md) and the protoc
 | **macOS** | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| bash` (installs the Nothing BOT Server menu-bar app; `install-mac.sh` still works) · [guide](docs/mac-server.md) |
 | **Docker** | `docker compose -f deploy/docker-compose.yml up -d` |
 
-[spot-solutions.web.app/install](https://nothingbotcurating.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Nothing BOT Curating** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves.
+[nothingbotcurating.web.app/install](https://nothingbotcurating.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Nothing BOT Curating** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves.
 
 > [!IMPORTANT]
 > Upgrading from an older release? Stop the old server before the new one links. Servers from before multi-server support don't know about leases, so new servers pause and show a notice while one is online.

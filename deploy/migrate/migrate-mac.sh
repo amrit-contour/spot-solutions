@@ -198,7 +198,7 @@ else
   warn "Can't check the cloud records from here (no key or program files found)."
 fi
 if [[ $CAN_CHECK == 0 ]]; then
-  say "  Please check in the app yourself: open the Spot Solutions app, Account, Server."
+  say "  Please check in the app yourself: open the Nothing BOT Curating app, Account, Server."
   say "  This Mac should be listed as the server hosting your WhatsApp (Fleet shows who holds each account)."
   ask "Does the app show THIS Mac as the one hosting your account?" || { say "Stopped. Nothing was changed."; exit 1; }
   HELD_OK=1
@@ -224,7 +224,7 @@ if [[ $CAN_CHECK == 1 && $HELD_OK == 1 ]]; then
   if [[ $rc == 0 ]]; then VAULT_OK=1; ok "The vault has a fresh copy of every login."
   else bad "The vault does NOT have a fresh copy for everything listed above."; fi
 else
-  say "  Can't check automatically. Open the Spot Solutions app, Settings, WhatsApp: it should say \"Login backed up\" with a time a minute ago."
+  say "  Can't check automatically. Open the Nothing BOT Curating app, Settings, WhatsApp: it should say \"Login backed up\" with a time a minute ago."
   ask "Does it say the login was backed up just now?" && VAULT_OK=1
 fi
 [[ $VAULT_OK == 1 ]] || { say ""; say "  Do NOT uninstall yet. The backup in the next step is your safety net. Start the server again"; say "  (open the app and press Start server) and run this script once more."; }
@@ -292,7 +292,7 @@ $( [[ $VAULT_OK == 1 ]] && echo "  Everything checked out. You can move to Nothi
     Windows:      Set-ExecutionPolicy -Scope Process Bypass -Force; irm https://nothingbotcurating.web.app/install.ps1 | iex
 
  C. Connect it to the same account
-    In its console click "Connect with Spot Solutions", sign in as an admin and approve. The new server finds the
+    In its console click "Connect with Nothing BOT Curating", sign in as an admin and approve. The new server finds the
     account's login in the vault and restores it: no QR code. (Check in the app, Settings, WhatsApp.)
 
  D. Only if it asks for a QR code or says the restore failed

@@ -5,7 +5,7 @@
 # Two sets of files land in dl/, and they never share a name:
 #   NEW  (Nothing BOT Server):  dl/nothing-bot-server.json, dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip,
 #                               dl/NothingBotServer-mac.zip, plus install.sh, install.ps1, install-mac.sh, uninstall.sh at the root.
-#   LEGACY (frozen at 888dd7d): dl/version.json, dl/spot-solutions.tar.gz, dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip,
+#   LEGACY (frozen at 3c43570): dl/version.json, dl/spot-solutions.tar.gz, dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip,
 #                               copied unchanged from deploy/legacy-dl/ (gitignored). Servers installed before the rename
 #                               poll /dl/version.json and download /dl/spot-solutions.tar.gz; they must never be offered the
 #                               renamed release (it would run against their old folders and services). See docs/migrate-to-nothing-bot-server.md.
@@ -24,7 +24,7 @@ missing=()
 for f in "${LEGACY_FILES[@]}"; do [[ -s "$LEGACY_DIR/$f" ]] || missing+=("$f"); done
 if (( ${#missing[@]} )); then
   echo "ERROR: $LEGACY_DIR is missing: ${missing[*]}" >&2
-  echo "These are the frozen files for servers installed before the rename (release 888dd7d). Download them again with:" >&2
+  echo "These are the frozen files for servers installed before the rename (release 3c43570). Download them again with:" >&2
   echo "  mkdir -p $LEGACY_DIR && cd $LEGACY_DIR && for f in version.json spot-solutions.tar.gz SpotSolutions-Windows.zip SpotServer-mac.zip; do curl -fsSLO https://spot-solutions.web.app/dl/\$f; done" >&2
   echo "(only while the live site still serves the frozen versions; otherwise restore them from a backup)." >&2
   exit 1

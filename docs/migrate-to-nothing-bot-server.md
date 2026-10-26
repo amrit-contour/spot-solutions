@@ -1,6 +1,6 @@
 # Moving to Nothing BOT Server
 
-The self-hosted server used to be called "Spot Solutions" (and "Spot Server" on the Mac). It is now **Nothing BOT Server** everywhere: the Mac app, the Windows folder, the Linux services, the downloads and the settings names. The web app keeps the name Spot Solutions. This page has the naming scheme, how old servers are kept apart from new ones, and how to move your own server across without a new QR code.
+The self-hosted server used to be called "Spot Solutions" (and "Spot Server" on the Mac). It is now **Nothing BOT Server** everywhere: the Mac app, the Windows folder, the Linux services, the downloads and the settings names. The web app is called Nothing BOT Curating. This page has the naming scheme, how old servers are kept apart from new ones, and how to move your own server across without a new QR code.
 
 ## The naming scheme
 
@@ -22,7 +22,7 @@ One name, written three ways. Use the right one for the place.
 | Windows folder | `C:\SpotSolutions` | `C:\NothingBotServer` |
 | Windows tasks | `SpotSolutionsWorker`, `...Console`, `...Update` | `NothingBotServerWorker`, `...Console`, `...Update` |
 | Windows firewall rule | "Spot Solutions Console" | "Nothing BOT Server Console" |
-| Windows shortcuts | "Spot Server Console", Start menu folder "Spot Solutions" | "Nothing BOT Server Console", Start menu folder "Nothing BOT Server" (the "Spot Solutions" shortcut still opens the web app) |
+| Windows shortcuts | "Spot Server Console", Start menu folder "Spot Solutions" | "Nothing BOT Server Console", Start menu folder "Nothing BOT Server" (the "Nothing BOT Curating" shortcut opens the web app) |
 | Windows installers | `Install Spot Solutions.cmd` | `Install Nothing BOT Server.cmd` (and `... (Gemini only).cmd`) |
 | Linux services | `spot-worker`, `spot-console`, `spot-task@` | `nothing-bot-server-worker`, `nothing-bot-server-console`, `nothing-bot-server-task@` |
 | Linux paths | `/opt/spot-solutions`, `/var/lib/spot-solutions`, `/etc/spot-solutions`, `/usr/local/lib/spot-solutions` | the same with `nothing-bot-server` |
@@ -40,9 +40,9 @@ Every setting now reads `NBS_*`. At start the worker, the console, the installer
 
 ## Old servers are frozen, not updated
 
-Servers installed before the rename (release `888dd7d` and earlier) check `https://spot-solutions.web.app/dl/version.json` and download `/dl/spot-solutions.tar.gz`. The renamed release would run against their old folders and services and break them, so they must never be offered it.
+Servers installed before the rename (release `3c43570` and earlier) check `https://spot-solutions.web.app/dl/version.json` and download `/dl/spot-solutions.tar.gz`. The renamed release would run against their old folders and services and break them, so they must never be offered it.
 
-- Every hosting site serves the same `apps/web/dist`. `deploy/build-dist.sh` copies the **frozen legacy files** from the gitignored folder `deploy/legacy-dl/` into `dist/dl/` on every build: `version.json`, `spot-solutions.tar.gz`, `SpotSolutions-Windows.zip`, `SpotServer-mac.zip`. They are byte for byte what the live site served when the rename was prepared (`version` `888dd7d`), so old servers keep seeing "up to date".
+- Every hosting site serves the same `apps/web/dist`. `deploy/build-dist.sh` copies the **frozen legacy files** from the gitignored folder `deploy/legacy-dl/` into `dist/dl/` on every build: `version.json`, `spot-solutions.tar.gz`, `SpotSolutions-Windows.zip`, `SpotServer-mac.zip`. They are byte for byte what the live site served when the rename was prepared (`version` `3c43570`), so old servers keep seeing "up to date".
 - The build **fails loudly** if one is missing, if `version.json` isn't valid, or if the tarball no longer matches the sha256 in it. If the folder is lost, recover the files from a backup (or from the live site while it still serves them), never from a new build.
 - New files use new names (`dl/nothing-bot-server.json`, `dl/nothing-bot-server.tar.gz`, ...), so the two sets can never collide. New servers read `dl/nothing-bot-server.json` from `nothingbotcurating.web.app`.
 - The install addresses at the site root (`install.sh`, `install.ps1`, `install-mac.sh`) always serve the **new** installers, on every site. Old servers never re-run an installer, so they are unaffected; a fresh install always gets the new layout.
@@ -80,7 +80,7 @@ Then:
 | Uninstall the old server | The new installer stops and removes it for you. Or **Spot Server, More, Uninstall**, or run `spotctl uninstall` from inside the old app. | PowerShell as Administrator: `irm https://nothingbotcurating.web.app/uninstall.ps1 \| iex` | `curl -fsSL https://nothingbotcurating.web.app/uninstall.sh \| sudo bash` |
 | Install the new server | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| bash` | `Set-ExecutionPolicy -Scope Process Bypass -Force; irm https://nothingbotcurating.web.app/install.ps1 \| iex` | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| sudo bash` |
 
-Then open the new server's console, click **Connect with Spot Solutions**, sign in as an admin and approve. In the app, **Settings, WhatsApp** should show the account running again with no QR. Afterwards, remove the old server in **Account, Server** so its key is revoked.
+Then open the new server's console, click **Connect with Nothing BOT Curating**, sign in as an admin and approve. In the app, **Settings, WhatsApp** should show the account running again with no QR. Afterwards, remove the old server in **Account, Server** so its key is revoked.
 
 ### Uninstallers
 
