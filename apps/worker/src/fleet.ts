@@ -494,7 +494,12 @@ function schedule() {
   evalTimer.unref();
 }
 
-/** Log once per old server and tell each affected curator once; forget them when the old server is gone. */
+/** Old servers seen online for longer than this get a notice; a brief blip (e.g. this machine's own upgrade) doesn't. */
+const OLD_NOTICE_AFTER_MS = 120_000;
+const oldSince = new Map<string, number>();
+const oldNoticeId = (serverId: string) => `old-server-${serverId}`.replace(/[^\w-]/g, "_");
+
+/** Log once per old server, tell each affected curator once it has stayed up a while, and clear the notice when it's gone. */
 function guardAgainstOldServers(now: number) {
   const old = preFleet(now);
   const ids = new Set(old.map((s) => s.id));
@@ -502,18 +507,26 @@ function guardAgainstOldServers(now: number) {
     oldLogged.delete(id);
     console.log(`[fleet] old server "${id}" is gone; resuming`);
   }
-  for (const k of [...oldNoticed]) if (!ids.has(k.split(":")[0])) oldNoticed.delete(k);
+  for (const id of [...oldSince.keys()]) if (!ids.has(id)) oldSince.delete(id);
+  for (const k of [...oldNoticed]) {
+    const [id, uid] = k.split(":");
+    if (ids.has(id)) continue;
+    oldNoticed.delete(k);
+    void col(uid, "notices").doc(oldNoticeId(id)).delete().catch(() => undefined);
+  }
   for (const s of old) {
     const name = serverBeats.get(s.id)?.hostname ?? s.id;
     if (!oldLogged.has(s.id)) {
       oldLogged.add(s.id);
       console.warn(`[fleet] old server "${name}" is running: stop it, two servers would answer the same chats`);
     }
+    if (!oldSince.has(s.id)) oldSince.set(s.id, now);
+    if (now - oldSince.get(s.id)! < OLD_NOTICE_AFTER_MS) continue;
     for (const [uid, k] of known) {
       const key = preFleetNoticeKey(s.id, uid);
       if (!k.enabled || oldNoticed.has(key)) continue;
       oldNoticed.add(key);
-      void col(uid, "notices").add({ level: "warn", text: preFleetText(name), createdAt: Date.now(), read: false }).catch(() => oldNoticed.delete(key));
+      void col(uid, "notices").doc(oldNoticeId(s.id)).set({ level: "warn", text: preFleetText(name), createdAt: Date.now(), read: false }).catch(() => oldNoticed.delete(key));
     }
   }
   return old.length > 0;
