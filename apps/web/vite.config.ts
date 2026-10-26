@@ -16,7 +16,7 @@ export default defineConfig({
         id: "/",
         name: "Spot Solutions by Amrit Dash",
         short_name: "Spots",
-        description: "Open-mic lineups sorted from your WhatsApp by a local Gemma model.",
+        description: "Open-mic lineups sorted from your WhatsApp by a Gemma model on your own laptop. By Amrit Dash.",
         start_url: "/",
         scope: "/",
         display: "standalone",

@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /dl/
+
+Sitemap: https://spot-solutions.web.app/sitemap.xml
