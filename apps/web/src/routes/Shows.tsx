@@ -8,7 +8,7 @@ import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
 import { PageHeader } from "../components/Shell";
-import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, cx } from "../components/ui";
+import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "../components/ui";
 import { IconAdd, IconBuilding, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconWarn } from "../components/icons";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
@@ -221,7 +221,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
         </Field>
         <div className="grid gap-6 sm:grid-cols-2">
           <Field label="Starts at">
-            <TextInput type="time" value={draft.startTime ?? "20:00"} onChange={(e) => set("startTime", e.target.value)} />
+            <TimePicker value={draft.startTime ?? "20:00"} onChange={(v) => set("startTime", v)} label="Start time" />
           </Field>
           <Field label="Slots">
             <Stepper value={draft.slotCount ?? 8} onChange={(v) => set("slotCount", v)} min={1} max={40} />
@@ -300,7 +300,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
               {mode === "show_day" && (
                 <div className="grid gap-5 rounded-lg bg-surface-container p-4 sm:grid-cols-2">
                   <Field label="Run at">
-                    <TextInput type="time" value={draft.showDaySyncTime ?? "12:00"} onChange={(e) => set("showDaySyncTime", e.target.value)} />
+                    <TimePicker value={draft.showDaySyncTime ?? "12:00"} onChange={(v) => set("showDaySyncTime", v)} label="Sync time" />
                   </Field>
                   <div className="flex items-center gap-3 sm:pt-6">
                     <div className="flex-1">

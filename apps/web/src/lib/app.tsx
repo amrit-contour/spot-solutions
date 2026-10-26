@@ -20,6 +20,7 @@ import { auth, db } from "./firebase";
 import { useCollection, useDocument, useNow } from "./data";
 import { cloneDemo, needsDemoClone } from "./demo";
 import { useForegroundPush } from "./push";
+import { setBrand } from "./theme";
 
 interface UserDoc {
   settings?: Partial<Settings>;
@@ -115,6 +116,13 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       ai: { ...aiFromLegacy(s), policy: s.ai?.policy ?? DEFAULT_AI_POLICY },
     };
   }, [userDoc.data]);
+
+  // Brand: the saved choice, else NBC (Classic for demo sandboxes so they match the published screenshots).
+  const brand = settings.appearance?.brand ?? (user.isAnonymous ? "classic" : "nbc");
+  const brandReady = !userDoc.loading;
+  useEffect(() => {
+    if (brandReady) setBrand(brand, { animate: true });
+  }, [brand, brandReady]);
 
   const currentWeek = weekOf(new Date(now), settings.timezone, rolloverDayFor(shows.data));
   const [week, setWeek] = useState(currentWeek);

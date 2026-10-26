@@ -3,11 +3,12 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { MotionConfig } from "motion/react";
 import "./index.css";
-import { installTheme, savedMode, setMode } from "./lib/theme";
+import { installTheme, savedBrand, savedMode, setBrand, setMode } from "./lib/theme";
 import App from "./App";
 import "./lib/install";
 
 installTheme();
+setBrand(savedBrand(), { persist: false });
 setMode(savedMode());
 
 createRoot(document.getElementById("root")!).render(

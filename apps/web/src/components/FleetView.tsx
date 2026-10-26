@@ -19,7 +19,7 @@ function ServerRow({ s, now }: { s: ServerStatus; now: number }) {
   return (
     <li className="flex flex-col gap-2 px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className={cx("size-2.5 flex-none rounded-full", online ? "bg-[#3fb950]" : "bg-error")} />
+        <span className={cx("size-2.5 flex-none rounded-full", online ? "bg-ok" : "bg-error")} />
         <span className="min-w-0 truncate type-body-l">{s.hostname}</span>
         <Chip>{platformName(s.platform)}</Chip>
         {f?.draining && <Chip tone="tertiary">Draining</Chip>}

@@ -34,6 +34,9 @@
   --color-inverse-on-surface: var(--md-sys-color-inverse-on-surface);
   --color-inverse-primary: var(--md-sys-color-inverse-primary);
   --color-scrim: var(--md-sys-color-scrim);
+  --color-ok: var(--md-sys-color-ok);
+  --color-nav-active: var(--md-sys-color-nav-active);
+  --color-on-nav-active: var(--md-sys-color-on-nav-active);
 
   --font-sans: "Roboto Flex", system-ui, sans-serif;
   --font-mono: "Roboto Mono", ui-monospace, monospace;
@@ -67,6 +70,24 @@
 @utility type-label-l { font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; letter-spacing: 0.01em; }
 @utility type-label-m { font-size: 0.75rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.04em; }
 @utility type-label-s { font-size: 0.6875rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.05em; }
+
+/* NBC brand: a heavy geometric face for headings only; body copy keeps Roboto Flex. */
+:root[data-brand="nbc"] :is(.type-display-m, .type-display-s, .type-headline-m, .type-headline-s, .type-title-l) {
+  font-family: "Poppins", var(--font-sans);
+  font-weight: 800;
+  font-variation-settings: normal;
+  letter-spacing: -0.025em;
+}
+:root[data-brand="nbc"] .type-display-m { font-size: 2.5rem; line-height: 3rem; }
+:root[data-brand="nbc"] .type-display-s { font-size: 2rem; line-height: 2.5rem; }
+:root[data-brand="nbc"] .type-headline-m { font-size: 1.5rem; line-height: 2rem; }
+:root[data-brand="nbc"] .type-headline-s { font-size: 1.3125rem; line-height: 1.75rem; }
+:root[data-brand="nbc"] .type-title-l { font-size: 1.1875rem; line-height: 1.625rem; letter-spacing: -0.015em; font-weight: 700; }
+
+/* Gentle colour cross-fade while the brand switches (added by setBrand, skipped for reduced motion). */
+:root.brand-fade, :root.brand-fade *, :root.brand-fade *::before, :root.brand-fade *::after {
+  transition: background-color 300ms ease, color 300ms ease, border-color 300ms ease, fill 300ms ease, stroke 300ms ease !important;
+}
 
 /* State layer: hover/pressed overlay in the content colour, per M3. */
 @utility state-layer {

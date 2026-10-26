@@ -15,7 +15,12 @@ import {
   SCAN_DAYS_MAX,
   SCAN_DAYS_MIN,
   renderTemplate,
+  MESSAGE_GROUPS,
+  MESSAGE_TYPES,
+  messageTemplate,
   type GroupInfo,
+  type MessageKey,
+  type Snippet,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { useCollection } from "../lib/data";
@@ -27,8 +32,9 @@ import { AiPolicyPicker } from "../components/AiPolicy";
 import { FleetCard } from "../components/FleetCard";
 import { NotifyCard } from "../components/NotifyCard";
 import { GoogleContactsCard } from "../components/GoogleContactsCard";
-import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, cx } from "../components/ui";
-import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield } from "../components/icons";
+import { AppearanceCard } from "../components/AppearanceCard";
+import { Bubble, Button, Field, Info, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "../components/ui";
+import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd } from "../components/icons";
 
 const TABS = [
   { id: "whatsapp", label: "WhatsApp & app", icon: IconPhone },
@@ -91,7 +97,16 @@ function Section({ title, icon: I, description, children, aside }: { title: stri
   );
 }
 
-function TemplateEditor({ value, onSave, fallback, extraVars, disabled }: { value: string; onSave: (v: string) => Promise<void>; fallback: string; extraVars?: Record<string, string | number | null>; disabled?: boolean }) {
+/** Variables only some messages have, on top of TEMPLATE_VARIABLES. */
+const EXTRA_VARIABLES = [
+  { key: "shows", label: "Every active show" },
+  { key: "lastShow", label: "Last show they did" },
+  { key: "lastDate", label: "Date of their last show" },
+  { key: "opens", label: "When requests open" },
+];
+const ALL_VARIABLES: { key: string; label: string }[] = [...TEMPLATE_VARIABLES, ...EXTRA_VARIABLES];
+
+function TemplateEditor({ value, onSave, fallback, extraVars, disabled, keys, savedLabel = "Template saved" }: { value: string; onSave: (v: string) => Promise<void>; fallback: string; extraVars?: Record<string, string | number | null | undefined>; disabled?: boolean; keys?: readonly string[]; savedLabel?: string }) {
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -116,7 +131,7 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled }: { valu
       <div className="flex flex-col gap-3">
         <TextArea ref={ref} value={draft} onChange={(e) => setDraft(e.target.value)} rows={5} spellCheck={false} className="min-h-0 font-mono text-sm" />
         <div className="flex flex-wrap gap-1.5">
-          {TEMPLATE_VARIABLES.map((v) => (
+          {(keys ? ALL_VARIABLES.filter((v) => keys.includes(v.key)) : TEMPLATE_VARIABLES).map((v) => (
             <button key={v.key} onClick={() => insert(v.key)} className="state-layer pressable h-7 rounded-sm bg-surface-high px-2.5 font-mono text-xs text-on-surface-variant" title={`Insert ${v.label}`}>
               {`{{${v.key}}}`}
             </button>
@@ -140,7 +155,7 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled }: { valu
               setSaving(true);
               await onSave(draft);
               setSaving(false);
-              toast.success("Template saved");
+              toast.success(savedLabel);
             }}
           >
             Save
@@ -162,7 +177,9 @@ export function SettingsPage() {
   const [withMinutes, setWithMinutes] = useState(true);
 
   const tab = useSettingsTab();
-  const [msg, setMsg] = useState<"ack" | "confirm" | "cancel" | "reject">("ack");
+  const { search } = useLocation();
+  const [msg, setMsg] = useState<MessageChoice>(() => (new URLSearchParams(search).get("msg") as MessageChoice | null) ?? "ack");
+  const extra = MESSAGE_TYPES.find((m) => m.key === msg);
 
   return (
     <div className="w-full">
@@ -176,21 +193,13 @@ export function SettingsPage() {
             <FleetCard />
             <NotifyCard />
             <GoogleContactsCard />
+            <AppearanceCard />
             <InstallCard />
           </>
         )}
         {tab === "messages" && (
           <>
-            <Segmented
-              value={msg}
-              onChange={setMsg}
-              options={[
-                { value: "ack", label: "Acknowledge" },
-                { value: "confirm", label: "Confirmation" },
-                { value: "cancel", label: "Cancelled spot" },
-                { value: "reject", label: "Regret" },
-              ]}
-            />
+            <MessagePicker value={msg} onChange={setMsg} />
 
         {msg === "ack" && (
 <Section
@@ -236,6 +245,9 @@ export function SettingsPage() {
           <TemplateEditor value={settings.cancelSpot.template} fallback={DEFAULT_CANCEL_SPOT_TEMPLATE} onSave={(t) => saveSettings({ cancelSpot: { template: t } })} />
         </Section>
         )}
+
+        {extra && <MessageSection key={extra.key} type={extra.key} />}
+        {msg === "snippets" && <SnippetsSection />}
 
         {msg === "reject" && (
 <Section
@@ -320,13 +332,7 @@ function RulesSection() {
   const r = settings.rules;
   const setWindow = (patch: Partial<typeof r.window>) => saveSettings({ rules: { ...r, window: { ...r.window, ...patch } } });
   const daySelect = (value: number, onChange: (d: number) => void) => (
-    <select value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-12 rounded-sm border border-outline bg-transparent px-3 type-body-l outline-none focus:border-primary">
-      {DAYS.map((d) => (
-        <option key={d} value={d}>
-          {DAY_NAMES[d]}
-        </option>
-      ))}
-    </select>
+    <Select value={String(value)} onChange={(v) => onChange(Number(v))} options={DAYS.map((d) => ({ value: String(d), label: DAY_NAMES[d] }))} wrapperClassName="w-40 shrink-0" />
   );
   return (
     <Section title="Request rules" icon={IconShield} description="Requests that break a rule go to the Held tab instead of Asked. Nothing is sent to them, and you can still allow any of them. Hosts, ignored and banned comics are set per person in Comics.">
@@ -340,13 +346,13 @@ function RulesSection() {
               <Field label="Opens">
                 <div className="flex gap-2">
                   {daySelect(r.window.startDay, (d) => setWindow({ startDay: d as never }))}
-                  <TextInput type="time" value={r.window.startTime} onChange={(e) => setWindow({ startTime: e.target.value })} />
+                  <TimePicker value={r.window.startTime} onChange={(v) => setWindow({ startTime: v })} wrapperClassName="min-w-0 flex-1" label="Opens at" />
                 </div>
               </Field>
               <Field label="Closes">
                 <div className="flex gap-2">
                   {daySelect(r.window.endDay, (d) => setWindow({ endDay: d as never }))}
-                  <TextInput type="time" value={r.window.endTime} onChange={(e) => setWindow({ endTime: e.target.value })} />
+                  <TimePicker value={r.window.endTime} onChange={(v) => setWindow({ endTime: v })} wrapperClassName="min-w-0 flex-1" label="Closes at" />
                 </div>
               </Field>
             </div>
@@ -355,6 +361,9 @@ function RulesSection() {
         <SettingRow label="Skip last week's comics" info={<>Hold requests from anyone who performed last week, so newer faces get a shot.</>}>
             <Switch checked={r.skipLastWeek} onChange={(v) => saveSettings({ rules: { ...r, skipLastWeek: v } })} label="Skip last week's comics" />
           </SettingRow>
+        <SettingRow label="Tell held comics why" info={<>Off by default. When on, someone held by the request window or last week's rule gets one short reply saying why (edit the words in Messages → Held requests). Same safety as auto-acknowledge: clear asks only, fresh messages only, never businesses. Banned, ignored and hosts never get a reply.</>}>
+          <Switch checked={Boolean(settings.heldReplies?.enabled)} onChange={(v) => saveSettings({ heldReplies: { enabled: v } })} label="Tell held comics why" />
+        </SettingRow>
         <SettingRow label="Scan past messages: days to look back" info={<>The starting choice when you run Requests → Scan past messages. Spot Solutions only reads older DMs when you run that scan yourself.</>}>
           <Stepper value={clampScanDays(settings.scanDays)} onChange={(v) => saveSettings({ scanDays: v })} min={SCAN_DAYS_MIN} max={SCAN_DAYS_MAX} suffix="days" />
         </SettingRow>
@@ -405,7 +414,7 @@ function AfterShowSection() {
           {m.enabled && (
             <>
               <SettingRow label="Ask from">
-                <TextInput type="time" value={m.time} onChange={(e) => saveSettings({ micCheck: { ...m, time: e.target.value } })} className="h-10 w-36" />
+                <TimePicker value={m.time} onChange={(v) => saveSettings({ micCheck: { ...m, time: v } })} className="h-10" wrapperClassName="w-36" label="Ask from" />
               </SettingRow>
               <SettingRow label="Also ask on WhatsApp" info="In your “Message yourself” chat. Reply yes or no there.">
                 <Switch checked={m.whatsapp} onChange={(v) => saveSettings({ micCheck: { ...m, whatsapp: v } })} label="Ask on WhatsApp" />
@@ -415,5 +424,149 @@ function AfterShowSection() {
         </div>
       </div>
     </Section>
+  );
+}
+
+type MessageChoice = "ack" | "confirm" | "cancel" | "reject" | MessageKey | "snippets";
+
+const LINEUP_MESSAGES: { value: MessageChoice; label: string }[] = [
+  { value: "ack", label: "Acknowledge" },
+  { value: "confirm", label: "Confirmation" },
+  { value: "cancel", label: "Cancelled spot" },
+  { value: "reject", label: "Regret" },
+];
+
+/** Every message, grouped, as chips that wrap on phones. */
+function MessagePicker({ value, onChange }: { value: MessageChoice; onChange: (v: MessageChoice) => void }) {
+  const groups = [
+    { id: "lineup", label: "Lineup", items: LINEUP_MESSAGES },
+    ...MESSAGE_GROUPS.map((g) => ({ id: g.id, label: g.label, items: MESSAGE_TYPES.filter((m) => m.group === g.id).map((m) => ({ value: m.key as MessageChoice, label: m.label })) })),
+    { id: "mine", label: "Your templates", items: [{ value: "snippets" as MessageChoice, label: "Saved replies" }] },
+  ];
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-surface-low p-4 sm:p-5" role="radiogroup" aria-label="Message to edit">
+      {groups.map((g) => (
+        <div key={g.id} className="flex flex-col gap-1.5 sm:flex-row sm:items-baseline sm:gap-4">
+          <span className="w-36 flex-none type-label-m text-on-surface-variant">{g.label}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {g.items.map((it) => {
+              const on = it.value === value;
+              return (
+                <button
+                  key={it.value}
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => onChange(it.value)}
+                  className={cx("state-layer pressable h-8 rounded-sm px-3 type-label-l", on ? "bg-secondary-container text-on-secondary-container" : "border border-outline-variant text-on-surface-variant")}
+                >
+                  {it.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MessageSection({ type }: { type: MessageKey }) {
+  const { settings, saveSettings } = useApp();
+  const m = MESSAGE_TYPES.find((x) => x.key === type)!;
+  const held = m.group === "held";
+  const off = held && !settings.heldReplies?.enabled;
+  return (
+    <Section
+      title={m.label}
+      icon={IconChat}
+      description={
+        <>
+          {m.when}
+          {held && " Banned, ignored and host comics never get a reply."}
+          {m.group === "replies" && " Drafted under Updates → Needs a reply; nothing goes out until you send it, unless “Send without asking me” is on."}
+        </>
+      }
+      aside={held ? <Switch checked={!off} onChange={(v) => saveSettings({ heldReplies: { enabled: v } })} label="Tell held comics why" /> : undefined}
+    >
+      <TemplateEditor
+        value={messageTemplate(settings, type)}
+        fallback={m.default}
+        keys={["name", ...m.vars]}
+        extraVars={m.sample}
+        disabled={off}
+        onSave={(t) => saveSettings({ messages: { ...settings.messages, [type]: t } })}
+      />
+    </Section>
+  );
+}
+
+const newId = () => Math.random().toString(36).slice(2, 10);
+
+/** Saved replies: drop one into any reply box with the Templates button. */
+function SnippetsSection() {
+  const { settings, saveSettings } = useApp();
+  const list = settings.snippets ?? [];
+  const [open, setOpen] = useState<string | null>(list[0]?.id ?? null);
+  const current = list.find((s) => s.id === open) ?? null;
+  const save = (next: Snippet[]) => saveSettings({ snippets: next });
+  const add = async () => {
+    const s: Snippet = { id: newId(), title: "New template", body: "Hey {{name}}! " };
+    await save([...list, s]);
+    setOpen(s.id);
+  };
+  return (
+    <Section
+      title="Saved replies"
+      icon={IconTemplate}
+      description="Your own templates for things you type again and again: directions, a rules reminder, a waitlist note. Tap Templates on any reply, offer or new-face card to drop one in, with {{name}} filled in for that comic."
+      aside={
+        <Button size="sm" variant="tonal" icon={IconAdd} onClick={add}>
+          New
+        </Button>
+      }
+    >
+      {!list.length ? (
+        <p className="type-body-m text-on-surface-variant">No saved replies yet. Tap New to write your first one.</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap gap-1.5">
+            {list.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setOpen(s.id)}
+                aria-pressed={s.id === open}
+                className={cx("state-layer pressable h-8 max-w-56 truncate rounded-sm px-3 type-label-l", s.id === open ? "bg-secondary-container text-on-secondary-container" : "border border-outline-variant text-on-surface-variant")}
+              >
+                {s.title || "Untitled"}
+              </button>
+            ))}
+          </div>
+          {current && <SnippetEditor key={current.id} snippet={current} onSave={(patch) => save(list.map((s) => (s.id === current.id ? { ...s, ...patch } : s)))} onDelete={async () => {
+            await save(list.filter((s) => s.id !== current.id));
+            setOpen(list.find((s) => s.id !== current.id)?.id ?? null);
+            toast.success("Template deleted");
+          }} />}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function SnippetEditor({ snippet, onSave, onDelete }: { snippet: Snippet; onSave: (patch: Partial<Snippet>) => Promise<void>; onDelete: () => Promise<void> }) {
+  const [title, setTitle] = useState(snippet.title);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <Field label="Name">
+          <TextInput value={title} maxLength={60} onChange={(e) => setTitle(e.target.value)} onBlur={() => title !== snippet.title && onSave({ title: title.trim() || "Untitled" })} />
+          </Field>
+        </div>
+        <Button variant="text" icon={IconTrash} onClick={onDelete} aria-label={`Delete ${snippet.title}`}>
+          Delete
+        </Button>
+      </div>
+      <TemplateEditor value={snippet.body} fallback={snippet.body} keys={["name", "show", "venue", "day", "date", "time", "mapsLink"]} onSave={(body) => onSave({ body, title: title.trim() || "Untitled" })} />
+    </div>
   );
 }

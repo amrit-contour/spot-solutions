@@ -63,7 +63,7 @@ export function AccountMenu({ align = "right" }: { align?: "left" | "right" }) {
             >
               <IconServer className="icon size-5 text-primary" />
               <span className="flex-1">Server</span>
-              {servers && servers.length > 0 && <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : "bg-[#3fb950]")} />}
+              {servers && servers.length > 0 && <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : "bg-ok")} />}
             </button>
           )}
           {admin && (

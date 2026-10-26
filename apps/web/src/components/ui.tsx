@@ -187,23 +187,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   return <textarea ref={ref} className={cx(fieldBase, "min-h-28 resize-y py-3 leading-6", className)} {...p} />;
 });
 
-export function Select({ value, onChange, options, className, placeholder }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; className?: string; placeholder?: string }) {
-  return (
-    <div className="relative">
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={cx(fieldBase, "h-12 appearance-none pr-10", className)}>
-        {placeholder && <option value="">{placeholder}</option>}
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <svg className="pointer-events-none absolute top-1/2 right-3 size-5 -translate-y-1/2 text-on-surface-variant" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-        <path d="M7 10l5 5 5-5z" />
-      </svg>
-    </div>
-  );
-}
+export { Select, TimePicker } from "./Pickers";
 
 /** M3 segmented button with a sliding selection pill. */
 export function Segmented<T extends string | number>({ value, onChange, options, size = "md", full }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; icon?: Icon }[]; size?: "sm" | "md"; full?: boolean }) {

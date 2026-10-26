@@ -31,7 +31,7 @@ export function useConnection() {
 }
 
 function StatusDot({ tone }: { tone: "ok" | "wait" | "error" | "idle" }) {
-  const c = { ok: "bg-[#3fb950]", wait: "bg-primary", error: "bg-error", idle: "bg-outline" }[tone];
+  const c = { ok: "bg-ok", wait: "bg-primary", error: "bg-error", idle: "bg-outline" }[tone];
   return (
     <span className="relative inline-flex size-2.5">
       {tone !== "idle" && tone !== "error" && <span className={cx("pulse-ring absolute inset-0 rounded-full", c)} />}
@@ -47,8 +47,8 @@ function NavItem({ to, label, icon: I, rail }: { to: string; label: string; icon
     <NavLink to={to} end={to === "/"} className="group flex flex-1 flex-col items-center gap-1 outline-none sm:flex-none">
       {({ isActive }) => (
         <>
-          <span className={cx("state-layer relative grid h-8 w-14 place-items-center rounded-full transition-colors duration-200", isActive ? "text-on-secondary-container" : "text-on-surface-variant", rail && "h-8")}>
-            {isActive && <motion.span layoutId={rail ? "nav-rail" : "nav-bar"} className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.45, bounce: 0.2 }} />}
+          <span className={cx("state-layer relative grid h-8 w-14 place-items-center rounded-full transition-colors duration-200", isActive ? "text-on-nav-active" : "text-on-surface-variant", rail && "h-8")}>
+            {isActive && <motion.span layoutId={rail ? "nav-rail" : "nav-bar"} className="absolute inset-0 rounded-full bg-nav-active" transition={{ type: "spring", duration: 0.45, bounce: 0.2 }} />}
             <I className="icon relative size-6" />
             {badge > 0 && (
               <span className="absolute top-0 right-2.5 grid min-w-4 place-items-center rounded-full bg-error px-1 type-label-s leading-4 text-on-error ring-2 ring-surface sm:right-2.5">
