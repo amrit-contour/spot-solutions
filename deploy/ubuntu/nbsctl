@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# Nothing BOT Server tasks on Ubuntu/Debian, run as root by systemd: spot-task@update, spot-task@local-on, spot-task@local-off,
-# spot-task@move-data and spot-task@move-cleanup (move the data to another disk; delete the old copy after a verified move).
+# Nothing BOT Server tasks on Ubuntu/Debian, run as root by systemd: nothing-bot-server-task@update, nothing-bot-server-task@local-on, nothing-bot-server-task@local-off,
+# nothing-bot-server-task@move-data and nothing-bot-server-task@move-cleanup (move the data to another disk; delete the old copy after a verified move).
 #
-# The server console runs as the unprivileged "spot" user. Its sudoers rule lets it start exactly these five units and
-# nothing else. This script lives in /usr/local/sbin (root-owned) and never runs anything from the spot-writable
+# The server console runs as the unprivileged "nbs" user. Its sudoers rule lets it start exactly these five units and
+# nothing else. This script lives in /usr/local/sbin (root-owned) and never runs anything from the nbs-writable
 # app folder: it downloads and verifies the release itself, unpacks it in a root-owned staging folder, then copies the
-# files into place. Dependencies are installed as "spot". Progress goes to $DATA_DIR/update.json for the console.
-# The two move tasks run /usr/local/lib/spot-solutions/move.mjs, a root-owned copy installed from the verified release (never
-# the spot-writable app folder). Its only input from "spot" is a folder path in task.json, which it validates again; what it
-# may delete later is recorded in /etc/spot-solutions/move.json, which only root writes.
+# files into place. Dependencies are installed as "nbs". Progress goes to $DATA_DIR/update.json for the console.
+# The two move tasks run /usr/local/lib/nothing-bot-server/move.mjs, a root-owned copy installed from the verified release (never
+# the nbs-writable app folder). Its only input from "nbs" is a folder path in task.json, which it validates again; what it
+# may delete later is recorded in /etc/nothing-bot-server/move.json, which only root writes.
 #
-# Test hooks (not used in production): SPOT_TASK_NO_SYSTEMD=1 skips systemctl/chown/sudo, SPOT_DIST_URL, SPOT_APP_DIR,
-# SPOT_DATA_DIR, SPOT_SKIP_DEPS=1, SPOT_SKIP_MODEL=1.
+# Test hooks (not used in production): NBS_TASK_NO_SYSTEMD=1 skips systemctl/chown/sudo, NBS_DIST_URL, NBS_APP_DIR,
+# NBS_DATA_DIR, NBS_SKIP_DEPS=1, NBS_SKIP_MODEL=1.
 set -uo pipefail
 
 TASK="${1:-}"
-case "$TASK" in update|local-on|local-off|move-data|move-cleanup) ;; *) echo "usage: spot-task update|local-on|local-off|move-data|move-cleanup" >&2; exit 2 ;; esac
+case "$TASK" in update|local-on|local-off|move-data|move-cleanup) ;; *) echo "usage: nbsctl update|local-on|local-off|move-data|move-cleanup" >&2; exit 2 ;; esac
 
-APP_DIR="${SPOT_APP_DIR:-/opt/spot-solutions}"
-STATE_DIR="${SPOT_STATE_DIR:-/etc/spot-solutions}"
+APP_DIR="${NBS_APP_DIR:-/opt/nothing-bot-server}"
+STATE_DIR="${NBS_STATE_DIR:-/etc/nothing-bot-server}"
 # The data may have been moved to another disk (console: Storage, Move data): the folder is recorded here, root-owned.
-DATA_DIR="${SPOT_DATA_DIR:-$(head -n1 "$STATE_DIR/data-dir" 2>/dev/null || true)}"
-[[ -n "$DATA_DIR" ]] || DATA_DIR=/var/lib/spot-solutions
-HELPER_DIR="${SPOT_HELPER_DIR:-/usr/local/lib/spot-solutions}"
-SVC_USER="${SPOT_SVC_USER:-spot}"
-DIST="${SPOT_DIST_URL:-https://spot-solutions.web.app}"
+DATA_DIR="${NBS_DATA_DIR:-$(head -n1 "$STATE_DIR/data-dir" 2>/dev/null || true)}"
+[[ -n "$DATA_DIR" ]] || DATA_DIR=/var/lib/nothing-bot-server
+HELPER_DIR="${NBS_HELPER_DIR:-/usr/local/lib/nothing-bot-server}"
+SVC_USER="${NBS_SVC_USER:-nbs}"
+DIST="${NBS_DIST_URL:-https://nothingbotcurating.web.app}"
 ENV_FILE="$APP_DIR/apps/worker/.env"
 PROGRESS="$DATA_DIR/update.json"
-NO_SYSTEMD="${SPOT_TASK_NO_SYSTEMD:-0}"
+NO_SYSTEMD="${NBS_TASK_NO_SYSTEMD:-0}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 NODE="$(command -v node || true)"
@@ -44,7 +44,7 @@ progress() {
   mv -f "$PROGRESS.tmp" "$PROGRESS"
   [[ "$NO_SYSTEMD" == 1 ]] || chown "$SVC_USER:$SVC_USER" "$PROGRESS" 2>/dev/null || true
 }
-fail() { echo "spot-task: $*" >&2; progress error "Failed" "$*"; exit 1; }
+fail() { echo "nbsctl: $*" >&2; progress error "Failed" "$*"; exit 1; }
 sysctl_() { [[ "$NO_SYSTEMD" == 1 ]] && { echo "(skip) systemctl $*"; return 0; }; systemctl "$@"; }
 asuser() { if [[ "$NO_SYSTEMD" == 1 ]]; then "$@"; else sudo -u "$SVC_USER" -H "$@"; fi; }
 sha256_of() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
@@ -55,18 +55,18 @@ envset() { # envset KEY VALUE: keeps the file's owner and 600 mode
   cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
   [[ "$NO_SYSTEMD" == 1 ]] || { chown "$SVC_USER:$SVC_USER" "$ENV_FILE"; chmod 600 "$ENV_FILE"; }
 }
-no_local() { [[ "$(envget SPOT_NO_LOCAL_MODEL)" =~ ^(1|true|yes)$ ]]; }
-model_name() { local m; m="$(envget SPOT_LOCAL_MODEL)"; [[ "$m" =~ ^[A-Za-z0-9._:/-]{1,100}$ ]] || m="${1:-gemma3:4b}"; echo "$m"; }
+no_local() { [[ "$(envget NBS_NO_LOCAL_MODEL)" =~ ^(1|true|yes)$ ]]; }
+model_name() { local m; m="$(envget NBS_LOCAL_MODEL)"; [[ "$m" =~ ^[A-Za-z0-9._:/-]{1,100}$ ]] || m="${1:-gemma3:4b}"; echo "$m"; }
 
-if command -v flock >/dev/null && [[ "$NO_SYSTEMD" != 1 ]]; then exec 9>/run/lock/spot-task.lock; flock -n 9 || fail "Another update is already running."; fi
+if command -v flock >/dev/null && [[ "$NO_SYSTEMD" != 1 ]]; then exec 9>/run/lock/nbsctl.lock; flock -n 9 || fail "Another update is already running."; fi
 [[ -n "$NODE" ]] || fail "Node.js isn't installed."
 progress running "Starting"
 
 # The console may start these units and nothing else (also refreshed on every update, so older installs gain new tasks).
 write_sudoers() {
   [[ "$NO_SYSTEMD" == 1 ]] && return 0
-  local f=/etc/sudoers.d/spot-console
-  printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl restart spot-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl start --no-block spot-task@update.service, /usr/bin/systemctl start --no-block spot-task@local-on.service, /usr/bin/systemctl start --no-block spot-task@local-off.service, /usr/bin/systemctl start --no-block spot-task@move-data.service, /usr/bin/systemctl start --no-block spot-task@move-cleanup.service\n' "$SVC_USER" > "$f.new"
+  local f=/etc/sudoers.d/nothing-bot-server-console
+  printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service\n' "$SVC_USER" > "$f.new"
   chmod 440 "$f.new"
   if visudo -cf "$f.new" >/dev/null 2>&1; then mv -f "$f.new" "$f"; else rm -f "$f.new"; fi
 }
@@ -83,7 +83,7 @@ install_helper() {
 
 wait_ollama() { for _ in $(seq 1 60); do curl -fs --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null && return 0; sleep 1; done; return 1; }
 pull_model() { # pull_model <name>
-  [[ "${SPOT_SKIP_MODEL:-0}" == 1 ]] && return 0
+  [[ "${NBS_SKIP_MODEL:-0}" == 1 ]] && return 0
   command -v ollama >/dev/null || return 0
   wait_ollama || { echo "ollama isn't answering; skipping the model pull" >&2; return 0; }
   progress running "Downloading the local model ($1)"
@@ -94,16 +94,16 @@ pull_model() { # pull_model <name>
 if [[ "$TASK" == move-data || "$TASK" == move-cleanup ]]; then
   [[ -f "$HELPER_DIR/move.mjs" && -f "$HELPER_DIR/storage.mjs" ]] || fail "The move helper isn't installed. Update Nothing BOT Server (or run the install command) first."
   install -d -m 0755 "$STATE_DIR" 2>/dev/null || true
-  SPOT_STATE_DIR="$STATE_DIR" "$NODE" "$HELPER_DIR/move.mjs" "$TASK"
+  NBS_STATE_DIR="$STATE_DIR" "$NODE" "$HELPER_DIR/move.mjs" "$TASK"
   exit $?
 fi
 
 # ---------------------------------------------------------------- local-on / local-off
 if [[ "$TASK" == local-off ]]; then
   progress running "Turning the local model off"
-  envset SPOT_NO_LOCAL_MODEL 1
+  envset NBS_NO_LOCAL_MODEL 1
   sysctl_ disable --now ollama >/dev/null 2>&1 || true
-  sysctl_ restart spot-worker || true
+  sysctl_ restart nothing-bot-server-worker || true
   progress done "Local model off"
   exit 0
 fi
@@ -115,21 +115,21 @@ if [[ "$TASK" == local-on ]]; then
   fi
   if [[ "$NO_SYSTEMD" != 1 ]]; then
     mkdir -p /etc/systemd/system/ollama.service.d
-    printf '[Service]\nEnvironment=OLLAMA_KEEP_ALIVE=24h\nEnvironment=OLLAMA_NUM_PARALLEL=1\n' > /etc/systemd/system/ollama.service.d/spot.conf
+    printf '[Service]\nEnvironment=OLLAMA_KEEP_ALIVE=24h\nEnvironment=OLLAMA_NUM_PARALLEL=1\n' > /etc/systemd/system/ollama.service.d/nothing-bot-server.conf
     systemctl daemon-reload
   fi
   sysctl_ enable --now ollama || fail "Couldn't start Ollama."
   pull_model "$(model_name)"
-  envset SPOT_NO_LOCAL_MODEL 0
+  envset NBS_NO_LOCAL_MODEL 0
   progress running "Restarting the worker"
-  sysctl_ restart spot-worker || true
+  sysctl_ restart nothing-bot-server-worker || true
   progress done "Local model on"
   exit 0
 fi
 
 # ---------------------------------------------------------------- update
 progress running "Checking the latest version"
-curl -fsSL --max-time 30 "$DIST/dl/version.json?t=$(date +%s)" -o "$TMP/version.json" || fail "Couldn't reach Nothing BOT Curating to check for an update."
+curl -fsSL --max-time 30 "$DIST/dl/nothing-bot-server.json?t=$(date +%s)" -o "$TMP/version.json" || fail "Couldn't reach the update site (nothingbotcurating.web.app)."
 # Validated before anything is used: only a plain version, a sha256 and a model name get through.
 eval "$("$NODE" -e '
   const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
@@ -138,12 +138,12 @@ eval "$("$NODE" -e '
   console.log(`SHA=${ok(j.sha256, /^[0-9a-f]{64}$/)}`);
   console.log(`LMODEL=${ok(j.model, /^[A-Za-z0-9._:\/-]{1,100}$/)}`);
 ' "$TMP/version.json")"
-[[ -n "${LATEST:-}" && -n "${SHA:-}" ]] || fail "The version file from Nothing BOT Curating isn't valid."
+[[ -n "${LATEST:-}" && -n "${SHA:-}" ]] || fail "The version file from the update site isn't valid."
 TO="$LATEST"
 if [[ "$LATEST" == "$FROM" ]]; then progress done "Already up to date"; exit 0; fi
 
 progress running "Downloading $LATEST"
-curl -fSL --max-time 1800 "$DIST/dl/spot-solutions.tar.gz" -o "$TMP/app.tgz" || fail "The download failed."
+curl -fSL --max-time 1800 "$DIST/dl/nothing-bot-server.tar.gz" -o "$TMP/app.tgz" || fail "The download failed."
 progress running "Verifying the download"
 [[ "$(sha256_of "$TMP/app.tgz")" == "$SHA" ]] || fail "The download didn't match its checksum, so it was not installed."
 tar -tzf "$TMP/app.tgz" > "$TMP/list" 2>/dev/null || fail "The download isn't a valid archive."
@@ -154,28 +154,28 @@ tar -xzf "$TMP/app.tgz" -C "$TMP/stage" --no-same-owner --no-same-permissions ||
 
 progress running "Installing files"
 OLD_LOCK="$(sha256_of "$APP_DIR/pnpm-lock.yaml" 2>/dev/null || echo none)"
-install_helper "$TMP/stage/apps/worker/console"   # root-owned, from the verified release; before the stage is handed to spot
+install_helper "$TMP/stage/apps/worker/console"   # root-owned, from the verified release; before the stage is handed to nbs
 write_sudoers
 [[ "$NO_SYSTEMD" == 1 ]] || chown -R "$SVC_USER:$SVC_USER" "$TMP/stage"
 cp -a "$TMP/stage/." "$APP_DIR/" || fail "Copying the new files failed."
 # This script updates itself too (root-owned, from the verified release), effective next time.
-if [[ -f "$TMP/stage/deploy/ubuntu/spot-task" && "$NO_SYSTEMD" != 1 ]]; then
-  install -m 0755 -o root -g root "$TMP/stage/deploy/ubuntu/spot-task" /usr/local/sbin/spot-task.new && mv -f /usr/local/sbin/spot-task.new /usr/local/sbin/spot-task
+if [[ -f "$TMP/stage/deploy/ubuntu/nbsctl" && "$NO_SYSTEMD" != 1 ]]; then
+  install -m 0755 -o root -g root "$TMP/stage/deploy/ubuntu/nbsctl" /usr/local/sbin/nbsctl.new && mv -f /usr/local/sbin/nbsctl.new /usr/local/sbin/nbsctl
 fi
 NEW_LOCK="$(sha256_of "$APP_DIR/pnpm-lock.yaml" 2>/dev/null || echo none)"
-if [[ "${SPOT_SKIP_DEPS:-0}" != 1 ]] && [[ "$OLD_LOCK" != "$NEW_LOCK" || ! -d "$APP_DIR/apps/worker/node_modules" ]]; then
+if [[ "${NBS_SKIP_DEPS:-0}" != 1 ]] && [[ "$OLD_LOCK" != "$NEW_LOCK" || ! -d "$APP_DIR/apps/worker/node_modules" ]]; then
   progress running "Installing packages"
   PNPM="$("$NODE" -e 'try{const p=require(process.argv[1]).packageManager;console.log(/^pnpm@[0-9.]+$/.test(p)?p:"pnpm@9.15.4")}catch{console.log("pnpm@9.15.4")}' "$APP_DIR/package.json")"
   asuser bash -c "cd '$APP_DIR' && npx -y '$PNPM' install --frozen-lockfile --filter '@spot/worker...'" || fail "Installing packages failed. The old version may still run; try again."
 fi
 
 progress running "Restarting the worker and console"
-sysctl_ restart spot-worker || true
+sysctl_ restart nothing-bot-server-worker || true
 if ! no_local; then
   # The worker is already back on the new code; now the local model (a no-op when it's current).
   pull_model "$(model_name "${LMODEL:-gemma3:4b}")"
 fi
 progress done "Updated to $LATEST"
 # The console goes last: it restarts itself, and the page reloads on the new version.
-sysctl_ restart spot-console || true
+sysctl_ restart nothing-bot-server-console || true
 exit 0

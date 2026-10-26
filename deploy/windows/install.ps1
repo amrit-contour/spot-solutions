@@ -1,23 +1,25 @@
 <#
-  Nothing BOT worker: native install for Windows 10/11.
+  Nothing BOT Server: native install for Windows 10/11.
 
-  Installs its own Node.js (C:\SpotSolutions\node) and Ollama (via winget), pulls Gemma, clones the repo, and registers a Scheduled Task that starts the worker at boot
+  Installs its own Node.js (C:\NothingBotServer\node) and Ollama (via winget), pulls Gemma, clones the repo, and registers a Scheduled Task that starts the worker at boot
   (before anyone logs in) and restarts it if it crashes. Also stops the laptop sleeping on power.
 
   Easiest: double-click "Install Nothing BOT Server.cmd". Or, in PowerShell as Administrator:
 
     Set-ExecutionPolicy -Scope Process Bypass -Force
-    irm https://spot-solutions.web.app/install.ps1 | iex
+    irm https://nothingbotcurating.web.app/install.ps1 | iex
 
   Re-running is safe: it updates the code and restarts the task. After this first install the server updates itself:
-  the Server Console has an Update now button and installs updates automatically (scheduled task SpotSolutionsUpdate).
+  the Server Console has an Update now button and installs updates automatically (scheduled task NothingBotServerUpdate).
 
   Local model or Gemini only? You choose in the Server Console (AI models) and can switch any time. The installer picks
   for you: a local model on PCs with about 8 GB of memory or more, Gemini only on smaller ones. To force it, set
-  $env:SPOT_NO_LOCAL_MODEL = "1" (or "0") first, or use "Install Nothing BOT Server (Gemini only).cmd".
+  $env:NBS_NO_LOCAL_MODEL = "1" (or "0") first, or use "Install Nothing BOT Server (Gemini only).cmd".
   Re-running without it keeps whatever the previous install chose.
 #>
 $ErrorActionPreference = "Stop"
+# Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
+Get-ChildItem Env: | Where-Object { $_.Name -like 'SPOT_*' } | ForEach-Object { $n = 'NBS_' + $_.Name.Substring(5); if (-not (Test-Path "Env:$n")) { Set-Item "Env:$n" $_.Value } }
 $ProgressPreference = "SilentlyContinue" # Invoke-WebRequest is painfully slow with the progress bar
 # Run through `irm | iex`, PowerShell blames every error on "line 1". Show the real statement instead.
 trap {
@@ -26,8 +28,9 @@ trap {
   break
 }
 
-$SrcUrl    = if ($env:SPOT_SRC_URL) { $env:SPOT_SRC_URL } else { "https://spot-solutions.web.app/dl/spot-solutions.tar.gz" }
-$Root      = "C:\SpotSolutions"
+$BaseUrl   = if ($env:NBS_BASE_URL) { $env:NBS_BASE_URL } else { "https://nothingbotcurating.web.app" }
+$SrcUrl    = if ($env:NBS_SRC_URL) { $env:NBS_SRC_URL } else { "$BaseUrl/dl/nothing-bot-server.tar.gz" }
+$Root      = "C:\NothingBotServer"
 $AppDir    = "$Root\app"
 $DataDir   = "$Root\data"
 $ModelsDir = "$Root\ollama"   # shared by the tray app and the boot task, so Gemma downloads once
@@ -40,13 +43,13 @@ if ($DataDir -ne "$Root\data") {
   Write-Host "Keeping the data in $DataDir (chosen in the Server Console)." -ForegroundColor Cyan
 }
 $ChromeDir = "$Root\chrome"   # Chrome for WhatsApp Web, readable by the SYSTEM account
-$TaskName  = "SpotSolutionsWorker"
+$TaskName  = "NothingBotServerWorker"
 $Model     = if ($env:GEMMA_MODEL) { $env:GEMMA_MODEL } else { "gemma3:4b" }
 
-# Gemini-only? An explicit SPOT_NO_LOCAL_MODEL wins; otherwise keep what an earlier install wrote to .env.
+# Gemini-only? An explicit NBS_NO_LOCAL_MODEL wins; otherwise keep what an earlier install wrote to .env.
 $NoLocal = $false
-if ($env:SPOT_NO_LOCAL_MODEL) { $NoLocal = ($env:SPOT_NO_LOCAL_MODEL -match '^(1|true|yes)$') }
-elseif (Test-Path "$AppDir\apps\worker\.env") { $NoLocal = [bool](Select-String -Path "$AppDir\apps\worker\.env" -Pattern '^SPOT_NO_LOCAL_MODEL=1' -Quiet) }
+if ($env:NBS_NO_LOCAL_MODEL) { $NoLocal = ($env:NBS_NO_LOCAL_MODEL -match '^(1|true|yes)$') }
+elseif (Test-Path "$AppDir\apps\worker\.env") { $NoLocal = [bool](Select-String -Path "$AppDir\apps\worker\.env" -Pattern '^NBS_NO_LOCAL_MODEL=1' -Quiet) }
 else {
   # A fresh install: a local model needs about 8 GB. Switchable later in the Server Console.
   $ram = (Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).TotalPhysicalMemory
@@ -82,7 +85,7 @@ function Winget-Install($id) {
 $OllamaCandidates = @("$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe")
 
 Step "Node.js"
-# Our own copy in C:\SpotSolutions\node. The boot task runs as SYSTEM, which can't use per-user
+# Our own copy in C:\NothingBotServer\node. The boot task runs as SYSTEM, which can't use per-user
 # installs (nvm, Volta, fnm, AppData), and a system Node may be too old or a shim that prints nothing.
 $NodeDir = "$Root\node"
 $Node    = "$NodeDir\node.exe"
@@ -103,7 +106,7 @@ if ((Node-Major) -lt 22) {
   Write-Host "  Downloading Node.js $v ($arch)..."
   $zip = "$env:TEMP\node-$v-win-$arch.zip"
   Invoke-WebRequest "https://nodejs.org/dist/$v/node-$v-win-$arch.zip" -OutFile $zip
-  $unpack = "$env:TEMP\spot-node"
+  $unpack = "$env:TEMP\nbs-node"
   Remove-Item -Recurse -Force $unpack, $NodeDir -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $unpack | Out-Null
   # .NET's zip reader: present on every Windows, unlike tar.exe (Git's tar can shadow it and can't read zips).
@@ -111,7 +114,7 @@ if ((Node-Major) -lt 22) {
   [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $unpack)
   $exe = Get-ChildItem $unpack -Recurse -Filter node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
   if (-not $exe) { throw "Unpacking Node.js failed: node.exe isn't in the download. Run this again." }
-  # On a fresh install C:\SpotSolutions doesn't exist yet, and Move-Item won't create the parent folder.
+  # On a fresh install C:\NothingBotServer doesn't exist yet, and Move-Item won't create the parent folder.
   New-Item -ItemType Directory -Force -Path $Root | Out-Null
   Move-Item $exe.Directory.FullName $NodeDir
 }
@@ -150,7 +153,7 @@ Step "Nothing BOT Server code"
 $env:PUPPETEER_CACHE_DIR = $ChromeDir
 # Code comes as a tarball (Windows 10+ ships tar.exe). .env and node_modules aren't in it, so updates keep them.
 New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
-$tgz = "$env:TEMP\spot-solutions.tar.gz"
+$tgz = "$env:TEMP\nothing-bot-server.tar.gz"
 Invoke-WebRequest $SrcUrl -OutFile $tgz
 # Windows' own tar by full path: Git for Windows' tar can come first on PATH and reads "C:\..." as a remote host.
 & "$env:SystemRoot\System32\tar.exe" -xzf $tgz -C $AppDir
@@ -174,21 +177,47 @@ FIREBASE_SERVICE_ACCOUNT=$KeyFile
 FIREBASE_PROJECT_ID=
 OLLAMA_URL=http://127.0.0.1:11434
 GEMINI_API_KEY=
-SPOT_ADMIN_EMAILS=$($env:ADMIN_EMAILS)
+NBS_ADMIN_EMAILS=$($env:ADMIN_EMAILS)
 WWEBJS_DATA=$DataDir\wwebjs
 CHROME_PATH=
-SPOT_NO_LOCAL_MODEL=$NoLocalFlag
+NBS_NO_LOCAL_MODEL=$NoLocalFlag
 "@ | Set-Content -Encoding ASCII $EnvFile
 }
 # Record the choice in an existing .env too (re-running to switch between local model and Gemini-only).
 $envText = Get-Content $EnvFile -Raw
-if ($envText -match '(?m)^SPOT_NO_LOCAL_MODEL=') { $envText = $envText -replace '(?m)^SPOT_NO_LOCAL_MODEL=.*', "SPOT_NO_LOCAL_MODEL=$NoLocalFlag" }
-else { $envText = $envText.TrimEnd() + "`r`nSPOT_NO_LOCAL_MODEL=$NoLocalFlag`r`n" }
+if ($envText -match '(?m)^NBS_NO_LOCAL_MODEL=') { $envText = $envText -replace '(?m)^NBS_NO_LOCAL_MODEL=.*', "NBS_NO_LOCAL_MODEL=$NoLocalFlag" }
+else { $envText = $envText.TrimEnd() + "`r`nNBS_NO_LOCAL_MODEL=$NoLocalFlag`r`n" }
 Set-Content -Encoding ASCII $EnvFile $envText
 # Only SYSTEM (the boot tasks) and Administrators can read config and keys.
 icacls $DataDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
 icacls $EnvFile /inheritance:r /grant:r "SYSTEM:F" "Administrators:F" | Out-Null
 Ok "Config at $EnvFile"
+
+Step "Checking for an older install"
+# An old Spot Solutions server (C:\SpotSolutions, tasks SpotSolutions*) would fight this one for the same WhatsApp login and
+# port 7420. Stop it and remove its startup tasks, shortcuts and firewall rule. Its data folder is kept.
+$legacyFound = $false
+foreach ($t in "SpotSolutionsWorker", "SpotSolutionsConsole", "SpotSolutionsUpdate") {
+  if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
+    $legacyFound = $true
+    Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
+  }
+}
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -like '*C:\SpotSolutions*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.ExecutablePath -and $_.ExecutablePath -like 'C:\SpotSolutions\chrome\*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Remove-NetFirewallRule -DisplayName "Spot Solutions Console" -ErrorAction SilentlyContinue
+Remove-Item -Force -ErrorAction SilentlyContinue "$([Environment]::GetFolderPath('CommonDesktopDirectory'))\Spot Server Console.lnk"
+Remove-Item -Force -ErrorAction SilentlyContinue "$([Environment]::GetFolderPath('CommonDesktopDirectory'))\Spot Solutions.lnk"
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Spot Solutions"
+if ($legacyFound) {
+  Ok "Stopped the old Spot Solutions server. Its data in C:\SpotSolutions\data is kept."
+  Ok "This server restores your WhatsApp login from the cloud vault by itself once it is connected to the same account."
+} else { Ok "Nothing old found" }
 
 Step "Start at boot"
 # Re-install over a running copy: stop the old task, its worker and the browsers it left behind, so nothing keeps
@@ -196,7 +225,7 @@ Step "Start at boot"
 Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 # (The Server Console's node is spared: it may be what started this install.)
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -like '*SpotSolutions*' -and $_.CommandLine -notlike '*console*server.mjs*' } |
+  Where-Object { $_.CommandLine -like '*NothingBotServer*' -and $_.CommandLine -notlike '*console*server.mjs*' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.ExecutablePath -and $_.ExecutablePath -like "$ChromeDir\*" } |
@@ -211,7 +240,7 @@ $env:OLLAMA_KEEP_ALIVE = '24h'
 $env:PUPPETEER_CACHE_DIR = '__CHROME__'
 $env:Path = '__NODEDIR__;' + $env:Path
 function Ollama-Up { try { Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null; $true } catch { $false } }
-function No-Local { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^SPOT_NO_LOCAL_MODEL=(1|true|yes)\s*$' } catch { $false } }
+function No-Local { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_NO_LOCAL_MODEL=(1|true|yes)\s*$' } catch { $false } }
 function Find-Ollama {
   foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { return $c } }
   $g = Get-Command ollama -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -242,14 +271,14 @@ Start-ScheduledTask -TaskName $TaskName
 Ok "Task '$TaskName' registered and started"
 
 Step "Server Console (port 7420)"
-$ConsoleTask = "SpotSolutionsConsole"
+$ConsoleTask = "NothingBotServerConsole"
 $cEnvScript = "$Root\run-console.ps1"
 @'
-$env:SPOT_DATA_DIR = '__DATADIR__'
-$env:SPOT_ENV_FILE = '__ENVFILE__'
+$env:NBS_DATA_DIR = '__DATADIR__'
+$env:NBS_ENV_FILE = '__ENVFILE__'
 $env:OLLAMA_MODELS = '__MODELS__'
 # Looked up on every start (the console is restarted after the local model is turned on).
-foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { $env:SPOT_OLLAMA_EXE = $c; break } }
+foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { $env:NBS_OLLAMA_EXE = $c; break } }
 while ($true) { & '__NODE__' '__APPDIR__\apps\worker\console\server.mjs' *>> '__DATADIR__\console.log'; Start-Sleep 5 }
 '@ -replace '__DATADIR__', $DataDir -replace '__ENVFILE__', $EnvFile -replace '__MODELS__', $ModelsDir -replace '__ROOT__', $Root -replace '__NODE__', $Node -replace '__APPDIR__', $AppDir | Set-Content -Encoding UTF8 $cEnvScript
 $cAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$cEnvScript`""
@@ -258,7 +287,7 @@ Register-ScheduledTask -TaskName $ConsoleTask -Action $cAction -Trigger $trigger
 Start-ScheduledTask -TaskName $ConsoleTask
 # The update task: the console starts it (schtasks /run) to update the server or turn the local model on or off. It runs
 # as SYSTEM with no trigger, so updates work unattended and outlive the worker and console restarts they cause.
-$UpdateTask = "SpotSolutionsUpdate"
+$UpdateTask = "NothingBotServerUpdate"
 $stub = "$Root\update.ps1"
 @'
 # Started by the Server Console. Runs a private copy of the release's update-core.ps1, so the app folder can be
@@ -275,7 +304,6 @@ $uSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGo
 Unregister-ScheduledTask -TaskName $UpdateTask -Confirm:$false -ErrorAction SilentlyContinue
 Register-ScheduledTask -TaskName $UpdateTask -Action $uAction -Principal $principal -Settings $uSettings | Out-Null
 # Reachable from phones/laptops on your home network (private profile only).
-Remove-NetFirewallRule -DisplayName "Spot Solutions Console" -ErrorAction SilentlyContinue   # old display name
 Remove-NetFirewallRule -DisplayName "Nothing BOT Server Console" -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName "Nothing BOT Server Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private | Out-Null
 Ok "Console running, port 7420 open on private networks"
@@ -284,12 +312,9 @@ Step "Desktop and Start Menu shortcuts"
 $shell = New-Object -ComObject WScript.Shell
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
-$icon = "$Root\spot.ico"
+$icon = "$Root\nbs.ico"
 try { Invoke-WebRequest "https://spot-solutions.web.app/icons/spot.ico" -OutFile $icon } catch { $icon = $null }
-$places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT")
-# Shortcuts from before the rename (display names only; nothing else depends on them).
-Remove-Item -Force -ErrorAction SilentlyContinue "$($places[0])\Spot Server Console.lnk", "$($places[0])\Spot Solutions.lnk"
-Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Spot Solutions"
+$places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT Server")
 New-Item -ItemType Directory -Force -Path $places[1] | Out-Null
 foreach ($dir in $places) {
   foreach ($sc in @(
@@ -334,7 +359,7 @@ if ($token -and $ip) {
 # The console reads its page once at start. Now that the new files are in place, restart its node so it serves them;
 # the task's loop brings it straight back (spared earlier because it may be what started this install).
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -like '*SpotSolutions*console*server.mjs*' } |
+  Where-Object { $_.CommandLine -like '*NothingBotServer*console*server.mjs*' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep 6
 if (Test-Path $edge) { Start-Process $edge "--app=http://localhost:7420" } else { Start-Process "http://localhost:7420" }

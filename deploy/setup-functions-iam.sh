@@ -19,9 +19,11 @@
 # Safe to run again: it only adds what is missing. --dry-run prints the gcloud commands and changes nothing.
 # Counterpart of deploy/new-server-key.sh and revoke-server-key.sh, which this replaces for day-to-day use.
 set -euo pipefail
+# Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
+for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}" ]] || export "$_n=${!_v}"; done
 
-PROJECT="${SPOT_PROJECT:-spot-solutions}"
-BUCKET="${SPOT_BUCKET:-spot-solutions.firebasestorage.app}"
+PROJECT="${NBS_PROJECT:-spot-solutions}"
+BUCKET="${NBS_BUCKET:-spot-solutions.firebasestorage.app}"
 SA_ID="spot-enroller"
 SA_EMAIL="$SA_ID@$PROJECT.iam.gserviceaccount.com"
 # The roles the functions may hand to a server's account: exactly the ones in new-server-key.sh.

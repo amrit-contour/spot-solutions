@@ -13,12 +13,14 @@
 # No Firebase Auth role: the worker never calls Auth admin APIs (apps/worker/src/firebase.ts only starts
 # the Admin SDK; Firestore, Storage and Messaging are the only services used).
 #
-# --dry-run prints the gcloud commands and creates nothing. The key lands in ${SPOT_KEY_DIR:-$HOME/.spot-keys}.
+# --dry-run prints the gcloud commands and creates nothing. The key lands in ${NBS_KEY_DIR:-$HOME/.spot-keys}.
 set -euo pipefail
+# Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
+for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}" ]] || export "$_n=${!_v}"; done
 
-PROJECT="${SPOT_PROJECT:-spot-solutions}"
-BUCKET="${SPOT_BUCKET:-spot-solutions.firebasestorage.app}"
-KEY_DIR="${SPOT_KEY_DIR:-$HOME/.spot-keys}"
+PROJECT="${NBS_PROJECT:-spot-solutions}"
+BUCKET="${NBS_BUCKET:-spot-solutions.firebasestorage.app}"
+KEY_DIR="${NBS_KEY_DIR:-$HOME/.spot-keys}"
 PROJECT_ROLES=(roles/datastore.user roles/firebasecloudmessaging.admin)
 BUCKET_ROLES=(roles/storage.objectAdmin)
 
@@ -79,7 +81,7 @@ $( (( DRY )) && echo "Would create" || echo "Created" ) key for "$DEVICE":
 
 Put it on the server:
   1. Open the Server Console on that device (Mac: inside the Nothing BOT Server app; Windows: the "Nothing BOT Server Console"
-     shortcut; Ubuntu: sudo spot-console-url).
+     shortcut; Ubuntu: sudo nbs-console-url).
   2. Drop $SA_ID.json onto "Drop your service-account .json here". The worker restarts by itself.
   3. Delete the file from this machine once it's uploaded (it is a password).
 Lost or retired device:  deploy/revoke-server-key.sh $DEVICE

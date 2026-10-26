@@ -1,5 +1,6 @@
 NOTHING BOT SERVER - WINDOWS
-================================
+=======
+====================
 
 Turns this laptop into the always-on Nothing BOT Server: WhatsApp + local Gemma.
 
@@ -14,7 +15,7 @@ BEFORE YOU START
 INSTALL
   1. Unzip this folder anywhere.
   2. Double-click "Install Nothing BOT Server.cmd" and click Yes on the admin prompt.
-     It installs its own Node.js (C:\\SpotSolutions\\node) and Ollama, downloads Gemma (~3.5 GB), and sets up two
+     It installs its own Node.js (C:\NothingBotServer\node) and Ollama, downloads Gemma (~3.5 GB), and sets up two
      startup tasks: the worker and the Server Console. It asks you nothing.
      No room for Gemma (under ~8 GB RAM)? Double-click "Install Nothing BOT Server (Gemini
      only).cmd" instead: no Ollama, no download; AI runs on Gemini (add a key in the
@@ -36,7 +37,8 @@ EVERYDAY
   Open Server Console.cmd - status, logs, keys (same as the desktop shortcut)
   View Logs.cmd           - raw worker log
   Restart Worker.cmd      - restart it if something looks stuck
-  Uninstall.cmd           - stop it, remove tasks and shortcuts (keeps your data)
+  Uninstall.cmd           - stop it, remove tasks, shortcuts and program files (keeps your data;
+                          also removes the old Spot Solutions server if present)
 
-Files live in C:\SpotSolutions (app\ = code, data\ = WhatsApp session, key, logs).
+Files live in C:\NothingBotServer (app\ = code, data\ = WhatsApp session, key, logs).
 To update, run "Install Nothing BOT Server.cmd" again.

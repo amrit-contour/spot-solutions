@@ -5,9 +5,11 @@
 #
 #   deploy/revoke-server-key.sh <device-name> [--dry-run] [--yes]
 set -euo pipefail
+# Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
+for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}" ]] || export "$_n=${!_v}"; done
 
-PROJECT="${SPOT_PROJECT:-spot-solutions}"
-BUCKET="${SPOT_BUCKET:-spot-solutions.firebasestorage.app}"
+PROJECT="${NBS_PROJECT:-spot-solutions}"
+BUCKET="${NBS_BUCKET:-spot-solutions.firebasestorage.app}"
 PROJECT_ROLES=(roles/datastore.user roles/firebasecloudmessaging.admin)
 BUCKET_ROLES=(roles/storage.objectAdmin)
 

@@ -18,9 +18,11 @@
 #   curl -X PATCH -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "Content-Type: application/json" \
 #     -d '{"softDeletePolicy":{"retentionDurationSeconds":"0"}}' https://storage.googleapis.com/storage/v1/b/BUCKET
 set -euo pipefail
+# Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
+for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}" ]] || export "$_n=${!_v}"; done
 
-PROJECT="${SPOT_PROJECT:-spot-solutions}"
-BUCKET="${SPOT_BUCKET:-spot-solutions.firebasestorage.app}"
+PROJECT="${NBS_PROJECT:-spot-solutions}"
+BUCKET="${NBS_BUCKET:-spot-solutions.firebasestorage.app}"
 GROUPS_TTL=(commands notices contactsImport invites)
 
 DRY=0

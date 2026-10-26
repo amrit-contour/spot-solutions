@@ -1,4 +1,4 @@
-# Nothing BOT worker: Node + system Chromium for whatsapp-web.js.
+# Nothing BOT Server worker: Node + system Chromium for whatsapp-web.js.
 FROM node:22-bookworm-slim
 
 RUN apt-get update \

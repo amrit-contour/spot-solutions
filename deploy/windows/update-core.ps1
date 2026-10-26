@@ -1,18 +1,20 @@
 <#
   Nothing BOT Server tasks on Windows: update, local-on, local-off.
 
-  Run as SYSTEM by the scheduled task "SpotSolutionsUpdate" (registered by install.ps1), which the server console starts
-  with `schtasks /run`. The task runs C:\SpotSolutions\update.ps1, a tiny stub that copies THIS file next to it and runs
+  Run as SYSTEM by the scheduled task "NothingBotServerUpdate" (registered by install.ps1), which the server console starts
+  with `schtasks /run`. The task runs C:\NothingBotServer\update.ps1, a tiny stub that copies THIS file next to it and runs
   the copy, so replacing the app folder never replaces a script that is running. Nothing here needs an interactive admin.
 
-  Progress goes to C:\SpotSolutions\data\update.json for the console. Which task to run is in data\task.json.
-  Test hooks: SPOT_DIST_URL, SPOT_ROOT.
+  Progress goes to C:\NothingBotServer\data\update.json for the console. Which task to run is in data\task.json.
+  Test hooks: NBS_DIST_URL, NBS_ROOT.
 #>
 param([string]$Task = "")
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+# Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
+Get-ChildItem Env: | Where-Object { $_.Name -like 'SPOT_*' } | ForEach-Object { $n = 'NBS_' + $_.Name.Substring(5); if (-not (Test-Path "Env:$n")) { Set-Item "Env:$n" $_.Value } }
 
-$Root      = if ($env:SPOT_ROOT) { $env:SPOT_ROOT } else { "C:\SpotSolutions" }
+$Root      = if ($env:NBS_ROOT) { $env:NBS_ROOT } else { "C:\NothingBotServer" }
 $AppDir    = "$Root\app"
 $NodeDir   = "$Root\node"
 # Where the data and the AI models live: the Server Console's "Move data" writes these two files when they are moved to
@@ -24,9 +26,9 @@ foreach ($p in @(@{ File = "$Root\data-dir.txt"; Name = "DataDir" }, @{ File = "
 }
 $ChromeDir = "$Root\chrome"
 $EnvFile   = "$AppDir\apps\worker\.env"
-$WorkerTask  = "SpotSolutionsWorker"
-$ConsoleTask = "SpotSolutionsConsole"
-$Dist      = if ($env:SPOT_DIST_URL) { $env:SPOT_DIST_URL } else { "https://spot-solutions.web.app" }
+$WorkerTask  = "NothingBotServerWorker"
+$ConsoleTask = "NothingBotServerConsole"
+$Dist      = if ($env:NBS_DIST_URL) { $env:NBS_DIST_URL } else { "https://nothingbotcurating.web.app" }
 $ProgressFile = "$DataDir\update.json"
 $Utf8 = New-Object System.Text.UTF8Encoding($false)   # no BOM: the console parses these files with JSON.parse
 
@@ -55,9 +57,9 @@ function Set-EnvValue([string]$Key, [string]$Value) {
   if ($text -match "(?m)^$Key=") { $text = $text -replace "(?m)^$Key=.*", "$Key=$Value" } else { $text = $text.TrimEnd() + "`r`n$Key=$Value`r`n" }
   Set-Content -Encoding ASCII $EnvFile $text
 }
-function Test-NoLocal { return ((Get-EnvValue "SPOT_NO_LOCAL_MODEL") -match '^(1|true|yes)$') }
+function Test-NoLocal { return ((Get-EnvValue "NBS_NO_LOCAL_MODEL") -match '^(1|true|yes)$') }
 function Get-ModelName([string]$Default = "gemma3:4b") {
-  $m = Get-EnvValue "SPOT_LOCAL_MODEL"
+  $m = Get-EnvValue "NBS_LOCAL_MODEL"
   if ($m -match '^[A-Za-z0-9._:/-]{1,100}$') { return $m } else { return $Default }
 }
 
@@ -75,7 +77,7 @@ function Stop-WorkerProcesses {
   Stop-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue
   # The console's node is spared: it restarts last, from the task's own loop.
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like '*SpotSolutions*' -and $_.CommandLine -notlike '*console*server.mjs*' } |
+    Where-Object { $_.CommandLine -like '*NothingBotServer*' -and $_.CommandLine -notlike '*console*server.mjs*' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.ExecutablePath -and $_.ExecutablePath -like "$ChromeDir\*" } |
@@ -84,7 +86,7 @@ function Stop-WorkerProcesses {
 }
 function Restart-Console {
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like '*SpotSolutions*console*server.mjs*' } |
+    Where-Object { $_.CommandLine -like '*NothingBotServer*console*server.mjs*' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }   # the task's loop starts it again
 }
 function Invoke-Pull([string]$Model) {
@@ -110,7 +112,7 @@ try {
   if ($Task -eq "move-data" -or $Task -eq "move-cleanup") {
     $mv = "$AppDir\apps\worker\console\move.mjs"
     if (-not (Test-Path $mv)) { throw "move.mjs isn't in the app folder. Update Nothing BOT Server first." }
-    $env:SPOT_ROOT = $Root
+    $env:NBS_ROOT = $Root
     & "$NodeDir\node.exe" $mv $Task
     $moveCode = $LASTEXITCODE
     if ($moveCode -ne 0) { Start-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue }   # whatever happened, never leave the server stopped
@@ -120,7 +122,7 @@ try {
   # ------------------------------------------------------------------ local model off
   if ($Task -eq "local-off") {
     Set-Progress "running" "Turning the local model off"
-    Set-EnvValue "SPOT_NO_LOCAL_MODEL" "1"
+    Set-EnvValue "NBS_NO_LOCAL_MODEL" "1"
     Stop-WorkerProcesses
     Get-Process -Name "ollama", "ollama app" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-ScheduledTask -TaskName $WorkerTask
@@ -147,7 +149,7 @@ try {
     [Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", "24h", "Machine")
     Stop-WorkerProcesses
     Invoke-Pull (Get-ModelName)
-    Set-EnvValue "SPOT_NO_LOCAL_MODEL" "0"
+    Set-EnvValue "NBS_NO_LOCAL_MODEL" "0"
     Set-Progress "running" "Restarting the worker"
     Start-ScheduledTask -TaskName $WorkerTask
     Restart-Console   # so its Ollama path is current
@@ -157,9 +159,9 @@ try {
 
   # ------------------------------------------------------------------ update
   Set-Progress "running" "Checking the latest version"
-  $v = Invoke-RestMethod "$Dist/dl/version.json?t=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" -TimeoutSec 30
+  $v = Invoke-RestMethod "$Dist/dl/nothing-bot-server.json?t=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" -TimeoutSec 30
   $latest = "$($v.version)"; $sha = "$($v.sha256)".ToLower(); $lmodel = "$($v.model)"
-  if ($latest -notmatch '^[0-9A-Za-z._-]{1,40}$' -or $sha -notmatch '^[0-9a-f]{64}$') { throw "The version file from Nothing BOT Curating isn't valid." }
+  if ($latest -notmatch '^[0-9A-Za-z._-]{1,40}$' -or $sha -notmatch '^[0-9a-f]{64}$') { throw "The version file from the update site isn't valid." }
   if ($lmodel -notmatch '^[A-Za-z0-9._:/-]{1,100}$') { $lmodel = "gemma3:4b" }
   $To = $latest
   if ($latest -eq $From) { Set-Progress "done" "Already up to date"; return }
@@ -169,7 +171,7 @@ try {
   Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $work | Out-Null
   $tgz = "$work\app.tgz"
-  Invoke-WebRequest "$Dist/dl/spot-solutions.tar.gz" -OutFile $tgz
+  Invoke-WebRequest "$Dist/dl/nothing-bot-server.tar.gz" -OutFile $tgz
 
   Set-Progress "running" "Verifying the download"
   if ((Get-FileHash $tgz -Algorithm SHA256).Hash.ToLower() -ne $sha) { throw "The download didn't match its checksum, so it was not installed." }

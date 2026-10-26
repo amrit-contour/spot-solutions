@@ -1,5 +1,5 @@
 // Nothing BOT Server for macOS: sets up and controls the Nothing BOT Server on this Mac.
-// A thin native shell around `spotctl` (bundled in Resources) plus the server console
+// A thin native shell around `nbsctl` (bundled in Resources) plus the server console
 // (http://127.0.0.1:7420), embedded so the Mac shows the same UI as Linux and Windows.
 import AppKit
 import SwiftUI
@@ -8,7 +8,7 @@ import WebKit
 let brand = Color(red: 0.91, green: 0.64, blue: 0.24)
 let consoleURL = URL(string: "http://127.0.0.1:7420/")!
 let webAppURL = URL(string: "https://spot-solutions.web.app")!
-let supportDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/SpotSolutions")
+let supportDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NothingBotServer")
 
 // MARK: - Model
 
@@ -21,7 +21,7 @@ final class Server: ObservableObject {
     @Published var adminEmail: String = ""
 
     private var timer: Timer?
-    private let ctl = Bundle.main.path(forResource: "spotctl", ofType: nil) ?? ""
+    private let ctl = Bundle.main.path(forResource: "nbsctl", ofType: nil) ?? ""
 
     var installed: Bool { status["installed"] == "yes" }
     var localModel: Bool { status["localmodel"] != "off" }
@@ -54,7 +54,7 @@ final class Server: ObservableObject {
         }
     }
 
-    /// Run a spotctl command, streaming its output into `log`.
+    /// Run a nbsctl command, streaming its output into `log`.
     func perform(_ label: String, _ args: [String], env: [String: String] = [:]) {
         guard busy == nil else { return }
         busy = label
@@ -91,7 +91,7 @@ final class Server: ObservableObject {
             buf.lock.lock(); buf.text += s; buf.lock.unlock()
             onOutput?(s)
         }
-        do { try p.run() } catch { return (1, "Couldn't run spotctl: \(error.localizedDescription)") }
+        do { try p.run() } catch { return (1, "Couldn't run nbsctl: \(error.localizedDescription)") }
         p.waitUntilExit()
         pipe.fileHandleForReading.readabilityHandler = nil
         if let rest = try? pipe.fileHandleForReading.readToEnd(), let s = String(data: rest, encoding: .utf8), !s.isEmpty { buf.text += s; onOutput?(s) }
@@ -315,7 +315,7 @@ final class FolderPicker: NSObject, WKScriptMessageHandler {
             let path: String? = response == .OK ? panel.url?.path : nil
             // JSON-encode inside an array so quotes or backslashes in a folder name can't break out of the script.
             guard let data = try? JSONSerialization.data(withJSONObject: [(path as Any?) ?? NSNull()]), let arr = String(data: data, encoding: .utf8) else { return }
-            web?.evaluateJavaScript("window.spotFolderChosen && window.spotFolderChosen(\(arr)[0])", completionHandler: nil)
+            web?.evaluateJavaScript("window.nbsFolderChosen && window.nbsFolderChosen(\(arr)[0])", completionHandler: nil)
         }
         if let window = web.window { panel.beginSheetModal(for: window, completionHandler: finish) } else { finish(panel.runModal()) }
     }
@@ -325,7 +325,7 @@ final class FolderPicker: NSObject, WKScriptMessageHandler {
 struct ConsoleWebView: NSViewRepresentable {
     let url: URL
     func makeNSView(context: Context) -> WKWebView {
-        // The console's "Choose with Finder…" button posts to `chooseFolder`; the answer goes back through window.spotFolderChosen.
+        // The console's "Choose with Finder…" button posts to `chooseFolder`; the answer goes back through window.nbsFolderChosen.
         let config = WKWebViewConfiguration()
         config.userContentController.add(FolderPicker(), name: "chooseFolder")
         let v = WKWebView(frame: .zero, configuration: config)
@@ -392,7 +392,7 @@ struct MenuContent: View {
 }
 
 @main
-struct SpotServerApp: App {
+struct NothingBotServerApp: App {
     @StateObject private var server = Server()
     var body: some Scene {
         Window("Nothing BOT Server", id: "main") {

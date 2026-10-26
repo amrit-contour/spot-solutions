@@ -1,30 +1,33 @@
 #!/usr/bin/env bash
 # Nothing BOT Server control for macOS (Apple Silicon and Intel). No Homebrew or Xcode needed.
 #
-#   spotctl setup        download Node, Ollama, Gemma and the worker; install launch agents
+#   nbsctl setup        download Node, Ollama, Gemma and the worker; install launch agents
 #                        A local model is set up when this Mac has about 8 GB of memory or more, Gemini only on less.
-#                        You can switch in the server console (AI models) or: SPOT_NO_LOCAL_MODEL=1|0 spotctl setup
-#   spotctl update       fetch the latest release (checked against its sha256), restart the worker and console
+#                        You can switch in the server console (AI models) or: NBS_NO_LOCAL_MODEL=1|0 nbsctl setup
+#   nbsctl update       fetch the latest release (checked against its sha256), restart the worker and console
 #                        on the new code, refresh the local model. What the console's Update button runs.
-#   spotctl local on|off turn the local model (Ollama and Gemma) on or off
-#   spotctl start|stop   start or stop the whole server (Ollama, worker, console)
-#   spotctl restart [worker|ollama|console]
-#   spotctl status       one line per service, machine-readable (used by the app)
-#   spotctl awake on|off keep running with the lid closed (asks for an admin password)
-#   spotctl login on|off start the server automatically when you log in
-#   spotctl logs         follow the worker log
-#   spotctl apply        rewrite the launch agents (after the data folder moved: the console's "Move data" calls this)
-#   spotctl uninstall    remove agents and code (keeps data unless --all)
+#   nbsctl local on|off turn the local model (Ollama and Gemma) on or off
+#   nbsctl start|stop   start or stop the whole server (Ollama, worker, console)
+#   nbsctl restart [worker|ollama|console]
+#   nbsctl status       one line per service, machine-readable (used by the app)
+#   nbsctl awake on|off keep running with the lid closed (asks for an admin password)
+#   nbsctl login on|off start the server automatically when you log in
+#   nbsctl logs         follow the worker log
+#   nbsctl apply        rewrite the launch agents (after the data folder moved: the console's "Move data" calls this)
+#   nbsctl uninstall    remove agents and code (keeps data unless --all)
 #
-# Everything lives in ~/Library/Application Support/SpotSolutions. Re-running setup also updates the code.
+# Everything lives in ~/Library/Application Support/NothingBotServer. Re-running setup also updates the code.
 set -euo pipefail
 
-# Test hook: with SPOT_CTL_DRY_RUN=1 nothing is ever loaded, started or restarted (and every service reads as stopped).
-if [[ -n "${SPOT_CTL_DRY_RUN:-}" ]]; then
+# Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
+for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}" ]] || export "$_n=${!_v}"; done
+
+# Test hook: with NBS_CTL_DRY_RUN=1 nothing is ever loaded, started or restarted (and every service reads as stopped).
+if [[ -n "${NBS_CTL_DRY_RUN:-}" ]]; then
   launchctl() { case "$1" in print) return 1 ;; *) echo "(skip) launchctl $*" >&2 ;; esac; }
 fi
 
-ROOT="${SPOT_ROOT:-$HOME/Library/Application Support/SpotSolutions}"
+ROOT="${NBS_ROOT:-$HOME/Library/Application Support/NothingBotServer}"
 APP="$ROOT/app"
 # The data may live on another drive: the console's Storage section, Move data, writes the folder here. Every setup, update
 # and agent rewrite uses it, so none of them puts the data back in the default folder.
@@ -34,13 +37,16 @@ MODELS_DIR="$(head -n1 "$ROOT/models-dir" 2>/dev/null || true)"
 RT="$ROOT/runtime"            # node + ollama binaries we downloaded
 LOGS="$ROOT/logs"
 AGENTS="$HOME/Library/LaunchAgents"
-SRC_URL="${SPOT_SRC_URL:-https://spot-solutions.web.app/dl/spot-solutions.tar.gz}"
+SRC_URL="${NBS_SRC_URL:-https://nothingbotcurating.web.app/dl/nothing-bot-server.tar.gz}"
 MODEL="${GEMMA_MODEL:-gemma3:4b}"
 NODE_MAJOR=22
 UID_N="$(id -u)"
-LABELS=(com.spotsolutions.ollama com.spotsolutions.worker com.spotsolutions.console)
-UPDATE_LABEL=com.spotsolutions.update   # a one-shot job the console starts to update or change the local model
+LABELS=(app.nothingbot.server.ollama app.nothingbot.server.worker app.nothingbot.server.console)
+UPDATE_LABEL=app.nothingbot.server.update   # a one-shot job the console starts to update or change the local model
 ARCH="$(uname -m)"            # arm64 | x86_64
+# What the server was called before it became "Nothing BOT Server": its launch agents, code and data folder.
+LEGACY_LABELS=(com.spotsolutions.ollama com.spotsolutions.worker com.spotsolutions.console com.spotsolutions.update)
+LEGACY_ROOT="$HOME/Library/Application Support/SpotSolutions"
 
 step() { printf '\n▸ %s\n' "$*"; }
 ok()   { printf '  ✓ %s\n' "$*"; }
@@ -56,7 +62,7 @@ find_ollama() {
 
 ollama_up() { curl -fs --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; }
 
-# Gemini-only server: no Ollama or Gemma at all. Chosen at setup (SPOT_NO_LOCAL_MODEL=1), remembered in a marker file.
+# Gemini-only server: no Ollama or Gemma at all. Chosen at setup (NBS_NO_LOCAL_MODEL=1), remembered in a marker file.
 no_local() { [[ -f "$ROOT/.no-local-model" ]]; }
 
 # Ollama already running from somewhere else (Ollama.app, brew services)? Then we use it and
@@ -83,10 +89,10 @@ $args  </array>
     <key>OLLAMA_KEEP_ALIVE</key><string>24h</string>
     <key>OLLAMA_NUM_PARALLEL</key><string>1</string>
     <key>PUPPETEER_CACHE_DIR</key><string>$ROOT/chrome</string>
-    <key>SPOT_DATA_DIR</key><string>$DATA</string>
-    <key>SPOT_ENV_FILE</key><string>$APP/apps/worker/.env</string>
-    <key>SPOT_OLLAMA_EXE</key><string>$(find_ollama)</string>
-    <key>SPOT_NO_LOCAL_MODEL</key><string>$(no_local && echo 1 || echo 0)</string>
+    <key>NBS_DATA_DIR</key><string>$DATA</string>
+    <key>NBS_ENV_FILE</key><string>$APP/apps/worker/.env</string>
+    <key>NBS_OLLAMA_EXE</key><string>$(find_ollama)</string>
+    <key>NBS_NO_LOCAL_MODEL</key><string>$(no_local && echo 1 || echo 0)</string>
 $([[ -n "$MODELS_DIR" ]] && printf '    <key>OLLAMA_MODELS</key><string>%s</string>' "$MODELS_DIR")
   </dict>
   <key>WorkingDirectory</key><string>$APP/apps/worker</string>
@@ -95,8 +101,8 @@ $([[ -n "$MODELS_DIR" ]] && printf '    <key>OLLAMA_MODELS</key><string>%s</stri
   <key>ThrottleInterval</key><integer>10</integer>
   <key>ExitTimeOut</key><integer>90</integer>
   <key>ProcessType</key><string>Interactive</string>
-  <key>StandardOutPath</key><string>$LOGS/${label#com.spotsolutions.}.log</string>
-  <key>StandardErrorPath</key><string>$LOGS/${label#com.spotsolutions.}.log</string>
+  <key>StandardOutPath</key><string>$LOGS/${label#app.nothingbot.server.}.log</string>
+  <key>StandardErrorPath</key><string>$LOGS/${label#app.nothingbot.server.}.log</string>
 </dict>
 </plist>
 EOF
@@ -113,7 +119,7 @@ plist_task() {
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>$ROOT/spotctl</string>
+    <string>$ROOT/nbsctl</string>
     <string>task</string>
   </array>
   <key>EnvironmentVariables</key>
@@ -135,22 +141,37 @@ EOF
 install_self() {
   local src="${1:-$0}"
   [[ -f "$src" ]] || return 0
-  [[ "$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" == "$ROOT/spotctl" ]] && return 0
-  cp "$src" "$ROOT/spotctl.new" && chmod +x "$ROOT/spotctl.new" && mv -f "$ROOT/spotctl.new" "$ROOT/spotctl"
+  [[ "$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" == "$ROOT/nbsctl" ]] && return 0
+  cp "$src" "$ROOT/nbsctl.new" && chmod +x "$ROOT/nbsctl.new" && mv -f "$ROOT/nbsctl.new" "$ROOT/nbsctl"
 }
 
 write_agents() {
   mkdir -p "$AGENTS" "$LOGS"
   local node; node="$(node_bin)"
   if no_local; then
-    loaded com.spotsolutions.ollama && launchctl bootout "gui/$UID_N/com.spotsolutions.ollama" 2>/dev/null || true
-    rm -f "$AGENTS/com.spotsolutions.ollama.plist"
-  elif ! external_ollama; then plist com.spotsolutions.ollama "$(find_ollama)" serve; else rm -f "$AGENTS/com.spotsolutions.ollama.plist"; fi
+    loaded app.nothingbot.server.ollama && launchctl bootout "gui/$UID_N/app.nothingbot.server.ollama" 2>/dev/null || true
+    rm -f "$AGENTS/app.nothingbot.server.ollama.plist"
+  elif ! external_ollama; then plist app.nothingbot.server.ollama "$(find_ollama)" serve; else rm -f "$AGENTS/app.nothingbot.server.ollama.plist"; fi
   # The worker waits for a Firebase key; the console is where you add it.
-  plist com.spotsolutions.worker /bin/bash -c "while [ ! -f '$DATA/service-account.json' ]; do sleep 10; done; exec '$node' '$APP/apps/worker/node_modules/tsx/dist/cli.mjs' --env-file-if-exists=.env src/index.ts"
+  plist app.nothingbot.server.worker /bin/bash -c "while [ ! -f '$DATA/service-account.json' ]; do sleep 10; done; exec '$node' '$APP/apps/worker/node_modules/tsx/dist/cli.mjs' --env-file-if-exists=.env src/index.ts"
   # caffeinate holds a "don't sleep" assertion for exactly as long as the server runs.
-  plist com.spotsolutions.console /usr/bin/caffeinate -is "$node" "$APP/apps/worker/console/server.mjs"
+  plist app.nothingbot.server.console /usr/bin/caffeinate -is "$node" "$APP/apps/worker/console/server.mjs"
   plist_task
+}
+
+# An old "Spot Server" on this Mac would fight the new one for the same WhatsApp login and the same ports, so setup stops
+# and removes its launch agents first. Its data folder is never touched here (uninstall --all removes it).
+retire_legacy() {
+  local l found=0
+  for l in "${LEGACY_LABELS[@]}"; do
+    if [[ -f "$AGENTS/$l.plist" ]] || launchctl print "gui/$UID_N/$l" >/dev/null 2>&1; then
+      found=1
+      launchctl bootout "gui/$UID_N/$l" 2>/dev/null || true
+      rm -f "$AGENTS/$l.plist"
+    fi
+  done
+  [[ $found == 1 ]] && ok "Stopped the old Spot Server (its data in $LEGACY_ROOT/data is kept)"
+  return 0
 }
 
 loaded() { launchctl print "gui/$UID_N/$1" >/dev/null 2>&1; }
@@ -159,6 +180,7 @@ running() { launchctl print "gui/$UID_N/$1" 2>/dev/null | grep -q "state = runni
 cmd_setup() {
   [[ "$DATA" == "$ROOT/data" || -d "$(dirname "$DATA")" ]] || die "Your data lives in $DATA, but that drive isn't connected. Plug it in and run setup again."
   mkdir -p "$APP" "$DATA" "$RT" "$LOGS" "$ROOT/chrome"
+  retire_legacy
   step "Node.js $NODE_MAJOR"
   if [[ ! -x "$(node_bin)" ]]; then
     local v plat
@@ -171,7 +193,7 @@ cmd_setup() {
 
   # Explicit choice wins; otherwise keep what an earlier setup chose; on a fresh install decide by memory (a local
   # model wants about 8 GB). It can be switched later in the console, under AI models.
-  case "${SPOT_NO_LOCAL_MODEL:-}" in
+  case "${NBS_NO_LOCAL_MODEL:-}" in
     1|true|yes) touch "$ROOT/.no-local-model" ;;
     0|false|no) rm -f "$ROOT/.no-local-model" ;;
     *)
@@ -184,7 +206,7 @@ cmd_setup() {
     ok "AI will use Gemini (add a Gemini key in the console or the app)"
   else
   step "Ollama"
-  if ollama_up && [[ ! -f "$AGENTS/com.spotsolutions.ollama.plist" ]]; then
+  if ollama_up && [[ ! -f "$AGENTS/app.nothingbot.server.ollama.plist" ]]; then
     touch "$ROOT/.external-ollama"; ok "Using the Ollama already running on this Mac"
   else
     rm -f "$ROOT/.external-ollama"
@@ -210,24 +232,24 @@ FIREBASE_SERVICE_ACCOUNT=$DATA/service-account.json
 FIREBASE_PROJECT_ID=
 OLLAMA_URL=http://127.0.0.1:11434
 GEMINI_API_KEY=
-SPOT_ADMIN_EMAILS=${ADMIN_EMAILS:-}
+NBS_ADMIN_EMAILS=${ADMIN_EMAILS:-}
 WWEBJS_DATA=$DATA/wwebjs
 CHROME_PATH=
 EOF
   fi
   # Record the choice (the worker reads this to report localModel: false and route AI to Gemini).
-  { grep -v '^SPOT_NO_LOCAL_MODEL=' "$env" || true; echo "SPOT_NO_LOCAL_MODEL=$(no_local && echo 1 || echo 0)"; } > "$env.tmp" && mv "$env.tmp" "$env"
+  { grep -v '^NBS_NO_LOCAL_MODEL=' "$env" || true; echo "NBS_NO_LOCAL_MODEL=$(no_local && echo 1 || echo 0)"; } > "$env.tmp" && mv "$env.tmp" "$env"
   chmod 600 "$env"; chmod 700 "$DATA"
   ok "Keys go in through the console (Nothing BOT Server app, or http://localhost:7420)"
 
   step "Background services"
   touch "$ROOT/.start-at-login"
-  install_self "$APP/deploy/mac/spotctl"   # (this run may be an older bundle's copy: the release's is the one to keep)
-  [[ -f "$ROOT/spotctl" ]] || install_self "$0"
+  install_self "$APP/deploy/mac/nbsctl"   # (this run may be an older bundle's copy: the release's is the one to keep)
+  [[ -f "$ROOT/nbsctl" ]] || install_self "$0"
   write_agents
   cmd_start
   # kickstart without -k leaves a running process alone, so an update would keep serving the old code.
-  for l in com.spotsolutions.worker com.spotsolutions.console; do
+  for l in app.nothingbot.server.worker app.nothingbot.server.console; do
     running "$l" && launchctl kickstart -k "gui/$UID_N/$l" 2>/dev/null || true
   done
   ok "Worker and console restarted on the new code"
@@ -240,7 +262,7 @@ EOF
 }
 
 cmd_start() {
-  [[ -f "$AGENTS/com.spotsolutions.console.plist" ]] || write_agents
+  [[ -f "$AGENTS/app.nothingbot.server.console.plist" ]] || write_agents
   for l in "${LABELS[@]}"; do
     [[ -f "$AGENTS/$l.plist" ]] || continue
     loaded "$l" || launchctl bootstrap "gui/$UID_N" "$AGENTS/$l.plist" 2>/dev/null || true
@@ -259,7 +281,7 @@ cmd_stop() {
 cmd_restart() {
   local which="${1:-all}"
   if [[ "$which" == all ]]; then cmd_stop; cmd_start; return; fi
-  launchctl kickstart -k "gui/$UID_N/com.spotsolutions.$which" && ok "Restarted $which"
+  launchctl kickstart -k "gui/$UID_N/app.nothingbot.server.$which" && ok "Restarted $which"
 }
 
 cmd_status() {
@@ -267,10 +289,10 @@ cmd_status() {
   echo "installed=$installed"
   for l in "${LABELS[@]}"; do
     local s=stopped
-    if [[ $l == com.spotsolutions.ollama ]] && no_local; then s=off
-    elif [[ $l == com.spotsolutions.ollama ]] && external_ollama; then ollama_up && s=external || s=stopped
+    if [[ $l == app.nothingbot.server.ollama ]] && no_local; then s=off
+    elif [[ $l == app.nothingbot.server.ollama ]] && external_ollama; then ollama_up && s=external || s=stopped
     elif running "$l"; then s=running; elif loaded "$l"; then s=starting; fi
-    echo "${l#com.spotsolutions.}=$s"
+    echo "${l#app.nothingbot.server.}=$s"
   done
   echo "localmodel=$(no_local && echo off || echo on)"
   echo "key=$([[ -f "$DATA/service-account.json" ]] && echo yes || echo no)"
@@ -297,12 +319,12 @@ env_set() { # env_set KEY VALUE in the worker's .env
   { grep -v "^$1=" "$f" 2>/dev/null || true; echo "$1=$2"; } > "$f.tmp" && mv "$f.tmp" "$f"; chmod 600 "$f"
 }
 local_model_name() {
-  local m; m="$(grep -E '^SPOT_LOCAL_MODEL=' "$APP/apps/worker/.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
+  local m; m="$(grep -E '^NBS_LOCAL_MODEL=' "$APP/apps/worker/.env" 2>/dev/null | tail -1 | cut -d= -f2-)"
   [[ "$m" =~ ^[A-Za-z0-9._:/-]{1,100}$ ]] || m="${1:-$MODEL}"; echo "$m"
 }
 pull_model() {
   no_local && return 0
-  [[ "${SPOT_SKIP_MODEL:-0}" == 1 ]] && return 0
+  [[ "${NBS_SKIP_MODEL:-0}" == 1 ]] && return 0
   [[ -n "$(find_ollama)" ]] || return 0
   for _ in $(seq 1 30); do ollama_up && break; sleep 1; done
   progress running "Downloading the local model ($1)"
@@ -314,8 +336,8 @@ cmd_update() {
   [[ -x "$(node_bin)" && -f "$APP/apps/worker/package.json" ]] || task_fail "Nothing BOT Server isn't set up on this Mac yet. Run setup first."
   local tmp; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' RETURN
   step "Checking the latest version"; progress running "Checking the latest version"
-  local base="${SPOT_DIST_URL:-https://spot-solutions.web.app}"
-  curl -fsSL --max-time 30 "$base/dl/version.json?t=$(date +%s)" -o "$tmp/version.json" || task_fail "Couldn't reach Nothing BOT Curating to check for an update."
+  local base="${NBS_DIST_URL:-https://nothingbotcurating.web.app}"
+  curl -fsSL --max-time 30 "$base/dl/nothing-bot-server.json?t=$(date +%s)" -o "$tmp/version.json" || task_fail "Couldn't reach the update site (nothingbotcurating.web.app). Check this Mac's internet."
   local latest sha lmodel
   eval "$("$(node_bin)" -e '
     const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
@@ -324,12 +346,12 @@ cmd_update() {
     console.log(`sha=${ok(j.sha256, /^[0-9a-f]{64}$/)}`);
     console.log(`lmodel=${ok(j.model, /^[A-Za-z0-9._:\/-]{1,100}$/)}`);
   ' "$tmp/version.json")"
-  [[ -n "$latest" && -n "$sha" ]] || task_fail "The version file from Nothing BOT Curating isn't valid."
+  [[ -n "$latest" && -n "$sha" ]] || task_fail "The version file from the update site isn't valid."
   TO="$latest"
   if [[ "$latest" == "$FROM" ]]; then progress done "Already up to date"; ok "Already up to date ($FROM)"; return 0; fi
 
   step "Downloading $latest"; progress running "Downloading $latest"
-  curl -fSL --max-time 1800 "$base/dl/spot-solutions.tar.gz" -o "$tmp/app.tgz" || task_fail "The download failed."
+  curl -fSL --max-time 1800 "$base/dl/nothing-bot-server.tar.gz" -o "$tmp/app.tgz" || task_fail "The download failed."
   progress running "Verifying the download"
   [[ "$(sha256_of "$tmp/app.tgz")" == "$sha" ]] || task_fail "The download didn't match its checksum, so it was not installed."
   tar -tzf "$tmp/app.tgz" > "$tmp/list" 2>/dev/null || task_fail "The download isn't a valid archive."
@@ -342,22 +364,22 @@ cmd_update() {
   oldlock="$(sha256_of "$APP/pnpm-lock.yaml" 2>/dev/null || echo none)"
   cp -R "$tmp/stage/." "$APP/" || task_fail "Copying the new files failed."
   newlock="$(sha256_of "$APP/pnpm-lock.yaml" 2>/dev/null || echo none)"
-  if [[ "${SPOT_SKIP_DEPS:-0}" != 1 ]] && [[ "$oldlock" != "$newlock" || ! -d "$APP/apps/worker/node_modules" ]]; then
+  if [[ "${NBS_SKIP_DEPS:-0}" != 1 ]] && [[ "$oldlock" != "$newlock" || ! -d "$APP/apps/worker/node_modules" ]]; then
     step "Installing packages"; progress running "Installing packages"
     (cd "$APP" && PATH="$RT/node/bin:$PATH" PUPPETEER_CACHE_DIR="$ROOT/chrome" "$RT/node/bin/npx" -y pnpm@9.15.4 install --frozen-lockfile --filter "@spot/worker...") || task_fail "Installing packages failed. The old version may still run; try again."
   fi
-  install_self "$APP/deploy/mac/spotctl"
+  install_self "$APP/deploy/mac/nbsctl"
   write_agents          # the launch agents may have changed in this release
   ok "Version $latest"
 
   step "Restarting"; progress running "Restarting the worker"
   # kickstart without -k leaves a running process alone, so an update would keep serving the old code.
-  running com.spotsolutions.worker && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.worker" 2>/dev/null || true
+  running app.nothingbot.server.worker && launchctl kickstart -k "gui/$UID_N/app.nothingbot.server.worker" 2>/dev/null || true
   # A failed model download (Ollama still starting, no network) must not stop the update from finishing.
   pull_model "$(local_model_name "${lmodel:-$MODEL}")" || echo "  ! Couldn't update the AI model now; it will retry on the next update"
   progress done "Updated to $latest"
   # The console goes last: it restarts itself, and its page reloads on the new version.
-  running com.spotsolutions.console && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.console" 2>/dev/null || true
+  running app.nothingbot.server.console && launchctl kickstart -k "gui/$UID_N/app.nothingbot.server.console" 2>/dev/null || true
   ok "Updated to $latest"
 }
 
@@ -366,15 +388,15 @@ cmd_local() {
   case "${1:-}" in
     off)
       progress running "Turning the local model off"
-      touch "$ROOT/.no-local-model"; env_set SPOT_NO_LOCAL_MODEL 1
+      touch "$ROOT/.no-local-model"; env_set NBS_NO_LOCAL_MODEL 1
       write_agents   # removes Ollama's agent
-      launchctl bootout "gui/$UID_N/com.spotsolutions.ollama" 2>/dev/null || true
-      running com.spotsolutions.worker && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.worker" 2>/dev/null || true
+      launchctl bootout "gui/$UID_N/app.nothingbot.server.ollama" 2>/dev/null || true
+      running app.nothingbot.server.worker && launchctl kickstart -k "gui/$UID_N/app.nothingbot.server.worker" 2>/dev/null || true
       progress done "Local model off"; ok "Local model off" ;;
     on)
       progress running "Setting up Ollama"
       rm -f "$ROOT/.no-local-model"
-      if ollama_up && [[ ! -f "$AGENTS/com.spotsolutions.ollama.plist" ]]; then
+      if ollama_up && [[ ! -f "$AGENTS/app.nothingbot.server.ollama.plist" ]]; then
         touch "$ROOT/.external-ollama"
       else
         rm -f "$ROOT/.external-ollama"
@@ -384,13 +406,13 @@ cmd_local() {
           [[ -x "$RT/ollama/ollama" ]] || task_fail "The Ollama download didn't contain the expected program."
         fi
       fi
-      env_set SPOT_NO_LOCAL_MODEL 0
+      env_set NBS_NO_LOCAL_MODEL 0
       write_agents; cmd_start >/dev/null
       pull_model "$(local_model_name)"
       progress running "Restarting the worker"
-      running com.spotsolutions.worker && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.worker" 2>/dev/null || true
+      running app.nothingbot.server.worker && launchctl kickstart -k "gui/$UID_N/app.nothingbot.server.worker" 2>/dev/null || true
       progress done "Local model on"; ok "Local model on" ;;
-    *) die "usage: spotctl local on|off" ;;
+    *) die "usage: nbsctl local on|off" ;;
   esac
 }
 
@@ -398,7 +420,7 @@ cmd_local() {
 # rewrites the launch agents from the data-dir file) and restarts, or puts everything back if anything fails.
 cmd_move() { # move-data | move-cleanup
   [[ -x "$(node_bin)" && -f "$APP/apps/worker/console/move.mjs" ]] || task_fail "move.mjs isn't in the app folder. Update Nothing BOT Server first."
-  SPOT_ROOT="$ROOT" "$(node_bin)" "$APP/apps/worker/console/move.mjs" "$1"
+  NBS_ROOT="$ROOT" "$(node_bin)" "$APP/apps/worker/console/move.mjs" "$1"
 }
 
 # Rewrites the launch agents from the current settings (data folder, models folder). Nothing is restarted here.
@@ -421,7 +443,7 @@ cmd_awake() {
   case "${1:-}" in
     on)  /usr/bin/osascript -e 'do shell script "pmset -a disablesleep 1 && pmset -c sleep 0 && pmset -c disksleep 0" with administrator privileges with prompt "Nothing BOT Server wants to keep this Mac running with the lid closed."' >/dev/null && ok "Mac stays awake, even with the lid closed" ;;
     off) /usr/bin/osascript -e 'do shell script "pmset -a disablesleep 0 && pmset -c sleep 1" with administrator privileges with prompt "Nothing BOT Server wants to restore normal sleep."' >/dev/null && ok "Normal sleep restored" ;;
-    *) die "usage: spotctl awake on|off" ;;
+    *) die "usage: nbsctl awake on|off" ;;
   esac
 }
 
@@ -429,19 +451,34 @@ cmd_login() {
   case "${1:-}" in
     on) touch "$ROOT/.start-at-login" ;;
     off) rm -f "$ROOT/.start-at-login" ;;
-    *) die "usage: spotctl login on|off" ;;
+    *) die "usage: nbsctl login on|off" ;;
   esac
   write_agents
   ok "Start at login: $1"
 }
 
+# Removes the server (launch agents, program files, logs), both this version and the old "Spot Server". The data folder
+# (WhatsApp login, keys, settings) is kept unless you pass --all, and then it is deleted too.
 cmd_uninstall() {
+  local all=0; [[ "${1:-}" == --all ]] && all=1
   cmd_stop
   loaded "$UPDATE_LABEL" && launchctl bootout "gui/$UID_N/$UPDATE_LABEL" 2>/dev/null || true
-  rm -f "$AGENTS"/com.spotsolutions.*.plist
+  retire_legacy
+  rm -f "$AGENTS"/app.nothingbot.server.*.plist
   rm -rf "$APP" "$RT" "$ROOT/chrome" "$LOGS"
-  [[ "${1:-}" == --all ]] && rm -rf "$ROOT"
-  ok "Removed. ${1:+Everything, including your WhatsApp session and keys.}"
+  rm -rf "$LEGACY_ROOT/app" "$LEGACY_ROOT/runtime" "$LEGACY_ROOT/chrome" "$LEGACY_ROOT/logs" "$LEGACY_ROOT/spotctl"
+  rm -rf "/Applications/Spot Server.app"
+  if [[ $all == 1 ]]; then
+    rm -rf "$ROOT" "$LEGACY_ROOT"
+    [[ "$DATA" == "$ROOT"/* ]] || echo "  Your data folder is somewhere else and was not removed: $DATA"
+    ok "Removed everything, including your WhatsApp login, keys and settings."
+  else
+    ok "Removed the program, launch agents and logs."
+    echo "  Kept (your WhatsApp login, keys and settings):"
+    echo "    $DATA"
+    [[ -d "$LEGACY_ROOT/data" ]] && echo "    $LEGACY_ROOT/data (from the old Spot Server)"
+    echo "  Delete them too with: nbsctl uninstall --all"
+  fi
 }
 
 case "${1:-}" in

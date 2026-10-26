@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Builds "Spot Server.app" (universal: Apple Silicon + Intel) and SpotServer.dmg.
+# Builds "Nothing BOT Server.app" (universal: Apple Silicon + Intel) and NothingBotServer.dmg.
 #   deploy/mac/build.sh [out-dir]
 # Needs only the Xcode command-line tools. Ad-hoc signed (no Apple Developer account).
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT="${1:-$PWD/dist}"
-APP="$OUT/Spot Server.app"
+APP="$OUT/Nothing BOT Server.app"
 TMP="$(mktemp -d)"
 VERSION="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
 rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -14,13 +14,13 @@ echo "▸ Compiling"
 for arch in arm64 x86_64; do
   swiftc -O -swift-version 5 -parse-as-library -target "$arch-apple-macos13.0" \
     -framework SwiftUI -framework WebKit -framework AppKit \
-    SpotServer/main.swift -o "$TMP/SpotServer-$arch"
+    NothingBotServer/main.swift -o "$TMP/NothingBotServer-$arch"
 done
-lipo -create "$TMP/SpotServer-arm64" "$TMP/SpotServer-x86_64" -output "$APP/Contents/MacOS/SpotServer"
+lipo -create "$TMP/NothingBotServer-arm64" "$TMP/NothingBotServer-x86_64" -output "$APP/Contents/MacOS/NothingBotServer"
 
 echo "▸ Bundling"
-cp spotctl "$APP/Contents/Resources/spotctl"
-chmod +x "$APP/Contents/Resources/spotctl"
+cp nbsctl "$APP/Contents/Resources/nbsctl"
+chmod +x "$APP/Contents/Resources/nbsctl"
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -28,8 +28,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <dict>
   <key>CFBundleName</key><string>Nothing BOT Server</string>
   <key>CFBundleDisplayName</key><string>Nothing BOT Server</string>
-  <key>CFBundleIdentifier</key><string>app.spotsolutions.server</string>
-  <key>CFBundleExecutable</key><string>SpotServer</string>
+  <key>CFBundleIdentifier</key><string>app.nothingbot.server</string>
+  <key>CFBundleExecutable</key><string>NothingBotServer</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
@@ -59,8 +59,8 @@ echo "▸ Disk image"
 STAGE="$TMP/dmg"; mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-rm -f "$OUT/SpotServer.dmg"
-hdiutil create -quiet -volname "Nothing BOT Server" -srcfolder "$STAGE" -ov -format UDZO "$OUT/SpotServer.dmg"
+rm -f "$OUT/NothingBotServer.dmg"
+hdiutil create -quiet -volname "Nothing BOT Server" -srcfolder "$STAGE" -ov -format UDZO "$OUT/NothingBotServer.dmg"
 rm -rf "$TMP"
 echo "✓ $APP"
-echo "✓ $OUT/SpotServer.dmg"
+echo "✓ $OUT/NothingBotServer.dmg"

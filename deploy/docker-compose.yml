@@ -32,7 +32,7 @@ services:
     restart: unless-stopped
     # A fixed hostname keeps the server's identity stable when the container is recreated, and the drain
     # (final login upload and lease release for every account) needs longer than Docker's default 10 s.
-    hostname: spot-worker
+    hostname: nothing-bot-server-worker
     stop_grace_period: 90s
     depends_on:
       ollama:
@@ -42,7 +42,7 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - FIREBASE_SERVICE_ACCOUNT=/secrets/service-account.json
       - WWEBJS_DATA=/data/wwebjs
-      - SPOT_SERVER_ID=${SPOT_SERVER_ID:-spot-worker}
+      - NBS_SERVER_ID=${NBS_SERVER_ID:-${SPOT_SERVER_ID:-nothing-bot-server-worker}}
     volumes:
       - wwebjs:/data
       - ../apps/worker/service-account.json:/secrets/service-account.json:ro
