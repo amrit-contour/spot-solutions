@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://spot-solutions.web.app"><b>Try the live demo</b></a> ·
-  <a href="https://dev.to/amrit-dash">The write-up on DEV</a> ·
+  <a href="https://dev.to/amrit-dash/my-whatsapp-was-my-open-mic-booking-system-so-i-gave-it-to-gemma-5274">The write-up on DEV</a> ·
   <a href="#run-a-server">Run a server</a> ·
   <a href="docs/README.md">Docs</a>
 </p>
