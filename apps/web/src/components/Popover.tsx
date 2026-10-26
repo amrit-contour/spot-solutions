@@ -141,7 +141,7 @@ export function Popover({ trigger, title, children, width = 340, controlledOpen,
 }
 
 /** Icon button for a column's toolbar. A count badge sits on the corner; `tone` marks something that needs a look. */
-export function ToolButton({ icon: I, label, count, tone = "plain", active, onClick }: { icon: Icon; label: string; count?: number; tone?: "plain" | "attention"; active?: boolean; onClick: () => void }) {
+export function ToolButton({ icon: I, label, count, tone = "plain", active, onClick }: { icon: Icon; label: string; count?: number; tone?: "plain" | "attention" | "accent"; active?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -149,7 +149,7 @@ export function ToolButton({ icon: I, label, count, tone = "plain", active, onCl
       title={label}
       aria-expanded={active}
       onClick={onClick}
-      className={cx("state-layer pressable relative grid size-9 flex-none place-items-center rounded-full", active ? "bg-secondary-container text-on-secondary-container" : tone === "attention" ? "text-tertiary" : "text-on-surface-variant")}
+      className={cx("state-layer pressable relative grid size-9 flex-none place-items-center rounded-full", active ? "bg-secondary-container text-on-secondary-container" : tone === "attention" ? "text-tertiary" : tone === "accent" ? "text-primary" : "text-on-surface-variant")}
     >
       <I className="icon size-5" />
       {count ? (

@@ -247,11 +247,11 @@ function Calendar() {
         <aside aria-label="Summary" className="relative mt-6 min-w-0 lg:sticky lg:top-[calc(var(--page-header-h,0px)+1rem)] lg:-mx-1 lg:mt-3 lg:overflow-x-clip lg:px-1 lg:py-1">
           {/* Collapsed (large screens only): a slim rail of icons with counts. */}
           <div className={cx("absolute inset-x-1 top-1 hidden flex-col items-center gap-1 transition-opacity duration-200 motion-reduce:transition-none", side ? "lg:flex" : "lg:hidden")} aria-hidden={!side}>
-            <ToolButton icon={IconArrowLeft} label="Show the side column" onClick={() => setSide(false)} />
+            <ToolButton icon={IconArrowLeft} label="Show the side column" tone="accent" onClick={() => setSide(false)} />
             <span className="my-1 h-px w-6 bg-outline-variant" aria-hidden />
-            <ToolButton icon={IconInbox} label="Updates" count={updates.total} tone={updates.needsYou ? "attention" : "plain"} onClick={() => setSide(false)} />
-            <ToolButton icon={IconChat} label="Requests this week" count={byLane.asked.length + byLane.maybe.length} onClick={() => setSide(false)} />
-            <ToolButton icon={IconCalendarMark} label="Asking for next week" count={nextByLane.asked.length + nextByLane.maybe.length + nextByLane.held.length} onClick={() => setSide(false)} />
+            <ToolButton icon={IconInbox} label="Updates" count={updates.total} tone="accent" onClick={() => setSide(false)} />
+            <ToolButton icon={IconChat} label="Requests this week" tone="accent" count={byLane.asked.length + byLane.maybe.length} onClick={() => setSide(false)} />
+            <ToolButton icon={IconCalendarMark} label="Asking for next week" tone="accent" count={nextByLane.asked.length + nextByLane.maybe.length + nextByLane.held.length} onClick={() => setSide(false)} />
           </div>
           <div className={cx("flex min-w-0 flex-col gap-4 lg:w-[19.5rem] xl:w-[21rem]", side && "lg:invisible lg:opacity-0")} inert={side && wide ? true : undefined} style={{ transition: "opacity 200ms" }}>
             <div className="hidden items-center justify-between lg:flex">
@@ -279,9 +279,10 @@ const SIDE_KEY = "spot.calendar.sideCollapsed";
 function useSide() {
   const [side, set] = useState(() => {
     try {
-      return localStorage.getItem(SIDE_KEY) === "1";
+      // Folded by default; only an explicit "show" is remembered as open.
+      return localStorage.getItem(SIDE_KEY) !== "0";
     } catch {
-      return false;
+      return true;
     }
   });
   const setSide = useCallback((v: boolean) => {
