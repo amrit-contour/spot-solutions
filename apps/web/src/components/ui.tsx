@@ -211,7 +211,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 export { Select, TimePicker } from "./Pickers";
 
 /** M3 segmented button with a sliding selection pill. */
-export function Segmented<T extends string | number>({ value, onChange, options, size = "md", full }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; icon?: Icon }[]; size?: "sm" | "md"; full?: boolean }) {
+export function Segmented<T extends string | number>({ value, onChange, options, size = "md", full, compact }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; icon?: Icon }[]; size?: "sm" | "md"; full?: boolean; compact?: boolean }) {
   const id = useId();
   return (
     <div className={cx("rounded-full border border-outline-variant p-0.5", full ? "flex w-full" : "inline-flex", size === "sm" ? "h-9" : "h-10")} role="radiogroup">
@@ -223,7 +223,7 @@ export function Segmented<T extends string | number>({ value, onChange, options,
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className={cx("relative flex flex-1 items-center justify-center gap-1.5 rounded-full px-3.5 type-label-l whitespace-nowrap transition-colors duration-150", active ? "text-on-secondary-container" : "text-on-surface-variant")}
+            className={cx("relative flex flex-1 items-center justify-center gap-1.5 rounded-full type-label-l whitespace-nowrap transition-colors duration-150", compact ? "px-2.5" : "px-3.5", active ? "text-on-secondary-container" : "text-on-surface-variant")}
           >
             {active && <motion.span layoutId={id} className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
             {o.icon && <o.icon className="icon relative size-4" />}

@@ -1,6 +1,6 @@
 // A small panel opened from an icon button: an anchored popover on desktop, a bottom sheet on phones.
 // Rendered in a portal, so columns that clip or scroll never cut it off, and opening one never moves the page.
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { IconButton, cx, type Icon } from "./ui";
@@ -24,7 +24,7 @@ function usePhone() {
 /** Clicks inside menus, selects and dialogs opened from the panel are portalled elsewhere but still belong to it. */
 const NESTED = '[role="menu"],[role="listbox"],[role="dialog"],[role="alertdialog"],[data-popover-owned]';
 
-export function Popover({ trigger, title, children, width = 340, controlledOpen, onOpenChange }: { trigger: (toggle: () => void, open: boolean) => ReactNode; title: string; children: (close: () => void) => ReactNode; width?: number; controlledOpen?: boolean; onOpenChange?: (o: boolean) => void }) {
+export function Popover({ trigger, title, children, width = 340, controlledOpen, onOpenChange, anchorClassName, anchorStyle }: { trigger: (toggle: () => void, open: boolean) => ReactNode; title: string; children: (close: () => void) => ReactNode; width?: number; controlledOpen?: boolean; onOpenChange?: (o: boolean) => void; /** Replaces the default `relative inline-flex` wrapper, e.g. to absolutely position the trigger in a grid. */ anchorClassName?: string; anchorStyle?: CSSProperties }) {
   const phone = usePhone();
   const [inner, setInner] = useState(false);
   const open = controlledOpen ?? inner;
@@ -49,7 +49,8 @@ export function Popover({ trigger, title, children, width = 340, controlledOpen,
       const maxH = Math.max(200, Math.min(560, up ? above : below));
       const hh = Math.min(h, maxH);
       const top = up ? a.top - GAP - hh : a.bottom + GAP;
-      const left = Math.min(Math.max(MARGIN, a.right - w), vw - MARGIN - w);
+      // Right edges line up by default; when that would run off the left, line the left edges up instead.
+      const left = Math.min(Math.max(MARGIN, a.right - w < MARGIN ? a.left : a.right - w), vw - MARGIN - w);
       setPos({ top, left, maxH, origin: `${up ? "bottom" : "top"} right` });
     };
     place();
@@ -97,7 +98,7 @@ export function Popover({ trigger, title, children, width = 340, controlledOpen,
   );
 
   return (
-    <div ref={anchor} className="relative inline-flex">
+    <div ref={anchor} className={anchorClassName ?? "relative inline-flex"} style={anchorStyle}>
       {trigger(() => setOpen(!open), open)}
       {createPortal(
         <AnimatePresence>

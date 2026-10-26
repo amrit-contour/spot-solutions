@@ -1,118 +1,240 @@
-// Landing page: the week as a calendar. Shows sit on their weekday with the lineup, what still needs doing, and a
-// side column for requests, next week's asks and Updates. Every action here is the same one the Lineup page runs.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { updateDoc, where } from "firebase/firestore";
+// Landing page: the calendar. Day, Week and Month views of the shows, each opening the same card with every quick
+// action the Lineup page has, and a side column for Updates, requests and next week's asks.
+// The URL carries the view and date (/?view=month&date=2026-10-26) so any view can be linked; the last view is remembered.
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { where } from "firebase/firestore";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
-import {
-  DAY_NAMES,
-  DAY_SHORT,
-  dateInWeek,
-  diffLineup,
-  formatDate,
-  formatTime,
-  groupModeOf,
-  localNow,
-  pendingRejections,
-  sentSnapshot,
-  shiftWeek,
-  type Comic,
-  type Lineup,
-  type Show,
-  type SpotRequest,
-  type Weekday,
-} from "@spot/shared";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { DAY_SHORT, formatDate, localNow, pendingRejections, shiftWeek, type Lineup, type Show, type SpotRequest, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { useCollection, useNow, userDoc } from "../lib/data";
-import { markCanned } from "../lib/lineup";
-import { answerMicCheck, useUpdates } from "../lib/updates";
+import { useCollection, useNow } from "../lib/data";
+import { useUpdates } from "../lib/updates";
+import {
+  CAL_VIEWS,
+  addDays,
+  fmtDayLong,
+  fmtMonth,
+  fmtWeekRange,
+  isISODate,
+  mondayOf,
+  monthKey,
+  readView,
+  saveView,
+  stepDate,
+  toMinutes,
+  useMedia,
+  weekDates,
+  weeksFor,
+  weekdayOf,
+  type CalView,
+} from "../lib/calendarDates";
 import { PageHeader } from "../components/Shell";
-import { WeekSwitcher } from "../components/WeekSwitcher";
-import { ConfirmSheet } from "../components/ConfirmSheet";
-import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
-import { OfferSheet } from "../components/OfferSheet";
-import { GroupSyncSheet } from "../components/GroupSyncSheet";
-import { PillRow, comicPills, type TellState } from "../components/Pills";
+import { StickyBar } from "../components/StickyBar";
 import { Count } from "../components/updates/shared";
-import { Avatar, Button, Chip, Empty, buttonClass, cx } from "../components/ui";
-import { IconArrowRight, IconCalendarMark, IconCheck, IconClock, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "../components/icons";
+import { Avatar, Button, Chip, Empty, IconButton, Segmented, cx } from "../components/ui";
+import { IconArrowLeft, IconArrowRight, IconCalendarMark } from "../components/icons";
+import { Agenda } from "../components/calendar/Agenda";
+import { DayView } from "../components/calendar/DayView";
+import { MonthCompact, MonthGrid } from "../components/calendar/MonthViews";
+import { TONE_LEGEND, CalProvider, legendBar, makeEvent, type CalData, type CalEvent } from "../components/calendar/shared";
+import { WeekGrid } from "../components/calendar/WeekGrid";
+import { listNames } from "../components/calendar/EventCard";
 import { laneOf, type Lane } from "./Requests";
 
 /** "/" used to be Requests. Old links like /?view=updates keep working by moving to /requests. */
 export function Home() {
   const [params] = useSearchParams();
-  if (params.has("view")) return <Navigate to={`/requests?${params.toString()}`} replace />;
+  const v = params.get("view");
+  if (v && !(CAL_VIEWS as string[]).includes(v)) return <Navigate to={`/requests?${params.toString()}`} replace />;
   return <Calendar />;
 }
 
-// Monday first, like the week key.
-const WEEK_ORDER: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
-const first = (name: string) => name.split(" ")[0];
+const VIEW_OPTIONS = [
+  { value: "day" as const, label: "Day" },
+  { value: "week" as const, label: "Week" },
+  { value: "month" as const, label: "Month" },
+];
+
+/** How the next view arrives: sliding in from a side (prev/next), a plain fade (view switch), or not at all (keyboard). */
+type Arrive = "none" | "fade" | -1 | 1;
 
 function Calendar() {
   const { uid, week, setWeek, currentWeek, shows, comicsById, settings } = useApp();
   const now = useNow(30_000);
-  const today = localNow(new Date(now), settings.timezone).date;
+  const local = localNow(new Date(now), settings.timezone);
+  const today = local.date;
+  const nowMin = toMinutes(local.time);
   const nextWeek = shiftWeek(currentWeek, 1);
-  const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
-  const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
+  const [params, setParams] = useSearchParams();
+  const phone = useMedia("(max-width: 639px)");
+  const reduce = useReducedMotion();
+  const arrive = useRef<Arrive>("none");
+
+  const viewParam = params.get("view");
+  const view: CalView = (CAL_VIEWS as string[]).includes(viewParam ?? "") ? (viewParam as CalView) : (readView() ?? "week");
+  const dateParam = params.get("date");
+  const date = isISODate(dateParam) ? dateParam : mondayOf(today) === week ? today : week;
+
+  const go = useCallback(
+    (d: string, v: CalView = view, how: Arrive = "fade") => {
+      arrive.current = how;
+      setParams({ view: v, date: d }, { replace: true });
+    },
+    [view, setParams],
+  );
+
+  // `week` (app state, used by the other pages) follows the date; a week changed from elsewhere moves the date.
+  const prev = useRef<{ week: string; date: string } | null>(null);
+  useEffect(() => {
+    const p = prev.current;
+    prev.current = { week, date };
+    if (!p || p.date !== date) {
+      if (mondayOf(date) !== week) setWeek(mondayOf(date));
+    } else if (p.week !== week && mondayOf(date) !== week) {
+      arrive.current = "fade";
+      setParams({ view, date: mondayOf(today) === week ? today : week }, { replace: true });
+    }
+  }, [week, date, today, view, setWeek, setParams]);
+
+  const weeks = useMemo(() => weeksFor(view, date), [view, date]);
+  const rangeKey = weeks.join(",");
+  const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "in", weeks)], rangeKey);
+  const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "in", weeks)], rangeKey);
   const nextRequests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", nextWeek)], nextWeek);
   const updates = useUpdates();
 
   const active = useMemo(() => shows.filter((s) => s.active), [shows]);
-  const lineupByShow = useMemo(() => new Map(lineups.data.map((l) => [l.showId, l])), [lineups.data]);
-  const byLane = useMemo(() => groupByLane(requests.data), [requests.data]);
+  const lineupBy = useMemo(() => new Map(lineups.data.map((l) => [`${l.weekOf}_${l.showId}`, l])), [lineups.data]);
+  const asksByWeek = useMemo(() => {
+    const m = new Map<string, SpotRequest[]>();
+    for (const r of requests.data) m.set(r.weekOf, [...(m.get(r.weekOf) ?? []), r]);
+    return m;
+  }, [requests.data]);
+  const weekRequests = asksByWeek.get(week) ?? [];
+  const byLane = useMemo(() => groupByLane(weekRequests), [weekRequests]);
   const nextByLane = useMemo(() => groupByLane(nextRequests.data), [nextRequests.data]);
-  // Same rule as the Lineup page: the regret note on Confirm shows when this is the last open show of the week.
-  const regrets = useMemo(() => pendingRejections(requests.data, new Set(lineups.data.flatMap((l) => l.slots.map((x) => x.comicId)))), [requests.data, lineups.data]);
-  const openShows = active.filter((s) => !["confirmed", "cancelled"].includes(lineupByShow.get(s.id)?.status ?? "draft"));
 
-  const days = WEEK_ORDER.map((wd) => ({ wd, date: dateInWeek(week, wd), shows: active.filter((s) => s.weekday === wd) }));
-  const showDays = days.filter((d) => d.shows.length);
-  const title = week === currentWeek ? "This week" : week === nextWeek ? "Next week" : week === shiftWeek(currentWeek, -1) ? "Last week" : week < currentWeek ? "Week of " + formatDate(week) : "Week of " + formatDate(week);
-  const todo = active.filter((s) => {
-    const l = lineupByShow.get(s.id);
-    return l && l.date >= today && l.status === "draft" && l.slots.length > 0;
-  }).length;
-  const subtitle = !active.length ? "Your shows, lineups and what's waiting on you" : `${active.length} show${active.length > 1 ? "s" : ""}${todo ? ` · ${todo} to confirm` : ""}`;
+  // Same rule as the Lineup page: the regret note on Confirm shows when this is the last open show of that week.
+  const regretInfo = useMemo(() => {
+    const m = new Map<string, { openIds: string[]; regrets: number }>();
+    for (const w of weeks) {
+      const placed = new Set(lineups.data.filter((l) => l.weekOf === w).flatMap((l) => l.slots.map((x) => x.comicId)));
+      const regrets = pendingRejections(asksByWeek.get(w) ?? [], placed).length;
+      const openIds = active.filter((s) => !["confirmed", "cancelled"].includes(lineupBy.get(`${w}_${s.id}`)?.status ?? "draft")).map((s) => s.id);
+      m.set(w, { openIds, regrets });
+    }
+    return m;
+  }, [weeks, lineups.data, asksByWeek, active, lineupBy]);
+
+  const cal = useMemo<CalData>(
+    () => ({
+      today,
+      nowMin,
+      loading: lineups.loading,
+      comicsById,
+      asksByWeek,
+      eventsOn: (d: string): CalEvent[] => {
+        const w = mondayOf(d);
+        const wd = weekdayOf(d);
+        return active.filter((s) => s.weekday === wd).map((s) => makeEvent(s, d, w, lineupBy.get(`${w}_${s.id}`))).sort((a, b) => a.startMin - b.startMin);
+      },
+      regretsFor: (ev) => {
+        const r = regretInfo.get(ev.week);
+        return r && r.openIds.length === 1 && r.openIds[0] === ev.show.id ? r.regrets : 0;
+      },
+      openDay: (d) => go(d, "day"),
+    }),
+    [today, nowMin, lineups.loading, comicsById, asksByWeek, active, lineupBy, regretInfo, go],
+  );
+
+  const chooseView = (v: CalView) => {
+    saveView(v);
+    go(date, v);
+  };
+  const step = (dir: -1 | 1, how: Arrive = dir) => go(stepDate(view, date, dir), view, how);
+  const atToday = view === "day" ? date === today : view === "week" ? mondayOf(date) === mondayOf(today) : monthKey(date) === monthKey(today);
+  const goToday = () => go(today, view, "fade");
+
+  // Keyboard: ← → move, T is today, D W M switch view. Skipped while typing or while a dialog is open. No animation: these repeat.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+      if (document.querySelector('[role="dialog"],[role="menu"],[role="listbox"]')) return;
+      const k = e.key.toLowerCase();
+      if (k === "arrowleft") step(-1, "none");
+      else if (k === "arrowright") step(1, "none");
+      else if (k === "t") go(today, view, "none");
+      else if (k === "d" || k === "w" || k === "m") {
+        const v = ({ d: "day", w: "week", m: "month" } as const)[k];
+        saveView(v);
+        go(date, v, "none");
+      } else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const weekEvents = weekDates(mondayOf(date)).flatMap((d) => cal.eventsOn(d));
+  const todo = weekEvents.filter((e) => e.lineup && e.date >= today && e.lineup.status === "draft" && e.lineup.slots.length > 0).length;
+  const rel = (d: string) => (d === today ? "Today" : d === addDays(today, 1) ? "Tomorrow" : d === addDays(today, -1) ? "Yesterday" : fmtDayLong(d));
+  const period = view === "month" ? fmtMonth(date) : view === "week" ? fmtWeekRange(mondayOf(date)) : rel(date);
+  const title = view === "week" ? (week === currentWeek ? "This week" : week === nextWeek ? "Next week" : week === shiftWeek(currentWeek, -1) ? "Last week" : "Week of " + formatDate(week)) : period;
+  const base = !active.length ? "Your shows, lineups and what's waiting on you" : `${active.length} show${active.length > 1 ? "s" : ""}${todo ? ` · ${todo} to confirm` : ""}`;
+  const subtitle = view === "week" ? `${period} · ${base}` : view === "day" ? `${fmtDayLong(date)} · ${base}` : base;
+
+  const anchor = view === "day" ? date : view === "week" ? mondayOf(date) : monthKey(date);
+  const slide = typeof arrive.current === "number" && !reduce ? arrive.current * 28 : 0;
+  const animate = arrive.current !== "none";
 
   return (
     <div className="w-full">
-      <PageHeader title={title} subtitle={subtitle} actions={<WeekSwitcher />} />
-      <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <PageHeader title={title} subtitle={subtitle} />
+      <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0">
-          <WeekStrip days={days} today={today} />
+          <StickyBar title={period} className="top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))]! py-2">
+            <div className="flex items-center gap-1.5 sm:gap-2" role="toolbar" aria-label="Calendar">
+              <div className="flex items-center">
+                <IconButton icon={IconArrowLeft} label={`Previous ${view}`} onClick={() => step(-1)} className="size-10 sm:size-9" />
+                <IconButton icon={IconArrowRight} label={`Next ${view}`} onClick={() => step(1)} className="size-10 sm:size-9" />
+              </div>
+              <Button size="sm" variant={atToday ? "text" : "outlined"} onClick={goToday} title="Go to today (T)" aria-label={`Today, ${fmtDayLong(today)}`} className={cx(atToday && "text-on-surface-variant")}>
+                Today
+              </Button>
+              <div className="ml-auto">
+                <Segmented value={view} onChange={chooseView} options={VIEW_OPTIONS} size="sm" compact />
+              </div>
+            </div>
+          </StickyBar>
+
           {!active.length ? (
             <Empty icon={IconCalendarMark} title="No shows yet" action={<Link to="/shows"><Button icon={IconCalendarMark}>Set up shows</Button></Link>}>
               Add the mics you curate (venue, day, time, slot count) and they show up here on their day.
             </Empty>
           ) : (
-            <ul className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,300px),1fr))] gap-4">
-              {showDays.flatMap((d) =>
-                d.shows.map((show) => (
-                  <EventCard
-                    key={show.id}
-                    show={show}
-                    date={d.date}
-                    today={today}
-                    lineup={lineupByShow.get(show.id)}
-                    loading={lineups.loading}
-                    asks={requests.data}
-                    comicsById={comicsById}
-                    regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0}
-                  />
-                )),
-              )}
-            </ul>
-          )}
-          {active.length > 0 && showDays.length < 7 && (
-            <p className="mt-4 type-body-s text-on-surface-variant">
-              No shows {days.filter((d) => !d.shows.length).map((d) => DAY_SHORT[d.wd]).join(", ")}.
-            </p>
+            <CalProvider value={cal}>
+              <div className="mt-3 overflow-x-clip">
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.div
+                    key={`${view}:${anchor}`}
+                    initial={animate ? { opacity: 0, transform: `translateX(${slide}px)` } : false}
+                    animate={{ opacity: 1, transform: "translateX(0px)", transition: { duration: reduce ? 0.12 : 0.24, ease: [0.23, 1, 0.32, 1] } }}
+                    exit={{ opacity: 0, transition: { duration: 0.08 } }}
+                  >
+                    {view === "week" ? (phone ? <Agenda dates={weekDates(mondayOf(date))} label="This week by day" /> : <WeekGrid monday={mondayOf(date)} />) : null}
+                    {view === "month" ? (phone ? <MonthCompact date={date} setDate={(d) => go(d, "month", "none")} /> : <MonthGrid date={date} />) : null}
+                    {view === "day" ? <DayView date={date} /> : null}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+              {!phone && view !== "day" && <Legend />}
+            </CalProvider>
           )}
         </div>
 
-        <aside aria-label="Summary" className="mt-6 flex min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:mt-5">
+        <aside aria-label="Summary" className="mt-6 flex min-w-0 flex-col gap-4 lg:sticky lg:top-[calc(var(--page-header-h,0px)+1rem)] lg:mt-3">
           <UpdatesCard total={updates.total} needsYou={updates.needsYou} />
           <RequestsCard title={week === currentWeek ? "Requests this week" : `Requests · ${formatDate(week)}`} by={byLane} loading={requests.loading} />
           <NextWeekCard
@@ -128,244 +250,24 @@ function Calendar() {
   );
 }
 
+function Legend() {
+  return (
+    <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 px-1 type-body-s text-on-surface-variant" aria-label="Status colours">
+      {TONE_LEGEND.map((t) => (
+        <li key={t.id} className="inline-flex items-center gap-1.5">
+          <span aria-hidden className={cx("size-2 rounded-full", legendBar(t.id))} />
+          {t.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function groupByLane(list: SpotRequest[]) {
   const g: Record<Lane, SpotRequest[]> = { asked: [], maybe: [], held: [], placed: [], closed: [] };
   for (const r of list) g[laneOf(r)].push(r);
   for (const k of Object.keys(g) as Lane[]) g[k].sort((a, b) => a.createdAt - b.createdAt);
   return g;
-}
-
-/* ---------- Week strip ---------- */
-
-function WeekStrip({ days, today }: { days: { wd: Weekday; date: string; shows: Show[] }[]; today: string }) {
-  return (
-    <ol className="grid grid-cols-7 gap-1 sm:gap-2" aria-label="Days of the week">
-      {days.map((d) => {
-        const isToday = d.date === today;
-        const past = d.date < today;
-        const has = d.shows.length > 0;
-        const cell = (
-          <>
-            <span className={cx("type-label-s", isToday ? "text-on-primary" : "text-on-surface-variant")}>{DAY_SHORT[d.wd]}</span>
-            <span className="type-title-m tabular">{Number(d.date.slice(8))}</span>
-            <span className="flex h-1.5 items-center gap-0.5" aria-hidden>
-              {d.shows.map((s) => (
-                <span key={s.id} className={cx("size-1.5 rounded-full", isToday ? "bg-on-primary" : "bg-primary")} />
-              ))}
-            </span>
-          </>
-        );
-        const cls = cx(
-          "flex min-w-0 flex-col items-center gap-0.5 rounded-lg py-2",
-          isToday ? "bg-primary text-on-primary" : has ? "bg-surface-container text-on-surface" : "text-on-surface-variant/70",
-          past && !isToday && "opacity-60",
-        );
-        return (
-          <li key={d.wd}>
-            {has ? (
-              <button type="button" className={cx(cls, "state-layer w-full")} onClick={() => document.getElementById(`show-${d.shows[0].id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} aria-label={`${DAY_NAMES[d.wd]} ${formatDate(d.date)}, ${d.shows.length} show${d.shows.length > 1 ? "s" : ""}`}>
-                {cell}
-              </button>
-            ) : (
-              <div className={cls} aria-label={`${DAY_NAMES[d.wd]} ${formatDate(d.date)}, no shows`}>
-                {cell}
-              </div>
-            )}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/* ---------- One show on its day ---------- */
-
-function EventCard({ show, date, today, lineup, loading, asks, comicsById, regretsAfter }: { show: Show; date: string; today: string; lineup?: Lineup; loading: boolean; asks: SpotRequest[]; comicsById: Map<string, Comic>; regretsAfter: number }) {
-  const { uid, venues, currentWeek, week } = useApp();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [updatesOpen, setUpdatesOpen] = useState(false);
-  const [offerOpen, setOfferOpen] = useState(false);
-  const [syncOpen, setSyncOpen] = useState(false);
-  const venue = venues.find((v) => v.id === show.venueId);
-  const status = lineup?.status;
-  const confirmed = status === "confirmed";
-  const off = status === "cancelled" || status === "canned";
-  const mode = groupModeOf(show);
-  const isToday = date === today;
-  const past = date < today;
-  const slots = lineup?.slots ?? [];
-  const ids = slots.map((s) => s.comicId);
-  const name = (id: string) => comicsById.get(id)?.name ?? `+${id.split("@")[0]}`;
-
-  const baseline = confirmed && lineup ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
-  const changes = baseline && lineup ? diffLineup(lineup.slots, baseline, show) : null;
-  const statesFor = (cid: string): TellState[] => {
-    if (changes?.added.includes(cid)) return [{ kind: "new", text: "Not told yet" }];
-    if (changes) {
-      const m = changes.moved.find((x) => x.comicId === cid);
-      if (m) return [{ kind: "moved", text: `Moved from ${m.from}` }];
-    }
-    return lineup?.sent?.[cid] || (confirmed && !lineup?.sent) ? [{ kind: "told", text: "Already told" }] : [];
-  };
-  const lastWeek = shiftWeek(week, -1);
-
-  // Same as the Lineup page: when this show's group mode is "confirm", open the group review once the plan lands
-  // after the curator pressed Confirm & send or Send updates. A plan left pending from before never pops the sheet.
-  const lineupLoaded = !loading;
-  const syncStatus = lineup?.groupSync?.status;
-  const armed = useRef(false);
-  const seen = useRef<{ status: string | undefined } | null>(null);
-  useEffect(() => {
-    if (!lineupLoaded) return;
-    if (!seen.current) {
-      seen.current = { status: syncStatus };
-      return;
-    }
-    const before = seen.current.status;
-    seen.current.status = syncStatus;
-    if (before !== "pending" && syncStatus === "pending" && armed.current) {
-      armed.current = false;
-      setSyncOpen(true);
-    }
-  }, [syncStatus, lineupLoaded]);
-
-  // Who asked for this weekday and isn't placed yet. People with no day preference are counted apart.
-  const waiting = asks.filter((r) => {
-    const lane = laneOf(r);
-    return (lane === "asked" || lane === "maybe") && !ids.includes(r.comicId);
-  });
-  const wantsDay = waiting.filter((r) => r.intent.preferredDays.includes(show.weekday));
-  const anyDay = waiting.filter((r) => !r.intent.preferredDays.length);
-  const seeds = !lineup && !past && week >= currentWeek ? [...new Set([...(show.regulars ?? []), ...(show.protected ?? [])])].map(name) : [];
-
-  const statusChip = past && status === "confirmed" && lineup?.outcome === "happened" ? <Chip tone="success" icon={IconCheck}>Happened</Chip>
-    : status === "canned" ? <Chip tone="error">Didn't happen</Chip>
-    : status === "cancelled" ? <Chip tone="error">Cancelled</Chip>
-    : confirmed ? <Chip tone="success" icon={IconCheck}>Confirmed</Chip>
-    : slots.length ? <Chip tone="tertiary">Draft</Chip>
-    : <Chip>Not started</Chip>;
-
-  const mic = past && confirmed && !lineup?.outcome && lineup;
-  const canAct = !off && !past;
-  const open = slots.length < show.slotCount;
-
-  return (
-    <li id={`show-${show.id}`} className={cx("flex min-w-0 scroll-mt-4 flex-col rounded-lg bg-surface-low p-4", isToday && "ring-2 ring-primary")}>
-      <header className="flex items-start gap-3">
-        <div className={cx("flex size-12 flex-none flex-col items-center justify-center rounded-md", isToday ? "bg-primary text-on-primary" : "bg-surface-high text-on-surface")}>
-          <span className={cx("type-label-s uppercase", isToday ? "text-on-primary" : "text-on-surface-variant")}>{DAY_SHORT[show.weekday]}</span>
-          <span className="type-title-m leading-5 tabular">{Number(date.slice(8))}</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate type-title-m">{show.name}</h3>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-3 type-body-s text-on-surface-variant">
-            <span className="inline-flex items-center gap-1"><IconClock className="icon size-3.5" />{formatTime(show.startTime)}</span>
-            {venue && <span className="inline-flex min-w-0 items-center gap-1"><IconMap className="icon size-3.5 flex-none" /><span className="truncate">{venue.name}</span></span>}
-          </p>
-        </div>
-        <div className="flex flex-none flex-col items-end gap-1.5">
-          {statusChip}
-          {isToday && <span className="type-label-s text-primary">Today</span>}
-        </div>
-      </header>
-
-      <div className="mt-3 flex items-center gap-2">
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-highest" role="img" aria-label={`${slots.length} of ${show.slotCount} slots filled`}>
-          <div className={cx("h-full rounded-full", off ? "bg-outline" : "bg-primary")} style={{ width: `${Math.min(100, (slots.length / Math.max(1, show.slotCount)) * 100)}%` }} />
-        </div>
-        <span className="type-label-m text-on-surface-variant tabular">{slots.length}/{show.slotCount}</span>
-      </div>
-
-      {loading ? (
-        <div className="mt-3 h-24 animate-pulse rounded-md bg-surface-container" />
-      ) : (
-        <ol className={cx("mt-3 flex flex-col gap-1.5", off && "opacity-60")}>
-          {slots.map((s, i) => {
-            const pills = comicPills({ comic: comicsById.get(s.comicId), request: asks.find((r) => r.comicId === s.comicId), show, lastWeek, states: statesFor(s.comicId), days: false }, s.comicId);
-            return (
-              <li key={s.comicId} className="flex h-10 items-center gap-2.5 rounded-md bg-surface-container pr-3 pl-2">
-                <span className="w-4 flex-none text-center type-label-m text-on-surface-variant tabular">{i + 1}</span>
-                <Avatar name={name(s.comicId)} size={28} />
-                <span className="min-w-0 flex-1 truncate type-body-m">{name(s.comicId)}</span>
-                <PillRow pills={pills} max={1} className="flex-none" />
-              </li>
-            );
-          })}
-          {open && !off && !past && (
-            <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant type-body-s text-on-surface-variant/70", slots.length ? "h-10" : "h-14")}>
-              {slots.length ? `${show.slotCount - slots.length} open slot${show.slotCount - slots.length === 1 ? "" : "s"}` : seeds.length ? "Nobody on the lineup yet" : "No lineup yet"}
-            </li>
-          )}
-          {!slots.length && (off || past) && <li className="px-1 type-body-s text-on-surface-variant">Nobody was on the lineup.</li>}
-        </ol>
-      )}
-
-      {changes && changes.removed.length > 0 && <p className="mt-2 px-1 type-body-s text-tertiary">Removed, not told yet: {changes.removed.map((d) => first(name(d))).join(", ")}</p>}
-      {lineup?.dropped?.length ? <p className="mt-2 px-1 type-body-s text-error">Dropped out: {lineup.dropped.map((d) => first(name(d.comicId))).join(", ")}</p> : null}
-
-      {seeds.length > 0 && (
-        <p className="mt-3 flex items-start gap-1.5 type-body-s text-on-surface-variant">
-          <IconSparkle className="icon mt-0.5 size-4 flex-none text-primary" />
-          <span>Starts with {listNames(seeds)} (regulars and co-hosts).</span>
-        </p>
-      )}
-      {!past && !off && (wantsDay.length > 0 || anyDay.length > 0) && !confirmed && (
-        <p className="mt-3 flex items-start gap-1.5 type-body-s text-on-surface-variant">
-          <IconInbox className="icon mt-0.5 size-4 flex-none text-primary" />
-          <span>
-            {wantsDay.length > 0 ? <><span className="text-on-surface">{wantsDay.length} asking for {DAY_SHORT[show.weekday]}</span>: {listNames(wantsDay.map((r) => r.comicName))}</> : null}
-            {wantsDay.length > 0 && anyDay.length > 0 ? ". " : null}
-            {anyDay.length > 0 ? <>{anyDay.length} open to any day.</> : null}
-          </span>
-        </p>
-      )}
-
-      {mic && (
-        <div className="mt-3 rounded-md bg-secondary-container p-3 text-on-secondary-container">
-          <p className="type-body-m">Did <span className="type-title-s">{show.name}</span> happen?</p>
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <Button size="sm" variant="text" className="text-on-secondary-container" onClick={() => void markCanned(uid, mic, show, comicsById).then(() => updateDoc(userDoc(uid, "lineups", mic.id), { outcome: "canned" })).catch((e: Error) => toast.error(e.message))}>
-              No
-            </Button>
-            <Button size="sm" icon={IconCheck} onClick={() => answerMicCheck(uid, mic, "happened")}>
-              Yes, it happened
-            </Button>
-          </div>
-        </div>
-      )}
-      {past && confirmed && lineup?.outcome === "happened" && slots.length > 0 && <p className="mt-3 type-body-s text-on-surface-variant">Performed: {listNames(ids.map(name))}</p>}
-
-      <div className="min-h-3 flex-1" />
-      <footer className="mt-3 flex flex-wrap items-center gap-2 border-t border-outline-variant/40 pt-3">
-        {canAct && !confirmed && slots.length > 0 && (
-          <Button size="sm" icon={IconSend} onClick={() => setConfirmOpen(true)}>Confirm & send</Button>
-        )}
-        {canAct && confirmed && changes && changes.total > 0 && (
-          <Button size="sm" icon={IconSend} onClick={() => setUpdatesOpen(true)}>Send updates</Button>
-        )}
-        {canAct && confirmed && !(changes && changes.total > 0) && <span className="inline-flex items-center gap-1.5 type-label-m text-on-surface-variant"><IconCheck className="icon size-4 text-primary" />Everyone's been told</span>}
-        {canAct && !slots.length && (
-          <Link to="/lineup" className={buttonClass({ size: "sm", variant: "tonal", icon: true })}><IconMic className="icon size-4" />Start lineup</Link>
-        )}
-        {canAct && open && (
-          <Button size="sm" variant="outlined" icon={IconUserPlus} onClick={() => setOfferOpen(true)}>Offer a spot</Button>
-        )}
-        <Link to="/lineup" className={buttonClass({ size: "sm", variant: "text", className: "ml-auto" })}>
-          Open lineup <IconArrowRight className="icon size-4" />
-        </Link>
-      </footer>
-
-      <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} onSending={() => (armed.current = mode === "confirm")} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
-      {lineup && baseline && <SendUpdatesSheet open={updatesOpen} onClose={() => setUpdatesOpen(false)} show={show} lineup={lineup} baseline={baseline} onSent={() => void (armed.current = mode === "confirm")} />}
-      <OfferSheet open={offerOpen} onClose={() => setOfferOpen(false)} show={show} exclude={ids} />
-      {lineup && <GroupSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} show={show} lineup={lineup} />}
-    </li>
-  );
-}
-
-function listNames(names: string[], max = 3) {
-  const f = names.map(first);
-  return f.length <= max ? f.join(", ") : `${f.slice(0, max).join(", ")} +${f.length - max}`;
 }
 
 /* ---------- Side column ---------- */
