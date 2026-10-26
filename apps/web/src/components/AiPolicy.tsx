@@ -22,7 +22,7 @@ export function AiPolicyPicker() {
   return (
     <div className="rounded-lg bg-surface-container p-4">
       <div className="mb-3 type-title-s">Where chats may go</div>
-      <div role="radiogroup" aria-label="Where chats may go" className="grid gap-3 md:grid-cols-2">
+      <div role="radiogroup" aria-label="Where chats may go" className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
         {OPTIONS.map((o) => {
           const on = policy === o.value;
           return (

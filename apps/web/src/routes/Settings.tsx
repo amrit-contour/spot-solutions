@@ -739,7 +739,7 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
                 </Button>
               </div>
               {preview && (
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
                   <div className="flex flex-col gap-2">
                     <span className="type-label-m text-on-surface-variant">Your template</span>
                     <Bubble outgoing>{preview.reference}</Bubble>

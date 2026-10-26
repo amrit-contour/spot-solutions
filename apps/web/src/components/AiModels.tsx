@@ -110,7 +110,7 @@ export function AiModels() {
     <div className="flex flex-col gap-4">
       <GeminiKey status={gemini} count={geminiModels.length} fetchedAt={fetchedAt} onFetch={fetchGemini} fetching={!!busy.gemini} canFetch={workerOnline} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
         <RouteCard title="Primary" info="Reads every incoming message first." route={settings.ai.primary} lists={lists} onChange={(r) => setAi({ primary: r })} />
         <RouteCard
           title="Fallback"

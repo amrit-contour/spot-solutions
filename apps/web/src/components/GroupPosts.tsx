@@ -142,7 +142,7 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pos
       </div>
       {open && (
         <div className="flex flex-col gap-4 border-t border-outline-variant/60 px-3 pt-3 pb-3">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
             <Select label="What" value={post.template} onChange={(v) => onChange({ template: v as GroupPost["template"], ...(v === "custom" && !own ? { message: storeMessage(msg) } : {}) })} options={TEMPLATE_OPTIONS} />
             <Select label="Day" value={String(post.daysBefore)} onChange={(v) => onChange({ daysBefore: Number(v) })} options={DAY_OPTIONS} />
             <TimePicker label="Time" value={post.time} onChange={(v) => onChange({ time: v })} />

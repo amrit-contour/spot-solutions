@@ -82,7 +82,7 @@ export function Shows() {
                   </div>
                   <IconButton icon={IconPen} label={`Edit ${v.name}`} onClick={() => setEditingVenue(v)} />
                 </div>
-                <motion.ul className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
+                <motion.ul className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 2xl:grid-cols-3" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
                   {vs.map((s) => (
                     <motion.li key={s.id} className="relative" variants={{ hidden: { opacity: 0, transform: "translateY(6px)" }, show: { opacity: 1, transform: "translateY(0px)" } }}>
                       <button onClick={() => setEditingShow(s)} className={cx("state-layer pressable flex w-full items-start gap-4 rounded-lg bg-surface-low p-4 text-left", !s.active && "opacity-60")}>
@@ -228,7 +228,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
             ))}
           </div>
         </Field>
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 sm:grid-cols-2">
           <Field label="Starts at">
             <TimePicker value={draft.startTime ?? "20:00"} onChange={(v) => set("startTime", v)} label="Start time" />
           </Field>
@@ -343,7 +343,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                   <Switch checked={Boolean(cleanup.enabled)} onChange={(v) => set("cleanup", { ...cleanup, enabled: v })} label="Clear the group after the show" />
                 </div>
                 {cleanup.enabled && (
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
                     <Field label="When">
                       <TimePicker value={cleanup.time} onChange={(v) => set("cleanup", { ...cleanup, time: v })} label="Cleanup time" />
                     </Field>

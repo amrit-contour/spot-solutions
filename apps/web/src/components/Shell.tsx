@@ -122,7 +122,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
 }
 
 /**
- * Every page's title bar. It stays pinned at the top while the page scrolls, shrinking to a compact bar,
+ * Every page's title bar. It stays pinned at the top while the page scrolls (one fixed height; it frosts over content),
  * and publishes its height as --page-header-h so bars below it (StickyBar, Requests tabs) pin just under it.
  */
 /** The header currently publishing --page-header-h (one page at a time). */
@@ -155,14 +155,13 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
       }
     };
   }, []);
-  // Compact once you've scrolled a bit; expand only back near the top. The gap between the two thresholds stops
-  // the loop where shrinking the header scrolls the page back above the line and it grows again (flicker).
+  // Frosted as soon as anything scrolls under it. The bar's height never changes, so there's no threshold dance.
   useEffect(() => {
     let frame = 0;
     const read = () => {
       frame = 0;
       const y = window.scrollY;
-      setStuck((was) => (was ? y > 4 : y > 56));
+      setStuck(y > 2);
     };
     const onScroll = () => (frame ||= requestAnimationFrame(read));
     read();
@@ -174,46 +173,41 @@ export function PageHeader({ title, subtitle, actions, trailing, children }: { t
   }, []);
   return (
     <>
+    {/* Desktop breathing room above the title. Outside the sticky bar, so the bar itself never changes height. */}
+    <div aria-hidden className="hidden h-6 sm:block" />
     <header
       ref={ref}
       data-stuck={stuck || undefined}
-      className={cx(
-        // Frosted when pinned (90% + blur). One easing for every part.
-        "sticky top-[env(safe-area-inset-top)] isolate z-30 border-b border-transparent px-4 transition-[padding,border-color] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none sm:px-8",
-        stuck ? "border-outline-variant pt-3 pb-2 sm:pt-3 sm:pb-3" : "pt-4 pb-4 sm:pt-10",
-      )}
+      // One fixed height, scrolled or not: only the glass and the hairline change. Anything that resized here would make
+      // the bars pinned under it (they read its height) lag a frame behind and flash a gap while scrolling.
+      className="sticky top-[env(safe-area-inset-top)] isolate z-30 px-4 pt-4 pb-3 sm:px-8 sm:pt-4"
     >
-      {/* The frosted glass is its own layer behind everything in the bar (and runs up under the notch strip), so the
-          avatar, status and title always sit on top of it at full strength. */}
-      <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 bottom-0 -top-[env(safe-area-inset-top)] -z-10 transition-colors duration-300 motion-reduce:transition-none", stuck ? "bg-surface/90 backdrop-blur-md" : "bg-surface")} />
+      {/* The glass is its own layer behind the bar's content and runs up under the notch strip, so the avatar, status and
+          title always sit on top of it at full strength. */}
+      <div
+        aria-hidden
+        className={cx(
+          "pointer-events-none absolute inset-x-0 bottom-0 -top-[env(safe-area-inset-top)] -z-10 border-b transition-[background-color,border-color] duration-200 motion-reduce:transition-none",
+          stuck ? "border-outline-variant bg-surface/85 backdrop-blur-md" : "border-transparent bg-surface",
+        )}
+      />
       {/* Phones: status + account on top. Desktop keeps both in the nav rail. */}
-      <div className="mb-3 flex items-center gap-3 sm:hidden">
+      <div className="mb-2 flex items-center gap-3 sm:hidden">
         <NavLink to="/settings#whatsapp" className="state-layer mr-auto inline-flex min-w-0 items-center gap-2 rounded-full px-2 py-1 type-label-m text-on-surface-variant">
           <StatusDot tone={conn.tone} /> <span className="truncate">{conn.label}</span>
         </NavLink>
         <AccountMenu />
       </div>
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3">
-          {/* The size animates (font-size/line-height) instead of jumping between two classes. */}
-          <h1 className={cx("min-w-0 flex-1 truncate transition-[font-size,line-height,letter-spacing] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none", stuck ? "type-title-l" : "type-headline-m sm:type-display-s")}>{title}</h1>
-          {trailing && <div className="flex flex-none items-center">{trailing}</div>}
-          {/* Page actions live on the title's line at every width; the title truncates to make room. */}
-          {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
-          </div>
-          {subtitle && (
-            // Collapses smoothly (grid rows 1fr -> 0fr) rather than popping out of the layout.
-            <div className={cx("grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none", stuck ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100")} aria-hidden={stuck || undefined}>
-              <div className="overflow-hidden">
-                <p className="pt-1.5 type-body-l text-on-surface-variant">{subtitle}</p>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="flex items-center gap-3">
+        <h1 className="min-w-0 flex-1 truncate type-headline-m sm:type-display-s">{title}</h1>
+        {trailing && <div className="flex flex-none items-center">{trailing}</div>}
+        {/* Page actions live on the title's line at every width; the title truncates to make room. */}
+        {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
       </div>
       {children}
     </header>
+    {/* The subtitle scrolls away with the page instead of collapsing inside the bar. */}
+    {subtitle && <p className="px-4 pb-2 type-body-l text-on-surface-variant sm:px-8">{subtitle}</p>}
     </>
   );
 }

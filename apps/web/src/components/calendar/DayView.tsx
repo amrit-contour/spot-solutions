@@ -36,7 +36,7 @@ export function DayView({ date }: { date: string }) {
   const next = Array.from({ length: 7 }, (_, i) => addDays(date, i + 1));
 
   return (
-    <div className="grid gap-8 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] md:items-start">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] md:items-start">
       <section aria-label={fmtDayLong(date)}>
         <DayEvents date={date} />
       </section>
