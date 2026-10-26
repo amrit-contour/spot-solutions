@@ -80,13 +80,15 @@ export function shouldQueueComic(before: ComicBits | undefined, after: ComicBits
   return before.name !== after.name || before.phone !== after.phone;
 }
 
-/** The Google account the curator picked must be the one they signed in to Spot Solutions with, and verified. */
+/**
+ * The Google account whose contacts get the names. Any verified Google account the curator can sign in to
+ * (often their main one, not the one they log in to Spot Solutions with); the caller must be verified too.
+ */
 export function checkAccountEmail(google: { email?: string; verified?: boolean }, firebase: { email?: string; verified: boolean }): { ok: true; email: string } | { ok: false; message: string } {
   const g = google.email?.trim().toLowerCase();
   const f = firebase.email?.trim().toLowerCase();
   if (!g || google.verified !== true) return { ok: false, message: "Google didn't confirm that email address. Try again." };
   if (!f || !firebase.verified) return { ok: false, message: "Your sign-in email isn't verified." };
-  if (g !== f) return { ok: false, message: `Pick the Google account you signed in with (${f}). You picked ${g}.` };
   return { ok: true, email: g };
 }
 

@@ -88,7 +88,7 @@ export function GoogleContactsCard() {
         <div className="flex flex-col gap-2">
           {server ? (
             <div className="flex flex-wrap items-center gap-3">
-              <span className="type-label-l text-on-surface">Connected as {link.email} · always on</span>
+              <span className="type-label-l text-on-surface">Saving to the contacts of {link.email} · always on</span>
               <Button variant="outlined" onClick={() => void disconnect()} loading={leaving} disabled={demo}>
                 Disconnect
               </Button>

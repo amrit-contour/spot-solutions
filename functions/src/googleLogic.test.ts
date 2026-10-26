@@ -5,10 +5,8 @@ describe("checkAccountEmail", () => {
   it("accepts the same verified address, ignoring case", () => {
     expect(checkAccountEmail({ email: "Amrit@Gmail.com", verified: true }, { email: "amrit@gmail.com", verified: true })).toEqual({ ok: true, email: "amrit@gmail.com" });
   });
-  it("refuses another Google account, naming both", () => {
-    const r = checkAccountEmail({ email: "other@gmail.com", verified: true }, { email: "amrit@gmail.com", verified: true });
-    expect(r.ok).toBe(false);
-    expect(!r.ok && r.message).toContain("amrit@gmail.com");
+  it("allows a different Google account for contacts (often the curator's main one)", () => {
+    expect(checkAccountEmail({ email: "Main@Gmail.com", verified: true }, { email: "amrit@gmail.com", verified: true })).toEqual({ ok: true, email: "main@gmail.com" });
   });
   it("refuses unverified emails on either side", () => {
     expect(checkAccountEmail({ email: "a@x.com", verified: false }, { email: "a@x.com", verified: true }).ok).toBe(false);

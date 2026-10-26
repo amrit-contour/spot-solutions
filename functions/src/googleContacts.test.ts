@@ -53,10 +53,16 @@ describe("connectGoogleContacts", () => {
     expect(s.link!.enc).not.toContain("1//rt");
     expect(decryptToken(key, "u1", s.link!.enc)).toBe("1//rt");
   });
-  it("refuses a different Google account and revokes the token it just got", async () => {
+  it("accepts a different verified Google account and records which one", async () => {
     const { s, store } = fakeStore();
     const f = vi.fn(tokenFetch(grant));
-    await expect(connect(deps(store, f, { email: "other@gmail.com", email_verified: true }), me, { code: "4/0AbCdEfGhIj" })).rejects.toMatchObject({ code: "permission-denied" });
+    await expect(connect(deps(store, f, { email: "other@gmail.com", email_verified: true }), me, { code: "4/0AbCdEfGhIj" })).resolves.toMatchObject({ email: "other@gmail.com" });
+    expect(s.link?.email).toBe("other@gmail.com");
+  });
+  it("refuses an unverified Google account and revokes the token it just got", async () => {
+    const { s, store } = fakeStore();
+    const f = vi.fn(tokenFetch(grant));
+    await expect(connect(deps(store, f, { email: "other@gmail.com", email_verified: false }), me, { code: "4/0AbCdEfGhIj" })).rejects.toMatchObject({ code: "permission-denied" });
     expect(s.link).toBeNull();
     expect(f.mock.calls.some((c) => c[0].includes("/revoke"))).toBe(true);
   });

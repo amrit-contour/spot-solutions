@@ -54,10 +54,11 @@ async function requestOfflineCode(loginHint: string): Promise<string> {
       client_id: CLIENT_ID,
       scope: SCOPE,
       ux_mode: "popup",
-      // Always show the consent step, so Google issues a refresh token even if this app was allowed before.
-      prompt: "consent",
+      // Always show the account chooser and consent, so any Google account can be picked (not only the sign-in
+      // one) and Google issues a refresh token even if this app was allowed before.
+      prompt: "select_account consent",
       include_granted_scopes: true,
-      login_hint: loginHint,
+      login_hint: loginHint || undefined,
       callback: (r: CodeResponse) => (r.code ? resolve(r.code) : reject(new Error(r.error_description || r.error || "Google didn't return a code"))),
       error_callback: (e: { type?: string }) => reject(Object.assign(new Error(e.type === "popup_closed" ? "Closed before finishing." : "Google's popup was blocked. Allow popups and try again."), { cancelled: e.type === "popup_closed" })),
     });
