@@ -353,7 +353,8 @@ cmd_update() {
   step "Restarting"; progress running "Restarting the worker"
   # kickstart without -k leaves a running process alone, so an update would keep serving the old code.
   running com.spotsolutions.worker && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.worker" 2>/dev/null || true
-  pull_model "$(local_model_name "${lmodel:-$MODEL}")"
+  # A failed model download (Ollama still starting, no network) must not stop the update from finishing.
+  pull_model "$(local_model_name "${lmodel:-$MODEL}")" || echo "  ! Couldn't update the AI model now; it will retry on the next update"
   progress done "Updated to $latest"
   # The console goes last: it restarts itself, and its page reloads on the new version.
   running com.spotsolutions.console && launchctl kickstart -k "gui/$UID_N/com.spotsolutions.console" 2>/dev/null || true

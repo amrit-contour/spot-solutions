@@ -72,7 +72,7 @@ export function Collapsible({
   useEffect(() => cb.current?.(open), [open]);
 
   const header = (
-    <button type="button" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)} className={cx("state-layer flex w-full items-center gap-3 text-left", plain ? "rounded-lg py-1" : "px-4 py-3")}>
+    <button type="button" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)} className={cx("state-layer flex w-full items-center gap-3 text-left", plain ? "-mx-3 rounded-lg px-3 py-2" : "px-4 py-3")}>
       {I && <I className={cx("icon flex-none text-primary", plain ? "size-6" : "size-5")} />}
       <span className="min-w-0 flex-1">
         <span className={cx("block truncate", plain ? "type-title-l" : "type-title-s")}>{title}</span>
