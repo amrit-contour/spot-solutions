@@ -685,6 +685,7 @@ function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regretsAfte
           This is the last show this week, so the {regretsAfter} comic{regretsAfter > 1 ? "s" : ""} still waiting will also get your regret message.
         </p>
       )}
+      {settings.voice?.enabled && settings.voice.profile && <p className="mt-3 type-body-s text-on-surface-variant">Your voice is on: each message is reworded the way you write. The details shown here stay exactly the same; if a rewrite changes any of them, this version goes out.</p>}
       <ul className="mt-5 flex flex-col gap-5">
         <AnimatePresence initial={false}>
           {ids.map((cid, i) => (

@@ -40,6 +40,8 @@ export interface Settings {
   googleContacts: { enabled: boolean };
   /** Curator's rewrites of the other messages (see MESSAGE_TYPES). Missing keys use the default. */
   messages?: Partial<Record<import("./messages.ts").MessageKey, string>>;
+  /** Write outgoing messages in the curator's own voice (see voice.ts). Off by default. */
+  voice?: import("./voice.ts").VoiceSettings;
   /** Saved replies the curator can drop into any message box. */
   snippets?: import("./messages.ts").Snippet[];
   /** Tell comics held by the request window or last-week rule why. Banned, ignored and hosts never get a reply. */
@@ -237,6 +239,10 @@ export interface SpotRequest {
   hold?: HoldReason | null;
   /** Curator chose to let a held request through. */
   holdOverridden?: boolean;
+  /**
+   * How to reach them. Unsure (Maybe) asks don't add anyone to Comics; placing one on a lineup does, from this.
+   */
+  contact?: { chatId: string; phone: string; nameSource: NonNullable<Comic["nameSource"]> } | null;
   /** When the comic was told why their request was held (heldReplies). Once per request. */
   heldRepliedAt?: number | null;
   /** Stamped once by the worker: this request created the comic, so they weren't on the roster before. */
@@ -325,6 +331,8 @@ export type CommandType =
   | "scan_history"
   | "reconcile_waiting"
   | "apply_reconcile"
+  | "learn_voice"
+  | "preview_voice"
   | "send_message";
 
 export interface Command {
@@ -335,6 +343,8 @@ export interface Command {
   createdAt: number;
   /** scan_history: written by the worker while it runs. */
   progress?: { chats: number; done: number; found: number };
+  /** learn_voice: written by the worker while it reads. */
+  voiceProgress?: { stage: "reading" | "learning"; chats: number; done: number; samples: number };
   /** scan_history: the curator sets this to stop it. */
   cancel?: boolean;
   /** Firestore Timestamp (TTL policy, deploy/setup-cost-controls.sh). Typed loosely: shared code never imports an SDK. */

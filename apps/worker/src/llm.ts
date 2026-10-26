@@ -46,7 +46,7 @@ function geminiFor(uid: string | null) {
 // ---- providers ----
 const noSchema = new Set<string>(); // Ollama models that reject JSON-schema output
 
-async function ollama(model: string, prompt: string, schema: Schema) {
+async function ollama(model: string, prompt: string, schema: Schema, temperature = 0) {
   if (NO_LOCAL_MODEL) throw new Error("This server has no local model (Gemini-only)");
   const call = (structured: boolean) =>
     fetch(`${OLLAMA_URL}/api/chat`, {
@@ -59,7 +59,7 @@ async function ollama(model: string, prompt: string, schema: Schema) {
         think: false,
         ...(structured ? { format: schema } : {}),
         keep_alive: "24h",
-        options: { temperature: 0 },
+        options: { temperature },
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -72,7 +72,7 @@ async function ollama(model: string, prompt: string, schema: Schema) {
   return ((await res.json()) as { message: { content: string } }).message.content;
 }
 
-async function gemini(uid: string | null, model: string, prompt: string, schema: Schema) {
+async function gemini(uid: string | null, model: string, prompt: string, schema: Schema, temperature = 0) {
   const ai = geminiFor(uid);
   // Gemma models on the Gemini API don't take a response schema; Gemini models do.
   const structured = !model.startsWith("gemma");
@@ -80,7 +80,7 @@ async function gemini(uid: string | null, model: string, prompt: string, schema:
     model,
     contents: prompt,
     config: {
-      temperature: 0,
+      temperature,
       abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       ...(structured ? { responseMimeType: "application/json", responseJsonSchema: schema } : {}),
     },
@@ -88,15 +88,16 @@ async function gemini(uid: string | null, model: string, prompt: string, schema:
   return res.text ?? "";
 }
 
-function run(uid: string | null, route: AiRoute, prompt: string, schema: Schema) {
-  return route.provider === "gemini" ? gemini(uid, route.model, prompt, schema) : ollama(route.model, prompt, schema);
+function run(uid: string | null, route: AiRoute, prompt: string, schema: Schema, temperature?: number) {
+  return route.provider === "gemini" ? gemini(uid, route.model, prompt, schema, temperature) : ollama(route.model, prompt, schema, temperature);
 }
 
 // Local models run one generation at a time, so queue everything to avoid timeouts in bursts.
 let gate: Promise<unknown> = Promise.resolve();
 
 /** Run a prompt that must answer in JSON. Returns the raw text and which model produced it. */
-export function generateJson(uid: string | null, ai: AiSettings, prompt: string, schema: Schema) {
+/** `temperature` above 0 for writing (voice drafts); classification stays at 0. */
+export function generateJson(uid: string | null, ai: AiSettings, prompt: string, schema: Schema, opts: { temperature?: number } = {}) {
   const task = gate.catch(() => undefined).then(async () => {
     // The account's AI policy decides which routes exist at all (local_only never reaches Gemini).
     const routes = planRoutes(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY));
@@ -107,7 +108,7 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
     let last: unknown;
     for (const [i, route] of routes.entries()) {
       try {
-        const text = await run(uid, route, prompt, schema);
+        const text = await run(uid, route, prompt, schema, opts.temperature);
         counters.classified++;
         return { text, model: `${route.provider}/${route.model}` };
       } catch (err) {

@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   messages: {},
   snippets: [],
   heldReplies: { enabled: false },
+  voice: { enabled: false, profile: null },
   scanDays: 7,
   retention: { closedRequestsWeeks: 8 },
 };

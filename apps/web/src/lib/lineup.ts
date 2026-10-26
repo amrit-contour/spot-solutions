@@ -1,5 +1,5 @@
 import { arrayRemove, arrayUnion, getDoc, runTransaction, setDoc, updateDoc } from "firebase/firestore";
-import { dateInWeek, lineupId, sentSnapshot, shiftWeek, withHistory, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
+import { dateInWeek, lineupId, sentSnapshot, shiftWeek, withHistory, type Comic, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
 import { db } from "./firebase";
 import { userDoc } from "./data";
 
@@ -33,7 +33,18 @@ export async function setSlots(uid: string, week: string, show: Show, slots: Slo
   });
 }
 
+/** Maybe asks don't create a comic; placing one does, from what the request knows about them. */
+async function ensureComic(uid: string, week: string, comicId: string) {
+  const ref = userDoc(uid, "comics", comicId);
+  if ((await getDoc(ref)).exists()) return;
+  const req = (await getDoc(userDoc(uid, "requests", `${week}_${comicId}`))).data() as SpotRequest | undefined;
+  if (!req) return;
+  const c: Comic = { id: comicId, chatId: req.contact?.chatId ?? comicId, name: req.comicName, nameSource: req.contact?.nameSource ?? "whatsapp", phone: req.contact?.phone ?? comicId.split("@")[0], tier: "open", lastPerformedWeek: null, regularOf: [] };
+  await setDoc(ref, c, { merge: true });
+}
+
 export async function placeComic(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], shows: Show[] = []) {
+  await ensureComic(uid, week, comicId);
   // A comic sits in at most one show per week.
   for (const l of lineups) {
     if (l.showId !== show.id && l.slots.some((s) => s.comicId === comicId) && l.status !== "cancelled" && l.status !== "canned") {

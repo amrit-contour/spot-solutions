@@ -39,6 +39,7 @@ import { watchUser } from "./userData.ts";
 import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
 import { enqueueTask, sendQueued } from "./sendQueue.ts";
 import { greetFor } from "./greet.ts";
+import { inVoice, learnVoice, previewVoice } from "./voice.ts";
 import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
@@ -97,13 +98,12 @@ const handlers: Record<Command["type"], Handler> = {
     for (const slot of lineup.slots) {
       const comic = comics.get(slot.comicId);
       if (!comic) continue;
-      const body = await confirmBody(uid, client, show, comic, lineup.weekOf, slot.minutes);
       if (toldByHand.has(slot.comicId)) {
         results[comic.id] = "sent (already told)";
         continue;
       }
       try {
-        await sendQueued(client, comic.chatId ?? comic.id, body);
+        await sendQueued(client, comic.chatId ?? comic.id, await confirmBody(uid, client, show, comic, lineup.weekOf, slot.minutes));
         results[comic.id] = "sent";
       } catch (e) {
         results[comic.id] = `failed: ${(e as Error).message}`;
@@ -150,7 +150,7 @@ const handlers: Record<Command["type"], Handler> = {
       const comic = comics.get(r.comicId);
       try {
         const name = await greetFor(client, comic ?? { id: r.comicId, name: r.comicName });
-        await sendQueued(client, comics.get(r.comicId)?.chatId ?? r.comicId, renderTemplate(settings.reject.template, { name }));
+        await sendQueued(client, comics.get(r.comicId)?.chatId ?? r.comicId, await inVoice(uid, "reject", renderTemplate(settings.reject.template, { name }), { name }));
         await col(uid, "requests").doc(r.id).update({ status: "rejected", rejectedAt: Date.now(), updatedAt: Date.now() });
         sent++;
       } catch (e) {
@@ -390,6 +390,8 @@ const handlers: Record<Command["type"], Handler> = {
   scan_history: scanHistory,
   reconcile_waiting: reconcileWaiting,
   apply_reconcile: applyReconcile,
+  learn_voice: learnVoice,
+  preview_voice: previewVoice,
 
   async send_message(uid, { to, body }) {
     await sendQueued(sessions.require(uid), String(to), String(body));
@@ -399,7 +401,7 @@ const handlers: Record<Command["type"], Handler> = {
 export async function confirmBody(uid: string, client: WAWebJS.Client | null, show: Show, comic: Comic, week: string, minutes?: number | null) {
   const { settings, venues } = watchUser(uid);
   const venue = venues.find((v) => v.id === show.venueId);
-  return renderTemplate(settings.confirm.template, {
+  const facts = {
     name: await greetFor(client, comic),
     show: show.name,
     venue: venue?.name,
@@ -408,20 +410,22 @@ export async function confirmBody(uid: string, client: WAWebJS.Client | null, sh
     date: formatDate(dateInWeek(week, show.weekday)),
     time: formatTime(show.startTime),
     minutes: show.includeSlotTime ? (minutes ?? show.defaultMinutes) : null,
-  });
+  };
+  return inVoice(uid, "confirm", renderTemplate(settings.confirm.template, facts), facts);
 }
 
 export async function cancelBody(uid: string, client: WAWebJS.Client | null, show: Show, comic: Comic, week: string) {
   const { settings, venues } = watchUser(uid);
   const venue = venues.find((v) => v.id === show.venueId);
-  return renderTemplate(settings.cancelSpot.template, {
+  const facts = {
     name: await greetFor(client, comic),
     show: show.name,
     venue: venue?.name,
     day: DAY_NAMES[show.weekday],
     date: formatDate(dateInWeek(week, show.weekday)),
     time: formatTime(show.startTime),
-  });
+  };
+  return inVoice(uid, "cancelSpot", renderTemplate(settings.cancelSpot.template, facts), facts);
 }
 
 /** Every active show this week is either sent or cancelled. */

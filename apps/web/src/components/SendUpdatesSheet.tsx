@@ -97,6 +97,7 @@ export function SendUpdatesSheet({ open, onClose, show, lineup, baseline, onSent
           <p className="type-body-m text-on-surface-variant">
             This is what changed since you last sent. Each person gets their own WhatsApp message, a few seconds apart. Untick anyone you'd rather tell later; they stay marked as not told yet.
           </p>
+          {settings.voice?.enabled && settings.voice.profile && <p className="mt-3 type-body-s text-on-surface-variant">Your voice is on: each message is reworded the way you write. The details shown here stay exactly the same; if a rewrite changes any of them, this version goes out.</p>}
 
           {changes.added.length > 0 && (
             <section className="mt-6">

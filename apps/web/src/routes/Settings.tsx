@@ -21,8 +21,10 @@ import {
   type GroupInfo,
   type MessageKey,
   type Snippet,
+  type VoiceKind,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
+import { runCommand } from "../lib/data";
 import { useCollection } from "../lib/data";
 import { useInstall } from "../lib/install";
 import { PageHeader } from "../components/Shell";
@@ -34,7 +36,7 @@ import { NotifyCard } from "../components/NotifyCard";
 import { GoogleContactsCard } from "../components/GoogleContactsCard";
 import { AppearanceCard } from "../components/AppearanceCard";
 import { Bubble, Button, Field, Info, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "../components/ui";
-import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd } from "../components/icons";
+import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose } from "../components/icons";
 
 const TABS = [
   { id: "whatsapp", label: "WhatsApp & app", icon: IconPhone },
@@ -199,6 +201,7 @@ export function SettingsPage() {
         )}
         {tab === "messages" && (
           <>
+            <VoiceSection kind={voiceKindOf(msg)} />
             <MessagePicker value={msg} onChange={setMsg} />
 
         {msg === "ack" && (
@@ -568,5 +571,130 @@ function SnippetEditor({ snippet, onSave, onDelete }: { snippet: Snippet; onSave
       </div>
       <TemplateEditor value={snippet.body} fallback={snippet.body} keys={["name", "show", "venue", "day", "date", "time", "mapsLink"]} onSave={(body) => onSave({ body, title: title.trim() || "Untitled" })} />
     </div>
+  );
+}
+
+const voiceKindOf = (m: MessageChoice): VoiceKind | null =>
+  m === "snippets" || m === "groupWelcome" ? null : m === "cancel" ? "cancelSpot" : (m as VoiceKind);
+
+/** Your voice: learn how you write from your own sent messages, then send every message that way. */
+function VoiceSection({ kind }: { kind: VoiceKind | null }) {
+  const { uid, settings, saveSettings } = useApp();
+  const voice = settings.voice ?? { enabled: false, profile: null };
+  const profile = voice.profile ?? null;
+  const [learning, setLearning] = useState(false);
+  const [summary, setSummary] = useState(profile?.summary ?? "");
+  const [trying, setTrying] = useState(false);
+  const [preview, setPreview] = useState<{ reference: string; drafts: { text: string; problem: string | null }[] } | null>(null);
+  useEffect(() => setSummary(profile?.summary ?? ""), [profile?.summary]);
+
+  const save = (patch: Partial<NonNullable<typeof profile>>) => profile && saveSettings({ voice: { ...voice, profile: { ...profile, ...patch } } });
+  const learn = async () => {
+    setLearning(true);
+    try {
+      const r = await runCommand<{ samples: number; examples: number }>(uid, "learn_voice", {}, 15 * 60_000);
+      toast.success(`Learned from ${r.samples} of your messages`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setLearning(false);
+    }
+  };
+  const tryIt = async () => {
+    if (!kind) return;
+    setTrying(true);
+    setPreview(null);
+    try {
+      setPreview(await runCommand(uid, "preview_voice", { kind }, 5 * 60_000));
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setTrying(false);
+    }
+  };
+
+  return (
+    <Section
+      title="Your voice"
+      icon={IconSparkle}
+      description={
+        <>
+          Messages go out the way you write: your greetings, your Hinglish, your emoji, a little different for each comic. Spot Solutions reads only messages <b>you</b> sent (your recent DMs and show groups), keeps a short description and up to 15 examples, and never stores the chats. Your template below is the guide and the safety net: if a draft changes or drops a date, time, venue or link, or the model is busy, the template goes out instead. It uses your AI models setting, so on Local only nothing leaves your server.
+        </>
+      }
+      aside={<Switch checked={voice.enabled && Boolean(profile)} disabled={!profile} onChange={(v) => saveSettings({ voice: { ...voice, enabled: v } })} label="Write messages in my voice" />}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant={profile ? "outlined" : "filled"} icon={IconSparkle} loading={learning} onClick={learn}>
+            {profile ? "Learn again" : "Learn my voice"}
+          </Button>
+          <span className="type-body-s text-on-surface-variant">
+            {learning
+              ? "Reading your messages. This takes a minute or two."
+              : profile
+                ? `Learned from ${profile.sampleCount} of your messages on ${new Date(profile.learnedAt).toLocaleDateString([], { day: "numeric", month: "short" })}.`
+                : "Needs your WhatsApp linked. Takes a minute or two."}
+          </span>
+        </div>
+
+        {profile && (
+          <>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="voice-summary" className="type-label-l text-on-surface-variant">How you write</label>
+              <TextArea id="voice-summary" value={summary} onChange={(e) => setSummary(e.target.value)} rows={5} className="min-h-0" />
+              <div className="flex justify-end gap-2">
+                {summary !== profile.summary && (
+                  <>
+                    <Button size="sm" variant="text" onClick={() => setSummary(profile.summary)}>Discard</Button>
+                    <Button size="sm" onClick={async () => { await save({ summary: summary.trim() }); toast.success("Saved"); }}>Save</Button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <span className="type-label-l text-on-surface-variant">Examples it copies ({profile.examples.length})</span>
+              <ul className="flex flex-col gap-1.5">
+                {profile.examples.map((ex, i) => (
+                  <li key={i} className="flex items-start gap-2 rounded-md bg-surface-container px-3 py-2">
+                    <span className="min-w-0 flex-1 whitespace-pre-wrap type-body-m">{ex}</span>
+                    <button className="state-layer pressable -mr-1 grid size-8 flex-none place-items-center rounded-full text-on-surface-variant" aria-label="Remove this example" onClick={() => save({ examples: profile.examples.filter((_, j) => j !== i) })}>
+                      <IconClose className="icon size-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-lg bg-surface-container p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="min-w-0 flex-1 type-title-s">Try it on the message picked below</span>
+                <Button size="sm" variant="tonal" loading={trying} disabled={!kind} onClick={tryIt}>
+                  Write 3 versions
+                </Button>
+              </div>
+              {preview && (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="flex flex-col gap-2">
+                    <span className="type-label-m text-on-surface-variant">Your template</span>
+                    <Bubble outgoing>{preview.reference}</Bubble>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <span className="type-label-m text-on-surface-variant">In your voice</span>
+                    {preview.drafts.map((d, i) => (
+                      <div key={i} className="flex flex-col gap-1">
+                        <Bubble outgoing>{d.text || <span className="opacity-50">No draft</span>}</Bubble>
+                        {d.problem && <span className="type-body-s text-error">Wouldn't be sent ({d.problem}); your template would go instead.</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </Section>
   );
 }

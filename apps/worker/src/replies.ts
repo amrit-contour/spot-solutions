@@ -19,6 +19,7 @@ import { extractProfile } from "./gemma.ts";
 import { confirmBody, notice } from "./commands.ts";
 import { sendQueued } from "./sendQueue.ts";
 import { greetFor } from "./greet.ts";
+import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
 
 /** A pending offer's yes/no. Returns true when the messages were an answer to it. */
@@ -63,7 +64,8 @@ export async function handleOfferReply(uid: string, client: WAWebJS.Client, comi
   if (!booked || !show) {
     await doc.ref.update({ status: "full", reply });
     const who = (await col(uid, "comics").doc(comicId).get()).data() as Comic | undefined;
-    await sendQueued(client, await chatOf(uid, comicId), renderMessage(settings, "offerFull", { name: await greetFor(client, who ?? { id: comicId, name: offer.comicName }) }));
+    const name = await greetFor(client, who ?? { id: comicId, name: offer.comicName });
+    await sendQueued(client, await chatOf(uid, comicId), await inVoice(uid, "offerFull", renderMessage(settings, "offerFull", { name }), { name }));
     await notice(uid, "warn", `${offer.comicName} said yes, but ${show?.name ?? "the show"} was already full. They've been told.`);
     return true;
   }
