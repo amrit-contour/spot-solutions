@@ -344,12 +344,12 @@ const logo = `<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect wid
 let state = null, aiv = null, conn = null, editing = false, phone = null, bootId = null, restarting = false;
 // Collapsible sections: open state per section, remembered on this machine.
 let secs = {};
-try { secs = JSON.parse(localStorage.getItem("spot-console-sections") || "{}"); } catch {}
+try { secs = JSON.parse(localStorage.getItem("nbs-console-sections") || "{}"); } catch {}
 // Earlier versions had one "live" and two "services"/"machine" sections: carry the choice over.
 if ("live" in secs && !("stats" in secs)) { secs.stats = secs.live; secs.detail = secs.live; }
 if (("services" in secs || "machine" in secs) && !("server" in secs)) secs.server = secs.services !== false || secs.machine !== false;
 const isOpen = (id, dflt) => (id in secs ? secs[id] : dflt);
-const saveSecs = () => { try { localStorage.setItem("spot-console-sections", JSON.stringify(secs)); } catch {} };
+const saveSecs = () => { try { localStorage.setItem("nbs-console-sections", JSON.stringify(secs)); } catch {} };
 // One chevron for every collapse control: a fixed 28 px box, the arrow drawn in a 20 px box and centred in it.
 const chev = `<span class="chev" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="M6 8l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
 
@@ -367,8 +367,8 @@ function normaliseLayout(l) {
   return { order, hidden: (Array.isArray(l?.hidden) ? l.hidden : []).filter((id) => known.has(id)) };
 }
 let layout = normaliseLayout(null);
-try { layout = normaliseLayout(JSON.parse(localStorage.getItem("spot-console-layout") || "null")); } catch {}
-const saveLayout = () => { try { localStorage.setItem("spot-console-layout", JSON.stringify(layout)); } catch {} };
+try { layout = normaliseLayout(JSON.parse(localStorage.getItem("nbs-console-layout") || "null")); } catch {}
+const saveLayout = () => { try { localStorage.setItem("nbs-console-layout", JSON.stringify(layout)); } catch {} };
 let custMode = false, menuFor = null, dragId = null, dropAt = null, blockIds = []; // blockIds: sections that exist on this server, in order
 const gripSvg = `<svg viewBox="0 0 18 18" aria-hidden="true"><g fill="currentColor"><circle cx="6.5" cy="4" r="1.4"/><circle cx="11.5" cy="4" r="1.4"/><circle cx="6.5" cy="9" r="1.4"/><circle cx="11.5" cy="9" r="1.4"/><circle cx="6.5" cy="14" r="1.4"/><circle cx="11.5" cy="14" r="1.4"/></g></svg>`;
 const dotsSvg = `<svg viewBox="0 0 18 18" aria-hidden="true"><g fill="currentColor"><circle cx="3.5" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="14.5" cy="9" r="1.5"/></g></svg>`;
@@ -390,7 +390,7 @@ let draft = null, gKeyInput = "", pullName = "", ddOpen = null, replacingKey = f
 let gModels = null, gModelsBusy = false, testRes = {}, testBusy = {}, savingAi = false;
 // Theme: system (default), light or dark, remembered on this machine.
 let theme = "system";
-try { theme = localStorage.getItem("spot-console-theme") || "system"; } catch {}
+try { theme = localStorage.getItem("nbs-console-theme") || "system"; } catch {}
 const applyTheme = () => (theme === "system" ? document.documentElement.removeAttribute("data-theme") : document.documentElement.setAttribute("data-theme", theme));
 applyTheme();
 fetch("/api/phone").then((r) => (r.ok ? r.json() : null)).then((p) => { phone = p; if (state) render(); }).catch(() => {});
@@ -558,7 +558,7 @@ function aiCard(s) {
 
 // ---------- live dashboard (numbers come from /api/live: the worker's stats file, read every few seconds) ----------
 let liveData = null, liveAt = 0, metric = "in";
-try { metric = localStorage.getItem("spot-console-metric") || "in"; } catch {}
+try { metric = localStorage.getItem("nbs-console-metric") || "in"; } catch {}
 const METRICS = { in: ["Messages read", "read"], spot: ["Spot requests", "spot requests"], sent: ["Messages sent", "sent"], err: ["Errors", "errors"] };
 const hourLabel = (h) => new Date(h).toLocaleTimeString([], { hour: "numeric" });
 const n = (v) => Number(v || 0).toLocaleString();
@@ -699,14 +699,14 @@ document.addEventListener("click", (e) => {
   const t = e.target.closest?.("[data-metric]");
   if (!t) return;
   metric = t.dataset.metric;
-  try { localStorage.setItem("spot-console-metric", metric); } catch {}
+  try { localStorage.setItem("nbs-console-metric", metric); } catch {}
   patchLive();
 });
 
 // ---------- storage: what's in the data folder, free space, moving it to another drive ----------
 let stor = null, typeOpen = false, moveInput = "", moveModels = false, moveCheck = null, checking = false, startingMove = false;
 let keepOld = null; // the finishedAt of a move whose old copy the owner chose to keep
-try { keepOld = Number(localStorage.getItem("spot-console-keepold")) || null; } catch {}
+try { keepOld = Number(localStorage.getItem("nbs-console-keepold")) || null; } catch {}
 const PHASES = ["Checking the new folder", "Stopping the worker", "Copying data", "Checking the copy", "Switching to the new folder", "Starting the worker", "Waiting for WhatsApp to come back"];
 const moveRunning = () => Boolean(state?.update?.running && ["move-data", "move-cleanup"].includes(state.update.progress?.task));
 function storageSummary() {
@@ -944,7 +944,7 @@ function wireStorage() {
     try { await post("/api/storage/cleanup", {}); toast("Deleting the old copy…"); } catch (err) { toast(err.message); }
     refresh(true);
   };
-  document.querySelectorAll("[data-move-keep]").forEach((b) => b.onclick = () => { keepOld = Number(b.dataset.moveKeep); try { localStorage.setItem("spot-console-keepold", String(keepOld)); } catch {} render(); });
+  document.querySelectorAll("[data-move-keep]").forEach((b) => b.onclick = () => { keepOld = Number(b.dataset.moveKeep); try { localStorage.setItem("nbs-console-keepold", String(keepOld)); } catch {} render(); });
 }
 
 const post = (path, body) => api(path, body ?? {});
@@ -1115,7 +1115,7 @@ async function pickedFolder(p) {
   $("#moveblk")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 // The Mac app (WKWebView) answers here after the Finder sheet closes; null means it was cancelled.
-window.spotFolderChosen = (p) => { if (typeof p === "string" && p) pickedFolder(p); };
+window.nbsFolderChosen = (p) => { if (typeof p === "string" && p) pickedFolder(p); };
 async function runCheck() {
   checking = true; moveCheck = null; editing = false; render();
   try { moveCheck = await post("/api/storage/check", { path: moveInput, models: moveModels }); if (moveCheck.ok) moveInput = moveCheck.path; } catch (err) { moveCheck = { ok: false, error: err.message }; }
@@ -1131,7 +1131,7 @@ function wire() {
   const s = state;
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.onclick = () => {
     theme = b.dataset.themeSet; applyTheme();
-    try { localStorage.setItem("spot-console-theme", theme); } catch {}
+    try { localStorage.setItem("nbs-console-theme", theme); } catch {}
     render();
   });
   document.querySelectorAll("details.sec").forEach((d) => d.ontoggle = () => {
@@ -1308,7 +1308,7 @@ async function refresh(force = false) {
     if (!holdRender() || force) { if (force) { editing = false; ddOpen = null; } render(); }
     else { const l = $("#logs"); if (l) l.textContent = state.logs; }
   } catch (e) {
-    if (e.status === 401) $("#app").innerHTML = `<div class="locked">${logo}<h1 style="margin-top:16px">Locked</h1><p class="muted">Open this page with the link the installer printed (it ends in <span class="mono">?token=…</span>).<br>Forgot it? On the server run <span class="mono">sudo spot-console-url</span> (Linux), or open the <b>Nothing BOT Server Console</b> shortcut on the server's desktop (Windows), or use the Nothing BOT Server app (Mac).</p></div>`;
+    if (e.status === 401) $("#app").innerHTML = `<div class="locked">${logo}<h1 style="margin-top:16px">Locked</h1><p class="muted">Open this page with the link the installer printed (it ends in <span class="mono">?token=…</span>).<br>Forgot it? On the server run <span class="mono">sudo nbs-console-url</span> (Linux), or open the <b>Nothing BOT Server Console</b> shortcut on the server's desktop (Windows), or use the Nothing BOT Server app (Mac).</p></div>`;
     else if (state?.update?.running || restarting) { restarting = true; render(); } // the console restarts itself during an update; keep trying
     else toast(e.message);
   }

@@ -1,14 +1,14 @@
 // Invite-only access. The worker only serves curators whose access/{uid} is "approved",
-// up to config/access.maxCurators. Admins (SPOT_ADMIN_EMAILS) are approved automatically.
+// up to config/access.maxCurators. Admins (NBS_ADMIN_EMAILS) are approved automatically.
 import type { AccessConfig, AccessEntry } from "@spot/shared";
 import { getAuth } from "firebase-admin/auth";
 import { db } from "./firebase.ts";
 
-const ADMINS = (process.env.SPOT_ADMIN_EMAILS ?? "")
+const ADMINS = (process.env.NBS_ADMIN_EMAILS ?? "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
-const DEFAULT_MAX = Number(process.env.SPOT_MAX_CURATORS || 6);
+const DEFAULT_MAX = Number(process.env.NBS_MAX_CURATORS || 6);
 
 const configRef = db.collection("config").doc("access");
 let maxCurators = DEFAULT_MAX;

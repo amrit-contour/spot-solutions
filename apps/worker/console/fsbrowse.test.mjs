@@ -70,7 +70,7 @@ describe("Windows drive parsing", () => {
   });
   it("builds Windows roots with the file system rules attached, and the one that holds the data", async () => {
     const run = async () => WIN_VOLUMES;
-    const roots = await buildRoots({ platform: "win32", run, data: "C:\\SpotSolutions\\data", fsx: {} });
+    const roots = await buildRoots({ platform: "win32", run, data: "C:\\NothingBotServer\\data", fsx: {} });
     expect(roots.map((r) => r.path)).toEqual(["C:\\", "D:\\", "E:\\", "F:\\"]);
     expect(roots.find((r) => r.letter === "E")).toMatchObject({ usable: false, fsName: "FAT32" });
     expect(roots.find((r) => r.letter === "E").error).toMatch(/FAT32/);
@@ -97,7 +97,7 @@ describe("Ubuntu mounts", () => {
     expect(keep).toEqual(["/", "/run/media/spot/USBDISK", "/mnt/disk", "/mnt/ntfs"]);
   });
   it("builds roots: mounts first, the system disk last, with fs judgement", async () => {
-    const roots = await buildRoots({ platform: "linux", run: async () => FINDMNT, home: "/home/spot", data: "/var/lib/spot-solutions", fsx: { exists: (p) => p === "/srv" || p === "/home/spot", free: () => ({ free: 5 * GB, total: 10 * GB }) } });
+    const roots = await buildRoots({ platform: "linux", run: async () => FINDMNT, home: "/home/spot", data: "/var/lib/nothing-bot-server", fsx: { exists: (p) => p === "/srv" || p === "/home/spot", free: () => ({ free: 5 * GB, total: 10 * GB }) } });
     expect(roots.map((r) => r.path)).toEqual(["/run/media/spot/USBDISK", "/mnt/disk", "/mnt/ntfs", "/srv", "/home/spot", "/"]);
     expect(roots.find((r) => r.path === "/mnt/disk")).toMatchObject({ fsName: "ext4", usable: true, free: 3900 * GB });
     expect(roots.find((r) => r.path === "/run/media/spot/USBDISK")).toMatchObject({ fsName: "FAT32", usable: false });
@@ -125,7 +125,7 @@ describe("macOS volumes", () => {
       realpath: (p) => (p === "/Volumes/Macintosh HD" ? "/" : p),
       free: () => ({ free: 50 * GB, total: 100 * GB }),
     };
-    const roots = await buildRoots({ platform: "darwin", run: async () => MAC_MOUNT, home: "/Users/amrit", data: "/Users/amrit/Library/Application Support/SpotSolutions/data", fsx });
+    const roots = await buildRoots({ platform: "darwin", run: async () => MAC_MOUNT, home: "/Users/amrit", data: "/Users/amrit/Library/Application Support/NothingBotServer/data", fsx });
     expect(roots.map((r) => `${r.kind}:${r.path}`)).toEqual(["home:/Users/amrit", "boot:/", "external:/Volumes/Backup HDD", "external:/Volumes/STICK", "external:/Volumes/Cam"]);
     expect(roots[1].label).toBe("Macintosh HD");
     expect(roots[0].holdsData).toBe(true);

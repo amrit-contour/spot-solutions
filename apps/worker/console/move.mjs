@@ -1,14 +1,14 @@
 // Moves Nothing BOT Server's data (and optionally the Ollama models) to another folder, safely, on Windows, macOS and Ubuntu.
 //
 // The console never does this itself: it writes the request into DATA/task.json and starts the platform's task runner
-// (update-core.ps1 as SYSTEM on Windows, `spotctl task` on macOS, spot-task as root on Ubuntu), which runs
+// (update-core.ps1 as SYSTEM on Windows, `nbsctl task` on macOS, nbsctl as root on Ubuntu), which runs
 //   node move.mjs move-data      copy, verify, switch, restart, check WhatsApp, rollback on any failure
 //   node move.mjs move-cleanup   delete the old copy, only after a verified move
 // so the job outlives the worker and console restarts it causes. Node built-ins only. On Ubuntu this file and storage.mjs are
-// installed root-owned in /usr/local/lib/spot-solutions and the request is validated again there: the request is untrusted.
+// installed root-owned in /usr/local/lib/nothing-bot-server and the request is validated again there: the request is untrusted.
 //
-// Test hooks: SPOT_MOVE_DRY_RUN=1 never touches services or the machine's settings (the copy and the config rewrite still happen
-// in the folders it is given), SPOT_ROOT, SPOT_STATE_DIR, SPOT_APP_DIR, SPOT_DATA_DIR.
+// Test hooks: NBS_MOVE_DRY_RUN=1 never touches services or the machine's settings (the copy and the config rewrite still happen
+// in the folders it is given), NBS_ROOT, NBS_STATE_DIR, NBS_APP_DIR, NBS_DATA_DIR.
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmdirSync, chmodSync, lchownSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -25,22 +25,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MODELS_DIR_NAME = "ollama-models";
 
 // ---------- where things are, per platform ----------
-export function contextFor(platform = process.platform, env = process.env) {
+// Settings from before the rename to Nothing BOT Server were called NBS_*: NBS_X wins, NBS_X is the fallback.
+// (Self-contained on purpose: on Ubuntu this file runs from a root-owned folder next to storage.mjs only.)
+const withNbs = (env) => { const o = { ...env }; for (const k of Object.keys(env)) if (k.startsWith("SPOT_") && o["NBS_" + k.slice(5)] === undefined) o["NBS_" + k.slice(5)] = env[k]; return o; };
+
+export function contextFor(platform = process.platform, rawEnv = process.env) {
+  const env = withNbs(rawEnv);
   const m = modFor(platform);
   let c;
   if (platform === "win32") {
-    const root = env.SPOT_ROOT || "C:\\SpotSolutions";
-    c = { root, stateDir: env.SPOT_STATE_DIR || root, defaultData: m.join(root, "data"), app: m.join(root, "app"), defaultModels: m.join(root, "ollama"), chrome: m.join(root, "chrome"), forbid: [m.join(root, "node"), m.join(root, "chrome"), m.join(root, "ollama-app")] };
+    const root = env.NBS_ROOT || "C:\\NothingBotServer";
+    c = { root, stateDir: env.NBS_STATE_DIR || root, defaultData: m.join(root, "data"), app: m.join(root, "app"), defaultModels: m.join(root, "ollama"), chrome: m.join(root, "chrome"), forbid: [m.join(root, "node"), m.join(root, "chrome"), m.join(root, "ollama-app")] };
   } else if (platform === "darwin") {
-    const root = env.SPOT_ROOT || path.join(os.homedir(), "Library", "Application Support", "SpotSolutions");
-    c = { root, stateDir: env.SPOT_STATE_DIR || root, defaultData: path.join(root, "data"), app: path.join(root, "app"), defaultModels: path.join(os.homedir(), ".ollama", "models"), chrome: path.join(root, "chrome"), forbid: [path.join(root, "runtime"), path.join(root, "chrome")] };
+    const root = env.NBS_ROOT || path.join(os.homedir(), "Library", "Application Support", "NothingBotServer");
+    c = { root, stateDir: env.NBS_STATE_DIR || root, defaultData: path.join(root, "data"), app: path.join(root, "app"), defaultModels: path.join(os.homedir(), ".ollama", "models"), chrome: path.join(root, "chrome"), forbid: [path.join(root, "runtime"), path.join(root, "chrome")] };
   } else {
-    c = { root: "/opt/spot-solutions", stateDir: env.SPOT_STATE_DIR || "/etc/spot-solutions", defaultData: "/var/lib/spot-solutions", app: env.SPOT_APP_DIR || "/opt/spot-solutions", defaultModels: "/usr/share/ollama/.ollama/models", chrome: null, forbid: ["/usr/local/lib/spot-solutions", "/usr/local/sbin", "/etc/spot-solutions"] };
+    c = { root: "/opt/nothing-bot-server", stateDir: env.NBS_STATE_DIR || "/etc/nothing-bot-server", defaultData: "/var/lib/nothing-bot-server", app: env.NBS_APP_DIR || "/opt/nothing-bot-server", defaultModels: "/usr/share/ollama/.ollama/models", chrome: null, forbid: ["/usr/local/lib/nothing-bot-server", "/usr/local/sbin", "/etc/nothing-bot-server"] };
   }
   c.platform = platform;
   c.envFile = m.join(c.app, "apps", "worker", ".env");
   c.forbidden = [{ path: c.app, label: "the Nothing BOT Server program folder" }, ...c.forbid.map((p) => ({ path: p, label: "Nothing BOT Server's own program files" }))];
-  c.current = readPointer(c.stateDir, "data-dir") || env.SPOT_DATA_DIR || c.defaultData;
+  c.current = readPointer(c.stateDir, "data-dir") || env.NBS_DATA_DIR || c.defaultData;
   c.currentModels = readPointer(c.stateDir, "models-dir") || env.OLLAMA_MODELS || c.defaultModels;
   c.stateFile = m.join(c.stateDir, "move.json");
   return c;
@@ -278,7 +283,7 @@ export function makeOps(ctx, { dry = false, log = console.log } = {}) {
   const ps = (script, env = {}) => (dry ? D(`powershell ${script.slice(0, 50)}…`) : sh("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], { env: { ...process.env, ...env } }));
   const uid = process.getuid?.() ?? 0;
   const gui = `gui/${uid}`;
-  const ctl = path.join(ctx.root, "spotctl");
+  const ctl = path.join(ctx.root, "nbsctl");
   const ids = {};
   const idOf = async (user) => { if (!ids[user]) { const [u, g] = await Promise.all([sh("id", ["-u", user]), sh("id", ["-g", user])]); ids[user] = { uid: Number(u), gid: Number(g) }; } return ids[user]; };
 
@@ -300,19 +305,19 @@ export function makeOps(ctx, { dry = false, log = console.log } = {}) {
       if (win) {
         const out = await ps(`
 $ErrorActionPreference = 'SilentlyContinue'
-$old = $env:SPOT_OLD.TrimEnd('\\')
-$chrome = $env:SPOT_CHROME
+$old = $env:NBS_OLD.TrimEnd('\\')
+$chrome = $env:NBS_CHROME
 $ci = [StringComparison]::OrdinalIgnoreCase
 function Kill-Tree($id) { & taskkill.exe /PID $id /T /F *> $null; Stop-Process -Id $id -Force }
 # Wildcard-free matching (a folder name with [ ] must not break it). Chrome, Edge or Chromium running from our profile folders,
 # including the crash handler; their helpers die with them (taskkill /T).
 function Get-Browsers { Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.Name -match '^(chrome|chromium|msedge|chrome_crashpad_handler|crashpad_handler)\\.exe$' -and (($chrome -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($chrome + '\\', $ci)) -or ($_.CommandLine -and $_.CommandLine.IndexOf($old, $ci) -ge 0)) } }
-function Get-Workers { Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*SpotSolutions*' -and $_.CommandLine -notlike '*console*server.mjs*' -and $_.CommandLine -notlike '*move.mjs*' } }
-Stop-ScheduledTask -TaskName SpotSolutionsWorker
+function Get-Workers { Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*NothingBotServer*' -and $_.CommandLine -notlike '*console*server.mjs*' -and $_.CommandLine -notlike '*move.mjs*' } }
+Stop-ScheduledTask -TaskName NothingBotServerWorker
 # The launcher loop starts the worker again ~10 s after it dies, and that new browser would write into the folder being copied: it goes first.
 Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf('run-worker.ps1', $ci) -ge 0 } | ForEach-Object { Kill-Tree $_.ProcessId }
 Get-Workers | ForEach-Object { Kill-Tree $_.ProcessId }
-if ($env:SPOT_STOP_MODELS -eq '1') { Get-Process -Name 'ollama','ollama app' | Stop-Process -Force }
+if ($env:NBS_STOP_MODELS -eq '1') { Get-Process -Name 'ollama','ollama app' | Stop-Process -Force }
 # Wait (up to ~40 s) until no browser or worker is left, killing whatever shows up again.
 for ($i = 0; $i -lt 40; $i++) {
   $left = @(Get-Browsers) + @(Get-Workers)
@@ -321,16 +326,16 @@ for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep 1
 }
 if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNING' } else { Write-Output 'STOPPED' }`,
-          { SPOT_CHROME: ctx.chrome, SPOT_OLD: from, SPOT_STOP_MODELS: models ? "1" : "0" });
+          { NBS_CHROME: ctx.chrome, NBS_OLD: from, NBS_STOP_MODELS: models ? "1" : "0" });
         if (!dry && !/STOPPED/.test(String(out)) ) throw new Error(STILL_CLOSING);
       } else if (mac) {
         if (!dry) {
-          await sh("launchctl", ["bootout", `${gui}/com.spotsolutions.worker`]);
-          if (models) await sh("launchctl", ["bootout", `${gui}/com.spotsolutions.ollama`]);
+          await sh("launchctl", ["bootout", `${gui}/app.nothingbot.server.worker`]);
+          if (models) await sh("launchctl", ["bootout", `${gui}/app.nothingbot.server.ollama`]);
         } else D("launchctl bootout worker");
         await killBrowsersOn(from);
       } else {
-        if (!dry) { await sh("systemctl", ["stop", "spot-worker"]); if (models) await sh("systemctl", ["stop", "ollama"]); } else D("systemctl stop spot-worker");
+        if (!dry) { await sh("systemctl", ["stop", "nothing-bot-server-worker"]); if (models) await sh("systemctl", ["stop", "ollama"]); } else D("systemctl stop nothing-bot-server-worker");
         await killBrowsersOn(from);
       }
     },
@@ -348,8 +353,8 @@ if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNIN
       } else {
         try { chmodSync(target, 0o700); } catch { /* not ours to change */ }
         if (!win && !mac && process.getuid?.() === 0 && !dry) {
-          const spot = await idOf("spot");
-          await sh("chown", [`${spot.uid}:${spot.gid}`, target], { strict: true });
+          const svc = await idOf("nbs");
+          await sh("chown", [`${svc.uid}:${svc.gid}`, target], { strict: true });
         }
       }
     },
@@ -368,16 +373,16 @@ if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNIN
           if (modelsFrom && modelsTo) t = replacePaths(t, modelsFrom, modelsTo, "win32");
           writeFileSync(file, t, "utf8"); // a leading BOM (PowerShell 5 needs it for non-ASCII paths) is part of t and survives
         }
-        if (modelsTo) await ps("[Environment]::SetEnvironmentVariable('OLLAMA_MODELS', $env:SPOT_MODELS_NEW, 'Machine')", { SPOT_MODELS_NEW: modelsTo });
+        if (modelsTo) await ps("[Environment]::SetEnvironmentVariable('OLLAMA_MODELS', $env:NBS_MODELS_NEW, 'Machine')", { NBS_MODELS_NEW: modelsTo });
       } else if (mac) {
-        if (dry) return D("spotctl apply");
+        if (dry) return D("nbsctl apply");
         if (existsSync(ctl)) await sh("/bin/bash", [ctl, "apply"], { strict: true });
       } else {
         if (dry) return D("write systemd drop-ins");
         const q = (v) => `"${v.replace(/"/g, "")}"`;
         const dropin = (unit, text) => { const d = `/etc/systemd/system/${unit}.service.d`; mkdirSync(d, { recursive: true }); writeFileSync(`${d}/data.conf`, text); };
-        dropin("spot-console", `[Service]\nEnvironment=${q(`SPOT_DATA_DIR=${to}`)}\n${modelsTo ? `Environment=${q(`OLLAMA_MODELS=${modelsTo}`)}\n` : ""}`);
-        dropin("spot-worker", `[Unit]\nConditionPathExists=\nConditionPathExists=${to}/service-account.json\n`);
+        dropin("nothing-bot-server-console", `[Service]\nEnvironment=${q(`NBS_DATA_DIR=${to}`)}\n${modelsTo ? `Environment=${q(`OLLAMA_MODELS=${modelsTo}`)}\n` : ""}`);
+        dropin("nothing-bot-server-worker", `[Unit]\nConditionPathExists=\nConditionPathExists=${to}/service-account.json\n`);
         if (modelsTo) {
           const d = "/etc/systemd/system/ollama.service.d";
           mkdirSync(d, { recursive: true });
@@ -394,18 +399,18 @@ if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNIN
       if (win) {
         await ps(`
 $ErrorActionPreference = 'SilentlyContinue'
-Start-ScheduledTask -TaskName SpotSolutionsWorker
+Start-ScheduledTask -TaskName NothingBotServerWorker
 # The console's launcher loop keeps the old environment, so restart the whole task to pick up the new folder.
-Stop-ScheduledTask -TaskName SpotSolutionsConsole
-Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*SpotSolutions*console*server.mjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Stop-ScheduledTask -TaskName NothingBotServerConsole
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*NothingBotServer*console*server.mjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Start-Sleep 2
-Start-ScheduledTask -TaskName SpotSolutionsConsole`);
+Start-ScheduledTask -TaskName NothingBotServerConsole`);
       } else if (mac) {
         if (existsSync(ctl)) await sh("/bin/bash", [ctl, "restart", "all"], { strict: true });
       } else {
         if (models) await sh("systemctl", ["start", "ollama"]);
-        await sh("systemctl", ["restart", "spot-worker"]);
-        await sh("systemctl", ["restart", "spot-console"]);
+        await sh("systemctl", ["restart", "nothing-bot-server-worker"]);
+        await sh("systemctl", ["restart", "nothing-bot-server-console"]);
       }
     },
   };
@@ -425,16 +430,17 @@ function writeProgress(ctx, files, o, chown = null) {
   }
 }
 
-export async function main(argv = process.argv.slice(2), env = process.env) {
+export async function main(argv = process.argv.slice(2), rawEnv = process.env) {
+  const env = withNbs(rawEnv);
   const task = argv[0];
   if (task !== "move-data" && task !== "move-cleanup") throw new Error("usage: move.mjs move-data|move-cleanup");
   const ctx = contextFor(process.platform, env);
-  const dry = env.SPOT_MOVE_DRY_RUN === "1";
+  const dry = env.NBS_MOVE_DRY_RUN === "1";
   const request = readJson(path.join(ctx.current, "task.json")) ?? {};
   const run = async (cmd, args) => (await exec(cmd, args, { timeout: 20_000 })).stdout;
   let chown = null;
   if (ctx.platform === "linux" && process.getuid?.() === 0 && !dry) {
-    const [u, g] = await Promise.all([exec("id", ["-u", "spot"]), exec("id", ["-g", "spot"])]);
+    const [u, g] = await Promise.all([exec("id", ["-u", "nbs"]), exec("id", ["-g", "nbs"])]);
     chown = { uid: Number(u.stdout), gid: Number(g.stdout) };
   }
   if (task === "move-data") {

@@ -32,7 +32,7 @@ export function isCacheOnly(rel) {
 /** Files in the top of the data folder that keep changing while a move runs. They are copied if possible, never compared. */
 export const VOLATILE = new Set(["update.json", "update.json.tmp", "task.json", "console.log", "live-stats.json", "live-stats.json.tmp", "move.json", "worker.log"]);
 /** Marks a folder this feature created, so a failed move may remove it and nothing else. */
-export const MARKER = ".spot-data-copy";
+export const MARKER = ".nbs-data-copy";
 const CRITICAL_FILES = ["service-account.json", "console-token", "console.json", "wwebjs/server.json"];
 const MAX_PATH_CHARS = 200;
 
@@ -92,11 +92,11 @@ export function validatePath(input, { platform = process.platform, current = nul
   const win = platform === "win32";
   const m = modFor(platform);
   if (win) {
-    if (/^[\\/]{2}/.test(p)) return fail("Use a folder on a drive inside this computer (like D:\\SpotSolutions\\data), not a network path. WhatsApp's browser needs a local disk.");
-    if (!/^[A-Za-z]:[\\/]/.test(p)) return fail("Use the full path, starting with the drive letter, for example D:\\SpotSolutions\\data.");
+    if (/^[\\/]{2}/.test(p)) return fail("Use a folder on a drive inside this computer (like D:\\NothingBotServer\\data), not a network path. WhatsApp's browser needs a local disk.");
+    if (!/^[A-Za-z]:[\\/]/.test(p)) return fail("Use the full path, starting with the drive letter, for example D:\\NothingBotServer\\data.");
     p = p.replace(/\//g, "\\");
   } else if (!p.startsWith("/")) {
-    return fail("Use the full path, starting with /, for example /mnt/disk/SpotSolutions/data.");
+    return fail("Use the full path, starting with /, for example /mnt/disk/NothingBotServer/data.");
   }
   const root = m.parse(p).root;
   const segs = p.slice(root.length).split(win ? /\\+/ : /\/+/).filter(Boolean);
@@ -113,9 +113,9 @@ export function validatePath(input, { platform = process.platform, current = nul
   if (out.length > root.length) out = out.replace(/[\\/]+$/, "");
   if (out.length > MAX_PATH_CHARS) return fail(`That path is too long (${out.length} characters; keep it under ${MAX_PATH_CHARS}). WhatsApp's browser profile nests deeply.`);
   const first = real[0].toLowerCase();
-  if (win && WIN_SYSTEM_DIRS.has(first)) return fail("Don't use a Windows system folder. Make a folder like D:\\SpotSolutions\\data.");
+  if (win && WIN_SYSTEM_DIRS.has(first)) return fail("Don't use a Windows system folder. Make a folder like D:\\NothingBotServer\\data.");
   if (!win && platform === "darwin" && MAC_SYSTEM_ROOTS.has(first) && !(first === "var" && real[1] === "lib")) return fail("Don't use a system folder. Use a folder in your home or on an external drive (/Volumes/…).");
-  if (!win && platform !== "darwin" && POSIX_SYSTEM_ROOTS.has(first)) return fail("Don't use a system folder. Use a folder on the data disk, like /mnt/disk/SpotSolutions/data.");
+  if (!win && platform !== "darwin" && POSIX_SYSTEM_ROOTS.has(first)) return fail("Don't use a system folder. Use a folder on the data disk, like /mnt/disk/NothingBotServer/data.");
   if (current) {
     if (pathKey(out, platform) === pathKey(current, platform)) return fail("That is the folder the data is already in.");
     if (isInside(out, current, platform)) return fail("The new folder can't be inside the current data folder.");
@@ -209,7 +209,7 @@ export async function inspectTarget(input, { platform = process.platform, curren
   // Writable: make and remove a probe file. A folder that doesn't exist yet needs its nearest parent to be writable.
   // (On Ubuntu the console runs as an unprivileged user and the root helper makes the folder, so only the helper probes.)
   if (probe) {
-    const file = m.join(ancestor, `.spot-probe-${randomBytes(4).toString("hex")}`);
+    const file = m.join(ancestor, `.nbs-probe-${randomBytes(4).toString("hex")}`);
     try {
       writeFileSync(toFsPath(file, platform), "ok");
       unlinkSync(toFsPath(file, platform));

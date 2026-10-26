@@ -12,7 +12,7 @@ const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 90_000);
 const GEMINI_TIMEOUT_MS = 30_000;
 const SERVER_GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 /** Set by the installers for Gemini-only servers. */
-export const NO_LOCAL_MODEL = /^(1|true|yes)$/i.test(process.env.SPOT_NO_LOCAL_MODEL ?? "");
+export const NO_LOCAL_MODEL = /^(1|true|yes)$/i.test(process.env.NBS_NO_LOCAL_MODEL ?? "");
 export const hasServerGeminiKey = Boolean(SERVER_GEMINI_KEY);
 
 type Schema = Record<string, unknown>;
@@ -130,7 +130,7 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
 }
 
 export async function ollamaState() {
-  // Gemini-only servers (SPOT_NO_LOCAL_MODEL=1) have no Ollama at all: answer at once, no network call.
+  // Gemini-only servers (NBS_NO_LOCAL_MODEL=1) have no Ollama at all: answer at once, no network call.
   if (NO_LOCAL_MODEL) return { up: false, models: [], loaded: [] as string[] };
   try {
     const [tags, ps] = await Promise.all([

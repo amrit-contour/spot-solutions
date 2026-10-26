@@ -1,5 +1,6 @@
 // Nothing BOT worker: keeps every curator's WhatsApp session alive and executes
 // commands the web app drops into Firestore. Only outbound connections — no ports.
+import "./envCompat.ts";
 import "./logbuf.ts";
 import { col, db, sessionRef } from "./firebase.ts";
 import { notice, runCommand } from "./commands.ts";
@@ -46,7 +47,7 @@ async function main() {
   const ol = await ollamaState();
   console.log(`[worker] starting · server "${SERVER_ID}" · ollama ${ol.up ? `up (${ol.models.map((m) => m.name).join(", ") || "no models"})` : "DOWN"}`);
   fleet.setLocalModel(ol.up && ol.models.length > 0);
-  if (!adminConfigured) console.warn("[worker] SPOT_ADMIN_EMAILS not set: the Server page in the app stays hidden");
+  if (!adminConfigured) console.warn("[worker] NBS_ADMIN_EMAILS not set: the Server page in the app stays hidden");
 
   // Heartbeat for the app's Server page.
   const users = new Map<string, { email?: string | null; name?: string | null }>();

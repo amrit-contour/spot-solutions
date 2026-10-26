@@ -81,7 +81,7 @@ let evalTimer: NodeJS.Timeout | undefined;
 
 // ---- capacity ----
 function maxAccounts() {
-  const env = Number(process.env.SPOT_MAX_ACCOUNTS);
+  const env = Number(process.env.NBS_MAX_ACCOUNTS);
   return Number.isInteger(env) && env > 0 ? env : defaultMaxAccounts(os.totalmem(), localModel);
 }
 /** Browsers this server runs for its leases: one per account, plus one for each account's agent number. maxAccounts is counted in these. */

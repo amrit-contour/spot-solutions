@@ -2,9 +2,10 @@
 // It solves the bootstrap problem (the worker can't reach Firebase until it has a key),
 // and shows service health, machine stats and logs. No dependencies, plain Node.
 //
-// Env: SPOT_DATA_DIR, SPOT_ENV_FILE, SPOT_CONSOLE_PORT (7420), SPOT_CONSOLE_TOKEN_FILE, SPOT_STATS_FILE (live-stats.json)
-// Test hooks: SPOT_CONSOLE_DRY_RUN=1 never restarts or updates anything on the machine; SPOT_FUNCTIONS_URL, SPOT_DIST_URL,
-// SPOT_WEB_URL and SPOT_GEMINI_URL point the console at stand-ins for Nothing BOT Curating's servers.
+// Env: NBS_DATA_DIR, NBS_ENV_FILE, NBS_CONSOLE_PORT (7420), NBS_CONSOLE_TOKEN_FILE, NBS_STATS_FILE (live-stats.json)
+// Test hooks: NBS_CONSOLE_DRY_RUN=1 never restarts or updates anything on the machine; NBS_FUNCTIONS_URL, NBS_DIST_URL,
+// NBS_WEB_URL and NBS_GEMINI_URL point the console at stand-ins for the cloud servers.
+import "./envcompat.mjs";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -24,23 +25,23 @@ import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
 const MAC = process.platform === "darwin";
-const MAC_ROOT = path.join(os.homedir(), "Library", "Application Support", "SpotSolutions");
-const DATA = process.env.SPOT_DATA_DIR ?? (WIN ? "C:\\SpotSolutions\\data" : MAC ? path.join(MAC_ROOT, "data") : "/var/lib/spot-solutions");
-const ENV_FILE = process.env.SPOT_ENV_FILE ?? (WIN ? "C:\\SpotSolutions\\app\\apps\\worker\\.env" : MAC ? path.join(MAC_ROOT, "app", "apps", "worker", ".env") : "/opt/spot-solutions/apps/worker/.env");
-// Windows logs next to the data; macOS launch agents write to SpotSolutions/logs.
+const MAC_ROOT = path.join(os.homedir(), "Library", "Application Support", "NothingBotServer");
+const DATA = process.env.NBS_DATA_DIR ?? (WIN ? "C:\\NothingBotServer\\data" : MAC ? path.join(MAC_ROOT, "data") : "/var/lib/nothing-bot-server");
+const ENV_FILE = process.env.NBS_ENV_FILE ?? (WIN ? "C:\\NothingBotServer\\app\\apps\\worker\\.env" : MAC ? path.join(MAC_ROOT, "app", "apps", "worker", ".env") : "/opt/nothing-bot-server/apps/worker/.env");
+// Windows logs next to the data; macOS launch agents write to NothingBotServer/logs.
 const WORKER_LOG = MAC ? path.join(DATA, "..", "logs", "worker.log") : path.join(DATA, "worker.log");
-const OLLAMA_EXE = process.env.SPOT_OLLAMA_EXE ?? "ollama";
-const PORT = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
+const OLLAMA_EXE = process.env.NBS_OLLAMA_EXE ?? "ollama";
+const PORT = Number(process.env.NBS_CONSOLE_PORT ?? 7420);
 // Release this console belongs to (written by the installer's tarball), shown in the header.
-const VERSION = process.env.SPOT_VERSION ?? (() => { try { return readFileSync(new URL("../../../VERSION", import.meta.url), "utf8").trim(); } catch { return "dev"; } })();
+const VERSION = process.env.NBS_VERSION ?? (() => { try { return readFileSync(new URL("../../../VERSION", import.meta.url), "utf8").trim(); } catch { return "dev"; } })();
 // Changes on every start, so an embedded view (the Mac app) knows to reload a stale page.
 const BOOT = Date.now();
-const TOKEN_FILE = process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(DATA, "console-token");
+const TOKEN_FILE = process.env.NBS_CONSOLE_TOKEN_FILE ?? path.join(DATA, "console-token");
 const KEY_FILE = path.join(DATA, "service-account.json");
 // The worker writes its live numbers here every few seconds (apps/worker/src/liveStats.ts); the dashboard reads them.
-const live = createLive({ file: process.env.SPOT_STATS_FILE ?? path.join(DATA, "live-stats.json") });
+const live = createLive({ file: process.env.NBS_STATS_FILE ?? path.join(DATA, "live-stats.json") });
 // Cloud Function that trades a join code for this server's own key (functions/src/index.ts redeemJoinCode).
-const JOIN_URL = process.env.SPOT_JOIN_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net/redeemJoinCode";
+const JOIN_URL = process.env.NBS_JOIN_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net/redeemJoinCode";
 const OLLAMA = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const HTML = readFileSync(new URL("./index.html", import.meta.url));
 const FAVICON = readFileSync(new URL("./favicon.svg", import.meta.url));
@@ -52,17 +53,21 @@ const TOKEN = readFileSync(TOKEN_FILE, "utf8").trim();
 // ---------- .env helpers ----------
 function readEnv() {
   if (!existsSync(ENV_FILE)) return {};
-  return Object.fromEntries(
+  const env = Object.fromEntries(
     readFileSync(ENV_FILE, "utf8")
       .split("\n")
       .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
       .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]),
   );
+  // A .env written before the rename to Nothing BOT Server has SPOT_* names: NBS_X wins, SPOT_X is the fallback.
+  for (const k of Object.keys(env)) if (k.startsWith("SPOT_") && env["NBS_" + k.slice(5)] === undefined) env["NBS_" + k.slice(5)] = env[k];
+  return env;
 }
 function writeEnv(patch) {
   const lines = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf8").split("\n") : [];
   const seen = new Set();
-  const out = lines.map((l) => {
+  // Setting NBS_X replaces a legacy SPOT_X line too (it would only be an out-of-date duplicate).
+  const out = lines.filter((l) => !(l.startsWith("SPOT_") && l.includes("=") && ("NBS_" + l.slice(5, l.indexOf("="))).trim() in patch)).map((l) => {
     const k = l.slice(0, l.indexOf("=")).trim();
     if (l.includes("=") && k in patch) {
       seen.add(k);
@@ -85,10 +90,10 @@ async function sh(cmd, args, timeout = 5000) {
   }
 }
 const ps = (cmd, timeout) => sh("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", cmd], timeout);
-// The Windows launcher runs the worker as `node ... tsx ... src\index.ts` from C:\SpotSolutions.
-const WIN_WORKER = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*SpotSolutions*src*index.ts*' }";
-// macOS: launch agents from spotctl, in this user's GUI domain.
-const macLabel = (unit) => `com.spotsolutions.${unit === "spot-worker" ? "worker" : unit}`;
+// The Windows launcher runs the worker as `node ... tsx ... src\index.ts` from C:\NothingBotServer.
+const WIN_WORKER = "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*NothingBotServer*src*index.ts*' }";
+// macOS: launch agents from nbsctl, in this user's GUI domain.
+const macLabel = (unit) => `app.nothingbot.server.${unit === "nothing-bot-server-worker" ? "worker" : unit}`;
 const gui = () => `gui/${process.getuid()}`;
 async function isActive(unit) {
   if (MAC) {
@@ -100,7 +105,7 @@ async function isActive(unit) {
   if (unit === "ollama") return (await ollama()).up;
   return Boolean(await ps(`(${WIN_WORKER} | Measure-Object).Count -gt 0 | % { if ($_) { 'yes' } }`));
 }
-const DRY = process.env.SPOT_CONSOLE_DRY_RUN === "1";
+const DRY = process.env.NBS_CONSOLE_DRY_RUN === "1";
 async function restart(unit) {
   if (DRY) return null;
   if (MAC) return sh("launchctl", ["kickstart", "-k", `${gui()}/${macLabel(unit)}`], 30000);
@@ -121,7 +126,7 @@ function tailFile(file, bytes = 24000) {
   return buf.toString("utf8").split(/\r?\n/).slice(-150).join("\n");
 }
 async function workerLogs() {
-  return WIN || MAC ? tailFile(WORKER_LOG) : sh("journalctl", ["-u", "spot-worker", "-n", "150", "--no-pager", "-o", "short-iso"], 8000);
+  return WIN || MAC ? tailFile(WORKER_LOG) : sh("journalctl", ["-u", "nothing-bot-server-worker", "-n", "150", "--no-pager", "-o", "short-iso"], 8000);
 }
 async function disk() {
   // The drive the data lives on (it may not be the system drive any more).
@@ -155,8 +160,8 @@ function lanIps() {
     .filter((i) => i && i.family === "IPv4" && !i.internal)
     .map((i) => i.address);
 }
-// Gemini-only servers (SPOT_NO_LOCAL_MODEL=1 in .env) have no Ollama: don't probe, don't flag it as down.
-const noLocalModel = () => /^(1|true|yes)$/i.test(readEnv().SPOT_NO_LOCAL_MODEL ?? "");
+// Gemini-only servers (NBS_NO_LOCAL_MODEL=1 in .env) have no Ollama: don't probe, don't flag it as down.
+const noLocalModel = () => /^(1|true|yes)$/i.test(readEnv().NBS_NO_LOCAL_MODEL ?? "");
 async function ollama() {
   if (noLocalModel()) return { up: false, models: [] };
   try {
@@ -198,7 +203,7 @@ async function memory() {
 async function status() {
   const env = readEnv();
   const [worker, ollamaSvc, o, d, logs] = await Promise.all([
-    isActive("spot-worker"),
+    isActive("nothing-bot-server-worker"),
     noLocalModel() ? false : isActive("ollama"),
     ollama(),
     disk(),
@@ -225,9 +230,9 @@ async function status() {
     ollama: o,
     config: {
       key: keyInfo(),
-      admins: (env.SPOT_ADMIN_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+      admins: (env.NBS_ADMIN_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
       geminiServerKey: gk ? `••••${gk.slice(-4)}` : null,
-      serverId: env.SPOT_SERVER_ID || os.hostname(),
+      serverId: env.NBS_SERVER_ID || os.hostname(),
     },
     logs: logs ?? (WIN ? "No logs yet. The worker starts once a Firebase key is added." : "No logs yet (or this account can't read the journal)."),
   };
@@ -258,15 +263,15 @@ const isServiceAccountKey = (k) => Boolean(k && k.type === "service_account" && 
 async function installKey(k) {
   writeFileSync(KEY_FILE, JSON.stringify(k, null, 2), { mode: 0o600 });
   writeEnv({ FIREBASE_SERVICE_ACCOUNT: KEY_FILE, FIREBASE_PROJECT_ID: k.project_id });
-  await restart("spot-worker");
+  await restart("nothing-bot-server-worker");
 }
 
 // ---------- connect with an account, updates, AI models ----------
 const addAdmin = (email) => {
   const e = String(email ?? "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return;
-  const have = (readEnv().SPOT_ADMIN_EMAILS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
-  if (!have.includes(e)) writeEnv({ SPOT_ADMIN_EMAILS: [...have, e].join(",") });
+  const have = (readEnv().NBS_ADMIN_EMAILS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (!have.includes(e)) writeEnv({ NBS_ADMIN_EMAILS: [...have, e].join(",") });
 };
 const connect = createConnect({
   hostname: os.hostname(),
@@ -280,7 +285,7 @@ void updater.check(); // so the page can say right away whether a newer release 
 const storage = createStorage({
   data: DATA,
   envFile: ENV_FILE,
-  env: DRY && !process.env.SPOT_STATE_DIR ? { ...process.env, SPOT_STATE_DIR: path.join(DATA, ".state") } : process.env,
+  env: DRY && !process.env.NBS_STATE_DIR ? { ...process.env, NBS_STATE_DIR: path.join(DATA, ".state") } : process.env,
   ollama,
   noLocalModel,
   updater,
@@ -291,7 +296,7 @@ const browser = createBrowser({ ctx: () => storage.ctx(), run: async (cmd, args)
 const ai = createAi({
   readEnv,
   writeEnv,
-  restartWorker: () => restart("spot-worker"),
+  restartWorker: () => restart("nothing-bot-server-worker"),
   ollamaUrl: OLLAMA,
   ollamaInfo: ollama,
   noLocalModel,
@@ -373,7 +378,7 @@ createServer(async (req, res) => {
       const b = await body(req);
       await updater.check();
       const v = updater.view();
-      if (!v.latest) return json(res, 502, { error: "Couldn't reach Nothing BOT Curating to look for an update. Check this server's internet." });
+      if (!v.latest) return json(res, 502, { error: "Couldn't reach the update site (nothingbotcurating.web.app) to look for an update. Check this server's internet." });
       if (!v.available && !b.force) return json(res, 200, { ok: true, upToDate: true, to: v.current });
       const r = await updater.start({ by: String(b.by ?? "console").slice(0, 80) });
       return json(res, 200, { ...r, to: v.latest?.version ?? null });
@@ -463,19 +468,19 @@ createServer(async (req, res) => {
       const patch = {};
       if (Array.isArray(b.admins)) {
         const emails = b.admins.map((e) => String(e).trim().toLowerCase()).filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-        patch.SPOT_ADMIN_EMAILS = emails.join(",");
+        patch.NBS_ADMIN_EMAILS = emails.join(",");
       }
       if (typeof b.geminiKey === "string") patch.GEMINI_API_KEY = b.geminiKey.trim();
       if (!Object.keys(patch).length) return json(res, 400, { error: "Nothing to change" });
       writeEnv(patch);
-      await restart("spot-worker");
+      await restart("nothing-bot-server-worker");
       return json(res, 200, { ok: true });
     }
 
     if (url.pathname === "/api/restart" && req.method === "POST") {
       const { service } = await body(req);
       if (service === "ollama" && noLocalModel()) return json(res, 400, { error: "This server runs without a local model (Gemini only)." });
-      const unit = service === "ollama" ? "ollama" : "spot-worker";
+      const unit = service === "ollama" ? "ollama" : "nothing-bot-server-worker";
       await restart(unit);
       return json(res, 200, { ok: true, active: await isActive(unit) });
     }

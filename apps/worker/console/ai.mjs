@@ -3,13 +3,15 @@
 // Thin calls to the Gemini REST API and Ollama, so the console works before and without the worker.
 // The Gemini key goes in a header, never a URL, and is scrubbed from every message shown or logged.
 
+import "./envcompat.mjs";
+
 export const MODES = {
   local_first: "Local first, Gemini as backup",
   gemini_first: "Gemini first, local as backup",
   gemini_only: "Gemini only",
   local_only: "Local only (chats never reach Gemini)",
 };
-const GEMINI = process.env.SPOT_GEMINI_URL ?? "https://generativelanguage.googleapis.com/v1beta";
+const GEMINI = process.env.NBS_GEMINI_URL ?? "https://generativelanguage.googleapis.com/v1beta";
 const KEY_RE = /^[A-Za-z0-9_-]{20,200}$/;
 const NAME_RE = /^[A-Za-z0-9._:/-]{1,100}$/;
 
@@ -43,10 +45,10 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     const o = await ollamaInfo();
     return {
       geminiKey: maskKey(env.GEMINI_API_KEY),
-      mode: validMode(env.SPOT_AI_MODE) ? env.SPOT_AI_MODE : null,
+      mode: validMode(env.NBS_AI_MODE) ? env.NBS_AI_MODE : null,
       modes: MODES,
-      localModel: env.SPOT_LOCAL_MODEL || null,
-      geminiModel: env.SPOT_GEMINI_MODEL || null,
+      localModel: env.NBS_LOCAL_MODEL || null,
+      geminiModel: env.NBS_GEMINI_MODEL || null,
       localEnabled: !noLocalModel(),
       ollama: o,
       pull,
@@ -147,15 +149,15 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     const patch = {};
     if (mode !== undefined) {
       if (mode !== "" && !validMode(mode)) throw new Error("Unknown routing.");
-      patch.SPOT_AI_MODE = mode;
+      patch.NBS_AI_MODE = mode;
     }
     if (localModel !== undefined) {
       if (localModel !== "" && !validModel(localModel)) throw new Error("That isn't a model name.");
-      patch.SPOT_LOCAL_MODEL = localModel;
+      patch.NBS_LOCAL_MODEL = localModel;
     }
     if (geminiModel !== undefined) {
       if (geminiModel !== "" && !validModel(geminiModel)) throw new Error("That isn't a model name.");
-      patch.SPOT_GEMINI_MODEL = geminiModel;
+      patch.NBS_GEMINI_MODEL = geminiModel;
     }
     if (!Object.keys(patch).length) throw new Error("Nothing to change.");
     writeEnv(patch);

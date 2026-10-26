@@ -11,7 +11,7 @@ export const SERVICE_ACCOUNT = key?.client_email ?? null;
 initializeApp({
   credential: key ? cert(key as Parameters<typeof cert>[0]) : applicationDefault(),
   projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.SPOT_STORAGE_BUCKET || "spot-solutions.firebasestorage.app",
+  storageBucket: process.env.NBS_STORAGE_BUCKET || "spot-solutions.firebasestorage.app",
 });
 
 export const db = getFirestore();

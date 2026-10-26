@@ -6,7 +6,7 @@ import { contextFor, planMove } from "./move.mjs";
 import { HEADROOM_BYTES, LOW_DISK_BYTES, freeBytes, inspectTarget, isInside, measure, readJson, summariseData } from "./storage.mjs";
 
 const RESCAN_MS = 120_000;
-const EXAMPLE = { win32: "D:\\SpotSolutions\\data", darwin: "/Volumes/Backup HDD/SpotSolutions/data", linux: "/mnt/disk/SpotSolutions/data" };
+const EXAMPLE = { win32: "D:\\NothingBotServer\\data", darwin: "/Volumes/Backup HDD/NothingBotServer/data", linux: "/mnt/disk/NothingBotServer/data" };
 
 export function createStorage({ data, envFile, platform = process.platform, env = process.env, ollama, noLocalModel, updater, run = null, now = Date.now }) {
   // Everything about where things live comes from move.mjs, so this view and the mover can never disagree.

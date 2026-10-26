@@ -1,8 +1,9 @@
 // Updates for this server: what's the latest release, is this one older, and start the platform's updater.
-// The updaters themselves (spotctl on macOS, spot-update on Ubuntu, update.ps1 on Windows) do the download, the sha256
+// The updaters themselves (nbsctl on macOS and Ubuntu, update.ps1 on Windows) do the download, the sha256
 // check, the file swap and the restarts, outside this process so they survive restarting it. The same runners also do
 // "move-data" and "move-cleanup" (move.mjs; the request, a folder path, rides in task.json). They report progress
 // in DATA/update.json, which the page shows.
+import "./envcompat.mjs";
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statfsSync } from "node:fs";
@@ -10,7 +11,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const exec = promisify(execFile);
-export const DIST_BASE = process.env.SPOT_DIST_URL ?? "https://spot-solutions.web.app";
+export const DIST_BASE = process.env.NBS_DIST_URL ?? "https://nothingbotcurating.web.app";
 export const CHECK_EVERY_MS = 30 * 60_000;
 const FIRST_CHECK_MS = 45_000;
 /** After a failed update, automatic updates wait this long (a manual Update now still works). */
@@ -19,7 +20,7 @@ const STALE_RUNNING_MS = 60 * 60_000;
 /** Servers in one fleet shouldn't all restart at once: each waits a stable 0 to 10 minutes after it first sees a release. */
 const STAGGER_MAX_MS = 10 * 60_000;
 
-/** A release as published in dl/version.json, or null if it isn't one. */
+/** A release as published in dl/nothing-bot-server.json, or null if it isn't one. */
 export function parseLatest(j) {
   if (!j || typeof j !== "object") return null;
   const version = typeof j.version === "string" ? j.version.trim() : "";
@@ -57,7 +58,7 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
 
   async function check() {
     try {
-      const r = await fetchImpl(`${DIST_BASE}/dl/version.json?t=${now()}`, { signal: AbortSignal.timeout(15_000), headers: { "cache-control": "no-cache" } });
+      const r = await fetchImpl(`${DIST_BASE}/dl/nothing-bot-server.json?t=${now()}`, { signal: AbortSignal.timeout(15_000), headers: { "cache-control": "no-cache" } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const parsed = parseLatest(await r.json());
       if (!parsed) throw new Error("not a release file");
@@ -132,22 +133,22 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
       return;
     }
     if (MAC) {
-      const label = `gui/${uid}/com.spotsolutions.update`;
+      const label = `gui/${uid}/app.nothingbot.server.update`;
       let loaded = true;
       try { await exec("launchctl", ["print", label], { timeout: 5000 }); } catch { loaded = false; }
       if (loaded) { await exec("launchctl", ["kickstart", label], { timeout: 15000 }); return; }
-      const ctl = path.join(macRoot, "spotctl");
+      const ctl = path.join(macRoot, "nbsctl");
       if (!existsSync(ctl)) throw new Error("This Mac needs one manual update first: open Nothing BOT Server and choose More, Update Nothing BOT Server. After that, updates work from here.");
       // Its own session, so launchd restarting this console doesn't take the updater with it.
       spawn("/bin/bash", [ctl, "task", task], { detached: true, stdio: "ignore" }).unref();
       return;
     }
     if (WIN) {
-      try { await exec("schtasks.exe", ["/run", "/tn", "SpotSolutionsUpdate"], { timeout: 15000 }); }
+      try { await exec("schtasks.exe", ["/run", "/tn", "NothingBotServerUpdate"], { timeout: 15000 }); }
       catch { throw new Error("This PC needs one manual update first: run the Nothing BOT Server installer again. After that, updates work from here."); }
       return;
     }
-    try { await exec("sudo", ["-n", "/usr/bin/systemctl", "start", "--no-block", `spot-task@${task}.service`], { timeout: 15000 }); }
+    try { await exec("sudo", ["-n", "/usr/bin/systemctl", "start", "--no-block", `nothing-bot-server-task@${task}.service`], { timeout: 15000 }); }
     catch { throw new Error("This server needs one manual update first: run the install command again. After that, updates work from here."); }
   }
 

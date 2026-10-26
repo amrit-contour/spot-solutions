@@ -1,5 +1,5 @@
 // Server heartbeat: machine health, Ollama, and who is connected, written to servers/{id}
-// for the app's Server page. Only admins listed in SPOT_ADMIN_EMAILS can read it.
+// for the app's Server page. Only admins listed in NBS_ADMIN_EMAILS can read it.
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import os from "node:os";
@@ -18,7 +18,7 @@ const exec = promisify(execFile);
 export const counters = { messagesIn: 0, classified: 0, sent: 0, errors: 0 };
 
 export { SERVER_ID };
-const ADMINS = (process.env.SPOT_ADMIN_EMAILS ?? "")
+const ADMINS = (process.env.NBS_ADMIN_EMAILS ?? "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
@@ -43,10 +43,10 @@ function version() {
 const VERSION = version();
 
 /**
- * Live numbers for the local console: written to a small JSON file every 3 s (liveStats.ts). SPOT_STATS_FILE overrides
- * the path; by default it sits next to the console token, in the folder above the WhatsApp data (the console's SPOT_DATA_DIR).
+ * Live numbers for the local console: written to a small JSON file every 3 s (liveStats.ts). NBS_STATS_FILE overrides
+ * the path; by default it sits next to the console token, in the folder above the WhatsApp data (the console's NBS_DATA_DIR).
  */
-export const STATS_FILE = process.env.SPOT_STATS_FILE ?? path.join(path.dirname(DATA_DIR), "live-stats.json");
+export const STATS_FILE = process.env.NBS_STATS_FILE ?? path.join(path.dirname(DATA_DIR), "live-stats.json");
 export const live = createLiveStats({ file: STATS_FILE, serverId: SERVER_ID, version: VERSION, startedAt });
 live.start();
 
@@ -133,7 +133,7 @@ async function availableMemory() {
  * file next to the WhatsApp data). servers/{id} is readable only by this server's admins.
  */
 function consoleInfo(): ServerStatus["console"] {
-  const port = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
+  const port = Number(process.env.NBS_CONSOLE_PORT ?? 7420);
   const ips = Object.values(os.networkInterfaces())
     .flat()
     .filter((n) => n && n.family === "IPv4" && !n.internal && !n.address.startsWith("169.254."))
@@ -141,7 +141,7 @@ function consoleInfo(): ServerStatus["console"] {
   const host = `${os.hostname().replace(/\.local$/i, "").toLowerCase()}.local`;
   let token: string | null = null;
   try {
-    token = readFileSync(process.env.SPOT_CONSOLE_TOKEN_FILE ?? path.join(path.dirname(DATA_DIR), "console-token"), "utf8").trim() || null;
+    token = readFileSync(process.env.NBS_CONSOLE_TOKEN_FILE ?? path.join(path.dirname(DATA_DIR), "console-token"), "utf8").trim() || null;
   } catch {}
   return { port, ips, host, token };
 }
@@ -248,10 +248,10 @@ export function watchServerCommands(onRestartWorker: () => Promise<void>) {
 
 async function restartOllama() {
   if (process.platform === "win32") {
-    const exe = process.env.SPOT_OLLAMA_EXE ?? "ollama";
+    const exe = process.env.NBS_OLLAMA_EXE ?? "ollama";
     await exec("powershell", ["-NoProfile", "-Command", `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process -FilePath '${exe}' -ArgumentList serve -WindowStyle Hidden`]);
   } else if (process.platform === "darwin") {
-    await exec("launchctl", ["kickstart", "-k", `gui/${process.getuid!()}/com.spotsolutions.ollama`], { timeout: 60_000 });
+    await exec("launchctl", ["kickstart", "-k", `gui/${process.getuid!()}/app.nothingbot.server.ollama`], { timeout: 60_000 });
   } else {
     await exec("sudo", ["-n", "/usr/bin/systemctl", "restart", "ollama"], { timeout: 60_000 });
   }
@@ -263,7 +263,7 @@ const serverRef = () => db.collection("servers").doc(SERVER_ID);
 
 /** Ask this machine's console to run its updater, and say so on the server's doc so the app can show "Updating". */
 async function requestUpdate(by: string) {
-  const port = Number(process.env.SPOT_CONSOLE_PORT ?? 7420);
+  const port = Number(process.env.NBS_CONSOLE_PORT ?? 7420);
   let res: Response;
   try {
     // The console trusts requests from this machine; admins already proved themselves to Firestore to get here.

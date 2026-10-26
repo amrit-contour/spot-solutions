@@ -268,7 +268,7 @@ describe("orphanPids", () => {
     expect(orphanPids(ps, profile, 105)).toEqual([101, 102]);
   });
   it("handles Windows paths and quoted values", () => {
-    const win = "C:\\SpotSolutions\\data\\wwebjs\\session-abc";
+    const win = "C:\\NothingBotServer\\data\\wwebjs\\session-abc";
     expect(orphanPids([`7 "C:\\chrome.exe" --user-data-dir=${win} --x`, `8 chrome.exe --user-data-dir="${win}"`, `9 chrome.exe --user-data-dir=${win}2`], win, 1)).toEqual([7]);
   });
 });

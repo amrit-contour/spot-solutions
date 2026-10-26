@@ -1,13 +1,14 @@
 // "Connect with your Nothing BOT Curating account": the console asks the start function for a one-time link, shows it as a
 // link and QR, and polls until an admin approves it in the web app. The console proves itself with a secret that
 // never leaves this machine except as a hash, and the key only ever comes back in the reply to that proof.
+import "./envcompat.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-export const WEB_BASE = process.env.SPOT_WEB_URL ?? "https://spot-solutions.web.app";
-const FN_BASE = process.env.SPOT_FUNCTIONS_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net";
-const POLL_MS = Number(process.env.SPOT_CONNECT_POLL_MS ?? 3000);
+export const WEB_BASE = process.env.NBS_WEB_URL ?? "https://spot-solutions.web.app";
+const FN_BASE = process.env.NBS_FUNCTIONS_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net";
+const POLL_MS = Number(process.env.NBS_CONNECT_POLL_MS ?? 3000);
 
 /** An SVG QR (black on white, with its quiet zone) so it scans in light and dark themes alike. null if the library is missing. */
 export function qrSvg(text) {

@@ -9,11 +9,11 @@ const tmp = () => realpathSync.native(mkdtempSync(path.join(os.tmpdir(), "spot-s
 const write = (file, text = "x") => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); };
 
 describe("path validation (Windows)", () => {
-  const opts = { platform: "win32", current: "C:\\SpotSolutions\\data", forbidden: [{ path: "C:\\SpotSolutions\\app", label: "the program folder" }] };
+  const opts = { platform: "win32", current: "C:\\NothingBotServer\\data", forbidden: [{ path: "C:\\NothingBotServer\\app", label: "the program folder" }] };
   const v = (p, o = {}) => validatePath(p, { ...opts, ...o });
   it("accepts an absolute folder on another drive and cleans it", () => {
-    expect(v("D:\\SpotSolutions\\data")).toEqual({ ok: true, path: "D:\\SpotSolutions\\data" });
-    expect(v('  "d:/SpotSolutions/data/"  ').path).toBe("d:\\SpotSolutions\\data");
+    expect(v("D:\\NothingBotServer\\data")).toEqual({ ok: true, path: "D:\\NothingBotServer\\data" });
+    expect(v('  "d:/NothingBotServer/data/"  ').path).toBe("d:\\NothingBotServer\\data");
   });
   it("refuses what isn't a local absolute folder", () => {
     expect(v("").ok).toBe(false);
@@ -33,31 +33,31 @@ describe("path validation (Windows)", () => {
     expect(v("C:\\Windows\\Spot").error).toMatch(/system folder/);
   });
   it("refuses the current folder, inside it, around it, and inside the app folder (any casing)", () => {
-    expect(v("c:\\spotsolutions\\DATA").error).toMatch(/already/);
-    expect(v("C:\\SpotSolutions\\data\\more").error).toMatch(/inside the current/);
+    expect(v("c:\\nothingbotserver\\DATA").error).toMatch(/already/);
+    expect(v("C:\\NothingBotServer\\data\\more").error).toMatch(/inside the current/);
     expect(v("C:\\").ok).toBe(false);
-    expect(v("C:\\SpotSolutions").error).toMatch(/contain the current/);
-    expect(v("C:\\SpotSolutions\\APP\\apps\\x").error).toMatch(/program folder/);
-    expect(v("C:\\SpotSolutionsX\\data").ok).toBe(true); // a sibling with a similar name is fine
+    expect(v("C:\\NothingBotServer").error).toMatch(/contain the current/);
+    expect(v("C:\\NothingBotServer\\APP\\apps\\x").error).toMatch(/program folder/);
+    expect(v("C:\\NothingBotServerX\\data").ok).toBe(true); // a sibling with a similar name is fine
   });
 });
 
 describe("path validation (macOS and Linux)", () => {
   it("wants a full path outside system folders", () => {
-    const lin = { platform: "linux", current: "/var/lib/spot-solutions", forbidden: [{ path: "/opt/spot-solutions", label: "app" }] };
+    const lin = { platform: "linux", current: "/var/lib/nothing-bot-server", forbidden: [{ path: "/opt/nothing-bot-server", label: "app" }] };
     expect(validatePath("/mnt/disk/spot", lin)).toEqual({ ok: true, path: "/mnt/disk/spot" });
     expect(validatePath("mnt/disk", lin).error).toMatch(/starting with \//);
     expect(validatePath("~/spot", lin).ok).toBe(false);
     expect(validatePath("/", lin).ok).toBe(false);
     expect(validatePath("/etc/spot", lin).error).toMatch(/system folder/);
-    expect(validatePath("/opt/spot-solutions/data", lin).ok).toBe(false);
-    expect(validatePath("/var/lib/spot-solutions/x", lin).error).toMatch(/inside the current/);
+    expect(validatePath("/opt/nothing-bot-server/data", lin).ok).toBe(false);
+    expect(validatePath("/var/lib/nothing-bot-server/x", lin).error).toMatch(/inside the current/);
     expect(validatePath('/mnt/a"b', lin).ok).toBe(false);
     expect(validatePath("/mnt/a%h", lin).ok).toBe(false);
-    const mac = { platform: "darwin", current: "/Users/a/Library/Application Support/SpotSolutions/data" };
-    expect(validatePath("/Volumes/HDD/SpotSolutions/data", mac).ok).toBe(true);
+    const mac = { platform: "darwin", current: "/Users/a/Library/Application Support/NothingBotServer/data" };
+    expect(validatePath("/Volumes/HDD/NothingBotServer/data", mac).ok).toBe(true);
     expect(validatePath("/System/x", mac).ok).toBe(false);
-    expect(validatePath("/users/A/library/application support/spotsolutions/DATA", mac).error).toMatch(/already/);
+    expect(validatePath("/users/A/library/application support/nothingbotserver/DATA", mac).error).toMatch(/already/);
   });
   it("compares paths the way the file system does", () => {
     expect(isInside("/a/b/c", "/a/b", "linux")).toBe(true);
@@ -80,12 +80,12 @@ describe("path validation (macOS and Linux)", () => {
 
 describe("rewriting config", () => {
   it("moves whole path prefixes only, keeps line endings", () => {
-    const env = "FIREBASE_SERVICE_ACCOUNT=C:\\SpotSolutions\\data\\service-account.json\r\nWWEBJS_DATA=C:\\SpotSolutions\\data\\wwebjs\r\nOTHER=C:\\SpotSolutions\\data2\\x\r\nGEMINI_API_KEY=C:\\SpotSolutions\\data\r\n";
-    const out = rewriteEnvPaths(env, [["C:\\SpotSolutions\\data", "D:\\Spot\\data"]], "win32");
-    expect(out).toBe("FIREBASE_SERVICE_ACCOUNT=D:\\Spot\\data\\service-account.json\r\nWWEBJS_DATA=D:\\Spot\\data\\wwebjs\r\nOTHER=C:\\SpotSolutions\\data2\\x\r\nGEMINI_API_KEY=D:\\Spot\\data\r\n");
+    const env = "FIREBASE_SERVICE_ACCOUNT=C:\\NothingBotServer\\data\\service-account.json\r\nWWEBJS_DATA=C:\\NothingBotServer\\data\\wwebjs\r\nOTHER=C:\\NothingBotServer\\data2\\x\r\nGEMINI_API_KEY=C:\\NothingBotServer\\data\r\n";
+    const out = rewriteEnvPaths(env, [["C:\\NothingBotServer\\data", "D:\\Spot\\data"]], "win32");
+    expect(out).toBe("FIREBASE_SERVICE_ACCOUNT=D:\\Spot\\data\\service-account.json\r\nWWEBJS_DATA=D:\\Spot\\data\\wwebjs\r\nOTHER=C:\\NothingBotServer\\data2\\x\r\nGEMINI_API_KEY=D:\\Spot\\data\r\n");
   });
   it("rewrites launcher scripts, case-insensitively on Windows, case-sensitively on Linux", () => {
-    expect(replacePaths("Set-Location 'c:\\spotsolutions\\DATA\\worker.log'", "C:\\SpotSolutions\\data", "E:\\d", "win32")).toBe("Set-Location 'E:\\d\\worker.log'");
+    expect(replacePaths("Set-Location 'c:\\nothingbotserver\\DATA\\worker.log'", "C:\\NothingBotServer\\data", "E:\\d", "win32")).toBe("Set-Location 'E:\\d\\worker.log'");
     expect(replacePaths("/a/Data /a/data", "/a/data", "/b", "linux")).toBe("/a/Data /b");
     expect(replacePaths("same", "/x", "/x", "linux")).toBe("same");
   });
@@ -179,11 +179,11 @@ describe("scan, copy, verify, remove", () => {
 describe("inspecting a real folder", () => {
   const base = { platform: "linux", current: "/nowhere/current", forbidden: [] };
   it("accepts a new folder, reports room, leaves nothing behind", async () => {
-    const parent = tmp(), t = path.join(parent, "SpotSolutions", "data");
+    const parent = tmp(), t = path.join(parent, "NothingBotServer", "data");
     const r = await inspectTarget(t, base);
     expect(r.ok).toBe(true);
     expect(r.free).toBeGreaterThan(0);
-    expect(existsSync(path.join(parent, "SpotSolutions"))).toBe(false);
+    expect(existsSync(path.join(parent, "NothingBotServer"))).toBe(false);
     expect(readdirSync(parent)).toEqual([]);
   });
   it("refuses a folder that isn't empty, a file, a symlink, too little room", async () => {
@@ -350,11 +350,11 @@ function rig({ failAt = null, healthy = true, models = false, quietOk = true, dr
 
 describe("moving the data", () => {
   it("plans where models go", () => {
-    const m = { platform: "linux", current: "/var/lib/spot-solutions", currentModels: "/usr/share/ollama/.ollama/models" };
+    const m = { platform: "linux", current: "/var/lib/nothing-bot-server", currentModels: "/usr/share/ollama/.ollama/models" };
     expect(planMove(m, { target: "/mnt/d/spot", models: false }).models).toBeNull();
     expect(planMove(m, { target: "/mnt/d/spot", models: true }).models).toEqual({ old: "/usr/share/ollama/.ollama/models", new: "/mnt/d/spot/ollama-models", separate: true });
-    const inside = { ...m, currentModels: "/var/lib/spot-solutions/ollama-models" };
-    expect(planMove(inside, { target: "/mnt/d/spot", models: false }).models).toEqual({ old: "/var/lib/spot-solutions/ollama-models", new: "/mnt/d/spot/ollama-models", separate: false });
+    const inside = { ...m, currentModels: "/var/lib/nothing-bot-server/ollama-models" };
+    expect(planMove(inside, { target: "/mnt/d/spot", models: false }).models).toEqual({ old: "/var/lib/nothing-bot-server/ollama-models", new: "/mnt/d/spot/ollama-models", separate: false });
   });
 
   it("copies, verifies, switches, restarts, checks WhatsApp, and waits for the delete", async () => {

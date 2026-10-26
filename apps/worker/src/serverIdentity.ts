@@ -72,7 +72,7 @@ if (cloned || typeof file.installedAt !== "number" || (FP && (file.fingerprint !
 
 async function resolveId() {
   const hostnameId = sanitise(os.hostname());
-  const env = process.env.SPOT_SERVER_ID ? sanitise(process.env.SPOT_SERVER_ID) : undefined;
+  const env = process.env.NBS_SERVER_ID ? sanitise(process.env.NBS_SERVER_ID) : undefined;
   const persisted = typeof file.id === "string" && file.id ? file.id : null;
   let hostDocInstalledAt: number | null = null;
   if (!env && !persisted) {

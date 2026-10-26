@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createAi, maskKey, pickModels, scrub, validKey, validModel } from "./ai.mjs";
+import { aliasLegacyEnv } from "./envcompat.mjs";
 import { connectLink, createConnect, qrSvg } from "./connect.mjs";
 import { createLive, safePhone, shape } from "./live.mjs";
 import { createUpdater, isUpdateAvailable, parseLatest, staggerMs } from "./update.mjs";
@@ -104,7 +105,7 @@ describe("AI models helpers", () => {
     await expect(ai.setDefaults({ mode: "nope" })).rejects.toThrow();
     await expect(ai.setDefaults({ localModel: "a b" })).rejects.toThrow();
     await ai.setDefaults({ mode: "gemini_first", localModel: "gemma3:1b", geminiModel: "gemini-2.5-flash" });
-    expect(writes).toEqual([{ SPOT_AI_MODE: "gemini_first", SPOT_LOCAL_MODEL: "gemma3:1b", SPOT_GEMINI_MODEL: "gemini-2.5-flash" }]);
+    expect(writes).toEqual([{ NBS_AI_MODE: "gemini_first", NBS_LOCAL_MODEL: "gemma3:1b", NBS_GEMINI_MODEL: "gemini-2.5-flash" }]);
   });
 });
 
@@ -193,5 +194,14 @@ describe("live stats", () => {
     expect(l.view().day.in).toBe(4);
     writeFileSync(file, '{"v":1,"hourly":[');
     expect(l.view().day.in).toBe(4); // keeps the last good copy
+  });
+});
+
+describe("legacy SPOT_* settings", () => {
+  it("fall back to NBS_* and never override them", () => {
+    const env = { SPOT_DATA_DIR: "/old", SPOT_CONSOLE_PORT: "1", NBS_CONSOLE_PORT: "2" };
+    aliasLegacyEnv(env);
+    expect(env.NBS_DATA_DIR).toBe("/old");
+    expect(env.NBS_CONSOLE_PORT).toBe("2");
   });
 });
