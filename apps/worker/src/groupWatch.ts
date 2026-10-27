@@ -171,12 +171,14 @@ async function handle(uid: string, client: WAWebJS.Client, wa: WAWebJS.Message, 
   const ask = async () => (await generateJson(uid, settings.ai, buildGroupPrompt(msg, rooms, parts), GROUP_SCHEMA)).text;
   // Rules first: a message that is plainly an offer (or a closure) is applied and pushed at once, with no model in the way.
   // Anything doubtful (schedules, opening notices, odd wording) goes to the model, with the rules as the slow-model fallback.
-  const { reading, path, why } = await readGroupMessage(ask, msg, ctx, AI_BUDGET_MS);
-  console.log(`[groups] ${uid} ${group.name}: ${reading.kind} (${path}${why ? `: ${why}` : ""})`);
+  const result = await readGroupMessage(ask, msg, ctx, AI_BUDGET_MS, user.comicSettings?.alertRules);
+  const { reading, path, why } = result;
+  const how = path === "rules-fast" ? `rules-fast ${result.score}%` : `${path} (score ${result.score}%${why ? `: ${why}` : ""})`;
+  console.log(`[groups] ${uid} ${group.name}: ${reading.kind} (${how})`);
   if (reading.kind === "other") return; // not stored, not logged beyond the kind
 
   const auto = group.autoApply ?? Boolean(user.comicSettings?.autoApplyGroupUpdates);
-  await apply(uid, msg, reading, { auto, rooms, curators, tz, now });
+  await apply(uid, msg, reading, { auto, rooms, curators, tz, now, score: result.offerScore, scoreParts: result.offerParts });
   // Pushed on the rules alone but the room wasn't matched: let the model fill it in on the stored alert, later and quietly (no second push).
   if (path === "rules-fast" && reading.kind === "spot_offer" && !reading.offer.roomId) void enrichRoom(uid, msg, rooms, parts, ask, ctx);
 }
@@ -204,6 +206,9 @@ interface ApplyCtx {
   curators: Curator[];
   tz: string;
   now: number;
+  /** The rules' offer score and what made it, kept on the alert. */
+  score?: number;
+  scoreParts?: Record<string, number>;
 }
 
 async function apply(uid: string, msg: GroupMsg, reading: Reading, c: ApplyCtx) {
@@ -244,6 +249,8 @@ async function offerAlert(uid: string, msg: GroupMsg, o: Extract<Reading, { kind
     contact: o.contact,
     busking: o.busking || undefined,
     long: o.long || undefined,
+    score: c.score,
+    scoreParts: c.scoreParts && Object.keys(c.scoreParts).length ? c.scoreParts : undefined,
     expiresAt,
     status: "new",
     receivedAt: c.now,

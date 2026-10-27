@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  alertExpiry, alertIdFor, alertPush, alertState, alertToClose, alertsClosedByRanges, applyClosureToRoom, applyScheduleToRoom, classifyFast, clashNote, closureRanges, contactHint, heuristicRead, interpret, localParts,
+  alertExpiry, alertIdFor, alertPush, alertState, alertToClose, alertsClosedByRanges, applyClosureToRoom, applyScheduleToRoom, classifyFast, DEFAULT_ALERT_RULES, DEFAULT_ALERT_THRESHOLD, regexProblem, resolveAlertRules, toStoredAlertRules, clashNote, closureRanges, contactHint, heuristicRead, interpret, localParts,
   matchCurator, mentionsAsNames, namedContact, parseClosureScope, parseOfferTimes, parseReachBy, parseSchedule, parseTimes, parseWeekdays, renderAlertAsk, resolveContact, resolveDate,
   resolveRoom, scheduleSummary, timeLeft, timesShort, worthReading, zonedToMs,
   type GroupMsg, type ReadCtx, type Reading,
@@ -379,8 +379,17 @@ describe("alerts", () => {
 });
 
 describe("classifyFast: the rules-first path", () => {
-  const confident = (t: string) => classifyFast(t);
-  it("real offers are confident offers", () => {
+  const rooms = BLR_ROSTER.rooms;
+  const fast = (t: string, rules?: NonNullable<Parameters<typeof classifyFast>[1]>["rules"]) => classifyFast(t, { rooms, rules });
+  const isOffer = (t: string, rules?: NonNullable<Parameters<typeof classifyFast>[1]>["rules"]) => {
+    const r = fast(t, rules);
+    return r.confident && r.kind === "spot_offer";
+  };
+  it("the default rules are all valid", () => {
+    expect(resolveAlertRules(undefined).problems).toEqual({});
+    expect(resolveAlertRules(undefined).rules).toHaveLength(DEFAULT_ALERT_RULES.length);
+  });
+  it("real offers score well above the bar and are confident", () => {
     for (const t of [
       "Spots at 7 and 9 today at Banter, DM",
       "Spots available for both 9:30 and 11 pm today at TAG. DM",
@@ -388,37 +397,98 @@ describe("classifyFast: the rules-first path", () => {
       "Busking spot available at 6pm today at comedy theatre. DM if you can reach by 5.40pm.",
       "Spot at Banter tonight at 9, PM @Akhil",
       "2 slots open tonight at Ministry, ping me",
-      "Open mic spots available in 30 mins at UGC",
-    ]) expect(confident(t), t).toEqual({ kind: "spot_offer", confident: true });
+      "Spots at 7 today, DM",
+    ]) {
+      const r = fast(t);
+      expect(r.score, t).toBeGreaterThanOrEqual(75);
+      expect(r.confident, t).toBe(true);
+      expect(r.kind).toBe("spot_offer");
+    }
   });
-  it("comics asking, questions and mixed messages are not confident offers", () => {
+  it("requests, questions, closures-in-offers and chit-chat stay below the bar", () => {
     for (const t of [
-      "Any spots today?",
-      "any spots available today at banter?",
-      "Can I get a spot tonight at 9?",
-      "looking for a spot today",
-      "Does anyone have a spot tonight?",
-      "Is there a spot at 9 today?",
-      "No spots left today at 9",
-      "Spots at 7 today are full",
-      "Spots available at Banter",
-      "Great spot last night, 9 pm show today was fun",
-    ]) expect(confident(t).confident && confident(t).kind === "spot_offer", t).toBe(false);
+      "Any spots today?", "any spots available today at banter?", "Can I get a spot tonight at 9?", "looking for a spot today", "Does anyone have a spot tonight?",
+      "Is there a spot at 9 today?", "No spots left today at 9", "Spots at 7 today are full", "Spots available at Banter", "Great spot last night, 9 pm show today was fun",
+      "see you at 9", "Anyone going to the show tonight?", "open mic tonight at 8, DM me", "Great set last night everyone!",
+    ]) {
+      expect(fast(t).offer.score, t).toBeLessThan(DEFAULT_ALERT_THRESHOLD);
+      expect(isOffer(t), t).toBe(false);
+    }
   });
-  it("closures: short and clear ones are confident", () => {
-    for (const t of ["Closed", "Closed Thank you", "Over, thanks", "Spots full Square Sunday", "Wednesday, Thursday, Friday, and Saturday spots are over for this week at Comedy Square."])
-      expect(confident(t), t).toEqual({ kind: "closure", confident: true });
-    expect(confident("Done, sent you a DM").confident).toBe(false);
+  it("schedules and opening notices are never confident, whatever the rules say", () => {
+    const rules = { rules: [{ id: "offer-schedule", enabled: false }, { id: "offer-opening", enabled: false }] };
+    expect(fast("Comedy Square – Curation Schedule: Monday: @Vishal, Tuesday: @Varun, Wednesday to Saturday: Akhil", rules)).toMatchObject({ kind: "schedule_update", confident: false });
+    expect(fast("ministry spots will open by 3:15pm", rules)).toMatchObject({ kind: "opening_notice", confident: false });
   });
-  it("schedules, opening notices and chit-chat go to the model", () => {
-    for (const t of [
-      "Comedy Square – Curation Schedule: Monday: @Vishal, Tuesday: @Varun, Wednesday to Saturday: Akhil",
-      "ministry spots will open by 3:15pm",
-      "website is open for spots now",
-      "Great set last night everyone!",
-      "see you at 9",
-      "Anyone going to the show tonight?",
-    ]) expect(confident(t).confident, t).toBe(false);
+  it("closures have their own score and threshold", () => {
+    for (const t of ["Closed", "Closed Thank you", "Over, thanks", "Spots full Square Sunday", "Wednesday, Thursday, Friday, and Saturday spots are over for this week at Comedy Square."]) {
+      const r = fast(t);
+      expect(r, t).toMatchObject({ kind: "closure", confident: true });
+      expect(r.score).toBeGreaterThanOrEqual(60);
+    }
+    for (const t of ["Done, sent you a DM", "Spots over at 9 today, 7 still available", "No spots left today at 9"]) expect(fast(t).confident, t).toBe(false);
+    expect(fast("Closed", { closureThreshold: 100 }).confident).toBe(true); // 45 + 30 + 15 + 10 = 100
+    expect(fast("Spots full Square Sunday", { closureThreshold: 95 }).confident).toBe(false);
+  });
+  it("shows which rules matched and the points add up", () => {
+    const r = fast("Spots at 7 and 9 today at Banter, DM");
+    expect(r.parts).toMatchObject({ "offer-wording": 35, "offer-spot-word": 10, "offer-time": 30, "offer-contact": 15, "offer-short": 5 });
+    expect(Math.min(100, Object.values(r.parts).reduce((a, b) => a + b, 0))).toBe(r.score);
+    expect(r.matched.map((m) => m.id)).toContain("offer-time");
+  });
+  it("the threshold, weights and switches change the decision", () => {
+    const t = "Spots at 7 today";
+    expect(isOffer(t)).toBe(true); // 80
+    expect(isOffer(t, { threshold: 90 })).toBe(false);
+    expect(isOffer(t, { rules: [{ id: "offer-time", weight: 0 }] })).toBe(false); // 50
+    expect(isOffer(t, { rules: [{ id: "offer-time", enabled: false }] })).toBe(false);
+    expect(isOffer("Spots available at Banter")).toBe(false);
+    expect(isOffer("Spots available at Banter", { rules: [{ id: "offer-wording", weight: 80 }] })).toBe(true);
+    expect(isOffer("Any spots today?", { rules: [{ id: "offer-request", weight: 0 }, { id: "offer-question", weight: 0 }, { id: "offer-spot-word", weight: 60 }] })).toBe(true);
+  });
+  it("edited phrases are used, as whole words", () => {
+    const rules = { rules: [{ id: "offer-spot-word", patterns: ["gig"] }, { id: "offer-wording", weight: 0 }] };
+    expect(fast("a gig tonight, DM", rules).parts["offer-spot-word"]).toBe(10);
+    expect(fast("a gigantic show tonight, DM", rules).parts["offer-spot-word"]).toBeUndefined();
+  });
+  it("custom phrase and regex rules count; a bad regex is skipped and flagged", () => {
+    const custom = [
+      { id: "c-1", label: "Needs comics", kind: "phrase" as const, patterns: ["hosting tonight"], weight: 50, enabled: true, appliesTo: "offer" as const },
+      { id: "c-2", label: "Bad", kind: "regex" as const, regex: "(a+)+$", weight: 90, enabled: true, appliesTo: "offer" as const },
+      { id: "c-3", label: "Broken", kind: "regex" as const, regex: "([", weight: 90, enabled: true, appliesTo: "offer" as const },
+      { id: "c-4", label: "Not a closure", kind: "regex" as const, regex: "\\bnot happening\\b", weight: 70, enabled: true, appliesTo: "closure" as const },
+    ];
+    const cfg = resolveAlertRules({ rules: custom });
+    expect(Object.keys(cfg.problems).sort()).toEqual(["c-2", "c-3"]);
+    expect(fast("hosting tonight, spots at 9", { rules: custom }).parts["c-1"]).toBe(50);
+    expect(fast("hosting tonight aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!", { rules: custom }).parts["c-2"]).toBeUndefined();
+    expect(fast("it is not happening", { rules: custom }).closure.parts["c-4"]).toBe(70);
+    expect(regexProblem("(a+)+")).toMatch(/repeat/);
+    expect(regexProblem("(a)\\1")).toMatch(/Backreferences/);
+    expect(regexProblem("x".repeat(600))).toMatch(/Longer/);
+    expect(regexProblem("fine|also fine")).toBeNull();
+  });
+  it("invalid settings fall back to the defaults, the rule count is capped", () => {
+    expect(resolveAlertRules(undefined)).toMatchObject({ threshold: 60, closureThreshold: 60 });
+    const bad = resolveAlertRules({ threshold: 400, closureThreshold: -1, rules: [{ id: "offer-time", weight: 500 }, { id: "nope", weight: 5 }, { id: "c-x", kind: "phrase", weight: 5, appliesTo: "offer" }, null as never, { id: "offer-short", enabled: "yes" as never }] });
+    expect(bad.threshold).toBe(60);
+    expect(bad.closureThreshold).toBe(60);
+    expect(bad.rules.find((r) => r.id === "offer-time")?.weight).toBe(30);
+    expect(bad.rules.find((r) => r.id === "offer-short")?.enabled).toBe(true);
+    expect(bad.rules.some((r) => r.id === "nope")).toBe(false);
+    expect(resolveAlertRules({ threshold: 75 }).threshold).toBe(75);
+    const many = Array.from({ length: 80 }, (_, i) => ({ id: `c-${i}`, label: "r", kind: "phrase" as const, patterns: ["x"], weight: 1, enabled: true, appliesTo: "offer" as const }));
+    expect(resolveAlertRules({ rules: many }).rules.filter((r) => r.custom)).toHaveLength(50);
+  });
+  it("only changes are stored, and resetting a rule removes its override", () => {
+    const edited = resolveAlertRules({ threshold: 70, rules: [{ id: "offer-time", weight: 10 }, { id: "c-1", label: "Mine", kind: "phrase", patterns: ["hi"], weight: 5, enabled: true, appliesTo: "offer" }] });
+    const stored = toStoredAlertRules(edited);
+    expect(stored).toMatchObject({ threshold: 70, rules: [{ id: "offer-time", weight: 10 }, { id: "c-1", label: "Mine" }] });
+    expect(stored.closureThreshold).toBeUndefined();
+    expect(resolveAlertRules(stored).rules.find((r) => r.id === "offer-time")?.weight).toBe(10);
+    expect(toStoredAlertRules(resolveAlertRules(undefined))).toEqual({});
+    const reset = edited.rules.map((r) => (r.id === "offer-time" ? DEFAULT_ALERT_RULES.find((d) => d.id === r.id)! : r));
+    expect(toStoredAlertRules({ ...edited, rules: reset }).rules?.map((r) => r.id)).toEqual(["c-1"]);
   });
   it("a confident offer that misses the room still reads, with no room", () => {
     const r = interpret({ kind: "spot_offer", ...contactHint("Spots at 7 today, DM") }, msg("Spots at 7 today, DM"), ctx());

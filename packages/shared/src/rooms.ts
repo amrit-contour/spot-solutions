@@ -278,6 +278,9 @@ export interface SpotAlert {
   long?: boolean;
   /** Every offered time clashes with a spot already booked: no push was sent, the card says so. */
   clash?: { with: string; times: string[] };
+  /** 0-100: how sure the rules were that this is a spot offer, and what each signal added (+) or took off (-). */
+  score?: number;
+  scoreParts?: Record<string, number>;
   expiresAt: number;
   status: "new" | "asked" | "dismissed" | "expired" | "closed";
   receivedAt: number;

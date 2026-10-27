@@ -1,10 +1,11 @@
 // The comic's group alerts: live data from Firestore (users/{uid}/spotAlerts, groupUpdates, watchedGroups, groups) and what the
 // comic does with it. The worker writes alerts and updates; the comic clears them. Pure rules live in @spot/shared (groupAlerts.ts).
 import { useEffect, useState } from "react";
-import { deleteDoc, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, deleteField, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
 import {
   DEFAULT_SETTINGS,
+  type StoredAlertRules,
   alertState,
   applyClosureToRoom,
   applyScheduleToRoom,
@@ -42,6 +43,8 @@ export function useClock(everyMs = 20_000) {
 export interface ComicSettings {
   /** Closures and curator schedules read from groups are applied by themselves; off: they wait in Alerts for a tap. */
   autoApplyGroupUpdates?: boolean;
+  /** Edits to the rules that decide which group messages push at once (only what differs from the defaults). */
+  alertRules?: StoredAlertRules;
 }
 
 /** users/{uid}.comicSettings, live. `set` merges a change. */
@@ -63,6 +66,10 @@ export function useComicSettings(uid: string) {
   const set = (patch: ComicSettings) => setDoc(doc(db, "users", uid), { comicSettings: patch }, { merge: true });
   return { settings, loading, set };
 }
+
+/** Save the alert rules (only the changes); an empty object puts everything back to the defaults. */
+export const saveAlertRules = (uid: string, stored: StoredAlertRules) =>
+  setDoc(doc(db, "users", uid), { comicSettings: { alertRules: Object.keys(stored).length ? stored : deleteField() } }, { merge: true });
 
 /** Only the groups switched on are read by the server. Off removes the document, and with it the permission. */
 export async function setWatched(uid: string, group: { id: string; name: string }, on: boolean) {

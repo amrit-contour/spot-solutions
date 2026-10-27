@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Button, Empty, IconGroup, IconRefresh, IconSearch, PageHeader, SettingRow, Spinner, Switch, TextInput } from "@spot/ui";
 import { setWatched, useAllGroups, useComicSettings, useWatchedGroups } from "../lib/alerts";
 import { runCommand } from "../lib/commands";
+import { AlertRulesPanel } from "../components/AlertRulesPanel";
 
 /** Pick which WhatsApp groups to watch. Only those are read by your server; nothing else, and switching one off stops it at once. */
 export function Groups({ uid }: { uid: string }) {
@@ -54,6 +55,8 @@ export function Groups({ uid }: { uid: string }) {
             <Switch label="Apply group updates automatically" checked={Boolean(settings.autoApplyGroupUpdates)} onChange={(v) => void set({ autoApplyGroupUpdates: v })} />
           </SettingRow>
         </div>
+
+        <AlertRulesPanel uid={uid} />
 
         {all.loading || watched.loading ? (
           <div className="grid place-items-center py-12 text-primary">

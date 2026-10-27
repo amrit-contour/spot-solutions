@@ -80,6 +80,19 @@ describe("readGroupMessage: rules first", () => {
     expect(r.path).toBe("rules-fast");
     expect(r.reading.kind).toBe("closure");
   });
+  it("a comic's own rules decide: a raised threshold sends the same offer to the model", async () => {
+    let calls = 0;
+    const ask = async () => (calls++, '{"kind":"spot_offer","room":"Banter"}');
+    const r = await readGroupMessage(ask, msg("Spots at 7 and 9 today at Banter, DM"), ctx, 20_000, { threshold: 100, rules: [{ id: "offer-time", weight: 0 }] });
+    expect(calls).toBe(1);
+    expect(r.path).toBe("model");
+    expect(r.score).toBeLessThan(100);
+  });
+  it("reports the score and its parts for the alert", async () => {
+    const r = await readGroupMessage(boom as never, msg("Spots at 7 and 9 today at Banter, DM"), ctx, 20_000);
+    expect(r.score).toBeGreaterThanOrEqual(75);
+    expect(r.offerParts["offer-time"]).toBe(30);
+  });
   it("doubtful messages go to the model; a dead model falls back to the rules", async () => {
     let calls = 0;
     const model = await readGroupMessage(async () => (calls++, '{"kind":"opening_notice","room":"ministry"}'), msg("ministry spots will open by 3:15pm"), ctx, 20_000);

@@ -63,6 +63,7 @@ export function AlertCard({
         {a.busking && <Chip tone="tertiary">Busking</Chip>}
         {a.long && <Chip tone="tertiary">Long spot</Chip>}
         {a.groupName && <Chip icon={IconGroup}>{a.groupName}</Chip>}
+        {a.score != null && <Chip title="How sure your alert rules were that this is a spot offer">{a.score}% sure</Chip>}
         {!a.roomId && a.roomName && <Chip tone="reading" title="Couldn't tell which of your rooms this is">Room not matched</Chip>}
       </div>
 

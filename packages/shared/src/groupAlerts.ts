@@ -397,7 +397,7 @@ export function localParts(ms: number, tz: string): { date: string; time: string
 // Rooms
 // ---------------------------------------------------------------------------------------------------------------------------
 
-type RoomLike = Pick<Room, "id" | "name" | "area" | "aliases"> & Partial<Pick<Room, "brand" | "notes">>;
+export type RoomLike = Pick<Room, "id" | "name" | "area" | "aliases"> & Partial<Pick<Room, "brand" | "notes">>;
 
 const GENERIC = new Set(["the", "of", "at", "in", "comedy", "club", "cafe", "bar", "mic", "open", "house", "and", "a", "an", "for", "store"]);
 const distinctive = (ts: string[]) => ts.filter((t) => !GENERIC.has(t));
@@ -785,41 +785,298 @@ export function heuristicRead(text: string, mentioned: Person[] = []): AiRead {
 
 const SPOT_WORD = /\b(spots?|slots?|busk\w*|mics?|sets?)\b/i;
 
-// Fast path: only strong signals count, so a push can go out without waiting for a model. Anything doubtful is "not confident"
-// and goes to the model. Missing a real offer here costs seconds (the model still gets it); a false one costs a wrong push.
-const OFFER_SIGNAL = new RegExp(
-  `${OFFER_RE.source}|\\bbusk\\w*\\b|\\bneeds?\\s+(?:\\d+\\s+)?(?:comics?|comedians?|performers?)\\b|\\banyone\\s+(?:free|up for|available)\\b`,
-  "i",
-);
+// ---------------------------------------------------------------------------------------------------------------------------
+// Alert rules: how sure the rules are that a message is a spot offer (or a closure), 0-100. A small rule engine: every rule is
+// data (phrases, a regex, or a built-in check), has a weight (negative lowers the score) and can be switched off. Each comic can
+// edit the rules and the bar; the stored settings only hold what they changed, so updated defaults still reach them.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+/** Checks that need code rather than words. */
+export type BuiltinSignal = "time" | "contact" | "knownRoom" | "short" | "tiny" | "long" | "question" | "questionNoContact" | "scheduleShape" | "openingShape";
+
+export interface AlertRule {
+  /** Default rules have fixed ids; custom rules start with "c-". */
+  id: string;
+  label: string;
+  kind: "phrase" | "regex" | "builtin";
+  /** phrase: matched case-insensitively as whole words. */
+  patterns?: string[];
+  /** regex: matched case-insensitively. */
+  regex?: string;
+  builtin?: BuiltinSignal;
+  /** -100..100: points added when the rule matches; negative lowers the score. */
+  weight: number;
+  enabled: boolean;
+  /** Which score the rule counts towards: "is this a spot offer" or "is this a closure". */
+  appliesTo: "offer" | "closure";
+  custom?: boolean;
+}
+
+export const BUILTIN_LABELS: Record<BuiltinSignal, string> = {
+  time: "a time or day (7 pm, today, tonight, reach by, in 30 mins)",
+  contact: "someone to contact (DM / PM / ping me, a tag or a name)",
+  knownRoom: "one of your rooms or its other names",
+  short: "short (under 160 characters)",
+  tiny: "very short (40 characters or fewer)",
+  long: "very long (over 400 characters)",
+  question: "has a question mark",
+  questionNoContact: "has a question mark and nobody to DM",
+  scheduleShape: "looks like a curator schedule",
+  openingShape: "looks like an opening notice",
+};
+
+const OFFER_WORDING_SRC = `${OFFER_RE.source}|\\bbusk\\w*\\b|\\bneeds?\\s+(?:\\d+\\s+)?(?:comics?|comedians?|performers?)\\b|\\banyone\\s+(?:free|up for|available)\\b`;
+
+const rule = (id: string, label: string, kind: AlertRule["kind"], weight: number, appliesTo: AlertRule["appliesTo"], rest: Partial<AlertRule>): AlertRule => ({ id, label, kind, weight, appliesTo, enabled: true, ...rest });
+
+export const DEFAULT_ALERT_RULES: AlertRule[] = [
+  rule("offer-wording", "Sounds like an offer (spots available, busking, need comics, anyone free)", "regex", 35, "offer", { regex: OFFER_WORDING_SRC }),
+  rule("offer-spot-word", "Says spot, slot or busking", "phrase", 10, "offer", { patterns: ["spot", "spots", "slot", "slots", "busk", "busking", "busker"] }),
+  rule("offer-time", "Names a time or day", "builtin", 30, "offer", { builtin: "time" }),
+  rule("offer-contact", "Says who to contact", "builtin", 15, "offer", { builtin: "contact" }),
+  rule("offer-room", "Names one of your rooms", "builtin", 5, "offer", { builtin: "knownRoom" }),
+  rule("offer-short", "Short, like a real post", "builtin", 5, "offer", { builtin: "short" }),
+  rule(
+    "offer-request",
+    "Asks for a spot instead of offering one",
+    "phrase",
+    -60,
+    "offer",
+    { patterns: ["any spot", "any spots", "any slot", "any slots", "can i get", "can i have", "could i get", "may i get", "looking for a spot", "looking for spot", "need a spot", "want a spot", "does anyone have", "is there a spot", "is there any spot", "spot pls", "spot plz", "spot please", "please give", "please add"] },
+  ),
+  rule("offer-closed", "Says closed, full or no more", "phrase", -50, "offer", { patterns: ["closed", "close", "over", "full", "filled", "houseful", "sold out", "no more", "no spots", "no spot", "no slots", "done", "finished", "booked", "taken", "gone", "cancelled", "canceled", "cancel"] }),
+  rule("offer-question", "A question and nobody to DM", "builtin", -35, "offer", { builtin: "questionNoContact" }),
+  rule("offer-long", "Very long message", "builtin", -40, "offer", { builtin: "long" }),
+  rule("offer-schedule", "Looks like a curator schedule (never pushed as a spot)", "builtin", -80, "offer", { builtin: "scheduleShape" }),
+  rule("offer-opening", "Looks like an opening notice (never pushed as a spot)", "builtin", -80, "offer", { builtin: "openingShape" }),
+
+  rule("closure-lead", "Starts with closed, over or full", "regex", 45, "closure", { regex: "^\\W*(closed?|over|full|filled|houseful|sold out)\\b" }),
+  rule("closure-wording", "Says closed, over, full or no more", "phrase", 30, "closure", { patterns: ["closed", "over", "full", "filled", "houseful", "sold out", "no more", "no spots", "no slots"] }),
+  rule("closure-spot-word", "Mentions the spots", "phrase", 25, "closure", { patterns: ["spot", "spots", "slot", "slots"] }),
+  rule("closure-short", "Short message", "builtin", 10, "closure", { builtin: "short" }),
+  rule("closure-tiny", "Very short, like \"Closed, thanks\"", "builtin", 15, "closure", { builtin: "tiny" }),
+  rule("closure-offer", "Also offers spots", "regex", -60, "closure", { regex: OFFER_WORDING_SRC }),
+  rule("closure-time", "Names a time or day", "builtin", -40, "closure", { builtin: "time" }),
+  rule("closure-question", "A question", "builtin", -40, "closure", { builtin: "question" }),
+];
+
+export const DEFAULT_ALERT_THRESHOLD = 60;
+export const DEFAULT_CLOSURE_THRESHOLD = 60;
+export const MAX_ALERT_RULES = 50;
+const MAX_PATTERNS = 40;
+const MAX_PATTERN_LEN = 60;
+const MAX_REGEX_LEN = 500;
+const MAX_LABEL_LEN = 80;
+const MAX_INPUT = 1500;
+
+/** What is stored: only what differs from the defaults (by id), plus the comic's own rules. */
+export interface StoredAlertRule {
+  id: string;
+  label?: string;
+  kind?: AlertRule["kind"];
+  patterns?: string[];
+  regex?: string;
+  weight?: number;
+  enabled?: boolean;
+  appliesTo?: AlertRule["appliesTo"];
+}
+export interface StoredAlertRules {
+  threshold?: number;
+  closureThreshold?: number;
+  rules?: StoredAlertRule[];
+}
+export type AlertRulesInput = StoredAlertRules | ResolvedAlertRules | null | undefined;
+
+export interface ResolvedAlertRules {
+  threshold: number;
+  closureThreshold: number;
+  rules: AlertRule[];
+  /** rule id -> why it is skipped (a bad regex, a missing field). */
+  problems: Record<string, string>;
+}
+
+const validPct = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
+const validWeight = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= -100 && v <= 100;
+const cleanPatterns = (v: unknown): string[] | undefined =>
+  Array.isArray(v) ? v.filter((p): p is string => typeof p === "string").map((p) => p.trim().slice(0, MAX_PATTERN_LEN)).filter(Boolean).slice(0, MAX_PATTERNS) : undefined;
+
+/** A regex is refused if it won't compile, is long, uses backreferences or has a quantified group holding a quantifier ((a+)+). */
+export function regexProblem(src: string): string | null {
+  if (!src.trim()) return "Empty pattern";
+  if (src.length > MAX_REGEX_LEN) return `Longer than ${MAX_REGEX_LEN} characters`;
+  if (/\\[1-9]/.test(src)) return "Backreferences aren't allowed";
+  if (/\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*[+*{]/.test(src)) return "A repeat inside a repeat can hang the app";
+  try {
+    new RegExp(src, "i");
+  } catch {
+    return "Not a valid pattern";
+  }
+  return null;
+}
+
+/** Applies stored overrides and custom rules over the defaults. Anything invalid is dropped or falls back, never thrown. */
+export function resolveAlertRules(raw: AlertRulesInput): ResolvedAlertRules {
+  const problems: Record<string, string> = {};
+  const rules: AlertRule[] = DEFAULT_ALERT_RULES.map((r) => ({ ...r, patterns: r.patterns ? [...r.patterns] : undefined }));
+  const byId = new Map(rules.map((r) => [r.id, r]));
+  const stored = Array.isArray(raw?.rules) ? (raw.rules as StoredAlertRule[]).slice(0, MAX_ALERT_RULES) : [];
+  for (const s of stored) {
+    if (!s || typeof s.id !== "string") continue;
+    const base = byId.get(s.id);
+    if (base && !base.custom) {
+      if (typeof s.enabled === "boolean") base.enabled = s.enabled;
+      if (validWeight(s.weight)) base.weight = Math.round(s.weight);
+      if (base.kind === "phrase") {
+        const p = cleanPatterns(s.patterns);
+        if (p?.length) base.patterns = p;
+      }
+      if (base.kind === "regex" && typeof s.regex === "string" && s.regex.trim()) base.regex = s.regex;
+      continue;
+    }
+    if (!s.id.startsWith("c-") || byId.has(s.id) || rules.length >= DEFAULT_ALERT_RULES.length + MAX_ALERT_RULES) continue;
+    const kind = s.kind === "regex" ? "regex" : s.kind === "phrase" ? "phrase" : null;
+    const label = typeof s.label === "string" && s.label.trim() ? s.label.trim().slice(0, MAX_LABEL_LEN) : "My rule";
+    if (!kind || (s.appliesTo !== "offer" && s.appliesTo !== "closure") || !validWeight(s.weight)) continue;
+    const r: AlertRule = { id: s.id, label, kind, weight: Math.round(s.weight), enabled: s.enabled !== false, appliesTo: s.appliesTo, custom: true };
+    if (kind === "phrase") r.patterns = cleanPatterns(s.patterns) ?? [];
+    else r.regex = typeof s.regex === "string" ? s.regex : "";
+    rules.push(r);
+    byId.set(r.id, r);
+  }
+  for (const r of rules) {
+    if (r.kind === "regex") {
+      const p = regexProblem(r.regex ?? "");
+      if (p) problems[r.id] = p;
+    } else if (r.kind === "phrase" && !r.patterns?.length) problems[r.id] = "No phrases";
+  }
+  const threshold = validPct(raw?.threshold) ? Math.round(raw.threshold) : DEFAULT_ALERT_THRESHOLD;
+  const closureThreshold = validPct(raw?.closureThreshold) ? Math.round(raw.closureThreshold) : DEFAULT_CLOSURE_THRESHOLD;
+  return { threshold, closureThreshold, rules, problems };
+}
+
+/** The smallest thing to store for these rules: changed fields of default rules (by id) and the comic's own rules in full. */
+export function toStoredAlertRules(r: ResolvedAlertRules): StoredAlertRules {
+  const out: StoredAlertRule[] = [];
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  for (const rule of r.rules) {
+    const def = DEFAULT_ALERT_RULES.find((d) => d.id === rule.id);
+    if (!def) {
+      out.push({ id: rule.id, label: rule.label, kind: rule.kind, patterns: rule.patterns, regex: rule.regex, weight: rule.weight, enabled: rule.enabled, appliesTo: rule.appliesTo });
+      continue;
+    }
+    const o: StoredAlertRule = { id: rule.id };
+    if (rule.enabled !== def.enabled) o.enabled = rule.enabled;
+    if (rule.weight !== def.weight) o.weight = rule.weight;
+    if (!same(rule.patterns, def.patterns)) o.patterns = rule.patterns;
+    if (rule.regex !== def.regex) o.regex = rule.regex;
+    if (Object.keys(o).length > 1) out.push(o);
+  }
+  const stored: StoredAlertRules = {};
+  if (r.threshold !== DEFAULT_ALERT_THRESHOLD) stored.threshold = r.threshold;
+  if (r.closureThreshold !== DEFAULT_CLOSURE_THRESHOLD) stored.closureThreshold = r.closureThreshold;
+  if (out.length) stored.rules = JSON.parse(JSON.stringify(out)) as StoredAlertRule[];
+  return stored;
+}
+
+const CONTACT_SIGNAL = /\b(dm|ping|message|msg|whatsapp)\b|(?<![\d:.]\s*)\bpm\b|@\S/i;
 const TIME_SIGNAL = /\b(today|tonight|now|tomorrow|tmrw|asap|immediately|this (?:evening|afternoon|morning)|reach by|in\s+\d{1,3}\s*(?:mins?|minutes?))\b/i;
-/** A comic asking for a spot, not offering one. */
-const REQUEST_RE = /\b(can|could|may) i (?:get|have|take|do)\b|\bany\s+(?:spots?|slots?)\b|\b(?:looking|searching|need|want|wanting|req(?:uire)?)\s+(?:for\s+)?(?:a\s+|an\s+|one\s+)?(?:spots?|slots?)\b|\bdoes anyone have\b|\banyone (?:has|have|got|having) (?:a |any )?(?:spots?|slots?)\b|\bis there (?:any|a)\s+(?:spots?|slots?)\b|\bi (?:need|want) (?:a )?(?:spot|slot)\b|\b(?:spot|slot)s? (?:pls|plz|please)\b|\bplease (?:give|add|keep)\b/i;
-const CLOSURE_WORDS = /\b(closed?|over|full|filled|houseful|sold out|no more|no (?:spots?|slots?)|done|finished|booked|taken|gone|cancel\w*)\b/i;
-const CLOSURE_LEAD = /^\W*(closed?|over|full|filled|houseful|sold out)\b/i;
-const CONTACT_SIGNAL = /\b(dm|pm|ping|message|msg|whatsapp)\b|@\S/i;
+
+function builtinHit(b: BuiltinSignal, t: string, rooms: RoomLike[] | undefined): boolean {
+  switch (b) {
+    case "time":
+      return TIME_SIGNAL.test(t) || parseTimes(t).length > 0;
+    case "contact":
+      return CONTACT_SIGNAL.test(t) || Boolean(namedContact(t));
+    case "knownRoom":
+      return Boolean(rooms?.length && resolveRoom(rooms, t).room);
+    case "short":
+      return t.length > 0 && t.length < 160;
+    case "tiny":
+      return t.length > 0 && t.length <= 40;
+    case "long":
+      return t.length > 400;
+    case "question":
+      return t.includes("?");
+    case "questionNoContact":
+      return t.includes("?") && !CONTACT_SIGNAL.test(t) && !namedContact(t);
+    case "scheduleShape":
+      return parseSchedule(t).length >= 2 && /\b(schedule|curat\w*|roster|lineup)\b/i.test(t);
+    case "openingShape":
+      return OPENING_RE.test(t);
+  }
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function phraseRegex(patterns: string[]): RegExp | null {
+  const alts = patterns.map((p) => escapeRe(p.trim()).replace(/\s+/g, "\\s+")).filter(Boolean);
+  return alts.length ? new RegExp(`(?<![A-Za-z0-9_])(?:${alts.join("|")})(?![A-Za-z0-9_])`, "i") : null;
+}
+
+/** Does this rule match the text? A rule with a problem, or switched off, never does. */
+export function ruleMatches(r: AlertRule, text: string, rooms?: RoomLike[]): boolean {
+  if (!r.enabled) return false;
+  try {
+    if (r.kind === "builtin") return r.builtin ? builtinHit(r.builtin, text, rooms) : false;
+    if (r.kind === "phrase") return phraseRegex(r.patterns ?? [])?.test(text) ?? false;
+    if (regexProblem(r.regex ?? "")) return false;
+    return new RegExp(r.regex ?? "", "i").test(text);
+  } catch {
+    return false;
+  }
+}
+
+export interface RuleScore {
+  score: number;
+  /** rule id -> points it added or took off, only the rules that matched. */
+  parts: Record<string, number>;
+  matched: { id: string; label: string; points: number }[];
+}
+
+const sumRules = (rules: AlertRule[], t: string, rooms: RoomLike[] | undefined): RuleScore => {
+  const parts: Record<string, number> = {};
+  const matched: RuleScore["matched"] = [];
+  let sum = 0;
+  for (const r of rules) {
+    if (!r.weight || !ruleMatches(r, t, rooms)) continue;
+    parts[r.id] = r.weight;
+    matched.push({ id: r.id, label: r.label, points: r.weight });
+    sum += r.weight;
+  }
+  return { score: Math.max(0, Math.min(100, sum)), parts, matched };
+};
+
+export interface FastRead {
+  kind: GroupReadKind;
+  /** Act now, no model: the score of that kind reached its threshold. */
+  confident: boolean;
+  /** 0-100 for `kind` (the offer score unless it is a closure). */
+  score: number;
+  parts: Record<string, number>;
+  matched: RuleScore["matched"];
+  threshold: number;
+  offer: RuleScore;
+  closure: RuleScore;
+}
 
 /**
- * Is this message certainly an offer (or a closure), judged by the rules alone? `confident: true` means act now without the model.
- * Schedules, opening notices ("will open by 3:15"), questions, requests and anything mixed are never confident: the model reads those.
+ * Score a message as a spot offer and as a closure with the comic's rules. Pure and deterministic. Schedules and opening notices
+ * are never confident whatever the rules say: the model reads those.
  */
-export function classifyFast(text: string): { kind: GroupReadKind; confident: boolean } {
-  const t = text.trim().replace(/\s+/g, " ");
-  const unsure = (kind: GroupReadKind = "other") => ({ kind, confident: false });
-  if (!t || t.length > 400) return unsure();
-  if (parseSchedule(t).length >= 2 && /\b(schedule|curat\w*|roster|lineup)\b/i.test(t)) return unsure("schedule_update");
-  if (OPENING_RE.test(t)) return unsure("opening_notice");
-  const offerish = OFFER_SIGNAL.test(t);
-  // Closures: a short "Closed" / "Over, thanks", or spots named as over/full with nothing offering any.
-  if (!offerish && !t.includes("?") && !TIME_SIGNAL.test(t) && parseTimes(t).length === 0) {
-    if (t.length <= 40 && CLOSURE_LEAD.test(t)) return { kind: "closure", confident: true };
-    if (/\b(spots?|slots?)\b/i.test(t) && /\b(closed?|over|full|filled|houseful|sold out|no more)\b/i.test(t) && t.length <= 160) return { kind: "closure", confident: true };
-  }
-  if (!offerish) return unsure(CLOSURE_WORDS.test(t) ? "closure" : "other");
-  if (CLOSURE_WORDS.test(t) || REQUEST_RE.test(t) || /\bno\s+(?:spots?|slots?)\b/i.test(t)) return unsure();
-  if (t.includes("?") && !CONTACT_SIGNAL.test(t)) return unsure();
-  if (!SPOT_WORD.test(t)) return unsure("spot_offer");
-  const timed = TIME_SIGNAL.test(t) || parseTimes(t).length > 0;
-  return timed ? { kind: "spot_offer", confident: true } : unsure("spot_offer");
+export function classifyFast(text: string, opts: { rooms?: RoomLike[]; rules?: AlertRulesInput } = {}): FastRead {
+  const cfg = opts.rules && "problems" in opts.rules ? opts.rules : resolveAlertRules(opts.rules);
+  const t = text.trim().replace(/\s+/g, " ").slice(0, MAX_INPUT);
+  const offer = sumRules(cfg.rules.filter((r) => r.appliesTo === "offer"), t, opts.rooms);
+  const closure = sumRules(cfg.rules.filter((r) => r.appliesTo === "closure"), t, opts.rooms);
+  const done = (kind: GroupReadKind, confident: boolean): FastRead => {
+    const s = kind === "closure" ? closure : offer;
+    return { kind, confident, score: s.score, parts: s.parts, matched: s.matched, threshold: kind === "closure" ? cfg.closureThreshold : cfg.threshold, offer, closure };
+  };
+  if (!t) return done("other", false);
+  if (builtinHit("scheduleShape", t, undefined)) return done("schedule_update", false);
+  if (builtinHit("openingShape", t, undefined)) return done("opening_notice", false);
+  if (closure.score > offer.score && closure.score >= cfg.closureThreshold) return done("closure", true);
+  if (offer.score >= cfg.threshold && SPOT_WORD.test(t)) return done("spot_offer", true);
+  return done(closure.score > offer.score && closure.score > 0 ? "closure" : offer.score > 0 && SPOT_WORD.test(t) ? "spot_offer" : "other", false);
 }
 
 /**

@@ -1,7 +1,7 @@
 // Reading a message from a group the comic chose to watch: what to ask the model, and how to take its answer. The model only
 // says what KIND of message it is and which room / person it names; dates, times and flags come from the rules in
 // @spot/shared (groupAlerts.ts), which don't make things up. Pure, so it is tested without a model (groupRead.test.ts).
-import { classifyFast, contactHint, heuristicRead, interpret, type AiRead, type GroupMsg, type GroupReadKind, type ReadCtx, type Reading, type Room } from "@spot/shared";
+import { classifyFast, type AlertRulesInput, contactHint, heuristicRead, interpret, type AiRead, type GroupMsg, type GroupReadKind, type ReadCtx, type Reading, type Room } from "@spot/shared";
 
 const KINDS: GroupReadKind[] = ["spot_offer", "closure", "opening_notice", "schedule_update", "other"];
 
@@ -94,21 +94,37 @@ export async function readWithFallback(
   }
 }
 
+/** How a message was read, and how sure the rules were it is an offer. */
+export interface GroupReadResult {
+  reading: Reading;
+  path: "rules-fast" | "model" | "rules-fallback";
+  why?: string;
+  /** The rules' score for the kind they judged (offer score unless it is a closure), and what each rule added or took off. */
+  score: number;
+  scoreParts: Record<string, number>;
+  /** The offer score: stored on the alert whichever way it was read. */
+  offerScore: number;
+  offerParts: Record<string, number>;
+}
+
 /**
- * Rules first. If the rules are confident it is an offer or a closure, read it with the rules and never call the model (path
- * "rules-fast"). Otherwise ask the model, with the rules as the slow/failed-model fallback (path "model" or "rules-fallback").
+ * Rules first. If the comic's alert rules score the message at or above their threshold as an offer (or a closure), read it with
+ * the rules and never call the model (path "rules-fast"). Otherwise ask the model, with the rules as the slow/failed-model
+ * fallback (path "model" or "rules-fallback").
  */
 export async function readGroupMessage(
   ask: () => Promise<string>,
   msg: GroupMsg,
   ctx: ReadCtx,
   budgetMs: number,
-): Promise<{ reading: Reading; path: "rules-fast" | "model" | "rules-fallback"; why?: string }> {
-  const fast = classifyFast(msg.text);
+  rules?: AlertRulesInput,
+): Promise<GroupReadResult> {
+  const fast = classifyFast(msg.text, { rooms: ctx.rooms, rules });
+  const base = { score: fast.score, scoreParts: fast.parts, offerScore: fast.offer.score, offerParts: fast.offer.parts };
   if (fast.confident) {
     const reading = interpret({ kind: fast.kind, ...contactHint(msg.text, msg.mentioned) }, msg, ctx);
-    if (reading.kind !== "other") return { reading, path: "rules-fast" };
+    if (reading.kind !== "other") return { reading, path: "rules-fast", ...base };
   }
   const { read, by, why } = await readWithFallback(ask, msg, budgetMs);
-  return { reading: interpret(read, msg, ctx), path: by === "model" ? "model" : "rules-fallback", why };
+  return { reading: interpret(read, msg, ctx), path: by === "model" ? "model" : "rules-fallback", why, ...base };
 }
