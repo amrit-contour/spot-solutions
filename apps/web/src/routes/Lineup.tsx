@@ -65,6 +65,8 @@ import { GroupPopover, GroupTab, MemberTileBody } from "../components/GroupPanel
 import { Popover, ToolButton } from "@spot/ui";
 import { PillRow, Pill, comicPills, type TellState } from "../components/Pills";
 import { BackfillSheet, PAST_SHOW_NOTE } from "../components/BackfillSheet";
+import { RateLineup } from "../components/RateLineup";
+import { listNames } from "../components/calendar/EventCard";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
@@ -752,6 +754,8 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
             )}
           </ol>
         </SortableContext>
+
+        {lineup?.outcome === "happened" && !canned && ids.length > 0 && <div className="mt-3 border-t border-outline-variant/40"><RateLineup lineup={lineup} show={show} listNames={listNames} performed={false} /></div>}
 
         <div className="flex-1" />
 

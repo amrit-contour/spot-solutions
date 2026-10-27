@@ -2,7 +2,7 @@
 // Desktop: a sticky right-hand column. Phones and tablets: the "Updates" view of the Requests page.
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import type { Lineup } from "@spot/shared";
+import type { Lineup, Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { clearAll, dismissNotices, useUpdates } from "../lib/updates";
 import { Button, cx, type Icon } from "@spot/ui";
@@ -12,6 +12,7 @@ import { ReplyCard } from "./updates/ReplyCard";
 import { FollowUpCard } from "./updates/FollowUpCard";
 import { IntroCard, OnboardCard } from "./updates/FaceCard";
 import { MicCard } from "./updates/MicCard";
+import { ReviewSheet } from "./ReviewSheet";
 import { CleanupCard } from "./updates/CleanupCard";
 import { AdhocCard } from "./updates/AdhocCard";
 import { ServerCard } from "./updates/ServerCard";
@@ -23,6 +24,9 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const lastIndex = useRef(0);
   const faces = u.onboarding.length + u.introductions.length;
+  // After "Yes, it happened" the card leaves, so the review sheet lives here (kept mounted while it closes).
+  const [review, setReview] = useState<{ show: Show; week: string } | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const cards = () => Array.from(root.current?.querySelectorAll<HTMLElement>("[data-update-card]") ?? []);
 
@@ -99,7 +103,7 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
           <Section key="mic" icon={IconMic} title="Did the mic happen?" count={u.micChecks.length} onExitComplete={restoreFocus}>
             {u.micChecks.map((l) => {
               const show = shows.find((s) => s.id === l.showId);
-              return show ? <MicCard key={l.id} lineup={l} show={show} /> : null;
+              return show ? <MicCard key={l.id} lineup={l} show={show} onHappened={(ln, sh) => (setReview({ show: sh, week: ln.weekOf }), setReviewOpen(true))} /> : null;
             })}
           </Section>
         )}
@@ -141,6 +145,7 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
       </AnimatePresence>
 
       {!u.loading && u.total === 0 && <CaughtUp />}
+      {review && <ReviewSheet open={reviewOpen} onClose={() => setReviewOpen(false)} show={review.show} week={review.week} />}
     </div>
   );
 }

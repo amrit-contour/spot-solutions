@@ -61,6 +61,8 @@ export interface Settings {
   /** Morning after a show, ask whether it happened. */
   /** afterHours: ask this long after the show starts (missing: 2). `time` is the old "ask from" clock time and is no longer used.
    * rate: after a yes, ask how each comic did (missing: on). */
+  /** The curator's own performance tags for the post-show review, added to the built-in set. */
+  reviewTags?: string[];
   micCheck: { enabled: boolean; time: string; whatsapp: boolean; afterHours?: number; rate?: boolean };
   /** Group where hosts/POCs vote on which shows they can take. */
   hostPoll: { groupId: string | null };
@@ -178,6 +180,9 @@ export type HoldReason = "midweek" | "last_week" | "banned" | "ignored" | "host"
 
 export type ComicList = "banned" | "ignored" | "host";
 
+/** Did a comic turn up? Missing means they showed up. */
+export type Attendance = "showed" | "late" | "no_show" | "cancelled" | "swapped";
+
 export interface SpotHistoryEntry {
   date: string; // YYYY-MM-DD of the show
   showId: string;
@@ -187,6 +192,12 @@ export interface SpotHistoryEntry {
   adhoc?: boolean;
   /** How they did, 1 (rough) to 5 (killed it), as the curator rated it after the show. Kept with the spot. */
   rating?: number | null;
+  /** The curator's short note on how they did (kept with the spot, shown in spot history). */
+  note?: string | null;
+  /** Turned up late, no-show, cancelled in advance or gave the spot away. Missing: showed up. */
+  attendance?: Attendance | null;
+  /** How they did, as tags (Killed, Hack, Went over time, or the curator's own). */
+  tags?: string[] | null;
 }
 
 /** A comic asked something other than a spot: drafted reply waiting for the curator. */
@@ -409,6 +420,23 @@ export interface Slot {
   noGroup?: boolean;
   /** How they did on the night, 1 to 5 (the curator's rating after the show). */
   rating?: number | null;
+  /** A short note on how they did, next to the rating. */
+  note?: string | null;
+  attendance?: Attendance | null;
+  tags?: string[] | null;
+}
+
+/** How the room felt, a light optional tag on a show review. */
+export type CrowdLevel = "quiet" | "good" | "packed";
+
+/** The curator's review of a show after it happened. Every part is optional; `at` is when it was last saved. */
+export interface ShowReview {
+  /** Overall, 1 (rough) to 5 (killed it). */
+  rating?: number | null;
+  /** Free text: the crowd, sound, anything worth remembering. */
+  notes?: string | null;
+  crowd?: CrowdLevel | null;
+  at: number;
 }
 
 export interface GroupSyncPlan {
@@ -465,6 +493,10 @@ export interface Lineup {
   ratingAskedOn?: string | null;
   /** The curator said skip: nobody asks again for this show. */
   ratingsSkipped?: boolean;
+  /** The curator's review of the show itself (overall rating, crowd, notes). Comics' ratings and notes live on the slots. */
+  review?: ShowReview | null;
+  /** Date the agent asked how the show was overall, so it asks once. */
+  reviewAskedOn?: string | null;
   /** A past show recorded after the fact. History only: the worker never messages, syncs, asks or posts for it. */
   backfilled?: boolean;
   /** What the worker did for this lineup that nothing else records (confirmations, updates, group update, group posts). Newest last, capped at 50. */
@@ -553,6 +585,8 @@ export interface AiSettings {
   fallback: AiRoute | null;
   /** Where chats may be read: see AiPolicy in fleet.ts. Missing means DEFAULT_AI_POLICY. */
   policy?: import("./fleet.ts").AiPolicy;
+  /** Set by the worker when a configured local model wasn't installed and the setting was changed to one that is. */
+  autoSwitched?: { from: string; to: string; at: number; server: string };
 }
 
 /** users/{uid}/secrets/ai. Write-only from the app; only the worker reads it. */
@@ -577,6 +611,8 @@ export interface ServerStatus {
   version: string; // git sha or package version
   startedAt: number;
   lastSeen: number;
+  /** This server's most recent internet outage, once it recovered (see NetOutage). */
+  net?: NetOutage | null;
   cpu: { model: string; cores: number; load1: number; usage: number }; // usage 0..1
   memory: { total: number; free: number; process: number };
   /** The server's local console: LAN addresses, its .local name and access code (admins only). */
@@ -598,8 +634,6 @@ export interface ServerStatus {
   restarting?: RestartMarker | null;
   /** An update the server is running or just ran (written by the worker; see apps/worker/console/update.mjs). */
   update?: { state: "updating" | "error"; target: string | null; from: string; startedAt: number; error?: string };
-  /** This server's most recent internet outage, once it recovered (see NetOutage). */
-  net?: NetOutage | null;
 }
 
 /** servers/{id}/commands/{cmd}: admin actions from the app's Server page. */

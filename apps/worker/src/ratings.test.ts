@@ -68,7 +68,7 @@ const setup = (state: typeof agent) => {
   for (const [id, name] of [["a@c.us", "Asha Rao"], ["b@c.us", "Bo"], ["c@c.us", "Chitra"]]) store.set(`${U}/comics/${id}`, { id, name, history: [{ date: "2026-10-26", showId: "mon", showName: "Monday Mic", status: "confirmed" }] });
 };
 const lineup = (o: Record<string, unknown> = {}) => store.set(`${U}/lineups/m1`, { id: "m1", weekOf: "2026-10-26", showId: "mon", date: "2026-10-26", status: "confirmed", slots: [{ comicId: "a@c.us" }, { comicId: "b@c.us" }, { comicId: "c@c.us" }], ...o });
-const doc = () => store.get(`${U}/lineups/m1`) as { micCheckSentOn?: string; slots: { comicId: string; rating?: number }[]; ratingAskedOn?: string; ratingsSkipped?: boolean };
+const doc = () => store.get(`${U}/lineups/m1`) as { micCheckSentOn?: string; slots: { comicId: string; rating?: number }[]; ratingAskedOn?: string; ratingsSkipped?: boolean; reviewAskedOn?: string | null; review?: { rating?: number; notes?: string; at: number } | null };
 const at = (iso: string) => vi.setSystemTime(new Date(iso));
 
 beforeEach(() => {
@@ -180,5 +180,103 @@ describe("rating the lineup", () => {
     setup("on");
     lineup({ outcome: "happened" });
     expect(await answerRatings(U, "1 4")).toBeNull();
+  });
+});
+
+describe("how was the show overall?", () => {
+  it("after the last comic is rated, the same reply asks once", async () => {
+    setup("on");
+    lineup({ outcome: "happened" });
+    await askRatings(U);
+    const reply = await answerRatings(U, "all 4");
+    expect(reply).toMatch(/That's everyone/);
+    expect(reply).toContain("How was *Monday Mic* overall?");
+    expect(doc().reviewAskedOn).toBe("2026-10-26");
+    expect((await readMemory(U)).reviewAsk?.lineupId).toBe("m1");
+    expect((await readMemory(U)).ratingAsk).toBeNull();
+    // not asked again by the ticker
+    await askRatings(U);
+    expect(sent).toHaveLength(1);
+  });
+  it("'4 great crowd, sound was bad' saves the rating and the notes on the lineup", async () => {
+    setup("on");
+    lineup({ outcome: "happened" });
+    await askRatings(U);
+    await answerRatings(U, "all 4");
+    const reply = await answerRatings(U, "4 great crowd, sound was bad");
+    expect(reply).toMatch(/Saved the show review: 4\/5, "great crowd, sound was bad"/);
+    expect(doc().review).toMatchObject({ rating: 4, notes: "great crowd, sound was bad" });
+    expect((await readMemory(U)).reviewAsk).toBeNull();
+    expect(await answerRatings(U, "5")).toBeNull();
+  });
+  it("skip leaves it, and an ordinary message is not read as the review", async () => {
+    setup("on");
+    lineup({ outcome: "happened" });
+    await askRatings(U);
+    await answerRatings(U, "all 3");
+    expect(await answerRatings(U, "add Rohan to Tuesday")).toBeNull();
+    expect(await answerRatings(U, "great crowd")).toBeNull();
+    expect(doc().review).toBeUndefined();
+    expect(await answerRatings(U, "skip")).toMatch(/leave the show review/);
+    expect(doc().review).toBeUndefined();
+    expect((await readMemory(U)).reviewAsk).toBeNull();
+  });
+  it("skipping the comics' ratings skips the overall question too", async () => {
+    setup("on");
+    lineup({ outcome: "happened" });
+    await askRatings(U);
+    await answerRatings(U, "skip");
+    expect((await readMemory(U)).reviewAsk ?? null).toBeNull();
+    expect(doc().reviewAskedOn).toBeUndefined();
+  });
+  it("when every comic was already rated in the app, the ticker asks only the overall question", async () => {
+    setup("on");
+    lineup({ outcome: "happened", slots: [{ comicId: "a@c.us", rating: 4 }, { comicId: "b@c.us", rating: 5 }] });
+    await askRatings(U);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("overall");
+    expect(sent[0]).not.toContain("Asha");
+    expect(await answerRatings(U, "5 killer night")).toMatch(/Saved the show review: 5\/5/);
+    expect(doc().review?.rating).toBe(5);
+  });
+  it("a failed send is asked again, and a review already written is never asked about", async () => {
+    setup("failing");
+    lineup({ outcome: "happened", slots: [{ comicId: "a@c.us", rating: 4 }] });
+    await askRatings(U).catch(() => undefined);
+    expect(doc().reviewAskedOn ?? null).toBeNull();
+    setup("on");
+    lineup({ outcome: "happened", slots: [{ comicId: "a@c.us", rating: 4 }], review: { rating: 3, at: 1 } });
+    await askRatings(U);
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe("attendance by text", () => {
+  it("'2 no show, 1 4' marks Bo and rates Asha; a no-show is not asked a rating", async () => {
+    setup("on");
+    lineup({ outcome: "happened" });
+    await askRatings(U);
+    expect(sent[0]).toContain("2 no show");
+    const reply = await answerRatings(U, "2 no show, 1 4");
+    expect(reply).toMatch(/Saved: Asha Rao 4\/5\. Marked: Bo no-show\. Still to rate: 3\. Chitra/);
+    const slots = doc().slots as { attendance?: string; rating?: number }[];
+    expect(slots[1]).toMatchObject({ attendance: "no_show" });
+    expect((store.get(`${U}/comics/b@c.us`) as { history: { attendance?: string }[] }).history[0]!.attendance).toBe("no_show");
+    expect(await answerRatings(U, "3 late")).toMatch(/Marked: Chitra late/);
+    expect(await answerRatings(U, "3 4")).toMatch(/Saved: Chitra 4\/5/);
+  });
+  it("only no-shows left means everyone is done and the overall question follows", async () => {
+    setup("on");
+    lineup({ outcome: "happened", slots: [{ comicId: "a@c.us", rating: 5 }, { comicId: "b@c.us" }] });
+    await askRatings(U);
+    const reply = await answerRatings(U, "2 no show");
+    expect(reply).toMatch(/That's everyone/);
+    expect(reply).toContain("overall");
+  });
+  it("tags are not read from WhatsApp", async () => {
+    setup("on");
+    lineup({ outcome: "happened" });
+    await askRatings(U);
+    expect(await answerRatings(U, "1 killed")).toBeNull();
   });
 });

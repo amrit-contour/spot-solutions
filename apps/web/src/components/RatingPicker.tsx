@@ -4,9 +4,9 @@ import { IconStar, cx } from "@spot/ui";
 
 const SCALE = Array.from({ length: RATING_MAX - RATING_MIN + 1 }, (_, i) => RATING_MIN + i);
 
-export function RatingPicker({ value, onChange, label, disabled }: { value: number | null | undefined; onChange: (v: number | null) => void; label: string; disabled?: boolean }) {
+export function RatingPicker({ value, onChange, label, disabled, large }: { value: number | null | undefined; onChange: (v: number | null) => void; label: string; disabled?: boolean; large?: boolean }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-none items-center gap-1">
+    <div role="radiogroup" aria-label={label} className={cx("flex flex-none items-center", large ? "gap-2" : "gap-1")}>
       {SCALE.map((n) => {
         const on = value === n;
         return (
@@ -19,7 +19,8 @@ export function RatingPicker({ value, onChange, label, disabled }: { value: numb
             title={RATING_WORDS[n]}
             onClick={() => onChange(on ? null : n)}
             className={cx(
-              "grid size-9 place-items-center rounded-full type-label-l tabular transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50",
+              "grid place-items-center rounded-full tabular transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50",
+              large ? "size-11 type-title-s" : "size-9 type-label-l",
               on ? "bg-primary text-on-primary" : "bg-surface-high text-on-surface-variant hover:bg-surface-highest",
             )}
           >

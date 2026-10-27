@@ -3,7 +3,7 @@ import { ComicAvatar } from "../lib/photos";
 import { Link, useSearchParams } from "react-router-dom";
 import { deleteDoc, setDoc, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
-import { cancellations, formatDate, localNow, ratingSummary, shiftWeek, type Comic, type ComicList, type Show, type Tier } from "@spot/shared";
+import { attendanceLabel, cancellations, formatDate, localNow, performed, ratingSummary, reliability, shiftWeek, type Comic, type ComicList, type Show, type Tier } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
@@ -16,6 +16,7 @@ import { Menu, MenuItem } from "@spot/ui";
 import { PastSpotSheet } from "../components/PastSpotSheet";
 import { RatingBadge, RatingPicker } from "../components/RatingPicker";
 import { rateSpot } from "../lib/ratings";
+import { SpotNoteField } from "../components/SpotNoteField";
 import { DuplicateComics } from "../components/DuplicateComics";
 import { ImportContactsSheet, ImportFileSheet, ImportGoogleSheet } from "../components/ImportSheets";
 import { Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "@spot/ui";
@@ -350,14 +351,16 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
                 {cancellations(history) > 0 && <span className="text-error">{cancellations(history)} cancelled</span>}
               </span>
             </div>
+            {reliability(history, today) && <p className="-mt-1 mb-2 type-body-s text-error">{reliability(history, today)!.line}</p>}
             {d.id && <Button size="sm" variant="tonal" icon={IconHistory} className="mb-2" onClick={() => setPastOpen(true)}>Add a past spot</Button>}
             {history?.length ? (
               <ul className="overflow-hidden rounded-md bg-surface-container">
                 {history.slice(0, 8).map((h) => {
                   // A confirmed spot is only "performed" once the show date has passed.
-                  const label = h.status === "cancelled" ? "Cancelled" : h.status === "canned" ? "Mic didn't happen" : h.date > today ? "Booked" : h.date === today ? "Tonight" : h.adhoc ? "Performed · ad hoc" : "Performed";
+                  const didNot = h.status === "confirmed" && !performed(h.attendance);
+                  const label = didNot ? attendanceLabel(h.attendance) : h.status === "cancelled" ? "Cancelled" : h.status === "canned" ? "Mic didn't happen" : h.date > today ? "Booked" : h.date === today ? "Tonight" : h.adhoc ? "Performed · ad hoc" : "Performed";
                   const key = `${h.date}-${h.showId}`;
-                  const rateable = h.status === "confirmed" && h.date <= today && Boolean(d.id);
+                  const rateable = h.status === "confirmed" && h.date <= today && Boolean(d.id) && !didNot;
                   return (
                     <li key={key} className="border-b border-outline-variant/40 px-3 py-2 last:border-0">
                       <div className="flex items-center gap-3">
@@ -374,8 +377,10 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
                             {h.rating ? <RatingBadge value={h.rating} /> : <span className="type-label-m text-primary">Rate</span>}
                           </button>
                         ) : null}
-                        <span className={cx("type-label-m", label.startsWith("Performed") ? "text-primary" : label === "Cancelled" ? "text-error" : label === "Mic didn't happen" ? "text-on-surface-variant" : "text-tertiary")}>{label}</span>
+                        <span className={cx("type-label-m", label.startsWith("Performed") ? "text-primary" : label === "Cancelled" ? "text-error" : label === "Mic didn't happen" ? "text-on-surface-variant" : didNot ? "text-error" : "text-tertiary")}>{label}</span>
                       </div>
+                      {h.tags?.length || h.attendance === "late" ? <div className="mt-1.5 flex flex-wrap gap-1 pl-[4.75rem]">{h.attendance === "late" && <span className="rounded-full bg-tertiary-container px-2 py-0.5 type-label-s text-on-tertiary-container">Late</span>}{h.tags?.map((t) => <span key={t} className="rounded-full bg-surface-high px-2 py-0.5 type-label-s text-on-surface-variant">{t}</span>)}</div> : null}
+                      {h.note && <p className="mt-1 line-clamp-3 pl-[4.75rem] type-body-s text-on-surface-variant">{h.note}</p>}
                       {rateable && rating === key && (
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 pb-1">
                           <span className="type-body-s text-on-surface-variant">How did they do? 1 rough, 5 killed it</span>
@@ -384,6 +389,7 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
                             value={h.rating}
                             onChange={(v) => void rateSpot(uid, { comicId: d.id!, showId: h.showId, date: h.date }, v).catch((e: Error) => toast.error(e.message))}
                           />
+                          <div className="basis-full"><SpotNoteField comicId={d.id!} name={d.name || "them"} showId={h.showId} date={h.date} note={h.note} /></div>
                         </div>
                       )}
                     </li>

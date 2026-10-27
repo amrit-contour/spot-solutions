@@ -228,7 +228,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
           </div>
         </div>
       )}
-      {confirmed && lineup?.outcome === "happened" && slots.length > 0 && <RateLineup lineup={lineup} listNames={listNames} />}
+      {confirmed && lineup?.outcome === "happened" && slots.length > 0 && <RateLineup lineup={lineup} show={show} listNames={listNames} />}
 
       <div className="min-h-3 flex-1" />
       {/* One row in every card, never wrapping: primary action left, Offer a spot (icon only in a narrow card), Open lineup pinned right. */}

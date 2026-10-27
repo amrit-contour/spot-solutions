@@ -16,6 +16,8 @@ export interface AgentMemory {
   polls?: PollRecord[];
   /** The lineup the agent last asked ratings for, and when (see ratings.ts). */
   ratingAsk?: { lineupId: string; at: number } | null;
+  /** The lineup the agent last asked "how was the show overall?" for, and when. */
+  reviewAsk?: { lineupId: string; at: number } | null;
   lastDigestOn?: string | null;
   /** How far the new-request, follow-up and notice scans have got (epoch ms). Moves only after a successful send. */
   cursor?: { requests?: number; actions?: number; notices?: number };

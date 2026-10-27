@@ -9,7 +9,7 @@ import { Button } from "@spot/ui";
 import { IconCheck, IconMic } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
-export function MicCard({ lineup: l, show }: { lineup: Lineup; show: Show }) {
+export function MicCard({ lineup: l, show, onHappened }: { lineup: Lineup; show: Show; /** After a yes: the card is about to leave, so the caller opens the review. */ onHappened?: (l: Lineup, s: Show) => void }) {
   const { uid, comicsById } = useApp();
   return (
     <UpdateItem className="bg-secondary-container text-on-secondary-container">
@@ -23,7 +23,7 @@ export function MicCard({ lineup: l, show }: { lineup: Lineup; show: Show }) {
         <Button variant="text" className="text-on-secondary-container" onClick={() => void markCanned(uid, l, show, comicsById).then(() => updateDoc(userDoc(uid, "lineups", l.id), { outcome: "canned" }))}>
           No
         </Button>
-        <Button icon={IconCheck} onClick={() => answerMicCheck(uid, l, "happened")} data-primary>
+        <Button icon={IconCheck} onClick={() => (answerMicCheck(uid, l, "happened"), onHappened?.(l, show))} data-primary>
           Yes, it happened
         </Button>
       </div>

@@ -60,6 +60,7 @@ export function withHistory(history: SpotHistoryEntry[] | undefined, entry: Spot
   const rest = (history ?? []).filter((h) => h !== prev);
   // A rating belongs to the night: re-recording the spot keeps it (unless the night didn't happen).
   if (prev?.rating != null && entry.rating === undefined && entry.status === "confirmed") entry = { ...entry, rating: prev.rating };
+  if (prev?.note && entry.note === undefined && entry.status === "confirmed") entry = { ...entry, note: prev.note };
   return [entry, ...rest].sort((a, b) => b.date.localeCompare(a.date)).slice(0, cap);
 }
 
