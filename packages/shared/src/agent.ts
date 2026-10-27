@@ -5,6 +5,7 @@
 import { DAY_NAMES, DAY_SHORT, dateInWeek, formatDate, formatTime } from "./week.ts";
 import { richReply, type RichReply } from "./tagPeople.ts";
 import type { Comic, Lineup, Show, SpotRequest, Venue, Weekday } from "./types.ts";
+import { describeOffer, parseExtraRules, pastShowReason, planOfferFor } from "./agentCommands.ts";
 
 // ---- identity of the second session (it rides on the account's lease; see docs/fleet.md) ----
 
@@ -135,10 +136,14 @@ const WEEKDAY_WORDS: Record<string, Weekday> = {
 export type AgentIntentName =
   | "lineup" | "waiting" | "pending_confirm" | "asked" | "last_performed" | "mic_status" | "help"
   | "add" | "remove" | "confirm" | "outcome" | "retime"
+  /** offer: ask a comic for an open spot (direct: they already agreed, so no offer: straight onto the lineup). */
+  | "offer"
+  /** Admins only (agentCommands.ts): who is waiting to join, approve or decline them. */
+  | "members_waiting" | "approve_member" | "decline_member"
   | "unknown";
 
-export const QUESTION_INTENTS: readonly AgentIntentName[] = ["lineup", "waiting", "pending_confirm", "asked", "last_performed", "mic_status", "help"];
-export const ACTION_INTENTS: readonly AgentIntentName[] = ["add", "remove", "confirm", "outcome", "retime"];
+export const QUESTION_INTENTS: readonly AgentIntentName[] = ["lineup", "waiting", "pending_confirm", "asked", "last_performed", "mic_status", "members_waiting", "help"];
+export const ACTION_INTENTS: readonly AgentIntentName[] = ["add", "remove", "confirm", "outcome", "retime", "offer", "approve_member", "decline_member"];
 export const INTENT_NAMES: readonly AgentIntentName[] = [...QUESTION_INTENTS, ...ACTION_INTENTS, "unknown"];
 
 export interface AgentIntent {
@@ -151,6 +156,8 @@ export interface AgentIntent {
   time?: string;
   /** outcome: did it happen. */
   happened?: boolean;
+  /** offer: they already agreed, so no offer is sent. */
+  direct?: boolean;
 }
 
 const strip = (t: string) => t.trim().replace(/[?!.\s]+$/g, "").replace(/\s+/g, " ");
@@ -173,6 +180,8 @@ function parseRules(raw: string): AgentIntent | null {
   let m: RegExpMatchArray | null;
 
   if (/^(help|\?|menu|commands|what can you do|what do you do|hi|hello|hey)$/.test(l)) return { name: "help" };
+  const extra = parseExtraRules(l); // offers, direct adds, and members (agentCommands.ts)
+  if (extra) return extra;
   // Questions about a mic ("did mic on Monday happen this week?", "how did Monday go", "was Bloom cancelled?"): read-only, answered
   // from the lineup's outcome and mic check. Never a change: "mark Monday as happened" is the command.
   if (isQuestion(l)) {
@@ -228,8 +237,9 @@ export const INTENT_SCHEMA = {
     person: { type: "string" },
     time: { type: "string" },
     happened: { type: "boolean" },
+    direct: { type: "boolean" },
   },
-  required: ["intent", "day", "person", "time", "happened"],
+  required: ["intent", "day", "person", "time", "happened", "direct"],
 };
 
 /** Checks whatever the model returned and turns it into an intent; anything off becomes "unknown". */
@@ -261,7 +271,9 @@ export function normalizeRawIntent(raw: unknown): AgentIntent {
     if (typeof o.happened !== "boolean" || !day) return { name: "unknown" };
     out.happened = o.happened;
   }
-  if ((name === "add" || name === "remove") && (!person || !day)) return { name: "unknown" };
+  if ((name === "add" || name === "remove" || name === "offer") && (!person || !day)) return { name: "unknown" };
+  if (name === "offer") out.direct = o.direct === true;
+  if ((name === "approve_member" || name === "decline_member") && !person) return { name: "unknown" };
   if (name === "confirm" && !day) return { name: "unknown" };
   if (name === "last_performed" && !person) return { name: "unknown" };
   if (name === "asked" && !day) return { name: "unknown" };
@@ -284,10 +296,12 @@ intent is one of:
 - confirm: send the confirmations for a show
 - outcome: say a show happened or did not happen
 - retime: a show's start time changed ("Bloom moved Thursday to 9 PM")
+- offer: offer a comic an open spot ("offer Rahul a spot on Monday"); direct is true only when they already agreed and should simply be added ("Rahul already agreed for Monday")
+- members_waiting / approve_member / decline_member: who is waiting to join the app, approve or decline a person (person = their name)
 - help: asks what you can do
 - unknown: anything else
 
-Fields: day = the day or show they point at, in their own words (empty if none); person = a comic's name (empty if none); time = a clock time like "9 PM" (empty if none); happened = true or false for outcome, else false.
+Fields: day = the day or show they point at, in their own words (empty if none); person = a comic's name (empty if none); time = a clock time like "9 PM" (empty if none); happened = true or false for outcome, else false; direct = true or false for offer, else false.
 
 Their shows:
 ${showLines}
@@ -375,7 +389,11 @@ export type ActionPlan =
   /** Asked by the day-after cleanup: yes clears the group, no keeps everyone for next week. */
   | { type: "cleanup"; showId: string; lineupId: string }
   /** A comic said yes in an ad hoc round where the curator picks. */
-  | { type: "adhoc_pick"; showId: string; roundId: string; comicId: string; comicName: string };
+  | { type: "adhoc_pick"; showId: string; roundId: string; comicId: string; comicName: string }
+  /** offer: ask them (a poll or text from the curator's own WhatsApp); direct: they already agreed, so no offer (the app's "Already agreed"). */
+  | { type: "offer"; showId: string; comicId: string; comicName: string; phone: string; direct: boolean }
+  /** An admin approves or declines ("removed") a request to join. Has no show. */
+  | { type: "member"; uid: string; name: string; email: string; decision: "approved" | "removed" };
 
 export type PendingAction =
   | { stage: "confirm"; plan: ActionPlan; summary: string; createdAt: number; expiresAt: number; pollId?: string }
@@ -426,7 +444,9 @@ export interface PlanWorld {
   venues: Pick<Venue, "id" | "name" | "aliases">[];
   week: string;
   todayWeekday: Weekday;
-  lineups: (Pick<Lineup, "showId" | "slots" | "status"> & Partial<Pick<Lineup, "id" | "sent" | "outcome">>)[];
+  lineups: (Pick<Lineup, "showId" | "slots" | "status"> & Partial<Pick<Lineup, "id" | "sent" | "outcome" | "date" | "backfilled">>)[];
+  /** The curator's today (YYYY-MM-DD). With it, a show whose date has passed can't be changed from WhatsApp. */
+  today?: string;
 }
 export type PlanPerson = PersonRef & { banned?: boolean };
 export interface Planned {
@@ -451,11 +471,27 @@ export function planAction(intent: AgentIntent, w: PlanWorld, people: PlanPerson
   const fail: string[] = [];
   const ctx = (s: Show, extra: Partial<Parameters<typeof describePlan>[1]> = {}) => ({ show: s, week: w.week, ...extra });
 
-  if (intent.name === "add" || intent.name === "remove") {
+  if (intent.name === "offer") {
+    const found = matchPeople(intent.person ?? "", people);
+    if (!found.length) return { reply: `I couldn't find anyone called "${intent.person}".` };
+    for (const s of candidates) {
+      for (const p of found) {
+        const r = planOfferFor({ show: s, person: p as PlanPerson, lineup: lineupOf(s), lineups: w.lineups, shows: w.shows, week: w.week, today: w.today, direct: intent.direct === true, primaryReady: o.primaryReady });
+        if ("fail" in r) fail.push(r.fail);
+        else choices.push({ label: `${p.name} → ${showLabel(s, w.week)}`, plan: r.plan, summary: r.summary });
+      }
+    }
+  } else if (intent.name === "add" || intent.name === "remove") {
     const found = matchPeople(intent.person ?? "", people);
     if (!found.length) return { reply: `I couldn't find anyone called "${intent.person}".` };
     for (const s of candidates) {
       const l = lineupOf(s);
+      // A past or backfilled show is history: who performed is fixed in the app ("Record who performed"), never from here.
+      const past = pastShowReason({ showName: s.name, date: l?.date ?? dateInWeek(w.week, s.weekday), backfilled: l?.backfilled, today: w.today, what: intent.name });
+      if (past) {
+        fail.push(past);
+        continue;
+      }
       for (const p of found) {
         const on = Boolean(l?.slots.some((x) => x.comicId === p.id));
         const label = `${p.name} → ${showLabel(s, w.week)}`;
@@ -624,7 +660,13 @@ export const HELP_TEXT = `I can tell you and do things for you here.
 • Remove Rohan from Monday
 • Confirm Monday
 • Mark Monday happened (or didn't happen)
-• Bloom moved Thursday to 9 PM`;
+• Bloom moved Thursday to 9 PM
+• Offer Rohan a spot on Monday
+• Add Rohan to Monday directly (or: Rohan already agreed for Monday)
+
+*Admins*
+• Who's waiting to join?
+• Approve Priya / Decline Priya`;
 
 /** "Which one?" lists for ambiguous shows and people. */
 export const showLabel = (s: Pick<Show, "name" | "weekday" | "startTime">, week: string) => `${s.name}, ${DAY_SHORT[s.weekday]} ${formatDate(dateInWeek(week, s.weekday))} · ${formatTime(s.startTime)}`;
@@ -646,6 +688,10 @@ export function describePlan(plan: ActionPlan, c: { show: Pick<Show, "name" | "w
       return `Add ${plan.comicName} to ${when}? They said yes to the ad hoc spot.`;
     case "cleanup":
       return `Clear the ${c.show.name} group for next week? POCs, regulars, co-hosts and admins stay.`;
+    case "offer":
+      return describeOffer(plan, when);
+    case "member":
+      return `${plan.decision === "approved" ? "Approve" : "Decline"} ${plan.name}${plan.email ? ` (${plan.email})` : ""}?`;
     case "retime":
       return `Change ${c.show.name} (${DAY_NAMES[c.show.weekday]}) from ${c.oldTime ? formatTime(c.oldTime) : formatTime(c.show.startTime)} to ${formatTime(plan.startTime)}? Comics already confirmed won't be told automatically.`;
   }

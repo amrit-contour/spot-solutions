@@ -9,7 +9,7 @@ import { approveDeviceLink as approveLink, getDeviceLink as getLink, pollDeviceL
 import { firestoreLinkStore, firestoreStore } from "./store";
 import { OAuth2Client } from "google-auth-library";
 import { defineSecret, defineString } from "firebase-functions/params";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onTaskDispatched } from "firebase-functions/v2/tasks";
 import { getFunctions } from "firebase-admin/functions";
@@ -20,7 +20,11 @@ import type { ComicBits } from "./googleLogic";
 import { memberLister } from "./members";
 import { firestoreMembers } from "./membersStore";
 import { firestoreAdmins } from "./adminsStore";
+import { sendTestPush } from "./testPush";
+import { firestoreTestPush } from "./testPushStore";
 import { memberActivity as adminActivity, setAdmin as adminSet } from "./admins";
+import { announceAccessRequest, closeAccessRequest } from "./accessAlerts";
+import { firestoreAccessAlerts } from "./accessAlertsStore";
 
 initializeApp();
 // A dedicated identity (deploy/setup-functions-iam.sh), not the default compute account.
@@ -305,5 +309,37 @@ export const memberActivity = onCall(async (req) => {
     return await adminActivity(firestoreAdmins(), callerOf(req.auth));
   } catch (e) {
     return rethrow(e);
+  }
+});
+
+/** Comic app: a test notification to the caller's own Comedy devices (Settings > Notifications). */
+export const sendComicTestPush = onCall(async (req) => {
+  try {
+    return await sendTestPush(firestoreTestPush(), { uid: req.auth?.uid, anonymous: !req.auth || req.auth.token.firebase?.sign_in_provider === "anonymous" });
+  } catch (e) {
+    return rethrow(e);
+  }
+});
+
+/** A new access request tells every admin: an Updates notice (Approve link), a push in both apps, and their agent number (functions/src/accessAlerts.ts). */
+export const onAccessRequested = onDocumentCreated({ document: "access/{uid}" }, async (event) => {
+  const d = event.data?.data();
+  if (!d) return;
+  try {
+    await announceAccessRequest(firestoreAccessAlerts(), { uid: event.params.uid, email: d.email, name: d.name, status: d.status, requestedAt: typeof d.requestedAt === "number" ? d.requestedAt : undefined });
+  } catch (e) {
+    console.error("[access-alert]", e);
+  }
+});
+
+/** Once a request leaves "pending" (approved, declined, however), its "Approve" card disappears from every admin's Updates. */
+export const onAccessDecided = onDocumentUpdated({ document: "access/{uid}" }, async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!before || !after || before.status !== "pending" || after.status === "pending") return;
+  try {
+    await closeAccessRequest(firestoreAccessAlerts(), event.params.uid);
+  } catch (e) {
+    console.error("[access-alert]", e);
   }
 });

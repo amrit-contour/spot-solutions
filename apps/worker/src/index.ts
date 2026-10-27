@@ -3,8 +3,8 @@
 import "./envCompat.ts";
 import "./logbuf.ts";
 import { col, db, sessionRef } from "./firebase.ts";
-import { notice, runCommand } from "./commands.ts";
-import { isAdminEmail, startAccess } from "./access.ts";
+import { runCommand } from "./commands.ts";
+import { startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
 import { checkBrowserAtStart } from "./browserHeal.ts";
 import { agentSessions } from "./agentSession.ts";
@@ -139,10 +139,8 @@ async function main() {
       reconcile();
     },
     (e) => {
+      // The admins are told by the onAccessRequested Cloud Function (functions/src/accessAlerts.ts): an Updates notice, a push and their agent number.
       console.log(`[access] ${e.email ?? e.uid} asked to join`);
-      for (const [uid, u] of users) {
-        if (isAdminEmail(u.email)) void notice(uid, "info", `${e.name ?? e.email ?? "Someone"} (${e.email ?? "no email"}) asked to use Nothing BOT Curate. Approve them in Account → Server.`);
-      }
     },
   );
 

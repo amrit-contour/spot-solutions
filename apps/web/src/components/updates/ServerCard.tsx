@@ -18,7 +18,7 @@ function fix(text: string): { to: string; label: string } | null {
 export function ServerCard({ n }: { n: AppNotice }) {
   const { uid } = useApp();
   const warn = n.level === "warn";
-  const link = fix(n.text);
+  const link = n.link ? { to: n.link, label: n.linkLabel ?? "Open" } : fix(n.text);
   return (
     <UpdateItem className={warn ? "bg-error-container text-on-error-container" : "bg-surface-container"} onDismiss={() => dismissNotice(uid, n)}>
       <div className="flex items-start gap-3 py-3 pr-2 pl-4">

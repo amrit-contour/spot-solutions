@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import type WAWebJS from "whatsapp-web.js";
 import {
-  ACTION_INTENTS, DAY_NAMES, HELP_TEXT, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
+  ACTION_INTENTS, DAY_NAMES, HELP_TEXT, lineupId, offerPayload, pastShowReason, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
   formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, rolloverDayFor, senderIsCurator, showDay,
   stepPending, strictNo, pollForPending, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
 } from "@spot/shared";
@@ -17,7 +17,8 @@ import { applyVote, closeMicPolls } from "./agentPolls.ts";
 import { AiPolicyError } from "./aiRouting.ts";
 import { generateJson } from "./llm.ts";
 import { loadComics, runHandler } from "./commands.ts";
-import { removeFromLineup, placeOnLineup } from "./lineupOps.ts";
+import { removeFromLineup, placeOnLineup, ensureComic, ensureLineup } from "./lineupOps.ts";
+import { adminEmail, membersWaitingText, planMemberChange, runMemberChange } from "./agentAdmin.ts";
 import { recordOutcome, settleRound } from "./replies.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { sessions } from "./sessions.ts";
@@ -300,6 +301,8 @@ async function answer(uid: string, intent: AgentIntent): Promise<string | RichRe
       const ws = waitingRequests(w.requests, placed);
       return richReply(ws.map((r) => ({ name: r.comicName, id: idOf(w, r.comicId) })), (labels) => formatWaiting(ws.map((r, i) => ({ name: labels[i]!, days: requestDays(r) }))));
     }
+    case "members_waiting":
+      return membersWaitingText(uid);
     case "pending_confirm":
       return formatPendingConfirm(w.shows.map((s) => dayOfShow(w, s)).filter((d) => d.date >= w.today));
     case "asked": {
@@ -333,17 +336,25 @@ async function answer(uid: string, intent: AgentIntent): Promise<string | RichRe
 
 /** Turns what you asked for into what the agent will repeat back (planAction, shared). Nothing is written here. */
 async function plan(uid: string, intent: AgentIntent) {
+  if (intent.name === "approve_member" || intent.name === "decline_member") return planMemberChange(uid, intent, Date.now());
   const w = await world(uid);
-  const people = ["add", "remove"].includes(intent.name) ? await roster(uid, w) : [];
-  return planAction(intent, { shows: w.shows, venues: w.venues, week: w.week, todayWeekday: w.todayWeekday, lineups: w.lineups }, people, { primaryReady: Boolean(sessions.get(uid)), now: Date.now() });
+  const people = ["add", "remove", "offer"].includes(intent.name) ? await roster(uid, w) : [];
+  return planAction(intent, { shows: w.shows, venues: w.venues, week: w.week, todayWeekday: w.todayWeekday, lineups: w.lineups, today: w.today }, people, { primaryReady: Boolean(sessions.get(uid)), now: Date.now() });
 }
 
 /** After the yes. Re-reads everything: what was true when it asked may not be true now. */
 async function runPlan(uid: string, p: ActionPlan) {
   try {
+    if (p.type === "member") return void (await say(uid, await runMemberChange(uid, p)));
     const w = await world(uid);
     const show = w.shows.find((s) => s.id === p.showId);
     if (!show) return void (await say(uid, "That show isn't there any more, so I did nothing."));
+    if (p.type === "add" || p.type === "remove" || p.type === "offer") {
+      // What was true when it asked may not be now: a past or backfilled show is never changed from here ("Record who performed" in the app).
+      const l = w.lineups.find((x) => x.showId === show.id);
+      const past = pastShowReason({ showName: show.name, date: l?.date ?? dateInWeek(w.week, show.weekday), backfilled: l?.backfilled, today: w.today, what: p.type === "offer" && !p.direct ? "offer" : p.type === "remove" ? "remove" : "add" });
+      if (past) return void (await say(uid, past));
+    }
     switch (p.type) {
       case "add": {
         const r = await placeOnLineup(uid, w.week, show, w.shows, { id: p.comicId, name: p.comicName, phone: p.phone });
@@ -357,6 +368,21 @@ async function runPlan(uid: string, p: ActionPlan) {
         const ok = await removeFromLineup(uid, w.week, show, p.comicId);
         const l = w.lineups.find((x) => x.showId === show.id);
         return void (await say(uid, ok ? `Done: ${p.comicName} is off ${show.name}.${l?.status === "confirmed" ? " They haven't been told. Use Send updates in the app if they should be." : ""}` : `${p.comicName} wasn't on ${show.name} any more.`));
+      }
+      case "offer": {
+        if (!sessions.get(uid)) return void (await say(uid, "Your own WhatsApp isn't connected right now, so nothing was sent."));
+        const first = p.comicName.split(" ")[0];
+        await ensureComic(uid, w.week, { id: p.comicId, name: p.comicName, phone: p.phone });
+        const lid = await ensureLineup(uid, w.week, show);
+        if (p.direct) {
+          // The app's "Already agreed": same handler as send_offer with direct: true (placing, confirmation message, group).
+          const r = (await runHandler("send_offer", uid, { comicIds: [p.comicId], lineupId: lid, direct: true })) as { added: number; already: number };
+          return void (await say(uid, r.added ? `Done: ${p.comicName} is on ${show.name} and got your confirmation.` : r.already ? `${p.comicName} was already on ${show.name}.` : `I couldn't add ${p.comicName} to ${show.name}.`));
+        }
+        const venue = w.venues.find((v) => v.id === show.venueId);
+        const msg = offerPayload(w.settings, show, w.week, venue?.name, p.comicName);
+        const r = (await runHandler("send_offer", uid, { comicIds: [p.comicId], lineupId: lid, body: msg.body, rich: msg.rich })) as { sent: number };
+        return void (await say(uid, r.sent ? `Done: I sent ${first} the offer for ${show.name}. If they say yes they're added and get your confirmation; I'll tell you what they say.` : `I couldn't send ${first} the offer.`));
       }
       case "outcome": {
         await recordOutcome(uid, p.lineupId, p.outcome);
@@ -449,12 +475,13 @@ async function scan(uid: string, mem: AgentMemory, settings: Settings) {
     next.actions = Math.max(next.actions, a.createdAt);
     queueNotify(uid, { kind: "followup", text: a.comicName, id: a.comicId?.includes("@") ? a.comicId : undefined, detail: `(${a.followUp?.action === "place" ? `on ${a.followUp.showName ?? "a show"}` : "said no"})` }, { actions: next.actions });
   }
-  const notices = (await col(uid, "notices").where("createdAt", ">", from.notices).get()).docs.map((d) => d.data() as { level: string; kind?: string; text: string; createdAt: number; dismissedAt?: number });
+  const notices = (await col(uid, "notices").where("createdAt", ">", from.notices).get()).docs.map((d) => d.data() as { level: string; kind?: string; text: string; agentText?: string; createdAt: number; dismissedAt?: number });
   for (const n of notices.sort((a, b) => a.createdAt - b.createdAt)) {
     next.notices = Math.max(next.notices, n.createdAt);
     if (n.dismissedAt) continue;
     if (n.level === "warn") queueNotify(uid, { kind: "warn", text: n.text }, { notices: next.notices });
     else if (n.kind === "offer" || n.kind === "lineup" || n.kind === "server") queueNotify(uid, { kind: "notice", text: n.text }, { notices: next.notices });
+    else if (n.kind === "access" && (await adminEmail(uid))) queueNotify(uid, { kind: "notice", text: n.agentText ?? n.text }, { notices: next.notices });
   }
   // Nothing new to say: still move the cursors forward, so the same scan never repeats.
   scanned.set(uid, next);

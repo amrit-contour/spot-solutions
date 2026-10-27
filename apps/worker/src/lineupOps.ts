@@ -8,7 +8,7 @@ import { col, db } from "./firebase.ts";
 const blank = (week: string, show: Show): Lineup => ({ id: lineupId(week, show.id), weekOf: week, showId: show.id, date: dateInWeek(week, show.weekday), slots: [], status: "draft", sentAt: null, groupSync: null });
 
 /** Maybe asks and group members aren't comics yet; placing one makes them one. */
-async function ensureComic(uid: string, week: string, person: { id: string; name: string; phone?: string }) {
+export async function ensureComic(uid: string, week: string, person: { id: string; name: string; phone?: string }) {
   const ref = col(uid, "comics").doc(person.id);
   if ((await ref.get()).exists) return;
   const req = (await col(uid, "requests").doc(`${week}_${person.id}`).get()).data() as SpotRequest | undefined;
@@ -67,4 +67,13 @@ export async function removeFromLineup(uid: string, week: string, show: Show, co
   });
   if (removed) await markRequest(uid, week, comicId, false);
   return removed;
+}
+
+/** The week's lineup for a show, created empty (a draft) when nobody has opened it yet. Offers and direct adds need it to exist. */
+export async function ensureLineup(uid: string, week: string, show: Show): Promise<string> {
+  const ref = col(uid, "lineups").doc(lineupId(week, show.id));
+  await db.runTransaction(async (tx) => {
+    if (!(await tx.get(ref)).exists) tx.set(ref, blank(week, show));
+  });
+  return ref.id;
 }

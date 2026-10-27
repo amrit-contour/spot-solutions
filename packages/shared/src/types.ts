@@ -196,7 +196,7 @@ export interface FollowUpSuggestion {
 }
 
 /** What a notice is about, so the agent number only forwards the ones that matter ("offer" outcomes, "lineup" changes, "server" moves). */
-export type NoticeKind = "offer" | "lineup" | "server";
+export type NoticeKind = "offer" | "lineup" | "server" | "access";
 
 export interface AppNotice {
   id: string;
@@ -204,6 +204,11 @@ export interface AppNotice {
   /** Set by the worker on notices the agent number forwards. */
   kind?: NoticeKind;
   text: string;
+  /** Kind "access": what the agent number says instead of `text` (it carries the reply commands). */
+  agentText?: string;
+  /** Where the card's button goes in the app (e.g. "/admin"), and what it says. */
+  link?: string;
+  linkLabel?: string;
   createdAt: number;
   read: boolean;
   /** When the curator dismissed it in the app (cleared again by Undo). */
