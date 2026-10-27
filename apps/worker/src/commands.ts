@@ -54,7 +54,9 @@ import { deliverDraft } from "./deliver.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice, learnVoice, listVoiceSourceChats, previewVoice } from "./voice.ts";
 import { applyFollowUpAction } from "./followUp.ts";
-import { listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
+import { generateJson, generateJsonFromFile, listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
+import { parseRoster, type ParseRosterInput } from "./rosterImport.ts";
+import { safeFetch } from "./safeFetch.ts";
 import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
@@ -564,12 +566,25 @@ const handlers: Record<Command["type"], Handler> = {
   get_thread: getThread,
   get_media: getMedia,
   summarize_thread: summarizeThread,
+  // Nothing BOT Comedy, Rooms → Import from text, file or link: turns pasted text, a file or a link into rooms. Nothing is saved
+  // here (the app shows the result in the merge-with-review sheet). The payload can hold a person's pasted list and curator
+  // numbers, so the result is short-lived like the Messages ones.
+  parse_roster: (uid, payload) => {
+    const { settings } = watchUser(uid);
+    return parseRoster(payload as ParseRosterInput, {
+      ai: {
+        text: (prompt, schema) => generateJson(uid, settings.ai, prompt, schema as Record<string, unknown>),
+        file: (prompt, schema, file) => generateJsonFromFile(uid, settings.ai, prompt, schema as Record<string, unknown>, file),
+      },
+      fetchUrl: (url) => safeFetch(url),
+    });
+  },
   // "Your voice" → Choose chats: names of every chat, short-lived like the Messages results.
   list_voice_sources: (uid) => listVoiceSourceChats(uid),
 };
 
 /** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */
-const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "get_media", "summarize_thread", "list_voice_sources"]);
+const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "get_media", "summarize_thread", "list_voice_sources", "parse_roster"]);
 
 /** The confirmation as the curator set it up: the text (in their voice), then the venue pin if that's on. */
 /** Is this comic the curator's own WhatsApp? */

@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./fixtures/blrRooms": "./src/fixtures/blrRooms.ts"
+    "./fixtures/blrRooms": "./src/fixtures/blrRooms.ts",
+    "./fixtures/curatorList": "./src/fixtures/curatorList.ts"
   },
   "scripts": {
     "test": "vitest run",

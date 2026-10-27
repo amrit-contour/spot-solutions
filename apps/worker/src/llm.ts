@@ -2,10 +2,10 @@
 // falling back to their second choice if it fails. Ollama is local; Gemini uses the curator's
 // own key (from users/{uid}/secrets/ai), or the server's GEMINI_API_KEY if they have none.
 import { GoogleGenAI } from "@google/genai";
-import type { AiRoute, AiSettings } from "@spot/shared";
+import { DEFAULT_AI_POLICY, type AiRoute, type AiSettings } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { counters, live } from "./stats.ts";
-import { AiPolicyError, planRoutes } from "./aiRouting.ts";
+import { AiPolicyError, IMPLICIT_GEMINI_MODEL, planRoutes } from "./aiRouting.ts";
 
 export const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 // Slow laptops (an old i5 with 8 GB) can take a few minutes on a cold model. Waiting longer beats failing: messages are
@@ -129,6 +129,35 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
   });
   gate = task;
   return task;
+}
+
+/** A PDF or picture to JSON. Only Gemini reads these (the local Gemma is text-only), so the account's AI policy has to allow the cloud. */
+const GEMINI_FILE_TIMEOUT_MS = 90_000;
+export async function generateJsonFromFile(uid: string | null, ai: AiSettings, prompt: string, schema: Schema, file: { mime: string; data: string }) {
+  const what = file.mime === "application/pdf" ? "PDFs" : "Images";
+  if ((ai.policy ?? DEFAULT_AI_POLICY) === "local_only") {
+    throw new AiPolicyError(`${what} need Gemini, and this account's AI policy is Local only. Paste the text instead, or change the policy in Settings → AI models.`);
+  }
+  if (!((uid && keys.get(uid)) || SERVER_GEMINI_KEY)) throw new AiPolicyError(`${what} need Gemini: add a key in Settings → AI models.`);
+  // Gemma on the Gemini API can't see files; use the account's Gemini model, or the default one.
+  const route = planRoutes(ai, true).find((r) => r.provider === "gemini" && !r.model.startsWith("gemma"));
+  const model = route?.model ?? IMPLICIT_GEMINI_MODEL;
+  const t0 = Date.now();
+  try {
+    const res = await geminiFor(uid).models.generateContent({
+      model,
+      contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: file.mime, data: file.data } }] }],
+      config: { temperature: 0, abortSignal: AbortSignal.timeout(GEMINI_FILE_TIMEOUT_MS), responseMimeType: "application/json", responseJsonSchema: schema },
+    });
+    counters.classified++;
+    live.noteAi("gemini", Date.now() - t0, false);
+    return { text: res.text ?? "", model: `gemini/${model}` };
+  } catch (err) {
+    counters.errors++;
+    live.noteAiFail();
+    live.noteError();
+    throw err;
+  }
 }
 
 export async function ollamaState() {

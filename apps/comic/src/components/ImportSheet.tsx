@@ -91,7 +91,7 @@ export function ImportSheet({ incoming, onClose }: { incoming: Incoming | null; 
           {incoming.warning && (
             <div className="flex items-start gap-3 rounded-md bg-tertiary-container p-4 text-on-tertiary-container">
               <IconWarn aria-hidden className="icon mt-0.5 size-5 flex-none" />
-              <p className="min-w-0 type-body-m">{incoming.warning}</p>
+              <p className="min-w-0 type-body-m whitespace-pre-line">{incoming.warning}</p>
             </div>
           )}
           {changes.length === 0 ? (

@@ -10,6 +10,7 @@ import { RoomCard } from "../components/RoomCard";
 import { RoomEditor } from "../components/RoomEditor";
 import { CuratorsPanel } from "../components/CuratorsPanel";
 import { ImportSheet, type Incoming } from "../components/ImportSheet";
+import { PasteImportSheet } from "../components/PasteImportSheet";
 
 const TZ = DEFAULT_SETTINGS.timezone;
 
@@ -40,6 +41,7 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Room | null>(null);
   const [incoming, setIncoming] = useState<Incoming | null>(null);
+  const [pasting, setPasting] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const date = localDate(new Date(), TZ);
 
@@ -83,6 +85,7 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
               {(close) => (
                 <>
                   <MenuItem onClick={() => { close(); file.current?.click(); }}>Import a file</MenuItem>
+                  <MenuItem onClick={() => { close(); setPasting(true); }}>Import from text, file or link…</MenuItem>
                   <MenuItem onClick={() => { close(); void starter(); }}>Load the Bangalore starter</MenuItem>
                   <MenuItem onClick={() => { close(); exportAs("json"); }} hint="JSON">Export to share</MenuItem>
                   <MenuItem onClick={() => { close(); exportAs("csv"); }} hint="CSV">Export a spreadsheet</MenuItem>
@@ -145,6 +148,7 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
       )}
 
       <RoomEditor value={editing} onClose={() => setEditing(null)} />
+      <PasteImportSheet open={pasting} onClose={() => setPasting(false)} city={store.rooms[0]?.city ?? "Bengaluru"} onParsed={(p) => setIncoming(p)} />
       <ImportSheet incoming={incoming} onClose={() => setIncoming(null)} />
     </div>
   );

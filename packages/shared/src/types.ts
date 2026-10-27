@@ -431,6 +431,7 @@ export type CommandType =
   | "get_media"
   | "summarize_thread"
   | "list_voice_sources"
+  | "parse_roster"
   | "cleanup_group"
   | "settle_round"
   | "send_ask"
