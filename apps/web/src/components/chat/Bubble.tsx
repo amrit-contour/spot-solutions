@@ -90,16 +90,20 @@ export function Bubble({
   return (
     <div className={cx("group/b flex flex-col", out ? "items-end" : "items-start")}>
       {label && <span className="mt-1.5 mb-0.5 px-1 type-label-s text-on-surface-variant">{label}</span>}
-      <div className={cx("flex max-w-[88%] items-end gap-1.5 sm:max-w-[80%]", out && "flex-row-reverse")}>
+      <div className={cx("flex max-w-[88%] items-center gap-1.5 sm:max-w-[80%]", out && "flex-row-reverse")}>
         <div
           ref={box}
+          data-press={pressed || holding || anchor ? "" : undefined}
           onContextMenu={(e) => {
             if (!onReact) return;
             e.preventDefault();
             openPicker();
           }}
+          // A long press belongs to this bubble alone: no text selection, no iOS callout or selection handles on the page.
+          onSelectCapture={(e) => (pressed || holding || anchor) && e.preventDefault()}
           onPointerDown={(e) => {
             if (!onReact || e.pointerType === "mouse") return;
+            window.getSelection()?.removeAllRanges();
             setPressed(true);
             const x = e.clientX;
             const y = e.clientY;
@@ -140,7 +144,7 @@ export function Bubble({
           }}
           onPointerCancel={() => (press.current?.open ? (setHolding(false), setHover(null), (press.current = null)) : cancel())}
           className={cx(
-            "relative min-w-0 rounded-lg type-body-m [-webkit-touch-callout:none] pointer-coarse:select-none",
+            "relative min-w-0 rounded-lg type-body-m [-webkit-touch-callout:none] pointer-coarse:[-webkit-user-select:none] pointer-coarse:select-none pointer-coarse:[&_*]:[-webkit-touch-callout:none] pointer-coarse:[&_*]:select-none",
             "transition-[transform,box-shadow] ease-[cubic-bezier(0.23,1,0.32,1)]",
             // Pressing sinks slowly (the hold is the feedback); letting go or opening is quick.
             pressed ? "scale-[0.96] duration-[400ms]" : anchor ? "scale-[1.03] shadow-lg duration-200" : "duration-150",
@@ -175,7 +179,7 @@ export function Bubble({
           <div className={cx("mt-0.5 text-right type-label-s tabular", photo && "px-2.5 pb-0.5", sticker ? "text-on-surface-variant" : "opacity-60")}>{clock(m.at, tz)}</div>
         </div>
         {chips.length > 0 && (
-          // Beside the bubble on its inner side (right of an incoming one, left of your own), flush with its bottom edge.
+          // Beside the bubble on its inner side (right of an incoming one, left of your own), vertically centred on it.
           <button
             type="button"
             onClick={() => setWho(true)}

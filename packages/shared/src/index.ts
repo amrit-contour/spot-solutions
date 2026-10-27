@@ -53,3 +53,4 @@ export * from "./peopleSearch.ts";
 export * from "./profilePics.ts";
 export * from "./appVersion.ts";
 export * from "./comicMerge.ts";
+export * from "./chatName.ts";

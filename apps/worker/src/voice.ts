@@ -15,6 +15,7 @@ import {
   pickVoiceSamples,
   renderTemplate,
   voiceDraftProblem,
+  type Comic,
   type Settings,
   type VoiceChatLike,
   type VoiceFacts,
@@ -26,6 +27,7 @@ import { generateJson } from "./llm.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
 import { dropNeverRead } from "./neverRead.ts";
+import { nameChats } from "./chatNames.ts";
 
 const PER_CHAT = 60;
 const DRAFT_TIMEOUT_MS = 30_000;
@@ -48,7 +50,12 @@ const asVoiceChat = (c: WAWebJS.Chat): VoiceChatLike & { chat: WAWebJS.Chat } =>
 export async function listVoiceSourceChats(uid: string) {
   const client = sessions.require(uid);
   const chats = await dropNeverRead(uid, client, await client.getChats());
-  return { chats: listVoiceSources(chats.map(asVoiceChat), client.info?.wid?._serialized), at: Date.now() };
+  // WhatsApp's own chat name is only a number on a freshly linked session (contacts not synced) or for an @lid: name people from your
+  // Comics, their contact or profile, and what this account knew before (nameChats).
+  const comics = (await col(uid, "comics").get()).docs.map((d) => ({ ...(d.data() as Comic), id: d.id }));
+  const mapped = chats.map(asVoiceChat);
+  const names = await nameChats(uid, client, mapped, comics).catch(() => new Map<string, string>());
+  return { chats: listVoiceSources(mapped.map((c) => ({ ...c, name: names.get(c.id) ?? c.name })), client.info?.wid?._serialized), at: Date.now() };
 }
 
 /** Read the curator's own sent messages (DMs and show groups) and build their voice profile. */

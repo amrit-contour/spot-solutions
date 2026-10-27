@@ -21,6 +21,7 @@ import {
   groupPostMessage,
   groupPostVars,
   messageType,
+  nextRun,
   nextShowDate,
   whenLabel,
   lastSpot,
@@ -622,7 +623,6 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
   const pocTags = (show?.pocs ?? []).map((id) => ({ label: `@${comicsById.get(id)?.name.split(/\s+/)[0] ?? "POC"}`, comicId: id }));
   const vars = show ? groupPostVars(show, venue, showDate, names, pocTags.map((t) => t.label).join(", ")) : {};
   const posts = show?.groupPosts ?? [];
-  const live = posts.filter((p) => p.enabled).length;
   // Edited as a draft while the sheet is open (no write per keystroke), saved when it closes.
   const [draftPosts, setDraftPosts] = useState<GroupPost[] | null>(null);
   const openSchedule = () => setDraftPosts(posts);
@@ -673,35 +673,88 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
           <IconButton icon={IconClock} label="Scheduled posts" onClick={openSchedule} disabled={!show} />
         </>
       )}
-      context={
+      pinned={
         show && (
-          <section aria-label="Scheduled posts" className="my-3 rounded-lg bg-surface-low px-4 py-3 lg:bg-surface-container">
+          <GroupContext
+            group={group}
+            show={show}
+            groupShows={groupShows}
+            onShow={setShowId}
+            posts={posts}
+            draftPosts={draftPosts}
+            onDraft={setDraftPosts}
+            open={scheduleOpen}
+            onEdit={openSchedule}
+            onClose={closeSchedule}
+          />
+        )
+      }
+      templates={(pick, trigger) => <SnippetMenu vars={vars} messages={[...GROUP_POST_KEYS]} onPick={pick} trigger={trigger} />}
+    />
+  );
+}
+
+const groupCardKey = (id: string) => `spot.groupCard.${id}`;
+
+/** A group's scheduled posts, pinned under the header: one line when folded ("3 scheduled posts · next Mon 5:00 PM"), the list and actions when open. Remembered per chat. */
+function GroupContext({ group, show, groupShows, onShow, posts, draftPosts, onDraft, open, onEdit, onClose }: { group: GroupThreadItem; show: Show; groupShows: Show[]; onShow: (id: string) => void; posts: GroupPost[]; draftPosts: GroupPost[] | null; onDraft: (p: GroupPost[]) => void; open: boolean; onEdit: () => void; onClose: () => void }) {
+  const { settings } = useApp();
+  const now = useNow(60_000);
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(groupCardKey(group.groupId)) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setExpanded((v) => {
+      try {
+        localStorage.setItem(groupCardKey(group.groupId), v ? "0" : "1");
+      } catch {
+        /* private mode: it just won't be remembered */
+      }
+      return !v;
+    });
+  const on = posts.filter((p) => p.enabled);
+  const today = localNow(new Date(now), settings.timezone).date;
+  const next = on.map((p) => nextRun(show, p, today)).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+  const nextLabel = next ? `${next.date === today ? "today" : DAY_SHORT[new Date(`${next.date}T12:00:00`).getDay()]} ${formatTime(next.time)}` : "";
+  const summary = on.length ? `${on.length} scheduled post${on.length > 1 ? "s" : ""}${nextLabel ? ` · next ${nextLabel}` : ""}` : "Nothing scheduled";
+  const id = `group-card-${group.groupId}`;
+  return (
+    <section aria-label="Scheduled posts" className="mx-3 mt-2 mb-1 flex-none rounded-lg bg-surface-low lg:mx-4 lg:bg-surface-container">
+      <button type="button" onClick={toggle} aria-expanded={expanded} aria-controls={id} className="state-layer pressable flex min-h-11 w-full items-center gap-2 rounded-lg px-3.5 text-left">
+        <IconClock className={cx("icon size-4 flex-none", on.length ? "text-primary" : "text-on-surface-variant/60")} />
+        <span className="min-w-0 flex-1 truncate type-label-l">{summary}</span>
+        <IconArrowDown className={cx("icon size-5 flex-none text-on-surface-variant transition-transform duration-200 ease-out", expanded && "rotate-180")} />
+      </button>
+      <div id={id} inert={!expanded} className={cx("grid transition-[grid-template-rows] duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none", expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex max-h-[46dvh] flex-col gap-2 overflow-y-auto overscroll-contain px-4 pt-0.5 pb-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="mr-1 type-label-m text-on-surface-variant">Scheduled</span>
-              <Chip icon={IconClock}>{live ? `${live} post${live > 1 ? "s" : ""} on` : "Nothing scheduled"}</Chip>
-              {groupShows.length > 1 && <Select value={show.id} onChange={setShowId} options={groupShows.map((s) => ({ value: s.id, label: s.name }))} />}
-              <Button size="sm" variant="text" className="ml-auto" onClick={openSchedule}>
+              {groupShows.length > 1 && <Select value={show.id} onChange={onShow} options={groupShows.map((s) => ({ value: s.id, label: s.name }))} />}
+              <Button size="sm" variant="tonal" className="ml-auto" onClick={onEdit}>
                 {posts.length ? "Edit" : "Schedule"}
               </Button>
             </div>
-            {posts.filter((p) => p.enabled).length > 0 && (
-              <ul className="mt-2 flex flex-col gap-0.5 type-body-s text-on-surface-variant">
-                {[...posts].filter((p) => p.enabled).sort((a, b) => b.daysBefore - a.daysBefore || a.time.localeCompare(b.time)).map((p) => (
+            {on.length > 0 && (
+              <ul className="flex flex-col gap-0.5 type-body-s text-on-surface-variant">
+                {[...on].sort((a, b) => b.daysBefore - a.daysBefore || a.time.localeCompare(b.time)).map((p) => (
                   <li key={p.id} className="truncate">
                     {whenLabel(p.daysBefore)}, {formatTime(p.time)} · {p.template === "custom" ? messageSummary(groupPostMessage(settings, p)) : messageType(p.template).label}
                   </li>
                 ))}
               </ul>
             )}
-            <Sheet open={scheduleOpen} onClose={closeSchedule} title={`Scheduled posts · ${show.name}`} footer={<Button onClick={closeSchedule}>Done</Button>}>
-              <p className="mb-4 type-body-m text-on-surface-variant">Your server posts these in {group.name} at the times you pick.</p>
-              <GroupPostsEditor show={show} posts={draftPosts ?? posts} onChange={setDraftPosts} />
-            </Sheet>
-          </section>
-        )
-      }
-      templates={(pick, trigger) => <SnippetMenu vars={vars} messages={[...GROUP_POST_KEYS]} onPick={pick} trigger={trigger} />}
-    />
+          </div>
+        </div>
+      </div>
+      <Sheet open={open} onClose={onClose} title={`Scheduled posts · ${show.name}`} footer={<Button onClick={onClose}>Done</Button>}>
+        <p className="mb-4 type-body-m text-on-surface-variant">Your server posts these in {group.name} at the times you pick.</p>
+        <GroupPostsEditor show={show} posts={draftPosts ?? posts} onChange={onDraft} />
+      </Sheet>
+    </section>
   );
 }
 
@@ -958,9 +1011,8 @@ function Conversation({
       )}
     >
       <header className="flex flex-none items-center gap-1 border-b border-outline-variant bg-surface px-1.5 py-1.5 lg:gap-2 lg:bg-surface-low lg:px-3 lg:py-2">
-        <button type="button" onClick={onBack} aria-label="Back to chats" className="state-layer pressable -mr-1 inline-flex h-10 flex-none items-center rounded-full pr-3 pl-0.5 type-label-l text-primary lg:hidden">
+        <button type="button" onClick={onBack} aria-label="Back to chats" className="state-layer pressable inline-flex size-11 flex-none items-center justify-center rounded-full text-primary lg:hidden">
           <IconArrowLeft className="icon size-7" />
-          Chats
         </button>
         {header(sync.label)}
         <IconButton icon={IconRefresh} label={newest.loading ? "Syncing this chat" : "Sync this chat"} onClick={() => void newest.refresh(true)} disabled={newest.loading} className={cx(newest.loading && "[&_svg]:animate-spin")} />
