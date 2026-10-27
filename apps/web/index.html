@@ -14,7 +14,16 @@
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- iOS status bar: opaque, so the page never runs underneath it (iOS 26 blurs anything that sits there). Black bar in dark
+         mode, the default light bar in light mode; picked before first paint from the saved theme. -->
+    <script>
+      (function () {
+        var t = "system";
+        try { t = localStorage.getItem("theme") || "system"; } catch (e) {}
+        var dark = t === "dark" || (t !== "light" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.write('<meta name="apple-mobile-web-app-status-bar-style" content="' + (dark ? "black" : "default") + '" />');
+      })();
+    </script>
     <meta name="apple-mobile-web-app-title" content="nBOT Curate" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Nothing BOT Curate reads your WhatsApp DMs, finds open-mic spot requests with a Gemma model running on your own laptop, and builds the lineup for you." />
