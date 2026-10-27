@@ -183,7 +183,7 @@ export function planAsks(rooms: Room[], curators: Curator[], range: { from: stri
         const id = askId(room.id, show.id, showDate);
         const doc = asks.get(id);
         if (doc && askHandled(doc)) continue;
-        if (spots.some((s) => s.roomId === room.id && s.showId === show.id && s.date === showDate)) continue;
+        if (spots.some((s) => s.roomId === room.id && s.date === showDate && (s.showId === show.id || (s.source === "regular" && !s.showId)))) continue;
         const c = curatorFor(show, weekday, curators, showDate);
         const times = plan?.times?.length ? plan.times : show.times;
         const time = times.length === 1 ? times[0] : undefined;

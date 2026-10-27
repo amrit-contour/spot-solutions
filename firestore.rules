@@ -239,7 +239,7 @@ service cloud.firestore {
         allow read, write: if isOwner(uid) && coll in ['venues', 'shows', 'comics', 'requests', 'lineups', 'actions', 'notices'];
         // Nothing BOT Comedy (the comic's own data, owner only; shows are embedded in the room doc): rooms, curators, asks,
         // mySpots, spotAlerts (the worker writes new ones; the comic clears them), watchedGroups, rosterFollows.
-        allow read, write: if isOwner(uid) && coll in ['rooms', 'curators', 'asks', 'mySpots', 'spotAlerts', 'groupUpdates', 'watchedGroups', 'rosterFollows'];
+        allow read, write: if isOwner(uid) && coll in ['rooms', 'curators', 'asks', 'mySpots', 'regularSpots', 'spotAlerts', 'groupUpdates', 'watchedGroups', 'rosterFollows'];
       }
     }
   }

@@ -26,6 +26,7 @@ import {
   type PlannedAsk,
   type Room,
 } from "@spot/shared";
+import { mergeRegulars, type RegularSpot } from "@spot/shared";
 import { col, db, userRef } from "./firebase.ts";
 import { AiPolicyError } from "./aiRouting.ts";
 import { generateJson } from "./llm.ts";
@@ -47,18 +48,21 @@ const withId = <T,>(d: FirebaseFirestore.QueryDocumentSnapshot) => ({ ...(d.data
 
 /** The comic's data the worker needs, read fresh each round (a few small collections). */
 async function loadComic(uid: string) {
-  const [rooms, curators, asks, spots, user] = await Promise.all([
+  const [rooms, curators, asks, spots, regulars, user] = await Promise.all([
     col(uid, "rooms").get(),
     col(uid, "curators").get(),
     col(uid, "asks").where("showDate", ">=", isoAddDays(localDate(new Date(), watchUser(uid).settings.timezone), -30)).get(),
     col(uid, "mySpots").where("date", ">=", isoAddDays(localDate(new Date(), watchUser(uid).settings.timezone), -45)).get(),
+    col(uid, "regularSpots").get(),
     userRef(uid).get(),
   ]);
+  // Regular spots are computed, not stored per date: fold in the ones in the planning window so asks skip those shows.
+  const today = localDate(new Date(), watchUser(uid).settings.timezone);
   return {
     rooms: rooms.docs.map((d) => withId<Room>(d)),
     curators: curators.docs.map((d) => withId<Curator>(d)),
     asks: asks.docs.map((d) => withId<Ask>(d)),
-    spots: spots.docs.map((d) => withId<MySpot>(d)),
+    spots: mergeRegulars(spots.docs.map((d) => withId<MySpot>(d)), regulars.docs.map((d) => withId<RegularSpot>(d)), today, isoAddDays(today, PLAN_DAYS)),
     template: (user.data()?.comic?.askTemplate as string | undefined) ?? undefined,
   };
 }

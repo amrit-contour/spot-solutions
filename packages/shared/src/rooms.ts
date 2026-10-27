@@ -245,6 +245,8 @@ export interface MySpot {
   source: SpotSource;
   askId?: string;
   alertId?: string;
+  /** source "regular": the rule (users/{uid}/regularSpots/{id}) this date came from. */
+  regularId?: string;
   /** null until the post-show check. */
   happened?: boolean | null;
   status?: "booked" | "cancelled";

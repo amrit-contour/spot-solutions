@@ -5,6 +5,7 @@
 // the author or anything else is read. Messages that aren't one of the four kinds are dropped without being stored. What is kept
 // is the parsed fields and a short quote, never the chat.
 import type WAWebJS from "whatsapp-web.js";
+import { mergeRegulars, type RegularSpot } from "@spot/shared";
 import {
   alertExpiry,
   alertIdFor,
@@ -256,7 +257,10 @@ async function offerAlert(uid: string, msg: GroupMsg, o: Extract<Reading, { kind
     receivedAt: c.now,
   };
   // The only filter: a spot that clashes in time with one already booked is kept, flagged, and not pushed.
-  const spots = (await col(uid, "mySpots").where("date", "==", o.date).get()).docs.map((d) => ({ ...(d.data() as MySpot), id: d.id }));
+  const stored = (await col(uid, "mySpots").where("date", "==", o.date).get()).docs.map((d) => ({ ...(d.data() as MySpot), id: d.id }));
+  // Regular spots are computed, not stored one per date: fold that date's occurrences in.
+  const regulars = (await col(uid, "regularSpots").get()).docs.map((d) => ({ ...(d.data() as RegularSpot), id: d.id }));
+  const spots = mergeRegulars(stored, regulars, o.date, o.date);
   const clash = clashNote(alert, spots);
   if (clash) alert.clash = clash;
   try {
