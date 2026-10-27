@@ -1,7 +1,9 @@
-// Messages: chat with the comics on your list without leaving the app. Chats are read live from your own WhatsApp
-// (through your server) when you open the page, and are never saved: the command results that carry them are deleted as soon
-// as they are read (docs/architecture.md "Messages"). Only people in Comics are listed.
+// Messages: chat with the comics on your list without leaving the app. Chats are read live from your own WhatsApp (through your
+// server) when you open the page. The command results that carry them are deleted as soon as they are read, and nothing is
+// written to Firestore. This device keeps a capped copy (IndexedDB, wiped at sign-out) so the list and each chat open at once
+// and then sync (docs/architecture.md "Messages"). Only people in Comics are listed.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { updateDoc, where } from "firebase/firestore";
 import { toast } from "sonner";
@@ -23,69 +25,111 @@ import {
   whenLabel,
   lastSpot,
   localNow,
+  chatSyncView,
+  effectiveAwaiting,
+  toggleMyReaction,
+  type ChatMark,
   type GetThreadResult,
   type GroupPost,
   type GroupThreadItem,
   type Lineup,
   type ListThreadsResult,
+  type ReactionChip,
   type RichMessage,
   type Show,
   type SpotRequest,
   type SummarizeThreadResult,
-  type ThreadMediaResult,
   type ThreadAction,
+  type ThreadMediaResult,
   type ThreadMember,
   type ThreadItem,
   type ThreadMessage,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { timeAgo, useCollection, useNow, userDoc } from "../lib/data";
+import { useCollection, useNow, userDoc } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
-import { demoSource, liveSource, type ChatSource, type MentionTag } from "../lib/messages";
+import { demoSource, liveSource, type ChatSource, type MentionTag, type OutPhoto } from "../lib/messages";
 import { placeAsTold, placeComic } from "../lib/lineup";
-import { PageHeader, appScroller } from "@spot/ui";
+import { PageHeader } from "@spot/ui";
 import { Menu, MenuItem } from "@spot/ui";
 import { COMIC_MESSAGE_KEYS, SnippetMenu } from "../components/SnippetMenu";
 import { useNeverRead } from "../lib/neverRead";
+import { listKey, readCached, saveList, saveThread, threadKey as threadCacheKey } from "../lib/chatCache";
+import { useChatMarks } from "../lib/chatMarks";
+import { useMediaQuery, useVisualViewportFrame } from "../lib/viewport";
+import { Bubble, PendingBubble } from "../components/chat/Bubble";
+import { PhotoViewer } from "../components/chat/media";
+import { PullIndicator, usePullToRefresh } from "../components/chat/PullToRefresh";
+import { SwipeRow, type SwipeAction } from "../components/chat/SwipeRow";
+import { SyncBanner, useSyncGate } from "../components/chat/SyncGate";
 import { GroupPostsEditor } from "../components/GroupPosts";
 import { RequestPills, requestPills } from "../components/RequestTags";
 import { messageSummary } from "@spot/ui";
 import { ChatComposer, type Outgoing } from "../components/ChatComposer";
 import { PinCard, PollCard, WaText } from "@spot/ui";
 import { Avatar, Button, Chip, ConfirmDialog, Empty, IconButton, Segmented, Select, Sheet, Spinner, cx } from "@spot/ui";
-import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconEye, IconGroup, IconMic, IconRefresh, IconSearch, IconServer, IconSkip, IconSparkle } from "@spot/ui";
+import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconEye, IconGroup, IconMic, IconRefresh, IconMenuDots, IconSearch, IconServer, IconSkip, IconSparkle } from "@spot/ui";
 
 const OPEN = ["new", "acked"];
 
-/** Data that loads on demand and refreshes while the tab is visible. A result never outlives its key (the open chat). */
-function useLive<T>(load: () => Promise<T>, key: string, enabled: boolean, everyMs: number) {
-  const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: enabled });
+
+interface LiveCache<T> {
+  read: () => Promise<{ savedAt: number; data: T } | null>;
+  write: (data: T) => Promise<void>;
+}
+
+/**
+ * Data that loads on demand and refreshes while the tab is visible. A result never outlives its key (the open chat). With a
+ * `cache` the saved copy shows at once while the real read runs; `lastOkAt` stays 0 until this visit has read WhatsApp for real.
+ */
+function useLive<T>(load: () => Promise<T>, key: string, enabled: boolean, everyMs: number, cache?: LiveCache<T>) {
+  const [state, setState] = useState<{ data: T | null; error: string | null; loading: boolean; lastOkAt: number; readStartedAt: number }>({ data: null, error: null, loading: enabled, lastOkAt: 0, readStartedAt: 0 });
   const loadRef = useRef(load);
   loadRef.current = load;
+  const cacheRef = useRef(cache);
+  cacheRef.current = cache;
   const keyRef = useRef(key);
   keyRef.current = key;
-  const inFlight = useRef<string | null>(null);
+  const flight = useRef<{ k: string; p: Promise<void> } | null>(null);
   const lastAt = useRef(0);
-  const refresh = useCallback(async () => {
+  /** `fresh`: start a new read even if one is running (it may have begun before what you just did). */
+  const refresh = useCallback(async (fresh = false): Promise<void> => {
     const k = keyRef.current;
-    if (inFlight.current === k) return;
-    inFlight.current = k;
-    setState((s) => ({ ...s, loading: true }));
-    try {
-      const data = await loadRef.current();
-      if (k === keyRef.current) {
-        lastAt.current = Date.now();
-        setState({ data, error: null, loading: false });
-      }
-    } catch (e) {
-      if (k === keyRef.current) setState((s) => ({ ...s, error: (e as Error).message, loading: false }));
-    } finally {
-      if (inFlight.current === k) inFlight.current = null;
+    if (flight.current?.k === k) {
+      if (!fresh) return flight.current.p;
+      await flight.current.p.catch(() => undefined);
+      if (k !== keyRef.current) return;
     }
+    const started = Date.now();
+    let p!: Promise<void>;
+    p = (async () => {
+      setState((s) => ({ ...s, loading: true }));
+      try {
+        const data = await loadRef.current();
+        if (k === keyRef.current) {
+          lastAt.current = Date.now();
+          setState({ data, error: null, loading: false, lastOkAt: Date.now(), readStartedAt: started });
+          void cacheRef.current?.write(data).catch(() => undefined);
+        }
+      } catch (e) {
+        if (k === keyRef.current) setState((s) => ({ ...s, error: (e as Error).message, loading: false }));
+      } finally {
+        if (flight.current?.p === p) flight.current = null;
+      }
+    })();
+    flight.current = { k, p };
+    return p;
   }, []);
   useEffect(() => {
-    setState({ data: null, error: null, loading: enabled });
+    setState({ data: null, error: null, loading: enabled, lastOkAt: 0, readStartedAt: 0 });
+    lastAt.current = 0;
     if (!enabled) return;
+    const k = key;
+    // The saved copy first (if this visit hasn't read anything yet), then the real read.
+    void cacheRef.current
+      ?.read()
+      .then((c) => c && keyRef.current === k && setState((s) => (s.data ? s : { ...s, data: c.data })))
+      .catch(() => undefined);
     void refresh();
     const tick = () => document.visibilityState === "visible" && Date.now() - lastAt.current > everyMs - 1000 && void refresh();
     const t = setInterval(tick, everyMs);
@@ -115,7 +159,7 @@ export function Messages() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "needs" | "groups">(() => (selectedGroup ? "groups" : "all"));
   const needsReply = filter === "needs";
-  const now = useNow(30_000);
+  const now = useNow(15_000);
 
   const demoData = useRef({ comics, requests: requests.data, lineups: lineups.data, shows, now });
   demoData.current = { comics, requests: requests.data, lineups: lineups.data, shows, now };
@@ -123,10 +167,23 @@ export function Messages() {
 
   const ready = demo || (workerOnline && session?.status === "ready");
   // The demo's conversations come from the sandbox's requests, so they load with the requests.
-  const list = useLive<ListThreadsResult>(() => source.list(), `${uid}:${demo}:${demo ? `${requests.data.length}:${comics.length}:${lineups.data.length}` : ""}`, ready && (!demo || !requests.loading), 60_000);
-  const threads = useMemo(() => list.data?.threads ?? [], [list.data]);
+  const listCache = useMemo<LiveCache<ListThreadsResult>>(() => ({ read: () => readCached<ListThreadsResult>(listKey(uid)), write: (d) => saveList(uid, d) }), [uid]);
+  const list = useLive<ListThreadsResult>(() => source.list(), `${uid}:${demo}:${demo ? `${requests.data.length}:${comics.length}:${lineups.data.length}` : ""}`, ready && (!demo || !requests.loading), 60_000, listCache);
+  // "Done" / "Needs reply" flags live on this device only; they bend the list's own needs-reply answer until something new arrives.
+  const marks = useChatMarks(uid);
+  const threads = useMemo(() => (list.data?.threads ?? []).map((t) => ({ ...t, awaitingYou: effectiveAwaiting(t, marks.marks[t.comicId]) })), [list.data, marks.marks]);
+  useEffect(() => {
+    if (list.lastOkAt && list.data) marks.prune(list.data.threads.map((t) => ({ id: t.comicId, at: t.at })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.data, list.lastOkAt]);
   const shown = useMemo(() => filterThreads(threads, q).filter((t) => !needsReply || t.awaitingYou), [threads, q, needsReply]);
   const waiting = threads.filter((t) => t.awaitingYou).length;
+  const sync = chatSyncView({ lastOkAt: list.lastOkAt, loading: list.loading, error: list.error, now }, list.data?.at);
+  const gate = useSyncGate(sync.ok, () => void list.refresh(true), list.data?.at ?? null, now, settings.timezone);
+  const nr = useNeverRead();
+  const [neverFor, setNeverFor] = useState<ThreadItem | null>(null);
+  const neverComic = neverFor ? comicsById.get(neverFor.comicId) : undefined;
+  const wide = useMediaQuery("(min-width: 1024px)");
   const groups = useMemo(() => list.data?.groups ?? [], [list.data]);
   const shownGroups = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -141,6 +198,25 @@ export function Messages() {
   const anyOpen = Boolean(selected || selectedGroup);
   const close = () => setParams({}, { replace: true });
   const comic = selected ? comicsById.get(selected) : undefined;
+  const pull = usePullToRefresh(ready && !anyOpen && !wide && filter !== "groups", () => list.refresh(true));
+
+  // The row's three actions, each asking first when the list isn't synced. Done and Needs reply can be undone from the toast.
+  const rowActions = (t: ThreadItem) => {
+    const before: ChatMark | undefined = marks.marks[t.comicId];
+    const undo = (what: string) => toast.success(what, { action: { label: "Undo", onClick: () => marks.restore(t.comicId, before) } });
+    return {
+      done: () => gate.guard(() => (marks.done(t.comicId, t), undo(`${t.name.split(/\s+/)[0]} marked done`)), { verb: "mark it done", anyway: "Mark done anyway" }),
+      toggle: () =>
+        gate.guard(
+          () => {
+            marks.toggle(t.comicId, t);
+            undo(t.awaitingYou ? `${t.name.split(/\s+/)[0]} cleared` : `${t.name.split(/\s+/)[0]} needs a reply`);
+          },
+          { verb: t.awaitingYou ? "clear it" : "flag it", anyway: "Continue anyway" },
+        ),
+      never: () => gate.guard(() => setNeverFor(t), { verb: "add them to Never read", anyway: "Continue anyway" }),
+    };
+  };
 
   return (
     <div className="w-full">
@@ -148,8 +224,8 @@ export function Messages() {
       <div className={anyOpen ? "hidden lg:contents" : "contents"}>
         <PageHeader
           title="Messages"
-          subtitle="Read live from your WhatsApp, never saved."
-          actions={ready && <IconButton icon={IconRefresh} label="Refresh chats" onClick={() => void list.refresh()} disabled={list.loading} className={cx("size-9", list.loading && "[&_svg]:animate-spin")} />}
+          subtitle={ready ? <span aria-live="polite">{sync.label}</span> : "Read live from your WhatsApp."}
+          actions={ready && <IconButton icon={IconRefresh} label={list.loading ? "Syncing chats" : "Sync chats"} onClick={() => void list.refresh(true)} disabled={list.loading} className={cx("size-9", list.loading && "[&_svg]:animate-spin")} />}
         />
       </div>
 
@@ -159,6 +235,7 @@ export function Messages() {
             <Unavailable offline={!workerOnline} />
           ) : (
             <>
+              {!sync.ok && list.data && <div className="-mx-4 sm:-mx-8 lg:mx-0 lg:overflow-hidden lg:rounded-lg"><SyncBanner savedAt={list.data.at} now={now} tz={tz} syncing={sync.syncing} onRetry={() => void list.refresh(true)} /></div>}
               {demo && <p className="mb-3 rounded-lg bg-tertiary-container px-4 py-3 type-body-s text-on-tertiary-container">Sample chats built from the demo's requests. A real account shows your WhatsApp conversations here.</p>}
               <div className="sticky top-[var(--page-header-h,0px)] z-20 -mx-4 flex flex-col gap-2 bg-surface px-4 pt-2 pb-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:px-0">
                 <label className="relative block">
@@ -186,6 +263,7 @@ export function Messages() {
                 />
               </div>
               <div className="min-h-0 flex-1 lg:overflow-y-auto lg:overscroll-contain">
+                <PullIndicator pull={pull.pull} busy={pull.busy} />
                 {filter === "groups" ? (
                   list.loading && !list.data ? (
                     <ListSkeleton />
@@ -217,12 +295,12 @@ export function Messages() {
                 ) : (
                   <ul className="flex flex-col pt-1" aria-live="polite">
                     {shown.map((t) => (
-                      <ThreadRow key={t.comicId} t={t} active={t.comicId === selected} now={now} tz={tz} onOpen={() => open(t.comicId)} />
+                      <ThreadRow key={t.comicId} t={t} active={t.comicId === selected} now={now} tz={tz} onOpen={() => open(t.comicId)} actions={rowActions(t)} />
                     ))}
                   </ul>
                 )}
                 {list.data?.neverRead?.length ? <NeverReadFold items={list.data.neverRead} /> : null}
-                {list.data && !demo && <p className="px-2 pt-3 pb-1 type-body-s text-on-surface-variant">Updated {timeAgo(list.data.at, now)}. Unread counts come from WhatsApp; opening a chat here doesn't mark it read.</p>}
+                {list.data && !demo && <p className="px-2 pt-3 pb-1 type-body-s text-on-surface-variant">Unread counts come from WhatsApp; opening a chat here doesn't mark it read. A copy of your chats is kept on this device only and cleared when you sign out.</p>}
               </div>
             </>
           )}
@@ -257,6 +335,21 @@ export function Messages() {
           )}
         </section>
       </div>
+      {gate.dialog}
+      <ConfirmDialog
+        open={Boolean(neverFor)}
+        onClose={() => setNeverFor(null)}
+        title={`Never read ${neverFor?.name ?? ""}?`}
+        confirmLabel="Never read"
+        onConfirm={async () => {
+          if (!neverFor || !neverComic) throw new Error("That person isn't in your Comics list.");
+          await nr.add([neverComic.id, neverComic.chatId].filter((x): x is string => Boolean(x)).map((id) => ({ id, kind: "person" as const, name: neverComic.name })));
+          toast.success(`${neverComic.name} added to Never read`);
+          void list.refresh(true);
+        }}
+      >
+        Their messages are skipped: never read, never sent to AI, never stored. They are on your Comics list, so their spot requests will be ignored. This chat disappears from Messages. Undo it any time in Settings → Rules &amp; replies → Never read.
+      </ConfirmDialog>
     </div>
   );
 }
@@ -342,35 +435,66 @@ function GroupRow({ g, active, now, tz, onOpen }: { g: GroupThreadItem; active: 
   );
 }
 
-function ThreadRow({ t, active, now, tz, onOpen }: { t: ThreadItem; active: boolean; now: number; tz: string; onOpen: () => void }) {
+function ThreadRow({ t, active, now, tz, onOpen, actions }: { t: ThreadItem; active: boolean; now: number; tz: string; onOpen: () => void; actions: { done: () => void; toggle: () => void; never: () => void } }) {
+  // Phones: swipe left for Done and Never read, right for Needs reply. Everyone: the ⋯ menu; a mouse also gets a Done button on hover.
+  const left: SwipeAction[] = [{ key: "needs", label: t.awaitingYou ? "Clear" : "Needs reply", icon: t.awaitingYou ? IconCheck : IconChat, tone: "secondary", run: actions.toggle }];
+  const right: SwipeAction[] = [
+    ...(t.awaitingYou ? [{ key: "done", label: "Done", icon: IconCheck, tone: "primary" as const, run: actions.done }] : []),
+    { key: "never", label: "Never read", icon: IconEye, tone: "error", run: actions.never },
+  ];
   return (
-    <li>
-      <button
-        onClick={onOpen}
-        aria-current={active ? "true" : undefined}
-        className={cx("state-layer flex min-h-[4.5rem] w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left", active && "bg-secondary-container")}
-      >
-        <Avatar name={t.name} size={44} tone={t.awaitingYou ? "primary" : "secondary"} />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2">
-            <span className={cx("min-w-0 flex-1 truncate type-title-m", !t.awaitingYou && !t.unread && "font-medium")}>{t.name}</span>
-            <span className={cx("flex-none type-label-m tabular", t.unread ? "text-primary" : "text-on-surface-variant")}>{listTime(t.at, now, tz)}</span>
-          </span>
-          <span className="mt-0.5 flex items-center gap-2">
-            <span className={cx("min-w-0 flex-1 truncate type-body-m", t.awaitingYou ? "text-on-surface" : "text-on-surface-variant")}>
-              {t.fromMe && <span className="text-on-surface-variant">You: </span>}
-              {t.snippet || "No messages yet"}
+    <li className="group/r relative">
+      <SwipeRow left={left} right={right}>
+        <button
+          onClick={onOpen}
+          aria-current={active ? "true" : undefined}
+          className={cx("state-layer flex min-h-[4.5rem] w-full items-center gap-3 rounded-lg py-2.5 pr-10 pl-2 text-left", active && "bg-secondary-container")}
+        >
+          <Avatar name={t.name} size={44} tone={t.awaitingYou ? "primary" : "secondary"} />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline gap-2">
+              <span className={cx("min-w-0 flex-1 truncate type-title-m", !t.awaitingYou && !t.unread && "font-medium")}>{t.name}</span>
+              <span className={cx("flex-none type-label-m tabular", t.unread ? "text-primary" : "text-on-surface-variant")}>{listTime(t.at, now, tz)}</span>
             </span>
-            {t.unread > 0 && (
-              <span className="grid min-w-5 flex-none place-items-center rounded-full bg-primary px-1.5 type-label-s leading-5 text-on-primary tabular">
-                {t.unread}
-                <span className="sr-only"> unread</span>
+            <span className="mt-0.5 flex items-center gap-2">
+              <span className={cx("min-w-0 flex-1 truncate type-body-m", t.awaitingYou ? "text-on-surface" : "text-on-surface-variant")}>
+                {t.fromMe && <span className="text-on-surface-variant">You: </span>}
+                {t.snippet || "No messages yet"}
               </span>
-            )}
+              {t.unread > 0 && (
+                <span className="grid min-w-5 flex-none place-items-center rounded-full bg-primary px-1.5 type-label-s leading-5 text-on-primary tabular">
+                  {t.unread}
+                  <span className="sr-only"> unread</span>
+                </span>
+              )}
+            </span>
+            {t.awaitingYou && <span className="mt-1 inline-flex items-center gap-1 type-label-s text-primary">Their message is waiting for your reply</span>}
           </span>
-          {t.awaitingYou && <span className="mt-1 inline-flex items-center gap-1 type-label-s text-primary">Their message is waiting for your reply</span>}
-        </span>
-      </button>
+        </button>
+        <div className="absolute inset-y-0 right-0.5 flex items-center gap-0.5">
+          {t.awaitingYou && (
+            <button type="button" onClick={actions.done} aria-label={`Mark ${t.name} done`} title="Done" className="state-layer hidden size-8 place-items-center rounded-full bg-surface-container text-on-surface-variant opacity-0 transition-opacity duration-150 group-hover/r:opacity-100 focus-visible:opacity-100 pointer-fine:grid">
+              <IconCheck className="icon size-5" />
+            </button>
+          )}
+          <Menu
+            align="right"
+            trigger={(toggle) => (
+              <button type="button" onClick={toggle} aria-label={`More for ${t.name}`} aria-haspopup="menu" className="state-layer grid size-8 place-items-center rounded-full text-on-surface-variant pointer-fine:opacity-0 pointer-fine:transition-opacity pointer-fine:duration-150 group-focus-within/r:opacity-100 group-hover/r:opacity-100">
+                <IconMenuDots className="icon size-5" />
+              </button>
+            )}
+          >
+            {(close) => (
+              <>
+                {t.awaitingYou && <MenuItem onClick={() => (close(), actions.done())}>Done</MenuItem>}
+                <MenuItem onClick={() => (close(), actions.toggle())}>{t.awaitingYou ? "Clear needs reply" : "Needs reply"}</MenuItem>
+                <MenuItem onClick={() => (close(), actions.never())}>Never read…</MenuItem>
+              </>
+            )}
+          </Menu>
+        </div>
+      </SwipeRow>
     </li>
   );
 }
@@ -380,8 +504,10 @@ function ThreadRow({ t, active, now, tz, onOpen }: { t: ThreadItem; active: bool
 interface Pending {
   id: string;
   out: Outgoing;
-  state: "sending" | "failed";
+  state: "sending" | "sent" | "failed";
   at: number;
+  /** When it was accepted by WhatsApp: the real message replaces this once a read that started after it has come back. */
+  sentAt?: number;
   error?: string;
 }
 
@@ -411,7 +537,9 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
       threadKey={comic.id}
       load={(before) => source.thread(comic.id, before)}
       media={(id) => source.media({ comicId: comic.id }, id)}
-      send={(msg, opts) => source.send({ id: comic.id, chatId: comic.chatId, name: comic.name, tags: opts.tags }, msg, opts)}
+      send={(msg, opts) => source.send({ id: comic.id, chatId: comic.chatId, comicId: comic.id, name: comic.name, tags: opts.tags }, msg, opts)}
+      sendImage={(p) => source.sendImage({ comicId: comic.id }, p)}
+      react={(id, emoji) => source.react({ comicId: comic.id }, id, emoji)}
       onBack={onBack}
       onSent={onChanged}
       ariaLabel={`Chat with ${comic.name}`}
@@ -420,17 +548,20 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
       voiceAllowed
       draft={draft}
       onDraftUsed={() => setDraft(null)}
-      header={
+      header={(sync) => (
         <>
           <Avatar name={comic.name} size={40} />
           <div className="min-w-0 flex-1">
             <h2 className="truncate type-title-m">{comic.name}</h2>
-            {comic.phone && <p className="truncate type-body-s text-on-surface-variant tabular">+{comic.phone}</p>}
+            <p className="truncate type-body-s text-on-surface-variant tabular" aria-live="polite">
+              {comic.phone && <span className="hidden lg:inline">+{comic.phone} · </span>}
+              {sync}
+            </p>
           </div>
           <AssistButton source={source} comic={comic} />
           <NeverReadButton comic={comic} onDone={onBack} />
         </>
-      }
+      )}
       context={<ThreadContext comic={comic} request={request} lineups={lineups} placedShow={placedShow} />}
       aboveComposer={<AssistCard source={source} comic={comic} request={request} lineups={lineups} onUseReply={(t) => setDraft({ kind: "text", body: t })} week={week} />}
       templates={(pick, trigger) => <SnippetMenu name={comic.name} vars={vars} builtins={["confirm", "ack", "reject", "cancelSpot"]} messages={COMIC_MESSAGE_KEYS} onPick={pick} trigger={trigger} />}
@@ -511,7 +642,9 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
       threadKey={group.groupId}
       load={(before) => source.groupThread(group.groupId, before)}
       media={(id) => source.media({ groupId: group.groupId }, id)}
-      send={(msg, opts) => source.send({ id: group.groupId, chatId: group.groupId, name: "everyone", tags: opts.tags }, msg, opts)}
+      send={(msg, opts) => source.send({ id: group.groupId, chatId: group.groupId, groupId: group.groupId, name: "everyone", tags: opts.tags }, msg, opts)}
+      sendImage={(p) => source.sendImage({ groupId: group.groupId }, p)}
+      react={(id, emoji) => source.react({ groupId: group.groupId }, id, emoji)}
       baseTags={pocTags}
       memberHints={show?.groupMembers?.groupId === group.groupId ? show.groupMembers.members.map((m) => ({ id: m.id, name: m.name })) : undefined}
       isGroup
@@ -521,22 +654,26 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
       labelFor={(m) => m.author ?? "Someone"}
       defaultVenueId={show?.venueId}
       voiceAllowed
-      header={
+      header={(sync) => (
         <>
           <span className="grid size-10 flex-none place-items-center rounded-full bg-tertiary-container text-on-tertiary-container">
             <IconGroup className="icon size-5" />
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="truncate type-title-m">{group.name}</h2>
-            <p className="truncate type-body-s text-on-surface-variant">
-              {groupShows.map((s) => s.name).join(", ") || "Show group"}
-              {members !== null && ` · ${members} members`}
-              {pocTags.length > 0 && ` · POC ${pocTags.map((t) => t.label.slice(1)).join(", ")}`}
+            <p className="truncate type-body-s text-on-surface-variant" aria-live="polite">
+              <span className="hidden lg:inline">
+                {groupShows.map((s) => s.name).join(", ") || "Show group"}
+                {members !== null && ` · ${members} members`}
+                {pocTags.length > 0 && ` · POC ${pocTags.map((t) => t.label.slice(1)).join(", ")}`}
+                {" · "}
+              </span>
+              {sync}
             </p>
           </div>
           <IconButton icon={IconClock} label="Scheduled posts" onClick={openSchedule} disabled={!show} />
         </>
-      }
+      )}
       context={
         show && (
           <section aria-label="Scheduled posts" className="my-3 rounded-lg bg-surface-low px-4 py-3 lg:bg-surface-container">
@@ -569,12 +706,18 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
   );
 }
 
-/** One chat, a comic's or a group's: messages read live, older pages on demand, and the composer. */
+/**
+ * One chat, a comic's or a group's: messages read live (the saved copy first), older pages on demand, and the composer.
+ * Phones: a full-screen layer (portal) sized to the visible viewport, so the message list is the only scroller, the composer
+ * sits at the bottom above the home indicator and rides the keyboard. Desktop: a pane in the two-column page.
+ */
 function Conversation({
   threadKey,
   load,
   media,
   send: sendMsg,
+  sendImage,
+  react,
   baseTags,
   memberHints,
   isGroup,
@@ -593,9 +736,12 @@ function Conversation({
 }: {
   threadKey: string;
   load: (before?: number) => Promise<GetThreadResult>;
-  /** A sticker's image, read on demand. */
+  /** A sticker's or photo's image, read on demand. */
   media: (messageId: string) => Promise<ThreadMediaResult>;
   send: (msg: RichMessage, opts: { voice: boolean; venueId: string | null; tags: MentionTag[] }) => Promise<unknown>;
+  sendImage: (photo: OutPhoto) => Promise<unknown>;
+  /** An empty emoji takes your reaction back. */
+  react: (messageId: string, emoji: string) => Promise<unknown>;
   /** Groups: tags the text may already hold (the POCs a template fills in). */
   baseTags?: MentionTag[];
   /** Groups: members known from the show's cache, used when the chat itself didn't list them. */
@@ -603,7 +749,8 @@ function Conversation({
   isGroup?: boolean;
   onBack: () => void;
   onSent: () => void;
-  header: ReactNode;
+  /** The header's content (avatar, name, actions). `sync` is the "Synced 2 min ago" line to show under the name. */
+  header: (sync: string) => ReactNode;
   context?: ReactNode;
   aboveComposer?: ReactNode;
   templates: (pick: (m: RichMessage) => void, trigger: (toggle: () => void, open: boolean) => ReactNode) => ReactNode;
@@ -616,27 +763,58 @@ function Conversation({
   draft?: RichMessage | null;
   onDraftUsed?: () => void;
 }) {
-  const { settings } = useApp();
-  const now = useNow(30_000);
+  const { uid, settings } = useApp();
+  const now = useNow(15_000);
   const tz = settings.timezone;
+  const wide = useMediaQuery("(min-width: 1024px)");
+  const frame = useRef<HTMLDivElement>(null);
+  const { keyboard } = useVisualViewportFrame(frame, !wide);
 
-  // Messages: the newest page, refreshed while visible, with older pages added on demand.
+  // Messages: the saved copy at once, then the newest page read live and refreshed while visible; older pages on demand.
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [olderBusy, setOlderBusy] = useState(false);
-  const newest = useLive<GetThreadResult>(() => load(), threadKey, true, 30_000);
+  const cache = useMemo<LiveCache<GetThreadResult>>(() => ({ read: () => readCached<GetThreadResult>(threadCacheKey(uid, threadKey)), write: (d) => saveThread(uid, threadKey, d) }), [uid, threadKey]);
+  const newest = useLive<GetThreadResult>(() => load(), threadKey, true, 30_000, cache);
+  const sync = chatSyncView({ lastOkAt: newest.lastOkAt, loading: newest.loading, error: newest.error, now }, newest.data?.at);
+  const gate = useSyncGate(sync.ok, () => void newest.refresh(true), newest.data?.at ?? null, now, tz);
+
+  // Messages you've just sent show at once (Sending…, Sent, or Not sent with Retry) and give way to the real ones.
+  const [pending, setPending] = useState<Pending[]>([]);
+  // Your reaction shows at once too, until WhatsApp's own answer agrees (or 30 s pass).
+  const [mineNow, setMineNow] = useState<Record<string, { chips: ReactionChip[]; sent: string; at: number }>>({});
+  const [photo, setPhoto] = useState<string | null>(null);
+
   const firstLoad = useRef(true);
+  const older = useRef<{ h: number; top: number } | null>(null);
   useEffect(() => {
     if (!newest.data) return;
-    setMessages((prev) => mergeNewest(prev, newest.data!.messages));
-    if (firstLoad.current) setHasMore(newest.data.hasMore);
-  }, [newest.data]);
+    const data = newest.data;
+    setMessages((prev) => mergeNewest(prev, data.messages));
+    if (firstLoad.current) setHasMore(data.hasMore);
+    // A message you sent is shown by the real one once a read that began after the send has come back.
+    if (newest.lastOkAt) {
+      setPending((x) => x.filter((p) => !(p.state === "sent" && p.sentAt !== undefined && newest.readStartedAt >= p.sentAt)));
+      setMineNow((m) => {
+        const keep = Object.fromEntries(
+          Object.entries(m).filter(([id, v]) => {
+            const server = data.messages.find((x) => x.id === id)?.reactions?.find((c) => c.byMe)?.emoji ?? "";
+            return server !== v.sent && Date.now() - v.at < 30_000;
+          }),
+        );
+        return Object.keys(keep).length === Object.keys(m).length ? m : keep;
+      });
+    }
+  }, [newest.data, newest.lastOkAt, newest.readStartedAt]);
+
   const loadOlder = async () => {
     if (!messages.length) return;
     setOlderBusy(true);
     try {
       const r = await load(messages[0].at);
       firstLoad.current = false;
+      const el = scroller.current;
+      if (el) older.current = { h: el.scrollHeight, top: el.scrollTop };
       setMessages((prev) => [...r.messages.filter((m) => !prev.some((p) => p.id === m.id)), ...prev]);
       setHasMore(r.hasMore);
     } catch (e) {
@@ -646,16 +824,15 @@ function Conversation({
     }
   };
 
-  // Messages you've just sent show at once, then give way to the real ones.
-  const [pending, setPending] = useState<Pending[]>([]);
   const voiceReady = voiceAllowed && Boolean(settings.voice?.enabled && settings.voice.profile?.summary);
-
   const deliver = async (p: Pending) => {
     setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "sending", error: undefined } : y)));
     try {
-      await sendMsg(p.out.msg, { voice: p.out.voice && p.out.msg.kind === "text", venueId: p.out.venueId, tags: p.out.tags });
-      await newest.refresh();
-      setPending((x) => x.filter((y) => y.id !== p.id));
+      if (p.out.photo) await sendImage({ mime: p.out.photo.mime, data: p.out.photo.data, dataUrl: p.out.photo.dataUrl, filename: p.out.photo.filename, caption: p.out.msg.body });
+      else await sendMsg(p.out.msg, { voice: p.out.voice && p.out.msg.kind === "text", venueId: p.out.venueId, tags: p.out.tags });
+      const sentAt = Date.now();
+      setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "sent", sentAt } : y)));
+      void newest.refresh(true);
       onSent();
     } catch (e) {
       setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "failed", error: (e as Error).message } : y)));
@@ -668,99 +845,143 @@ function Conversation({
     void queued.reduce((chain, p) => chain.then(() => deliver(p)), Promise.resolve());
   };
 
+  const reactTo = (m: ThreadMessage, emoji: string) =>
+    gate.guard(
+      () => {
+        const { chips, sent } = toggleMyReaction(mineNow[m.id]?.chips ?? m.reactions, emoji);
+        setMineNow((x) => ({ ...x, [m.id]: { chips, sent, at: Date.now() } }));
+        react(m.id, sent)
+          .then(() => void newest.refresh(true))
+          .catch((e: Error) => {
+            setMineNow((x) => Object.fromEntries(Object.entries(x).filter(([id]) => id !== m.id)));
+            toast.error(`Couldn't react: ${e.message}`);
+          });
+      },
+      { verb: "react", anyway: "React anyway" },
+    );
+
   // Who the "@" picker offers: the chat's own list, else what the show remembers.
   const members = isGroup ? (newest.data?.members?.length ? newest.data.members : memberHints) : undefined;
 
-  // Scrolling: open at the newest message; stay at the bottom when new ones arrive only if you were already there.
+  // Scrolling: open at the newest message; stay at the bottom as messages, pictures or the keyboard change the height, but only if you were already there.
   const scroller = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const bottomGap = () => {
+  const toBottom = () => {
     const el = scroller.current;
-    const desktop = window.matchMedia("(min-width: 1024px)").matches;
-    const page = appScroller();
-    if (desktop && el) return el.scrollHeight - el.scrollTop - el.clientHeight;
-    return page ? page.scrollHeight - page.scrollTop - page.clientHeight : document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+    if (el) el.scrollTop = el.scrollHeight;
   };
   useEffect(() => {
-    const onScroll = () => (stick.current = bottomGap() < 160);
     const el = scroller.current;
+    const onScroll = () => el && (stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160);
     el?.addEventListener("scroll", onScroll, { passive: true });
-    const page = appScroller();
-    page?.addEventListener("scroll", onScroll, { passive: true });
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => stick.current && toBottom());
+    if (inner.current) ro?.observe(inner.current);
+    if (el) ro?.observe(el);
     return () => {
       el?.removeEventListener("scroll", onScroll);
-      page?.removeEventListener("scroll", onScroll);
+      ro?.disconnect();
     };
   }, []);
   const lastKey = messages[messages.length - 1]?.id ?? "";
   useLayoutEffect(() => {
-    if (!stick.current && lastKey) return;
     const el = scroller.current;
-    if (window.matchMedia("(min-width: 1024px)").matches && el) el.scrollTop = el.scrollHeight;
-    else appScroller()?.scrollTo({ top: appScroller()!.scrollHeight });
-  }, [lastKey, pending.length]);
+    if (older.current && el) {
+      // Earlier messages were added above: keep what you were reading where it was.
+      el.scrollTop = el.scrollHeight - older.current.h + older.current.top;
+      older.current = null;
+      return;
+    }
+    if (stick.current || !lastKey) toBottom();
+  }, [lastKey, pending.length, messages.length, keyboard]);
 
   const rows = useMemo(() => groupByDay(messages, now, tz), [messages, now, tz]);
   const who = (m: ThreadMessage) => (m.fromMe ? "me" : (m.author ?? "them"));
 
-  return (
-    <div className="-mb-4 flex min-h-[calc(100dvh-env(safe-area-inset-top)-var(--nav-h))] flex-1 flex-col sm:mb-0 sm:min-h-[calc(100dvh-env(safe-area-inset-top))] lg:min-h-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-outline-variant">
-      <header className="sticky top-0 z-30 -mx-4 flex flex-none items-center gap-2 border-b border-outline-variant bg-surface px-2 pt-3 pb-2 sm:-mx-8 sm:px-6 lg:static lg:mx-0 lg:bg-surface-low lg:px-3 lg:py-2">
+  const body = (
+    <div
+      ref={frame}
+      data-keyboard={keyboard || undefined}
+      className={cx(
+        "flex flex-col bg-surface",
+        wide ? "min-h-0 flex-1 overflow-hidden rounded-lg border border-outline-variant" : "fixed inset-x-0 top-0 z-50 h-dvh pt-[env(safe-area-inset-top)] sm:left-24",
+      )}
+    >
+      <header className="flex flex-none items-center gap-1 border-b border-outline-variant bg-surface px-1.5 py-1.5 lg:gap-2 lg:bg-surface-low lg:px-3 lg:py-2">
         <IconButton icon={IconArrowLeft} label="Back to chats" onClick={onBack} className="lg:hidden" />
-        {header}
-        <IconButton icon={IconRefresh} label="Refresh this chat" onClick={() => void newest.refresh()} disabled={newest.loading} className={cx(newest.loading && "[&_svg]:animate-spin")} />
+        {header(sync.label)}
+        <IconButton icon={IconRefresh} label={newest.loading ? "Syncing this chat" : "Sync this chat"} onClick={() => void newest.refresh(true)} disabled={newest.loading} className={cx(newest.loading && "[&_svg]:animate-spin")} />
       </header>
+      {!sync.ok && newest.data && <SyncBanner savedAt={newest.data.at} now={now} tz={tz} syncing={sync.syncing} onRetry={() => void newest.refresh(true)} />}
 
-      <div ref={scroller} className="min-h-0 flex-1 lg:overflow-y-auto lg:overscroll-contain lg:bg-surface-lowest lg:px-4">
-        {context}
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 [-webkit-overflow-scrolling:touch] lg:bg-surface-lowest lg:px-4">
+        <div ref={inner}>
+          {context}
 
-        {hasMore && (
-          <div className="flex justify-center py-2">
-            <Button size="sm" variant="text" loading={olderBusy} icon={IconArrowDown} onClick={() => void loadOlder()}>
-              Load earlier
-            </Button>
-          </div>
-        )}
-        {newest.loading && !messages.length ? (
-          <div className="grid place-items-center py-16 text-primary"><Spinner className="size-7" /></div>
-        ) : newest.error && !messages.length ? (
-          <ErrorNote message={newest.error} onRetry={() => void newest.refresh()} />
-        ) : !messages.length && !pending.length ? (
-          <p className="py-12 text-center type-body-m text-on-surface-variant">No messages yet. Say hello below.</p>
-        ) : (
-          <ol className="flex flex-col gap-1 pt-2 pb-3" aria-label={ariaLabel}>
-            {rows.map((r, i) => {
-              if (r.row === "day") {
+          {hasMore && (
+            <div className="flex justify-center py-2">
+              <Button size="sm" variant="text" loading={olderBusy} icon={IconArrowDown} onClick={() => void loadOlder()}>
+                Load earlier
+              </Button>
+            </div>
+          )}
+          {newest.loading && !messages.length ? (
+            <div className="grid place-items-center py-16 text-primary"><Spinner className="size-7" /></div>
+          ) : newest.error && !messages.length ? (
+            <ErrorNote message={newest.error} onRetry={() => void newest.refresh(true)} />
+          ) : !messages.length && !pending.length ? (
+            <p className="py-12 text-center type-body-m text-on-surface-variant">No messages yet. Say hello below.</p>
+          ) : (
+            <ol className="flex flex-col gap-1 pt-2 pb-3" aria-label={ariaLabel}>
+              {rows.map((r, i) => {
+                if (r.row === "day") {
+                  return (
+                    <li key={r.key} className="my-2 flex justify-center">
+                      <span className="rounded-full bg-surface-high px-3 py-1 type-label-s text-on-surface-variant">{r.label}</span>
+                    </li>
+                  );
+                }
+                const prev = rows[i - 1];
+                const firstOfRun = !prev || prev.row === "day" || who(prev.m) !== who(r.m);
                 return (
-                  <li key={r.key} className="my-2 flex justify-center">
-                    <span className="rounded-full bg-surface-high px-3 py-1 type-label-s text-on-surface-variant">{r.label}</span>
+                  <li key={r.m.id}>
+                    <Bubble
+                      m={r.m}
+                      label={firstOfRun ? (r.m.fromMe ? "You" : labelFor(r.m)) : undefined}
+                      tz={tz}
+                      media={media}
+                      reactions={mineNow[r.m.id]?.chips}
+                      onReact={r.m.kind === "deleted" ? undefined : (e) => reactTo(r.m, e)}
+                      onOpenPhoto={setPhoto}
+                    />
                   </li>
                 );
-              }
-              const prev = rows[i - 1];
-              const firstOfRun = !prev || prev.row === "day" || who(prev.m) !== who(r.m);
-              return (
-                <li key={r.m.id}>
-                  <Bubble m={r.m} label={firstOfRun ? (r.m.fromMe ? "You" : labelFor(r.m)) : undefined} tz={tz} media={media} />
+              })}
+              {pending.map((p) => (
+                <li key={p.id}>
+                  <PendingBubble
+                    p={{ id: p.id, state: p.state, error: p.error, body: <PendingBody out={p.out} /> }}
+                    onRetry={() => gate.guard(() => void deliver(p), { verb: "send", anyway: "Send anyway" })}
+                    onDiscard={() => setPending((x) => x.filter((y) => y.id !== p.id))}
+                  />
                 </li>
-              );
-            })}
-            {pending.map((p) => (
-              <li key={p.id}>
-                <PendingBubble p={p} onRetry={() => void deliver(p)} onDiscard={() => setPending((x) => x.filter((y) => y.id !== p.id))} />
-              </li>
-            ))}
-          </ol>
-        )}
-        {newest.error && messages.length > 0 && <p role="status" className="pb-2 text-center type-body-s text-error">Couldn't refresh: {newest.error}</p>}
+              ))}
+            </ol>
+          )}
+          {newest.error && messages.length > 0 && <p role="status" className="pb-2 text-center type-body-s text-error">Couldn't sync: {newest.error}</p>}
+        </div>
       </div>
 
-      <div className="sticky bottom-[var(--nav-h)] z-20 -mx-4 mt-auto flex flex-none flex-col gap-2 border-t border-outline-variant bg-surface px-3 pt-2 pb-2 sm:-mx-8 sm:bottom-0 sm:px-8 lg:static lg:mx-0 lg:bg-surface-low lg:px-3">
+      <div
+        className="flex flex-none flex-col gap-2 border-t border-outline-variant bg-surface px-3 pt-2 lg:bg-surface-low"
+        style={{ paddingBottom: keyboard || wide ? 8 : "calc(0.5rem + env(safe-area-inset-bottom))" }}
+      >
         {aboveComposer}
         <ChatComposer
           key={threadKey}
           idPrefix={`chat-${threadKey}`}
           onSend={sendAll}
+          guard={(run) => gate.guard(run, { verb: "send", anyway: "Send anyway" })}
           templates={templates}
           voiceReady={voiceReady}
           defaultVenueId={defaultVenueId}
@@ -770,126 +991,24 @@ function Conversation({
           onDraftUsed={onDraftUsed}
         />
       </div>
+      {gate.dialog}
+      {photo && <PhotoViewer src={photo} onClose={() => setPhoto(null)} />}
     </div>
   );
+  return wide ? body : createPortal(body, document.body);
 }
 
-/** Stickers already fetched this visit (the image only, by message id). A small cap keeps the page light; it clears when you leave. */
-const stickerCache = new Map<string, string | "none">();
-const STICKER_CACHE_MAX = 80;
-let stickersActive = 0;
-const stickerQueue: (() => void)[] = [];
-const MAX_STICKER_REQUESTS = 3;
-const withSlot = async <T,>(job: () => Promise<T>): Promise<T> => {
-  if (stickersActive >= MAX_STICKER_REQUESTS) await new Promise<void>((go) => stickerQueue.push(go));
-  stickersActive++;
-  try {
-    return await job();
-  } finally {
-    stickersActive--;
-    stickerQueue.shift()?.();
+function PendingBody({ out }: { out: Outgoing }) {
+  const m = out.msg;
+  if (out.photo) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <img src={out.photo.dataUrl} alt="Photo being sent" className="max-h-64 w-full max-w-[16rem] rounded-md object-cover" />
+        {m.body && <WaText text={m.body} />}
+      </div>
+    );
   }
-};
-
-/** A sticker as an image. Fetched when it scrolls into view, one at a time per three, and remembered for this visit. */
-function Sticker({ id, media }: { id: string; media: (id: string) => Promise<ThreadMediaResult> }) {
-  const [src, setSrc] = useState<string | "none" | null>(() => stickerCache.get(id) ?? null);
-  const holder = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (src) return;
-    const el = holder.current;
-    if (!el) return;
-    let live = true;
-    const go = () =>
-      void withSlot(() => media(id))
-        .then((r) => {
-          const v = r.dataUrl ?? "none";
-          if (stickerCache.size >= STICKER_CACHE_MAX) stickerCache.delete(stickerCache.keys().next().value as string);
-          stickerCache.set(id, v);
-          if (live) setSrc(v);
-        })
-        .catch(() => live && setSrc("none"));
-    if (typeof IntersectionObserver === "undefined") return go();
-    const io = new IntersectionObserver((e) => e.some((x) => x.isIntersecting) && (io.disconnect(), go()), { rootMargin: "200px" });
-    io.observe(el);
-    return () => {
-      live = false;
-      io.disconnect();
-    };
-  }, [id, media, src]);
-  if (src && src !== "none") return <img src={src} alt="Sticker" width={144} height={144} className="size-36 object-contain" draggable={false} />;
-  return (
-    <span ref={holder} className="grid size-36 place-items-center rounded-md bg-on-surface/5 type-label-m text-on-surface-variant">
-      {src === "none" ? "Sticker" : <Spinner className="size-5" />}
-    </span>
-  );
-}
-
-function Bubble({ m, label, tz, media }: { m: ThreadMessage; label?: string; tz: string; media: (id: string) => Promise<ThreadMediaResult> }) {
-  const out = m.fromMe;
-  const plain = m.kind === "media" || m.kind === "deleted" || m.kind === "other";
-  const sticker = m.kind === "sticker";
-  const photo = m.kind === "media" && /^\[photo\]/.test(m.text);
-  const mentions = m.mentions ?? [];
-  return (
-    <div className={cx("flex flex-col", out ? "items-end" : "items-start")}>
-      {label && <span className="mt-1.5 mb-0.5 px-1 type-label-s text-on-surface-variant">{label}</span>}
-      <div className={cx("max-w-[88%] sm:max-w-[80%]", Boolean(m.reactions?.length) && "mb-2")}>
-        <div className={cx("relative rounded-lg type-body-m", sticker ? "px-0.5 py-0.5" : "px-3.5 py-2", out ? "rounded-br-xs" : "rounded-bl-xs", sticker ? "" : out ? "bg-primary-container text-on-primary-container" : "bg-surface-highest text-on-surface")}>
-          {sticker ? (
-            <Sticker id={m.id} media={media} />
-          ) : m.kind === "poll" && m.poll ? (
-            <PollCard poll={m.poll} />
-          ) : m.kind === "location" && m.pin ? (
-            <PinCard name={m.pin.name} detail={m.pin.detail ?? "Map pin"} />
-          ) : plain ? (
-            <span className="italic opacity-80">{photo ? m.text.replace(/^\[photo\]/, "Photo") : m.text}</span>
-          ) : (
-            <WaText text={m.text} mentions={mentions} />
-          )}
-          <div className={cx("mt-0.5 text-right type-label-s tabular", sticker ? "text-on-surface-variant" : "opacity-60")}>{clock(m.at, tz)}</div>
-          {m.reactions?.length ? (
-            <div className={cx("absolute -bottom-3.5 flex gap-1", out ? "right-2" : "left-2")}>
-              {m.reactions.map((r) => (
-                <span key={r.emoji} className={cx("inline-flex h-6 items-center gap-0.5 rounded-full px-1.5 text-sm leading-none shadow-sm ring-1", r.byMe ? "bg-primary-container text-on-primary-container ring-primary" : "bg-surface text-on-surface ring-outline-variant")} title={r.byMe ? "You reacted" : undefined}>
-                  <span aria-hidden>{r.emoji}</span>
-                  {r.count > 1 && <span className="type-label-s tabular">{r.count}</span>}
-                  <span className="sr-only">{r.byMe ? "reaction from you" : "reaction"}</span>
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PendingBubble({ p, onRetry, onDiscard }: { p: Pending; onRetry: () => void; onDiscard: () => void }) {
-  const m = p.out.msg;
-  return (
-    <div className="flex flex-col items-end">
-      <div className={cx("max-w-[88%] rounded-lg rounded-br-xs px-3.5 py-2 type-body-m sm:max-w-[80%]", p.state === "failed" ? "bg-error-container text-on-error-container" : "bg-primary-container/70 text-on-primary-container")}>
-        {m.kind === "poll" && m.poll ? <PollCard poll={m.poll} /> : m.kind === "location" ? <PinCard name="Venue pin" detail="Map pin" /> : <WaText text={m.body} />}
-        <div className="mt-0.5 flex items-center justify-end gap-2 type-label-s opacity-80">
-          {p.state === "sending" ? (
-            <>
-              <Spinner className="size-3" /> Sending…
-            </>
-          ) : (
-            <>Not sent</>
-          )}
-        </div>
-      </div>
-      {p.state === "failed" && (
-        <div className="mt-1 flex items-center gap-2 px-1">
-          <span className="min-w-0 type-body-s text-error">{p.error}</span>
-          <Button size="sm" variant="text" onClick={onRetry}>Retry</Button>
-          <Button size="sm" variant="text" onClick={onDiscard}>Discard</Button>
-        </div>
-      )}
-    </div>
-  );
+  return m.kind === "poll" && m.poll ? <PollCard poll={m.poll} /> : m.kind === "location" ? <PinCard name="Venue pin" detail="Map pin" /> : <WaText text={m.body} />;
 }
 
 // ---------- Linked context ----------
@@ -1001,7 +1120,7 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
 // ---------- AI assist ----------
 // The result is kept in a tiny store keyed by chat, so the header button starts it and the card above the composer shows it.
 
-type Assist = { state: "idle" } | { state: "loading" } | { state: "error"; message: string } | { state: "done"; result: SummarizeThreadResult; dismissed: boolean };
+type Assist = { state: "idle" } | { state: "loading"; stage?: string } | { state: "error"; message: string } | { state: "done"; result: SummarizeThreadResult; dismissed: boolean };
 const assistStore = new Map<string, Assist>();
 const assistSubs = new Set<() => void>();
 const setAssist = (id: string, a: Assist) => {
@@ -1026,7 +1145,7 @@ function AssistButton({ source, comic }: { source: ChatSource; comic: { id: stri
   const run = async () => {
     setAssist(comic.id, { state: "loading" });
     try {
-      setAssist(comic.id, { state: "done", result: await source.summarize(comic.id, week), dismissed: false });
+      setAssist(comic.id, { state: "done", result: await source.summarize(comic.id, week, (stage) => setAssist(comic.id, { state: "loading", stage })), dismissed: false });
     } catch (e) {
       setAssist(comic.id, { state: "error", message: (e as Error).message });
     }
@@ -1039,7 +1158,7 @@ function AssistCard({ source: _source, comic, request, lineups, onUseReply, week
   if (a.state === "idle" || a.state === "loading" || (a.state === "done" && a.dismissed)) {
     return a.state === "loading" ? (
       <p role="status" className="flex items-center gap-2 rounded-lg bg-surface-container px-3 py-2.5 type-body-m text-on-surface-variant">
-        <Spinner className="size-4" /> Reading the chat…
+        <Spinner className="size-4" /> {a.state === "loading" && a.stage ? a.stage : "Reading the chat…"}
       </p>
     ) : null;
   }

@@ -2,12 +2,15 @@
 // (nothing is kept). The demo has no WhatsApp, so its conversations are built right here from the demo sandbox's own
 // requests and lineups, and the page says so. Nothing in this file is ever used for a real account's data.
 import {
+  AI_APP_WAIT_MS,
+  groupReactions,
   matchGroupThreads,
   matchThreads,
   type Comic,
   type GetThreadResult,
   type Lineup,
   type ListThreadsResult,
+  type ReactionChip,
   type RichMessage,
   type Show,
   type SpotRequest,
@@ -23,6 +26,9 @@ import { runCommand } from "./data";
 export interface ChatTarget {
   id: string;
   chatId?: string;
+  /** Which chat this is, so the server opens it itself (roster comic or linked group) instead of trusting an id. */
+  comicId?: string;
+  groupId?: string;
   name: string;
   /** Groups: "@Name" tags in the text that should become real WhatsApp tags. `comicId` is any member's id (roster, phone id or @lid). */
   tags?: MentionTag[];
@@ -43,15 +49,29 @@ export interface ChatSource {
   thread: (comicId: string, before?: number) => Promise<GetThreadResult>;
   /** A show's group (linked groups only). */
   groupThread: (groupId: string, before?: number) => Promise<GetThreadResult>;
-  summarize: (comicId: string, weekOf: string) => Promise<SummarizeThreadResult>;
+  summarize: (comicId: string, weekOf: string, onStage?: (stage: string) => void) => Promise<SummarizeThreadResult>;
   /** One sticker as an image (a data URL), read for this request and never stored. */
   media: (target: MediaTarget, messageId: string) => Promise<ThreadMediaResult>;
   send: (to: ChatTarget, msg: RichMessage, opts: { voice: boolean; venueId: string | null }) => Promise<{ body: string }>;
+  /** React to a message (an empty emoji takes your reaction back). */
+  react: (target: MediaTarget, messageId: string, emoji: string) => Promise<unknown>;
+  sendImage: (target: MediaTarget, photo: OutPhoto) => Promise<unknown>;
+}
+
+/** A photo ready to send: already squeezed to a JPEG, with an optional caption. */
+export interface OutPhoto {
+  mime: "image/jpeg";
+  data: string;
+  dataUrl: string;
+  filename: string;
+  caption: string;
 }
 
 /** The send payload: the same shape the reply cards use, plus the voice switch. */
 export const sendPayload = (to: ChatTarget, msg: RichMessage, opts: { voice: boolean; venueId: string | null }) => ({
   to: to.chatId ?? to.id,
+  ...(to.comicId && { comicId: to.comicId }),
+  ...(to.groupId && { groupId: to.groupId }),
   body: msg.body,
   name: to.name.split(/\s+/)[0],
   voice: opts.voice && msg.kind === "text",
@@ -65,12 +85,16 @@ export function liveSource(uid: string): ChatSource {
     list: () => runCommand<ListThreadsResult>(uid, "list_threads", {}, 90_000, { ephemeral: true }),
     thread: (comicId, before) => runCommand<GetThreadResult>(uid, "get_thread", { comicId, ...(before ? { before } : {}) }, 90_000, { ephemeral: true }),
     groupThread: (groupId, before) => runCommand<GetThreadResult>(uid, "get_thread", { groupId, ...(before ? { before } : {}) }, 90_000, { ephemeral: true }),
-    summarize: (comicId, weekOf) => runCommand<SummarizeThreadResult>(uid, "summarize_thread", { comicId, weekOf }, 240_000, { ephemeral: true }),
+    // The server's model budget is AI_INTERACTIVE_DEADLINE_MS; the app waits that plus a margin, so the server's own (clearer) error wins.
+    summarize: (comicId, weekOf, onStage) => runCommand<SummarizeThreadResult>(uid, "summarize_thread", { comicId, weekOf }, AI_APP_WAIT_MS, { ephemeral: true, onStage }),
     media: (target, messageId) => runCommand<ThreadMediaResult>(uid, "get_media", { ...target, messageId }, 60_000, { ephemeral: true }),
     send: async (to, msg, opts) => {
-      const r = await runCommand<{ body?: string } | null>(uid, "send_message", sendPayload(to, msg, opts), 180_000);
+      const r = await runCommand<{ body?: string } | null>(uid, "send_message", sendPayload(to, msg, opts), opts.voice ? AI_APP_WAIT_MS : 180_000);
       return { body: r?.body ?? msg.body };
     },
+    react: (target, messageId, emoji) => runCommand(uid, "react_message", { ...target, messageId, emoji }, 60_000, { ephemeral: true }),
+    // The photo rides in the command document, which the app deletes as soon as the result is read.
+    sendImage: (target, p) => runCommand(uid, "send_media", { ...target, mime: p.mime, data: p.data, filename: p.filename, caption: p.caption }, 180_000, { ephemeral: true }),
   };
 }
 
@@ -111,6 +135,12 @@ export function demoConversations({ comics, requests, lineups, shows, now }: Dem
     const last = b[1][b[1].length - 1];
     if (last && !last.fromMe) out.set(b[0], [...b[1].slice(0, -1), { ...last, reactions: [{ emoji: "👍", count: 1, byMe: true }] }]);
   }
+  // A photo and a video from the third and fourth comics (just before the last message), so a thread shows a picture and the
+  // "open on your phone" label.
+  const [c, d4] = [chats[2], chats[3]];
+  const before = (rows: ThreadMessage[], m: Omit<ThreadMessage, "at">) => [...rows, { ...m, at: (rows[rows.length - 1]?.at ?? 0) - 90_000 }].sort((x, y) => x.at - y.at);
+  if (c) out.set(c[0], before(c[1], { id: `${c[0]}-photo`, fromMe: false, kind: "media", media: "image", text: "[photo] Last night's set 🎤" }));
+  if (d4) out.set(d4[0], before(d4[1], { id: `${d4[0]}-video`, fromMe: false, kind: "media", media: "video", text: "[video]" }));
   void now;
   return out;
 }
@@ -128,6 +158,8 @@ export const demoSticker = (seed: string) => {
 const demoMembers = (comics: Comic[]): ThreadMember[] => comics.slice(0, 8).map((c) => ({ id: c.id, name: c.name }));
 
 /** A demo group: the latest lineup posted by you, replies from people on it (one tags you by their number), a sticker and reactions. */
+const demoGroupAll = (d: DemoData) => d.shows.flatMap((s) => (s.groupId ? demoGroup(d, s.groupId) : []));
+
 function demoGroup({ shows, lineups, comics, now }: DemoData, groupId: string): ThreadMessage[] {
   const show = shows.find((s) => s.groupId === groupId);
   const lineup = lineups.find((l) => l.showId === show?.id && l.slots.length);
@@ -145,12 +177,35 @@ function demoGroup({ shows, lineups, comics, now }: DemoData, groupId: string): 
   ];
 }
 
+/** A sample photo for the demo: a stage scene as an image. */
+export const demoPhoto = (seed: string) => {
+  const hue = [...seed].reduce((t, c) => t + c.charCodeAt(0), 0) % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl(${hue} 55% 28%)"/><stop offset="1" stop-color="hsl(${(hue + 40) % 360} 60% 12%)"/></linearGradient></defs><rect width="480" height="320" fill="url(#g)"/><ellipse cx="240" cy="300" rx="190" ry="30" fill="hsl(${hue} 80% 70% / .25)"/><text x="240" y="205" font-size="120" text-anchor="middle">🎤</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+/** Dev only (never in a production build): `localStorage["spot.chatDelayMs"]` slows the demo's reads and `spot.chatFail` = "1" fails them, to see the cached and failed sync states. */
+const devLag = async () => {
+  if (!import.meta.env.DEV) return;
+  try {
+    const ms = Number(localStorage.getItem("spot.chatDelayMs") || 0);
+    if (ms > 0) await new Promise((r) => setTimeout(r, ms));
+    if (localStorage.getItem("spot.chatFail") === "1") throw new Error("Sample failure (spot.chatFail)");
+  } catch (e) {
+    if (e instanceof Error && /Sample failure/.test(e.message)) throw e;
+  }
+};
+
 export function demoSource(get: () => DemoData): ChatSource {
   const local = new Map<string, ThreadMessage[]>();
+  const localPhotos = new Map<string, string>();
+  const reacted = new Map<string, ReactionChip[]>();
+  const withReacted = (rows: ThreadMessage[]) => rows.map((m) => (reacted.has(m.id) ? { ...m, reactions: reacted.get(m.id) } : m));
   const all = () => {
     const d = get();
     const base = demoConversations(d);
     for (const [id, extra] of local) base.set(id, [...(base.get(id) ?? []), ...extra].sort((a, b) => a.at - b.at));
+    for (const [id, rows] of base) base.set(id, withReacted(rows));
     return base;
   };
   // The demo's messages as WhatsApp's: the same shape the worker hands matchThreads, so "needs reply" is the real rule.
@@ -167,6 +222,7 @@ export function demoSource(get: () => DemoData): ChatSource {
   return {
     demo: true,
     list: async () => {
+      await devLag();
       const d = get();
       const chats: WaChatLike[] = [];
       for (const [id, msgs] of all()) {
@@ -192,14 +248,27 @@ export function demoSource(get: () => DemoData): ChatSource {
       return { threads: matchThreads(chats, d.comics), groups: matchGroupThreads(chats, d.shows, d.comics), at: Date.now() };
     },
     thread: async (comicId, before) => {
+      await devLag();
       const rows = (all().get(comicId) ?? []).filter((m) => (before ? m.at < before : true));
       return { comicId, chatId: comicId, messages: rows.slice(-50), hasMore: rows.length > 50, at: Date.now() };
     },
     groupThread: async (groupId, before) => {
-      const rows = [...demoGroup(get(), groupId), ...(local.get(groupId) ?? [])].filter((m) => (before ? m.at < before : true));
+      await devLag();
+      const rows = withReacted([...demoGroup(get(), groupId), ...(local.get(groupId) ?? [])]).filter((m) => (before ? m.at < before : true));
       return { comicId: groupId, groupId, chatId: groupId, messages: rows.slice(-50), hasMore: rows.length > 50, members: demoMembers(get().comics), at: Date.now() };
     },
-    media: async (_t, messageId) => ({ dataUrl: demoSticker(messageId) }),
+    media: async (_t, messageId) => ({ dataUrl: localPhotos.get(messageId) ?? (/photo/.test(messageId) ? demoPhoto(messageId) : demoSticker(messageId)) }),
+    react: async (_t, messageId, emoji) => {
+      const current = withReacted([...[...all().values()].flat(), ...demoGroupAll(get()), ...[...local.values()].flat()]).find((m) => m.id === messageId)?.reactions;
+      const others = (current ?? []).map((c) => (c.byMe ? { ...c, count: c.count - 1, byMe: false } : c)).filter((c) => c.count > 0);
+      reacted.set(messageId, groupReactions(emoji ? [...others, { emoji, count: 1, byMe: true }] : others));
+    },
+    sendImage: async (target, p) => {
+      const id = `local-photo-${Date.now()}`;
+      localPhotos.set(id, p.dataUrl);
+      const to = "groupId" in target ? target.groupId : target.comicId;
+      local.set(to, [...(local.get(to) ?? []), { id, at: Date.now(), fromMe: true, kind: "media", media: "image", text: p.caption ? `[photo] ${p.caption}` : "[photo]" }]);
+    },
     summarize: async (comicId) => {
       const d = get();
       const req = d.requests.find((r) => r.comicId === comicId);

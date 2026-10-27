@@ -1,4 +1,5 @@
 import { signOut, type User } from "firebase/auth";
+import { clearChatCache } from "../lib/chatCache";
 import { motion } from "motion/react";
 import type { AccessEntry } from "@spot/shared";
 import { auth } from "@spot/ui/firebase";
@@ -34,7 +35,7 @@ export function Waiting({ user, entry }: { user: User; entry: AccessEntry | null
           <span className="text-on-surface-variant/80">Signed in as</span> <span className="text-on-surface">{user.email}</span>
         </p>
         <div className="mt-8">
-          <Button variant="text" icon={IconLogout} onClick={() => void signOut(auth)}>
+          <Button variant="text" icon={IconLogout} onClick={() => void clearChatCache().finally(() => signOut(auth))}>
             Switch account
           </Button>
         </div>

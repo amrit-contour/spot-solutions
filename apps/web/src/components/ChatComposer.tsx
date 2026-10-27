@@ -5,7 +5,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { hasPin, pollProblem, shortcutOp, type PollSpec, type RichMessage, type ThreadMember, type Venue } from "@spot/shared";
 import { Button, FormatBar, IconCheck, IconClose, IconMap, IconSend, IconSparkle, IconTemplate, MessageComposer, Popover, Switch, cx, emptyPoll, useTextEditing, type Icon } from "@spot/ui";
+import { toast } from "sonner";
 import { useApp } from "../lib/app";
+import { preparePhoto, type PreparedPhoto } from "../lib/photo";
 import type { MentionTag } from "../lib/messages";
 
 /** One message to send: what, which venue's pin (if it carries one), whether to reword it, and who it tags. */
@@ -14,6 +16,8 @@ export interface Outgoing {
   venueId: string | null;
   voice: boolean;
   tags: MentionTag[];
+  /** A photo to send; the message text is its caption. */
+  photo?: PreparedPhoto;
 }
 
 type View = "menu" | "poll" | "pin";
@@ -56,6 +60,7 @@ function AttachChip({ icon: I, label, onOpen, onRemove, removeLabel }: { icon?: 
 export function ChatComposer({
   idPrefix,
   onSend,
+  guard,
   templates,
   voiceReady,
   defaultVenueId,
@@ -66,6 +71,8 @@ export function ChatComposer({
 }: {
   idPrefix: string;
   onSend: (items: Outgoing[]) => void;
+  /** Asks first when the chat isn't synced. Called with what to do if the answer is yes; the box keeps its text until then. */
+  guard?: (run: () => void) => void;
   /** The Templates menu: call `pick` with the chosen message and render `trigger` as its button. */
   templates: (pick: (m: RichMessage) => void, trigger: (toggle: () => void, open: boolean) => ReactNode) => ReactNode;
   voiceReady: boolean;
@@ -87,6 +94,9 @@ export function ChatComposer({
   const [pinId, setPinId] = useState<string | null>(null);
   const [voice, setVoice] = useState(false);
   const [fmt, setFmt] = useState(false);
+  const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
+  const [prepping, setPrepping] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [sheet, setSheet] = useState<View | null>(null);
   const [pollDraft, setPollDraft] = useState<PollSpec>(emptyPoll);
   const [picked, setPicked] = useState<MentionTag[]>([]);
@@ -132,20 +142,39 @@ export function ChatComposer({
   const pinVenue = venues.find((v: Venue) => v.id === pinId);
   const pollOk = poll ? !pollProblem(poll) : true;
   const body = text.trim();
-  const canSend = (Boolean(body) || Boolean(pinId) || Boolean(poll)) && pollOk;
+  const canSend = (Boolean(body) || Boolean(pinId) || Boolean(poll) || Boolean(photo)) && pollOk && !prepping;
+
+  const pickPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    setPrepping(true);
+    try {
+      setPhoto(await preparePhoto(file));
+      focusEnd();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPrepping(false);
+    }
+  };
 
   const send = () => {
     if (!canSend) return;
     const tags = [...baseTags, ...picked].filter((t) => body.includes(t.label));
     const items: Outgoing[] = [];
-    if (body) items.push({ msg: { kind: "text", body: text.trimEnd(), ...(pinId && { attachLocation: true }) }, venueId: pinId, voice, tags });
+    if (photo) items.push({ msg: { kind: "text", body: text.trim() }, venueId: null, voice: false, tags: [], photo });
+    else if (body) items.push({ msg: { kind: "text", body: text.trimEnd(), ...(pinId && { attachLocation: true }) }, venueId: pinId, voice, tags });
     else if (pinId) items.push({ msg: { kind: "location", body: "" }, venueId: pinId, voice: false, tags: [] });
     if (poll) items.push({ msg: { kind: "poll", body: "", poll }, venueId: null, voice: false, tags: [] });
-    onSend(items);
-    setText("");
-    setPoll(null);
-    setPinId(null);
-    setPicked([]);
+    const go = () => {
+      onSend(items);
+      setText("");
+      setPhoto(null);
+      setPoll(null);
+      setPinId(null);
+      setPicked([]);
+    };
+    if (guard) guard(go);
+    else go();
   };
 
   // "@" in a group: the word being typed, and who matches it.
@@ -208,8 +237,18 @@ export function ChatComposer({
         </ul>
       )}
 
-      {(pinId || poll || (voice && voiceReady)) && (
+      {(pinId || poll || photo || prepping || (voice && voiceReady)) && (
         <div className="flex flex-wrap items-center gap-1.5">
+          {prepping && <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-secondary-container px-3 type-label-l text-on-secondary-container">Preparing photo…</span>}
+          {photo && (
+            <span className="inline-flex h-12 items-center gap-2 rounded-xl bg-secondary-container pr-1 text-on-secondary-container">
+              <img src={photo.dataUrl} alt="Photo to send" className="size-12 rounded-l-xl object-cover" />
+              <span className="type-label-l">Photo{body ? " + caption" : ""}</span>
+              <button type="button" onClick={() => setPhoto(null)} aria-label="Remove the photo" className="state-layer grid size-8 flex-none place-items-center rounded-full">
+                <IconClose className="icon size-4" />
+              </button>
+            </span>
+          )}
           {pinId && <AttachChip icon={IconMap} label={pinVenue?.name ?? "Venue pin"} onOpen={() => openSheet("pin")} onRemove={() => setPinId(null)} removeLabel="Remove the venue pin" />}
           {poll && <AttachChip label={`📊 ${poll.question.trim() || "Poll"}`} onOpen={() => openSheet("poll")} onRemove={() => setPoll(null)} removeLabel="Remove the poll" />}
           {voice && voiceReady && <AttachChip icon={IconSparkle} label="In my voice" onOpen={() => openSheet("menu")} onRemove={() => setVoice(false)} removeLabel="Stop writing it in my voice" />}
@@ -222,6 +261,7 @@ export function ChatComposer({
         </div>
       )}
 
+      <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => (void pickPhoto(e.target.files?.[0]), (e.target.value = ""))} />
       <div className="flex items-end gap-1.5">
         <Popover
           title={TITLE[sheet ?? "menu"]}
@@ -276,6 +316,7 @@ export function ChatComposer({
               </div>
             ) : (
               <div className="flex flex-col gap-0.5">
+                <Row icon={IconPhotoGlyph} label="Photo" hint={photo ? "Added. Your text goes as its caption" : "Pick one from your device"} onClick={() => (close(), fileInput.current?.click())} />
                 <Row label="Poll" hint={poll ? `Added: ${poll.question}` : "Ask a question with answers to tap"} icon={IconPollGlyph} onClick={() => openSheet("poll")} />
                 <Row icon={IconMap} label="Venue pin" hint={pinVenue ? `Added: ${pinVenue.name}` : pinVenues.length ? "On its own, or after your text" : "No venue has a map pin yet"} onClick={choosePin} disabled={!pinVenues.length} />
                 {templates((m) => (apply(m), close()), (toggle) => <Row icon={IconTemplate} label="Templates" hint="Saved replies and your messages" onClick={toggle} />)}
@@ -301,7 +342,7 @@ export function ChatComposer({
             id={`${idPrefix}-box`}
             rows={1}
             value={text}
-            placeholder="Message"
+            placeholder={photo ? "Add a caption" : "Message"}
             aria-label="Message"
             enterKeyHint="enter"
             autoCapitalize="sentences"
@@ -362,6 +403,15 @@ export function ChatComposer({
   );
 }
 
+function IconPhotoGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5" />
+    </svg>
+  );
+}
 function IconPollGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">

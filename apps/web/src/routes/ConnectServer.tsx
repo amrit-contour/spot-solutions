@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { signInWithPopup, signOut, type User } from "firebase/auth";
+import { clearChatCache } from "../lib/chatCache";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { auth, google } from "@spot/ui/firebase";
@@ -156,7 +157,7 @@ export function ConnectServer({ user }: { user: User | null | undefined }) {
         {user && !user.isAnonymous && (
           <p className="mt-6 inline-flex items-center gap-2 type-label-l text-on-surface-variant">
             Signed in as {user.email}
-            <Button variant="text" size="sm" icon={IconLogout} onClick={() => void signOut(auth)}>
+            <Button variant="text" size="sm" icon={IconLogout} onClick={() => void clearChatCache().finally(() => signOut(auth))}>
               Switch account
             </Button>
           </p>
