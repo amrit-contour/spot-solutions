@@ -157,3 +157,26 @@ describe("groupModeOf", () => {
     expect(groupModeOf({ groupId: null })).toBe("manual");
   });
 });
+
+import { adhocToldPatch, toldSent } from "./lineupUpdates.ts";
+describe("ad hoc comics are recorded as told", () => {
+  const show = { includeSlotTime: false, defaultMinutes: null };
+  const draft = { status: "draft" as const, sent: null, slots: [{ comicId: "a" }, { comicId: "b" }, { comicId: "x", adhoc: true }] };
+  it("on a draft, only the told comic gets an entry (the rest still get Confirm & send)", () => {
+    expect(Object.keys(toldSent(draft, show, "x", 5))).toEqual(["x"]);
+  });
+  it("on a confirmed lineup with no record, the others stand as told, as before", () => {
+    expect(Object.keys(toldSent({ ...draft, status: "confirmed" }, show, "x", 5)).sort()).toEqual(["a", "b", "x"]);
+  });
+  it("migration: an accepted-offer ad hoc slot with no entry gets one; run again, nothing changes", () => {
+    const sent = adhocToldPatch(draft, show, new Set(["x"]), 9);
+    expect(Object.keys(sent ?? {})).toEqual(["x"]);
+    expect(adhocToldPatch({ ...draft, sent }, show, new Set(["x"]), 10)).toBeNull();
+  });
+  it("migration leaves alone: not accepted, not told (notTold), backfilled or called-off lineups", () => {
+    expect(adhocToldPatch(draft, show, new Set(), 9)).toBeNull();
+    expect(adhocToldPatch({ ...draft, slots: [{ comicId: "x", adhoc: true, notTold: true }] }, show, new Set(["x"]), 9)).toBeNull();
+    expect(adhocToldPatch({ ...draft, backfilled: true }, show, new Set(["x"]), 9)).toBeNull();
+    expect(adhocToldPatch({ ...draft, status: "cancelled" }, show, new Set(["x"]), 9)).toBeNull();
+  });
+});

@@ -12,8 +12,9 @@ import {
   OFFER_POLL_OPTIONS,
   parseYesNo,
   renderMessage,
+  adhocToldPatch,
   sentSnapshot,
-  sentWith,
+  toldSent,
   withHistory,
   type Comic,
   type HostPoll,
@@ -135,7 +136,7 @@ async function finishPlaced(uid: string, client: WAWebJS.Client, show: Show, lin
     await sendConfirmation(uid, client, show, comic, weekOf);
     // Counted as told, so neither "Send updates" nor Confirm & send messages them a second time.
     const fresh = (await lineupRef.get()).data() as Lineup;
-    await lineupRef.update({ sent: sentWith(fresh.sent, fresh.slots, show, comicId, Date.now()) });
+    await lineupRef.update({ sent: toldSent(fresh, show, comicId, Date.now()) });
   }
   // Show is today and its group is managed: add them now (ad hoc comics join the group like everyone else).
   if (opts.addToGroup !== false && show.groupId && localNow(new Date(), settings.timezone).date === dateInWeek(weekOf, show.weekday)) {
@@ -346,3 +347,29 @@ async function chatOf(uid: string, comicId: string) {
   return ((await col(uid, "comics").doc(comicId).get()).data() as Comic | undefined)?.chatId ?? comicId;
 }
 
+
+/**
+ * Once per start: ad hoc comics who accepted an offer (the offer and the "you're in" reply told them) before the lineup recorded
+ * that get their "sent" entry, so Confirm & send / Send updates never messages them a second time. Idempotent.
+ */
+export async function markAdhocTold(uid: string) {
+  const { shows } = watchUser(uid);
+  const accepted = await col(uid, "offers").where("status", "==", "accepted").get();
+  const byLineup = new Map<string, Set<string>>();
+  for (const d of accepted.docs) {
+    const o = d.data() as SpotOffer;
+    byLineup.set(o.lineupId, (byLineup.get(o.lineupId) ?? new Set()).add(o.comicId));
+  }
+  let fixed = 0;
+  for (const [lineupId, ids] of byLineup) {
+    const ref = col(uid, "lineups").doc(lineupId);
+    const lineup = (await ref.get()).data() as Lineup | undefined;
+    const show = shows.find((s) => s.id === lineup?.showId);
+    if (!lineup || !show) continue;
+    const sent = adhocToldPatch(lineup, show, ids, Date.now());
+    if (!sent) continue;
+    await ref.update({ sent });
+    fixed++;
+  }
+  if (fixed) console.log(`[adhoc] ${uid}: recorded ${fixed} lineup(s) of told ad hoc comics`);
+}

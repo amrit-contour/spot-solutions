@@ -93,6 +93,30 @@ export function sentWith(sent: SentMap | null | undefined, slots: Slot[], show: 
   return { ...(sent ?? sentSnapshot(slots.filter((s) => s.comicId !== comicId), show, now)), [comicId]: { at: now, minutes: effectiveMinutes(show, slots[order]), order } };
 }
 
+/**
+ * Record one comic as told on a lineup. On a confirmed lineup with no record yet the others count as told as they stand (the
+ * existing rule); on a draft nobody else is, so only this comic gets an entry and Confirm & send still messages the rest.
+ */
+export function toldSent(lineup: Pick<Lineup, "status" | "sent" | "slots">, show: Pick<Show, "includeSlotTime" | "defaultMinutes">, comicId: string, now: number): SentMap {
+  return sentWith(lineup.status === "confirmed" ? lineup.sent : (lineup.sent ?? {}), lineup.slots, show, comicId, now);
+}
+
+/**
+ * Ad hoc comics who were told when they were booked (an accepted offer, a direct add with the confirmation on) but have no
+ * "sent" entry: the ones to record, so a later Confirm & send or Send updates doesn't message them again. Null when none.
+ */
+export function adhocToldPatch(lineup: Pick<Lineup, "status" | "sent" | "slots" | "backfilled">, show: Pick<Show, "includeSlotTime" | "defaultMinutes">, acceptedIds: Set<string>, now: number): SentMap | null {
+  if (lineup.backfilled || lineup.status === "cancelled" || lineup.status === "canned") return null;
+  let cur: Pick<Lineup, "status" | "sent" | "slots"> = lineup;
+  let changed = false;
+  for (const slot of lineup.slots) {
+    if (!slot.adhoc || slot.notTold || slot.backfill || !acceptedIds.has(slot.comicId) || cur.sent?.[slot.comicId]) continue;
+    cur = { ...cur, sent: toldSent(cur, show, slot.comicId, now) };
+    changed = true;
+  }
+  return changed ? (cur.sent ?? null) : null;
+}
+
 /** What the removal of a confirmed comic does to their records: history says cancelled, and a performed mark for this week is undone. */
 export function cancelledPatch(comic: Pick<Comic, "history" | "lastPerformedWeek"> | undefined, lineup: Pick<Lineup, "weekOf" | "showId">, show: Pick<Show, "id" | "name" | "weekday"> | undefined, keepPerformed = false) {
   const date = show ? dateInWeek(lineup.weekOf, show.weekday) : lineup.weekOf;

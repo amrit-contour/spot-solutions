@@ -4,6 +4,7 @@ import "./envCompat.ts";
 import "./logbuf.ts";
 import { col, db, sessionRef } from "./firebase.ts";
 import { runCommand } from "./commands.ts";
+import { markAdhocTold } from "./replies.ts";
 import { startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
 import { checkBrowserAtStart } from "./browserHeal.ts";
@@ -113,6 +114,8 @@ async function main() {
   fleet.start({
     retryPending: rescanCommands,
     onAcquire: (uid) => {
+      // Once the account's data has loaded: record ad hoc comics who were told but have no "sent" entry (idempotent).
+      setTimeout(() => void markAdhocTold(uid).catch((e) => console.error("[adhoc] told backfill failed", e.message)), 20_000).unref();
       if (userDocs.get(uid)?.waEnabled) void sessions.start(uid); // pending commands are replayed once it is ready
       else rescanCommands(uid);
       if (userDocs.get(uid)?.waEnabled && userDocs.get(uid)?.agentEnabled) startAgentSoon(uid);
