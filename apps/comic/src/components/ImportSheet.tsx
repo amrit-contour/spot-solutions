@@ -28,8 +28,9 @@ const show = (v: unknown): string => {
 /** Where a change belongs, for grouping: the room (or "Curators"). */
 const groupOf = (c: RosterChange) => (c.level === "curator" ? "Curators" : c.label.split(" · ")[0]!);
 
-/** The review before anything is written: what the file adds, changes and removes, with a checkbox each. */
-export function ImportSheet({ incoming, onClose }: { incoming: Incoming | null; onClose: () => void }) {
+/** The review before anything is written: what the file adds, changes and removes, with a checkbox each.
+ * `onApplied` runs after a successful apply (before the sheet closes): community rosters use it to mark an update as seen. */
+export function ImportSheet({ incoming, onClose, onApplied }: { incoming: Incoming | null; onClose: () => void; onApplied?: () => void }) {
   const store = useRoster();
   const changes = useMemo(() => (incoming ? diffRosters({ rooms: store.rooms, curators: store.curators }, incoming.roster) : []), [incoming, store.rooms, store.curators]);
   // Added and changed start ticked. Removed starts unticked: a partial file shouldn't wipe a room by accident.
@@ -60,6 +61,7 @@ export function ImportSheet({ incoming, onClose }: { incoming: Incoming | null; 
       const next = applyMerge({ rooms: store.rooms, curators: store.curators }, incoming.roster, picked);
       await store.replaceRoster(next);
       toast.success(`Applied ${picked.size} change${picked.size === 1 ? "" : "s"}`);
+      onApplied?.();
       onClose();
     } catch {
       toast.error("Couldn't save the import. Check your connection and try again.");

@@ -4,7 +4,7 @@ import { Chip, IconBuilding, IconCalendarMark, IconMic, IconPen, IconClock } fro
 const TAG_LABEL = (t: string) => t.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 
 /** One room: where, when, who's on today and when to ask. Tapping it opens the editor. */
-export function RoomCard({ room, curators, date, onOpen }: { room: Room; curators: Curator[]; date: string; onOpen: () => void }) {
+export function RoomCard({ room, curators, date, onOpen, readOnly }: { room: Room; curators: Curator[]; date: string; onOpen: () => void; /** A published room: no edit pencil. */ readOnly?: boolean }) {
   const paused = roomPaused(room, date);
   const full = roomFullToday(room, date);
   const today = todayAt(room, curators, date);
@@ -24,7 +24,7 @@ export function RoomCard({ room, curators, date, onOpen }: { room: Room; curator
           {paused && <Chip tone="reading">Paused</Chip>}
           {full && <Chip tone="error">Full</Chip>}
         </span>
-        <IconPen aria-hidden className="icon size-4 flex-none text-on-surface-variant" />
+        {!readOnly && <IconPen aria-hidden className="icon size-4 flex-none text-on-surface-variant" />}
       </span>
 
       {room.shows.length > 0 ? (
@@ -38,7 +38,7 @@ export function RoomCard({ room, curators, date, onOpen }: { room: Room; curator
           {room.shows.length > 3 && <span className="type-body-s text-on-surface-variant">+{room.shows.length - 3} more</span>}
         </span>
       ) : (
-        <span className="type-body-m text-on-surface-variant">No shows yet. Tap to add one.</span>
+        <span className="type-body-m text-on-surface-variant">{readOnly ? "No shows listed yet." : "No shows yet. Tap to add one."}</span>
       )}
 
       {today.length > 0 && (

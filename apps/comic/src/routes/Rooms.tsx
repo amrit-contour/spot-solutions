@@ -10,6 +10,9 @@ import { RoomCard } from "../components/RoomCard";
 import { RoomEditor } from "../components/RoomEditor";
 import { CuratorsPanel } from "../components/CuratorsPanel";
 import { ImportSheet, type Incoming } from "../components/ImportSheet";
+import { PublishSheet } from "../components/rosters/PublishSheet";
+import { ShareSheet } from "../components/rosters/ShareSheet";
+import { useCommunity } from "../lib/rosters";
 import { PasteImportSheet } from "../components/PasteImportSheet";
 
 const TZ = DEFAULT_SETTINGS.timezone;
@@ -42,6 +45,9 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
   const [editing, setEditing] = useState<Room | null>(null);
   const [incoming, setIncoming] = useState<Incoming | null>(null);
   const [pasting, setPasting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const community = useCommunity();
   const file = useRef<HTMLInputElement>(null);
   const date = localDate(new Date(), TZ);
 
@@ -90,6 +96,8 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
                   <MenuItem onClick={() => { close(); exportAs("json"); }} hint="JSON">Export to share</MenuItem>
                   <MenuItem onClick={() => { close(); exportAs("csv"); }} hint="CSV">Export a spreadsheet</MenuItem>
                   <MenuItem onClick={() => { close(); exportAs("backup"); }} hint="JSON">Export a backup</MenuItem>
+                  {community.allowed && <MenuItem onClick={() => { close(); setSharing(true); }}>Share with someone…</MenuItem>}
+                  {community.canPublish && <MenuItem onClick={() => { close(); setPublishing(true); }}>Publish to a community roster…</MenuItem>}
                 </>
               )}
             </Menu>
@@ -104,7 +112,11 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
       <input ref={file} type="file" accept=".json,.csv,application/json,text/csv" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
 
       <div className="px-4 pt-3 pb-4 sm:px-8">
-        <Segmented value={tab} onChange={(t) => nav(t === "rooms" ? base : `${base}/curators`)} options={[{ value: "rooms", label: "Rooms" }, { value: "curators", label: "Curators" }]} />
+        <Segmented
+          value={tab}
+          onChange={(t) => nav(t === "rooms" ? base : t === "community" ? "/rosters" : `${base}/curators`)}
+          options={[{ value: "rooms", label: "Rooms" }, { value: "curators", label: "Curators" }, ...(community.allowed ? [{ value: "community" as const, label: "Community" }] : [])]}
+        />
       </div>
 
       {tab === "curators" ? (
@@ -149,6 +161,8 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
 
       <RoomEditor value={editing} onClose={() => setEditing(null)} />
       <PasteImportSheet open={pasting} onClose={() => setPasting(false)} city={store.rooms[0]?.city ?? "Bengaluru"} onParsed={(p) => setIncoming(p)} />
+      {community.user && <ShareSheet open={sharing} onClose={() => setSharing(false)} user={community.user} />}
+      {community.user && <PublishSheet open={publishing} onClose={() => setPublishing(false)} user={community.user} />}
       <ImportSheet incoming={incoming} onClose={() => setIncoming(null)} />
     </div>
   );

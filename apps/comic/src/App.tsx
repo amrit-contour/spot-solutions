@@ -10,6 +10,7 @@ import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/install";
 import { Placeholder } from "./routes/Placeholder";
 import { Rooms } from "./routes/Rooms";
+import { RostersApp } from "./routes/RostersApp";
 import { ComicStores } from "./routes/Stores";
 import { Today } from "./routes/Today";
 import { Asks } from "./routes/Asks";
@@ -81,6 +82,7 @@ export default function App() {
           <PushBridge />
           <Routes>
             <Route path="/rooms/*" element={<RosterRoutes uid={user.uid} />} />
+            <Route path="/rosters/*" element={<RostersApp user={user} />} />
             <Route element={<ComicStores uid={user.uid} />}>
               <Route path="/" element={<Today />} />
               <Route path="/asks" element={<Asks />} />
