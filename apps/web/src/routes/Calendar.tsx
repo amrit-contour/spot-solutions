@@ -204,9 +204,7 @@ function Calendar() {
               <div className="flex items-center">
                 <IconButton icon={IconArrowLeft} label={`Previous ${view}`} onClick={() => step(-1)} className="size-10 sm:size-9" />
                 <IconButton icon={IconArrowRight} label={`Next ${view}`} onClick={() => step(1)} className="size-10 sm:size-9" />
-        }
-      />
-
+              </div>
               <Button size="sm" variant={atToday ? "text" : "outlined"} onClick={goToday} title="Go to today (T)" aria-label={`Today, ${fmtDayLong(today)}`} className={cx(atToday && "text-on-surface-variant")}>
                 Today
               </Button>
@@ -214,7 +212,8 @@ function Calendar() {
                 <Segmented value={view} onChange={chooseView} options={VIEW_OPTIONS} size="sm" compact />
               </div>
             </div>
-      </div>
+        }
+      />
       <div
         style={{ "--side-w": side ? "3.5rem" : undefined } as React.CSSProperties}
         className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_var(--side-w,20rem)] lg:items-start lg:gap-8 lg:transition-[grid-template-columns] lg:duration-300 lg:ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none xl:grid-cols-[minmax(0,1fr)_var(--side-w,21.25rem)]"
