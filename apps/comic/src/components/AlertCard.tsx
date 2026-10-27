@@ -53,6 +53,8 @@ export function AlertCard({
             Asked
           </Chip>
         )}
+        {state === "got" && <Chip tone="success" icon={IconCheck} className="flex-none">Got it</Chip>}
+        {state === "declined" && <Chip tone="error" className="flex-none">Said no</Chip>}
         {state === "closed" && <Chip tone="error" className="flex-none">Closed</Chip>}
         {state === "expired" && <Chip className="flex-none">Ended</Chip>}
       </div>
@@ -89,7 +91,13 @@ export function AlertCard({
       )}
 
       {!compact && a.text && <p className="line-clamp-2 type-body-s text-on-surface-variant">“{a.text}”</p>}
-      {state === "asked" && a.askedAt && <p className="type-body-s text-on-surface-variant">You asked {ago(a.askedAt, now)}. Waiting for {givenName(a.contact.name) || "them"} to reply on WhatsApp.</p>}
+      {state === "asked" && a.askedAt && !a.reply && <p className="type-body-s text-on-surface-variant">You asked {ago(a.askedAt, now)}. Waiting for {givenName(a.contact.name) || "them"} to reply on WhatsApp.</p>}
+      {a.reply && (
+        <p className="type-body-s text-on-surface-variant">
+          {givenName(a.contact.name) || "They"} {state === "got" ? "said yes" : state === "declined" ? "said no" : "replied"}: “{a.reply.text}”
+          {state === "got" ? (a.reply.unsure ? " Check it, then it's in My spots." : " It's in My spots.") : state === "asked" ? " Not sure what that means: you decide." : ""}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button variant="text" size="sm" icon={IconClose} onClick={onDismiss}>

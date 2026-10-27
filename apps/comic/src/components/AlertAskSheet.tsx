@@ -42,7 +42,7 @@ export function AlertAskSheet({ uid, alert: a, spots, today, now, onClose, onSen
     if (!a || !text.trim()) return;
     setBusy(true);
     try {
-      const r = await runCommand<{ sentTo?: string }>(uid, "ask_for_spot", { alertId: a.id, body: text.trim(), force: gone || undefined });
+      const r = await runCommand<{ sentTo?: string }>(uid, "ask_for_spot", { alertId: a.id, body: text.trim(), time, force: gone || undefined });
       toast.success(`Sent to ${r?.sentTo ? givenName(r.sentTo) || r.sentTo : "them"}`);
       onSent();
       onClose();

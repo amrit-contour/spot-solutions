@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { deleteDoc, deleteField, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
-import { DEFAULT_ASK_TEMPLATE, DEFAULT_SETTINGS, cleanNotes, isoAddDays, localDate, planAsks, spotFromAsk, type Ask, type MySpot, type PlannedAsk, type Room } from "@spot/shared";
+import { DEFAULT_ASK_TEMPLATE, DEFAULT_SETTINGS, cleanNotes, isoAddDays, localDate, planAsks, spotFromAsk, spotIdForAsk, type Ask, type MySpot, type PlannedAsk, type Room } from "@spot/shared";
 import { useCollection, userDoc } from "./data";
 import { plain, useRoster } from "./roster";
 import { runCommand } from "./commands";
@@ -84,10 +84,10 @@ export function useFirestoreAsks(uid: string): AsksStore {
         const ref = userDoc(uid, "asks", ask.id);
         if (patch === "reset") {
           await updateDoc(ref, { status: "sent", evidence: deleteField(), lastReply: deleteField() });
-          await deleteDoc(userDoc(uid, "mySpots", `ask_${ask.id}`)).catch(() => undefined);
+          await deleteDoc(userDoc(uid, "mySpots", spotIdForAsk(ask))).catch(() => undefined);
           return;
         }
-        if (decision === "got_it") await setDoc(userDoc(uid, "mySpots", `ask_${ask.id}`), withoutId(spotFromAsk(ask, room, ask.lastReply?.time, Date.now())), { merge: true });
+        if (decision === "got_it") await setDoc(userDoc(uid, "mySpots", spotIdForAsk(ask)), withoutId(spotFromAsk(ask, room, ask.lastReply?.time, Date.now())), { merge: true });
         await updateDoc(ref, plain(patch));
       },
       saveSpot: (spot) => setDoc(userDoc(uid, "mySpots", spot.id), withoutId({ ...spot, notes: cleanNotes(spot.notes) }), { merge: false }),
@@ -122,7 +122,7 @@ export function useMemoryAsks(initial: { asks: Ask[]; spots: MySpot[] }): AsksSt
         const p = decide(ask, decision, Date.now());
         if (p === "reset") {
           setAsks((l) => l.map((a) => (a.id === ask.id ? { ...a, status: "sent", evidence: undefined, lastReply: undefined } : a)));
-          setSpots((l) => l.filter((s) => s.id !== `ask_${ask.id}`));
+          setSpots((l) => l.filter((s) => s.id !== spotIdForAsk(ask)));
           return;
         }
         if (decision === "got_it") setSpots((l) => upsert(l, spotFromAsk(ask, room, ask.lastReply?.time, Date.now())));

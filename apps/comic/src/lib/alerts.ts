@@ -1,10 +1,12 @@
 // The comic's group alerts: live data from Firestore (users/{uid}/spotAlerts, groupUpdates, watchedGroups, groups) and what the
 // comic does with it. The worker writes alerts and updates; the comic clears them. Pure rules live in @spot/shared (groupAlerts.ts).
 import { useEffect, useState } from "react";
-import { deleteDoc, deleteField, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, deleteField, doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
 import {
   DEFAULT_SETTINGS,
+  alertAskId,
+  alertSpotId,
   type StoredAlertRules,
   alertState,
   applyClosureToRoom,
@@ -94,10 +96,13 @@ export const dismissAlert = (uid: string, id: string) => updateDoc(userDoc(uid, 
 
 /** "I got it": the spot goes into My spots, from a group offer. */
 export async function gotTheSpot(uid: string, a: SpotAlert, time: string | undefined) {
-  const id = `alert_${a.id}`.slice(0, 200);
+  const id = alertSpotId(a.id);
   const spot: MySpot = plain({ id, date: a.date, time, roomId: a.roomId, roomName: a.roomName, showId: a.showId, source: "group_offer", alertId: a.id, happened: null, status: "booked", createdAt: Date.now() });
   const { id: _id, ...rest } = spot;
-  await setDoc(userDoc(uid, "mySpots", id), rest);
+  // The server makes the same spot (same id) when the contact's reply says yes: never a second one, and never over one already edited.
+  if (!(await getDoc(userDoc(uid, "mySpots", id))).exists()) await setDoc(userDoc(uid, "mySpots", id), rest);
+  await updateDoc(userDoc(uid, "spotAlerts", a.id), { status: "got" });
+  await updateDoc(userDoc(uid, "asks", alertAskId(a.id)), { status: "got_it" }).catch(() => undefined); // no ask when it came by another route
 }
 
 export const dismissUpdate = (uid: string, id: string) => updateDoc(userDoc(uid, "groupUpdates", id), { status: "dismissed" });

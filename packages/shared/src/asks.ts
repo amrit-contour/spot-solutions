@@ -16,9 +16,11 @@ import {
   type AskStatus,
   type Curator,
   type LimitHit,
+  type AskReply,
   type MySpot,
   type Room,
   type RoomShow,
+  type SpotAlert,
 } from "./rooms.ts";
 import { renderTemplate } from "./template.ts";
 import { formatDate, formatTime, DAY_NAMES } from "./week.ts";
@@ -339,19 +341,66 @@ export const draftExpired = (a: Pick<Ask, "status" | "showDate">, today: string)
 // From an ask to a spot
 // ---------------------------------------------------------------------------------------------------------------------------
 
-/** The My spot that a confirmed ask becomes. The id is the ask's, so confirming twice never makes two. */
+/** The id of the My spot a group alert becomes: the same whether the comic tapped "I got it" or the contact's reply was read. */
+export const alertSpotId = (alertId: string) => `alert_${alertId}`.slice(0, 200);
+/** The id of the Ask made when the comic taps "Ask for it" on an alert (asked again: the same doc). */
+export const alertAskId = (alertId: string) => `galert_${alertId}`.slice(0, 200);
+/** The My spot doc id for a confirmed ask. */
+export const spotIdForAsk = (ask: Pick<Ask, "id" | "source" | "alertId">) => (ask.source === "group_alert" && ask.alertId ? alertSpotId(ask.alertId) : `ask_${ask.id}`);
+
+/** The My spot that a confirmed ask becomes. The id is the ask's (or the alert's), so confirming twice never makes two. */
 export function spotFromAsk(ask: Ask, room: Pick<Room, "name"> | undefined, time: string | undefined, now: number): MySpot {
+  const fromAlert = ask.source === "group_alert" && Boolean(ask.alertId);
   return {
-    id: `ask_${ask.id}`,
+    id: spotIdForAsk(ask),
     date: ask.showDate,
     ...(time || ask.time ? { time: time ?? ask.time } : {}),
-    roomId: ask.roomId,
-    showId: ask.showId,
+    ...(ask.roomId ? { roomId: ask.roomId } : {}),
+    ...(ask.showId ? { showId: ask.showId } : {}),
     roomName: room?.name ?? ask.roomName ?? "",
-    source: "ask",
-    askId: ask.id,
+    source: fromAlert ? "group_offer" : "ask",
+    ...(fromAlert ? { alertId: ask.alertId } : { askId: ask.id }),
     happened: null,
     status: "booked",
     createdAt: now,
   };
 }
+
+/**
+ * The Ask made when the comic taps "Ask for it" on a group alert and the DM goes out, so the same 10-minute reply reader that
+ * handles planned asks reads the contact's answer. `chatId` and `messageId` come from the send.
+ */
+export function alertAsk(alert: SpotAlert, sent: { body: string; time?: string; chatId?: string; messageId?: string; now: number }): Ask {
+  const time = sent.time ?? (alert.times.length === 1 ? alert.times[0] : undefined);
+  return {
+    id: alertAskId(alert.id),
+    source: "group_alert",
+    alertId: alert.id,
+    roomId: alert.roomId ?? "",
+    showId: alert.showId ?? "",
+    showDate: alert.date,
+    ...(time ? { time } : {}),
+    status: "sent",
+    message: sent.body,
+    sentAt: sent.now,
+    createdAt: sent.now,
+    roomName: alert.roomName ?? "",
+    curatorName: alert.contact.name ?? "",
+    mode: "review",
+    voice: false,
+    chatId: sent.chatId ?? alert.contact.id,
+    ...(sent.messageId ? { messageId: sent.messageId } : {}),
+    closesAt: alert.expiresAt,
+  };
+}
+
+/** What a read reply changes on the alert: yes is "got", no is "declined", anything else only shows what they said. */
+export function alertPatchForReply(reply: AskReply): Pick<SpotAlert, "reply"> & Partial<Pick<SpotAlert, "status">> {
+  const r = { decision: reply.decision, text: reply.text.slice(0, 200), at: reply.at, ...(reply.unsure ? { unsure: true } : {}) };
+  if (reply.decision === "got_it") return { status: "got", reply: r };
+  if (reply.decision === "declined") return { status: "declined", reply: r };
+  return { reply: r };
+}
+
+/** An alert the comic dismissed stays dismissed when a reply comes in late; everything else takes the reply's outcome. */
+export const alertTakesReply = (a: Pick<SpotAlert, "status">) => a.status !== "dismissed";

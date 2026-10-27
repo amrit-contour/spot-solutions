@@ -7,8 +7,11 @@
 import type WAWebJS from "whatsapp-web.js";
 import { mergeRegulars, type RegularSpot } from "@spot/shared";
 import {
+  alertAsk,
   alertExpiry,
   alertIdFor,
+  alertPatchForReply,
+  alertTakesReply,
   alertPush,
   alertToClose,
   alertsClosedByRanges,
@@ -22,6 +25,7 @@ import {
   shortQuote,
   worthReading,
   interpret,
+  type AskReply,
   type Comic,
   type Curator,
   type GroupMsg,
@@ -35,7 +39,7 @@ import {
   type WatchedGroup,
   type MySpot,
 } from "@spot/shared";
-import { col, userRef } from "./firebase.ts";
+import { col, FieldValue, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
 import { generateJson } from "./llm.ts";
@@ -395,6 +399,7 @@ async function tidy(uid: string) {
 export async function askForSpot(uid: string, payload: Record<string, unknown>) {
   const alertId = String(payload.alertId ?? "");
   const body = String(payload.body ?? "").trim().slice(0, 1000);
+  const time = typeof payload.time === "string" && /^\d{2}:\d{2}$/.test(payload.time) ? payload.time : undefined;
   if (!alertId) throw new Error("Which spot? The alert is missing.");
   if (!body) throw new Error("Write a message first.");
   const ref = col(uid, "spotAlerts").doc(alertId);
@@ -405,7 +410,19 @@ export async function askForSpot(uid: string, payload: Record<string, unknown>) 
     if (alert.status === "expired" || alert.expiresAt <= Date.now()) throw new Error("That one has ended. Send anyway if you still want to try.");
   }
   const client = sessions.require(uid);
-  await deliverDraft(uid, client, alert.contact.id, body);
-  await ref.update({ status: "asked", askedAt: Date.now(), askText: body });
+  const sent = await deliverDraft(uid, client, alert.contact.id, body);
+  const now = Date.now();
+  // A reply that comes in later must not be missed: the ask is what the 10-minute reply reader looks at. Asking again restarts it.
+  const ask = alertAsk({ ...alert, id: alertId }, { body, time, now, chatId: (sent as { to?: string } | undefined)?.to ?? alert.contact.id, messageId: sent?.id?._serialized });
+  await col(uid, "asks").doc(ask.id).set(stripUndefined(ask));
+  await ref.update({ status: "asked", askedAt: now, askText: body, reply: FieldValue.delete() });
   return { sentTo: alert.contact.name ?? alert.contact.id };
+}
+
+/** A read reply to a group-alert ask: the alert shows it (and is "got" or "declined"), unless the comic already dismissed the alert. */
+export async function applyAlertReply(uid: string, alertId: string, reply: AskReply) {
+  const ref = col(uid, "spotAlerts").doc(alertId);
+  const alert = (await ref.get()).data() as SpotAlert | undefined;
+  if (!alert || !alertTakesReply(alert)) return;
+  await ref.update(stripUndefined(alertPatchForReply(reply)));
 }

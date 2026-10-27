@@ -75,7 +75,7 @@ function AlertsPage({ uid }: { uid: string }) {
           if (room) void pickAlertRoom(uid, a, room).then(() => toast.success(`Remembered for ${a.poster.name ?? "them"} in ${a.groupName ?? "this group"}`), (e: Error) => void toast.error(e.message));
         }}
         onGotIt={() => {
-          void gotTheSpot(uid, a, a.times[0]).then(() => dismissAlert(uid, a.id));
+          void gotTheSpot(uid, a, a.times[0]);
           toast.success("Added to My spots");
         }}
       />

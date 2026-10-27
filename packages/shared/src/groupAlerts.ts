@@ -1366,10 +1366,10 @@ export function renderAlertAsk(v: { name?: string; time?: string; room?: string;
     .replace(/ {2,}/g, " ");
 }
 
-export type AlertState = "open" | "asked" | "closed" | "expired" | "dismissed";
+export type AlertState = "open" | "asked" | "closed" | "expired" | "dismissed" | "got" | "declined";
 /** What an alert is right now: an unexpired one the worker hasn't swept yet still counts as expired. */
 export function alertState(a: Pick<SpotAlert, "status" | "expiresAt">, now: number): AlertState {
-  if (a.status === "closed" || a.status === "dismissed") return a.status;
+  if (a.status === "closed" || a.status === "dismissed" || a.status === "got" || a.status === "declined") return a.status;
   if (a.status === "expired" || a.expiresAt <= now) return "expired";
   return a.status === "asked" ? "asked" : "open";
 }

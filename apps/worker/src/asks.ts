@@ -36,6 +36,7 @@ import { deliverableId } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
 import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
+import { applyAlertReply } from "./groupWatch.ts";
 import { ASK_REPLY_SCHEMA, NOT_TEXT, readAskReply, type ReplyMessage } from "./askReplyPrompt.ts";
 
 const PLAN_DAYS = 7;
@@ -260,7 +261,7 @@ export async function readReplies(uid: string, client: WAWebJS.Client, data: { r
     if (!newest || newest <= (ask.readAt ?? 0)) continue;
 
     const room = data.rooms.find((r) => r.id === ask.roomId);
-    const label = ask.roomName ?? room?.name ?? "the room";
+    const label = ask.roomName || room?.name || "the room";
     const reply = await readAskReply(
       { curatorName: curator?.name ?? ask.curatorName, roomName: label, show: label, showDate: ask.showDate, time: ask.time, asked: ask.message ?? "" },
       messages,
@@ -279,7 +280,10 @@ async function applyReply(uid: string, ask: Ask, room: Room | undefined, curator
   const evidence = { text: reply.text, at: reply.at, ...(reply.messageId ? { messageId: reply.messageId } : {}) };
   if (reply.decision === "got_it") {
     const spot = spotFromAsk(ask, room, reply.time, Date.now());
-    await col(uid, "mySpots").doc(spot.id).set(spot);
+    // A spot from a group alert has the alert's id: if the comic already tapped "I got it" it is there, and stays as they left it.
+    await col(uid, "mySpots").doc(spot.id).create(spot).catch((e: { code?: number }) => {
+      if (e.code !== 6) throw e;
+    });
     await ref.update({ status: "got_it", evidence, lastReply: reply, readAt });
     await notify(uid, "ask_reply", `${who} said yes: ${label}, ${when}.${reply.unsure ? ` They only replied "${reply.text}", so check it.` : " It's in My spots."}`);
   } else if (reply.decision === "declined") {
@@ -289,5 +293,6 @@ async function applyReply(uid: string, ask: Ask, room: Room | undefined, curator
     await ref.update({ lastReply: reply, readAt });
     await notify(uid, "ask_reply", `${who} replied about ${label}, ${when}: "${reply.text.slice(0, 80)}". Open Asks to decide.`);
   }
+  if (ask.source === "group_alert" && ask.alertId) await applyAlertReply(uid, ask.alertId, reply);
   console.log(`[asks] ${uid} ${ask.id}: reply read as ${reply.decision}`);
 }

@@ -222,6 +222,10 @@ export interface Ask {
   lastReply?: AskReply;
   /** The worker looked for replies up to this time (ms). */
   readAt?: number;
+  /** "plan" (default): made from a room's ask rule. "group_alert": the comic tapped Ask for it on a spot offer in a group. */
+  source?: "plan" | "group_alert";
+  /** group_alert: the spotAlerts doc this ask came from. */
+  alertId?: string;
 }
 
 export type SpotSource = "ask" | "adhoc" | "group_offer" | "regular";
@@ -288,7 +292,10 @@ export interface SpotAlert {
   score?: number;
   scoreParts?: Record<string, number>;
   expiresAt: number;
-  status: "new" | "asked" | "dismissed" | "expired" | "closed";
+  /** got / declined: the contact's reply to the ask was read (or the comic said "I got it"). */
+  status: "new" | "asked" | "dismissed" | "expired" | "closed" | "got" | "declined";
+  /** The latest reply to the ask from this alert, as read by the server (unclear ones wait for the comic). */
+  reply?: { decision: "got_it" | "declined" | "unclear"; text: string; at: number; unsure?: boolean };
   receivedAt: number;
   closedAt?: number;
   askedAt?: number;
