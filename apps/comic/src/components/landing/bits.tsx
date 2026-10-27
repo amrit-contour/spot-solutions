@@ -43,8 +43,7 @@ export function Reveal({ children, delay = 0, className }: { children: ReactNode
 export function SectionHead({ kicker, title, children, className }: { kicker: string; title: ReactNode; children?: ReactNode; className?: string }) {
   return (
     <Reveal className={cx("max-w-2xl", className)}>
-      <p className="type-label-l text-primary">{kicker}</p>
-      <h2 className="mt-2 type-display-s text-balance">{title}</h2>
+      <h2 className="type-display-s text-balance" data-section={kicker}>{title}</h2>
       {children && <p className="mt-4 type-body-l text-on-surface-variant">{children}</p>}
     </Reveal>
   );

@@ -1,5 +1,5 @@
 // Signed-out front page: what Nothing BOT Comedy is, an animated demo of the flow, and the ways in.
-import { motion, MotionConfig, useScroll, useTransform } from "motion/react";
+import { motion, MotionConfig } from "motion/react";
 import {
   IconBuilding,
   IconCalendarMark,
@@ -44,16 +44,13 @@ const FAQ = [
 
 export function Landing() {
   const { busy, run } = useSignIn();
-  const { scrollYProgress } = useScroll();
-  const glowY = useTransform(scrollYProgress, [0, 1], ["0%", "40%"]);
 
   return (
     <MotionConfig reducedMotion="user">
       <div id="top" className="relative min-h-dvh overflow-x-clip bg-surface">
-        <motion.div aria-hidden style={{ y: glowY }} className="pointer-events-none absolute -top-40 left-1/2 h-[720px] w-[1100px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--md-sys-color-primary)_22%,transparent),transparent)] blur-2xl" />
 
         {/* Stays put while the page scrolls. The top padding is the status bar / notch when installed. */}
-        <header className="sticky top-0 z-30 border-b border-outline-variant/40 bg-surface/80 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] backdrop-blur-md">
+        <header className="sticky top-0 z-30 border-b border-outline-variant/40 bg-surface pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
           <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-5 sm:px-8">
             <a href="#top" aria-label="Nothing BOT Comedy, back to top" className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:outline-2 focus-visible:outline-primary">
               <ComicLogo className="size-10 flex-none" />
@@ -71,7 +68,7 @@ export function Landing() {
               ))}
               <a href="https://github.com/amrit-contour/spot-solutions" target="_blank" rel="noreferrer" className="state-layer rounded-full px-3 py-2 type-label-l text-on-surface-variant">GitHub</a>
             </nav>
-            <Button size="sm" variant="tonal" onClick={() => void run()} loading={busy}>
+            <Button variant="tonal" onClick={() => void run()} loading={busy}>
               Sign in
             </Button>
           </div>
@@ -80,10 +77,7 @@ export function Landing() {
         {/* Hero */}
         <section className="relative z-10 mx-auto grid max-w-6xl items-center gap-12 px-5 pt-10 pb-20 sm:px-8 lg:grid-cols-[1fr_1.1fr] lg:pt-14">
           <div className="min-w-0">
-            <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE }} className="inline-flex items-center gap-2 rounded-full bg-surface-container px-3 py-1.5 type-label-l text-primary">
-              <IconMic className="icon size-4" /> For comics who'd rather be on stage
-            </motion.p>
-            <h1 className="mt-6 type-display-m text-balance">
+            <h1 className="type-display-m text-balance">
               {"Ask for every open mic. Don't chase any.".split(" ").map((w, i) => (
                 <motion.span key={i} className="inline-block" initial={{ opacity: 0, y: 18, filter: "blur(6px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ duration: 0.55, delay: 0.08 + i * 0.06, ease: EASE }}>
                   {w}&nbsp;
@@ -154,11 +148,11 @@ export function Landing() {
           <div className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((f, i) => (
               <Reveal key={f.title} delay={(i % 3) * 0.08}>
-                <motion.div whileHover={{ y: -4 }} transition={{ type: "spring", duration: 0.4, bounce: 0.3 }} className="h-full rounded-xl bg-surface-low p-6 ring-1 ring-outline-variant/40">
+                <div className="h-full rounded-xl bg-surface-low p-6">
                   <f.icon className="icon size-7 text-primary" />
                   <h3 className="mt-4 type-title-m">{f.title}</h3>
                   <p className="mt-2 type-body-m text-on-surface-variant">{f.body}</p>
-                </motion.div>
+                </div>
               </Reveal>
             ))}
           </div>
@@ -168,8 +162,7 @@ export function Landing() {
         <section id="alerts" className="relative z-10 scroll-mt-[calc(5rem+env(safe-area-inset-top))] bg-inverse-surface text-inverse-on-surface">
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-24 sm:px-8 lg:grid-cols-2">
             <Reveal>
-              <p className="type-label-l text-inverse-primary">Group alerts</p>
-              <h2 className="mt-2 type-display-s text-balance">The spot is posted at 6:10. You ask at 6:11.</h2>
+              <h2 className="type-display-s text-balance">The spot is posted at 6:10. You ask at 6:11.</h2>
               <p className="mt-4 type-body-l opacity-80">
                 Pick the groups to watch. Only those are read. When someone offers a spot, you get a push with Ask for it, and one tap sends the DM to whoever the message says to DM. If it clashes with a spot you already have, it says so. When a group says a mic is full, that room stops showing up in your asks.
               </p>
@@ -193,7 +186,7 @@ export function Landing() {
                 { icon: IconServer, t: "Any old laptop", b: "One installer for Mac, Windows or Ubuntu. It restarts itself and catches up after downtime." },
                 { icon: IconSparkle, t: "Open source", b: "MIT licensed. Read the code, run your own server, change what you don't like." },
               ].map((c) => (
-                <div key={c.t} className="rounded-xl bg-surface-low p-5 ring-1 ring-outline-variant/40">
+                <div key={c.t} className="rounded-xl bg-surface-low p-5">
                   <c.icon className="icon size-7 text-primary" />
                   <div className="mt-3 type-title-m">{c.t}</div>
                   <div className="mt-1 type-body-m text-on-surface-variant">{c.b}</div>
@@ -208,7 +201,7 @@ export function Landing() {
 
         {/* Sister app */}
         <section className="relative z-10 mx-auto max-w-6xl px-5 pb-24 sm:px-8">
-          <Reveal className="flex flex-col gap-4 rounded-xl bg-surface-low p-6 ring-1 ring-outline-variant/40 sm:flex-row sm:items-center sm:gap-6 sm:p-8">
+          <Reveal className="flex flex-col gap-4 rounded-xl bg-surface-low p-6 sm:flex-row sm:items-center sm:gap-6 sm:p-8">
             <span className="grid size-12 flex-none place-items-center rounded-lg bg-primary-container text-on-primary-container">
               <IconMic className="icon size-6" />
             </span>
