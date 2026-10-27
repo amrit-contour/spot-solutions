@@ -83,7 +83,7 @@ export default function App() {
             <Route path="/rooms/*" element={<RosterRoutes uid={user.uid} />} />
             <Route path="/rosters/*" element={<RostersApp user={user} />} />
             <Route element={<ComicStores uid={user.uid} />}>
-              <Route path="/" element={<Today />} />
+              <Route path="/" element={<Today uid={user.uid} />} />
               <Route path="/asks" element={<Asks />} />
               <Route path="/spots" element={<MySpots />} />
             </Route>

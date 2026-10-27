@@ -5,6 +5,7 @@ import { Button, Chip, Empty, IconBuilding, IconCalendarMark, IconChat, IconCloc
 import { useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { ago, dateTime } from "../lib/time";
+import { ConnectionBanner } from "../components/ConnectionCard";
 
 const RECENT_MS = 3 * 86_400_000;
 
@@ -52,7 +53,7 @@ function ReplyRow({ ask, now }: { ask: Ask; now: number }) {
 }
 
 /** Today: asks to make now, tonight's spots, and the replies that came in lately. */
-export function Today() {
+export function Today({ uid }: { uid?: string }) {
   const store = useAsks();
   const roster = useRoster();
   const now = useNowMs();
@@ -71,6 +72,7 @@ export function Today() {
     <div className="w-full">
       <PageHeader title="Today" subtitle="Your day at a glance." />
       <div className="flex min-w-0 flex-col gap-7 px-4 pt-3 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12 lg:max-w-3xl">
+        {uid && <ConnectionBanner uid={uid} />}
         {loading ? (
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : nothing ? (

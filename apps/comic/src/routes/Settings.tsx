@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { IconArrowRight, IconGroup, IconInbox, PageHeader, SectionTitle, SettingRow, Switch } from "@spot/ui";
 import { useComicSettings, useWatchedGroups } from "../lib/alerts";
 import { PushPrompt } from "../components/PushPrompt";
+import { ConnectionCard } from "../components/ConnectionCard";
 
 /** Alerts on this device, the groups being watched, and whether group updates apply themselves. */
 export function Settings({ uid }: { uid: string }) {
@@ -9,8 +10,13 @@ export function Settings({ uid }: { uid: string }) {
   const groups = useWatchedGroups(uid);
   return (
     <div className="w-full">
-      <PageHeader title="Settings" subtitle="Alerts and groups." />
+      <PageHeader title="Settings" subtitle="Connection, alerts and groups." />
       <div className="flex min-w-0 flex-col gap-6 px-4 pt-4 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12">
+        <section aria-label="Connection">
+          <SectionTitle>Connection</SectionTitle>
+          <ConnectionCard uid={uid} />
+        </section>
+
         <section aria-label="Notifications">
           <SectionTitle>On this device</SectionTitle>
           <PushPrompt uid={uid} always />
