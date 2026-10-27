@@ -681,6 +681,8 @@ const handlers: Record<Command["type"], Handler> = {
   // Profile pictures: queued and fetched in the background (one every couple of seconds); the answer lands on the comic docs.
   profile_pics: profilePics,
   merge_comics: (uid, payload) => mergeComicDocs(uid, payload),
+  /** "Remove from lineup" on a show-group pill: the same drop-out flow as a comic's own cancellation (slot freed, group by the usual rules, curator told). */
+  drop_from_lineup: (uid, { lineupId: id, comicId }) => dropFromLineup(uid, sessions.require(uid), String(comicId), String(id)),
 };
 
 /** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */

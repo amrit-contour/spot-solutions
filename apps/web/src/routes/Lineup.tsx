@@ -64,6 +64,7 @@ import { GroupSyncSheet } from "../components/GroupSyncSheet";
 import { GroupPopover, GroupTab, MemberTileBody } from "../components/GroupPanel";
 import { Popover, ToolButton } from "@spot/ui";
 import { PillRow, Pill, comicPills, type TellState } from "../components/Pills";
+import { LiveChip, liveOf } from "../components/LiveChip";
 import { BackfillSheet, PAST_SHOW_NOTE } from "../components/BackfillSheet";
 import { RateLineup } from "../components/RateLineup";
 import { listNames } from "../components/calendar/EventCard";
@@ -395,7 +396,7 @@ function Column({ id, children, className, disabled }: { id: string; children: R
   );
 }
 
-function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action, show, states, onMinutes, adhoc }: { adhoc?: boolean; comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void }) {
+function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action, show, states, onMinutes, adhoc, liveChip }: { liveChip?: React.ReactNode; adhoc?: boolean; comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void }) {
   const name = comic?.name ?? request?.comicName ?? `+${id.split("@")[0]}`;
   const performed = comic?.lastPerformedWeek === lastWeek;
   const pills = comicPills({ comic, request, show, lastWeek, states, adhoc }, id);
@@ -408,6 +409,7 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action
           <span className="truncate type-title-s">{name}</span>
           {comic?.tier && comic.tier !== "open" && <IconStar className="icon size-3.5 flex-none text-tertiary" aria-label={comic.tier} />}
         </div>
+        {liveChip && <div className="mt-0.5 flex min-w-0">{liveChip}</div>}
         <PillRow pills={pills} className="mt-0.5" />
       </div>
       {minutes && onMinutes ? (
@@ -443,7 +445,7 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action
   );
 }
 
-function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action, show, states, onMinutes, shared, adhoc }: { adhoc?: boolean; id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void; shared?: boolean }) {
+function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, action, show, states, onMinutes, shared, adhoc, liveChip }: { liveChip?: React.ReactNode; adhoc?: boolean; id: string; comic?: Comic; request?: SpotRequest; lastWeek: string; index?: number; minutes?: number | null; disabled?: boolean; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void; shared?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
   return (
     <li
@@ -455,7 +457,7 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
     >
       {/* Shared layout: the card glides between Waiting and a lineup. Off while dragging, where dnd-kit moves it. */}
       <motion.div layoutId={shared ? `tile-${id}` : undefined} layout={shared ? "position" : false} transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}>
-        <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} show={show} states={states} onMinutes={onMinutes} adhoc={adhoc} />
+        <TileBody comic={comic} id={id} request={request} lastWeek={lastWeek} index={index} minutes={minutes} action={action} show={show} states={states} onMinutes={onMinutes} adhoc={adhoc} liveChip={liveChip} />
       </motion.div>
     </li>
   );
@@ -741,6 +743,10 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                 minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null}
                 show={show}
                 adhoc={Boolean(lineup?.slots.find((x) => x.comicId === cid)?.adhoc)}
+                liveChip={(() => {
+                  const live = lineup && !cancelled && !record ? liveOf(lineup.slots.find((x) => x.comicId === cid)) : null;
+                  return live && lineup ? <LiveChip uid={uid} live={live} name={nameOf(cid)} show={show} lineup={lineup} /> : undefined;
+                })()}
                 states={statesFor(cid)}
                 onMinutes={lineup && !cancelled ? (m) => void setMinutes(uid, week, show, lineup, cid, m).catch((e: Error) => toast.error(e.message)) : undefined}
                 disabled={cancelled || record}

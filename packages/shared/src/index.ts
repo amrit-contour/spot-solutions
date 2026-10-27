@@ -33,6 +33,7 @@ export * from "./groupPosts.ts";
 export * from "./groupPostCriteria.ts";
 export * from "./groupPostSuggestions.ts";
 export * from "./groupCleanup.ts";
+export * from "./showWatch.ts";
 export * from "./adhoc.ts";
 export * from "./rooms.ts";
 export * from "./rosterMerge.ts";

@@ -30,6 +30,7 @@ import { OfferSheet } from "../OfferSheet";
 import { BackfillSheet } from "../BackfillSheet";
 import { GroupSyncSheet } from "../GroupSyncSheet";
 import { PillRow, comicPills, type TellState } from "../Pills";
+import { LiveChip, liveOf } from "../LiveChip";
 import { Button, Chip, buttonClass, cx } from "@spot/ui";
 import { IconAdd, IconArrowRight, IconCancel, IconCheck, IconClock, IconClose, IconGroup, IconHistory, IconInbox, IconMic, IconRoom, IconPen, IconSend, IconSparkle, type Icon } from "@spot/ui";
 import { laneOf } from "../../lib/lanes";
@@ -182,6 +183,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
                 <span className="w-4 flex-none text-center type-label-m text-on-surface-variant tabular">{i + 1}</span>
                 <ComicAvatar id={s.comicId} name={name(s.comicId)} size={28} />
                 <span className="min-w-0 flex-1 truncate type-body-m">{name(s.comicId)}</span>
+                {lineup && !off && !past && liveOf(s) && <LiveChip uid={uid} live={liveOf(s)!} name={name(s.comicId)} show={show} lineup={lineup} className="flex-none" />}
                 <PillRow pills={pills} max={4} compact className="flex-none" />
               </li>
             );

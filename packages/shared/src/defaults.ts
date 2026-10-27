@@ -1,4 +1,5 @@
 import type { Settings } from "./types.ts";
+import { DEFAULT_SHOW_WATCH } from "./showWatch.ts";
 import { DEFAULT_ACK_TEMPLATE, DEFAULT_CANCEL_SPOT_TEMPLATE, DEFAULT_CONFIRM_TEMPLATE, DEFAULT_REJECT_TEMPLATE } from "./template.ts";
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -14,6 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // V1 defaults: requests open Saturday 3 PM, close Monday 10 AM.
   rules: { window: { enabled: false, startDay: 6, startTime: "15:00", endDay: 1, endTime: "10:00" }, skipLastWeek: false },
   selfService: { enabled: true, autoSend: false },
+  showWatch: DEFAULT_SHOW_WATCH,
   onboarding: { enabled: true },
   micCheck: { enabled: true, time: "10:00", whatsapp: false, afterHours: 2, rate: true },
   hostPoll: { groupId: null },

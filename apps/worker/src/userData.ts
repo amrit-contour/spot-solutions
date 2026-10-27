@@ -1,5 +1,5 @@
 // Per-user Firestore reads the worker needs on hot paths, kept warm with snapshot listeners.
-import { DEFAULT_SETTINGS, aiFromLegacy, closedRequestsWeeks, type Settings, type Show, type Venue } from "@spot/shared";
+import { DEFAULT_SETTINGS, aiFromLegacy, closedRequestsWeeks, showWatchOf, type Settings, type Show, type Venue } from "@spot/shared";
 import { col, userRef } from "./firebase.ts";
 import { defaultAiFor } from "./serverAi.ts";
 
@@ -16,7 +16,7 @@ const caches = new Map<string, Cache>();
 
 /** A user doc's `settings`, filled in with defaults (older docs miss newer fields). */
 export function settingsFromDoc(data: Partial<Settings> | undefined): Settings {
-  return { ...DEFAULT_SETTINGS, ...data, ack: { ...DEFAULT_SETTINGS.ack, ...data?.ack }, confirm: { ...DEFAULT_SETTINGS.confirm, ...data?.confirm }, cancelSpot: { ...DEFAULT_SETTINGS.cancelSpot, ...data?.cancelSpot }, reject: { ...DEFAULT_SETTINGS.reject, ...data?.reject }, rules: { ...DEFAULT_SETTINGS.rules, ...data?.rules, window: { ...DEFAULT_SETTINGS.rules.window, ...data?.rules?.window } }, selfService: { ...DEFAULT_SETTINGS.selfService, ...data?.selfService }, onboarding: { ...DEFAULT_SETTINGS.onboarding, ...data?.onboarding }, micCheck: { ...DEFAULT_SETTINGS.micCheck, ...data?.micCheck }, hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...data?.hostPoll }, offers: { ...DEFAULT_SETTINGS.offers, ...data?.offers }, googleContacts: { ...DEFAULT_SETTINGS.googleContacts, ...data?.googleContacts }, agent: { ...DEFAULT_SETTINGS.agent!, ...data?.agent }, retention: { closedRequestsWeeks: closedRequestsWeeks(data) }, ai: defaultAiFor(data) ?? aiFromLegacy(data) };
+  return { ...DEFAULT_SETTINGS, ...data, ack: { ...DEFAULT_SETTINGS.ack, ...data?.ack }, confirm: { ...DEFAULT_SETTINGS.confirm, ...data?.confirm }, cancelSpot: { ...DEFAULT_SETTINGS.cancelSpot, ...data?.cancelSpot }, reject: { ...DEFAULT_SETTINGS.reject, ...data?.reject }, rules: { ...DEFAULT_SETTINGS.rules, ...data?.rules, window: { ...DEFAULT_SETTINGS.rules.window, ...data?.rules?.window } }, selfService: { ...DEFAULT_SETTINGS.selfService, ...data?.selfService }, showWatch: showWatchOf(data), onboarding: { ...DEFAULT_SETTINGS.onboarding, ...data?.onboarding }, micCheck: { ...DEFAULT_SETTINGS.micCheck, ...data?.micCheck }, hostPoll: { ...DEFAULT_SETTINGS.hostPoll, ...data?.hostPoll }, offers: { ...DEFAULT_SETTINGS.offers, ...data?.offers }, googleContacts: { ...DEFAULT_SETTINGS.googleContacts, ...data?.googleContacts }, agent: { ...DEFAULT_SETTINGS.agent!, ...data?.agent }, retention: { closedRequestsWeeks: closedRequestsWeeks(data) }, ai: defaultAiFor(data) ?? aiFromLegacy(data) };
 }
 
 export function watchUser(uid: string): Cache {

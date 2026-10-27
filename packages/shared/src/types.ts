@@ -3,6 +3,7 @@ import type { GroupPost } from "./groupPosts.ts";
 import type { GroupPostStatus } from "./groupPostCriteria.ts";
 import type { GroupCleanup, LineupCleanup } from "./groupCleanup.ts";
 import type { ActivityEntry } from "./lineupActivity.ts";
+import type { ShowWatchSettings, SlotLive } from "./showWatch.ts";
 
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
 export type Tier = "open" | "regular" | "featured";
@@ -95,6 +96,8 @@ export interface Settings {
   neverRead?: import("./neverRead.ts").NeverReadEntry[];
   /** "Never read any group": every group chat is skipped except the curator's show groups and Comedy's watched groups. Missing counts as off. */
   neverReadAllGroups?: boolean;
+  /** Watch the show groups for "running late", "can't make it", "reached" from comics on the lineup (showWatch.ts). Missing counts as off. */
+  showWatch?: ShowWatchSettings;
 }
 
 /** What the agent number may do for you. Linking it is the opt-in; these switch each part off again. */
@@ -427,6 +430,8 @@ export interface Slot {
   note?: string | null;
   attendance?: Attendance | null;
   tags?: string[] | null;
+  /** What the show group said about them tonight ("running late, ETA 8:40"). Written by the worker; the pill goes away after the show. */
+  live?: SlotLive | null;
 }
 
 /** How the room felt, a light optional tag on a show review. */
@@ -562,7 +567,8 @@ export type CommandType =
   | "send_ask"
   | "ask_for_spot"
   | "profile_pics"
-  | "merge_comics";
+  | "merge_comics"
+  | "drop_from_lineup";
 
 export interface Command {
   type: CommandType;

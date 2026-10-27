@@ -13,6 +13,7 @@ const TITLES: Record<PushKind, string> = {
   ask_open: "Time to ask for a spot",
   ask_closing: "An ask is closing soon",
   ask_reply: "A curator replied",
+  show_live: "Update from a show group",
 };
 /** Nothing BOT Comedy's own address, for the pushes that belong to that app. */
 const COMEDY_URL = "https://nothingbotcomedy.web.app/asks";

@@ -49,6 +49,7 @@ import { GoogleContactsCard } from "../components/GoogleContactsCard";
 import { AppearanceCard } from "../components/AppearanceCard";
 import { VoiceSourcesSheet } from "../components/VoiceSourcesSheet";
 import { NeverReadCard } from "../components/NeverReadCard";
+import { ShowWatchCard } from "../components/ShowWatchCard";
 import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "@spot/ui";
 import { ImageField } from "../components/ImageAttach";
@@ -314,6 +315,8 @@ export function SettingsPage() {
             <Switch checked={settings.onboarding.enabled} onChange={(v) => saveSettings({ onboarding: { enabled: v } })} label="Ask new faces who they are" />
           </SettingRow>
         </Section>
+
+        <ShowWatchCard />
 
         <Section
           title="Follow-ups from your replies"
