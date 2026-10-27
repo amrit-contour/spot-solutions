@@ -29,6 +29,8 @@ import {
   type Person,
   type Reading,
   type Room,
+  type RoomHistory,
+  type RoomPick,
   type SpotAlert,
   type WatchedGroup,
   type MySpot,
@@ -135,7 +137,9 @@ export function startGroupWatch(uids: () => Iterable<string>) {
 
 async function handle(uid: string, client: WAWebJS.Client, wa: WAWebJS.Message, group: WatchedGroup) {
   const { settings } = watchUser(uid);
-  const [roomSnap, curatorSnap, comicSnap, userSnap] = await Promise.all([col(uid, "rooms").get(), col(uid, "curators").get(), col(uid, "comics").get(), userRef(uid).get()]);
+  const [roomSnap, curatorSnap, comicSnap, userSnap, pickSnap, alertSnap] = await Promise.all([
+    col(uid, "rooms").get(), col(uid, "curators").get(), col(uid, "comics").get(), userRef(uid).get(), col(uid, "roomPicks").get(), col(uid, "spotAlerts").get(),
+  ]);
   const rooms = roomSnap.docs.map((d) => ({ ...(d.data() as Room), id: d.id }));
   const curators = curatorSnap.docs.map((d) => ({ ...(d.data() as Curator), id: d.id }));
   const comics = comicSnap.docs.map((d) => ({ ...(d.data() as Comic), id: d.id }));
@@ -167,7 +171,12 @@ async function handle(uid: string, client: WAWebJS.Client, wa: WAWebJS.Message, 
   const tz = settings.timezone;
   const parts = localParts(now, tz);
   const directory: Person[] = comics.map((c) => ({ id: c.chatId ?? c.id, name: c.name }));
-  const ctx = { rooms, curators, directory, selfId, tz, now };
+  // What settles "Comedy Theatre" when it fits two rooms: what the comic picked for this group and poster, and where this group's offers usually are.
+  const history: RoomHistory = {
+    picks: pickSnap.docs.map((d) => d.data() as RoomPick),
+    alerts: alertSnap.docs.map((d) => d.data() as Pick<SpotAlert, "groupId" | "roomId">).map((a) => ({ groupId: a.groupId, roomId: a.roomId })),
+  };
+  const ctx = { rooms, curators, directory, selfId, tz, now, history };
 
   const ask = async () => (await generateJson(uid, settings.ai, buildGroupPrompt(msg, rooms, parts), GROUP_SCHEMA)).text;
   // Rules first: a message that is plainly an offer (or a closure) is applied and pushed at once, with no model in the way.
@@ -190,11 +199,11 @@ async function enrichRoom(uid: string, msg: GroupMsg, rooms: Room[], parts: Retu
     const { read, by } = await readWithFallback(ask, msg, ENRICH_BUDGET_MS);
     if (by !== "model" || read.kind !== "spot_offer") return;
     const r = interpret(read, msg, ctx);
-    if (r.kind !== "spot_offer" || (!r.offer.roomId && !r.offer.roomName)) return;
+    if (r.kind !== "spot_offer" || (!r.offer.roomId && !r.offer.roomName && !r.offer.roomCandidates)) return;
     const ref = col(uid, "spotAlerts").doc(alertIdFor(msg.groupId, msg.id));
     const cur = (await ref.get()).data() as SpotAlert | undefined;
     if (!cur || cur.roomId) return;
-    await ref.update(stripUndefined({ roomId: r.offer.roomId, roomName: r.offer.roomName, showId: r.offer.showId }));
+    await ref.update(stripUndefined({ roomId: r.offer.roomId, roomName: r.offer.roomName, showId: r.offer.showId, roomCandidates: r.offer.roomId ? null : r.offer.roomCandidates, roomWhy: r.offer.roomWhy }));
     console.log(`[groups] ${uid} alert room filled in by the model: ${r.offer.roomName}`);
   } catch (e) {
     console.error(`[groups] ${uid} room enrichment failed`, (e as Error).message);
@@ -243,6 +252,8 @@ async function offerAlert(uid: string, msg: GroupMsg, o: Extract<Reading, { kind
     text: shortQuote(msg.text),
     roomId: o.roomId,
     roomName: o.roomName,
+    roomCandidates: o.roomCandidates,
+    roomWhy: o.roomWhy,
     showId: o.showId,
     date: o.date,
     times: o.times,

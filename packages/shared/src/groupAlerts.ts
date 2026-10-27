@@ -58,6 +58,20 @@ export interface GroupMsg {
   quotedMessageId?: string;
 }
 
+/** What the comic chose when a name fitted two locations: remembered per group and poster, so the next "Comedy Theatre" from them is settled. */
+export interface RoomPick {
+  groupId: string;
+  posterId: string;
+  roomId: string;
+  at: number;
+}
+/** What the worker knows about this group from before: used to settle a name that fits several locations. */
+export interface RoomHistory {
+  /** Earlier alerts (any group): where each was. */
+  alerts?: { groupId: string; roomId?: string }[];
+  picks?: RoomPick[];
+}
+
 export interface ReadCtx {
   rooms: Room[];
   curators: Curator[];
@@ -68,6 +82,7 @@ export interface ReadCtx {
   tz: string;
   /** ms */
   now: number;
+  history?: RoomHistory;
 }
 
 export interface ParsedOffer {
@@ -82,6 +97,10 @@ export interface ParsedOffer {
   long: boolean;
   /** Several rooms fit the name: the poster didn't say which. */
   ambiguousRooms?: string[];
+  /** The same rooms with ids, for the "Which Comedy Theatre?" chips. */
+  roomCandidates?: { id: string; name: string; area: string }[];
+  /** How a name that fitted several rooms was settled: "the time fits", "you picked it before"... */
+  roomWhy?: string;
 }
 
 export interface DateRange {
@@ -454,6 +473,128 @@ export function resolveRoom<R extends RoomLike>(rooms: R[], hint: string | undef
   const top = Math.max(...scored.map((x) => x.s));
   const best = scored.filter((x) => x.s === top).map((x) => x.r);
   return best.length === 1 ? { room: best[0]!, candidates: best } : { room: null, candidates: best };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Two locations under one name (Comedy Theatre has several rooms)
+// ---------------------------------------------------------------------------------------------------------------------------
+
+export interface RoomSignals {
+  text: string;
+  /** HH:MM offered. */
+  times?: string[];
+  date?: string;
+  groupId: string;
+  sender: Person;
+  curators: Curator[];
+  history?: RoomHistory;
+}
+
+export interface RoomPickResult {
+  room: Room | null;
+  candidates: Room[];
+  /** Why this one: "you picked it for this group before", "the time fits only this one"... */
+  why?: string;
+  scores: Record<string, number>;
+}
+
+/** Points per signal. A room is picked when it has at least PICK_MIN and leads the next one by PICK_LEAD. */
+export const ROOM_SIGNAL = { picked: 100, area: 60, curator: 40, usual: 40, usualSome: 20, time: 25, timeUnsure: 15, timeMiss: -15 } as const;
+const PICK_MIN = 25;
+const PICK_LEAD = 25;
+
+function phrasesOf(r: Room): string[] {
+  const label = r.pin?.label ? r.pin.label.split(",").map((x) => x.trim()) : [];
+  return [r.area, ...r.aliases, ...label].filter((x) => x && x.trim().length > 2);
+}
+
+function timesOn(room: Room, date: string | undefined): string[] {
+  const wd = date ? weekdayOf(date) : undefined;
+  const out: string[] = [];
+  for (const sh of room.shows) {
+    const day = wd === undefined ? undefined : sh.days.find((d) => d.weekday === wd);
+    if (wd !== undefined && sh.days.length && !day) continue; // the show doesn't run that day
+    out.push(...(day?.times?.length ? day.times : sh.times));
+  }
+  return out;
+}
+
+/**
+ * One name, several rooms: use what the message and the history say. In order of weight: the comic picked one for this group and
+ * poster before; the text has an area or landmark word of one; the poster curates only one; the group's usual room; the offered
+ * time is one of that room's show times (and not the others'). Nothing is guessed: a pick needs a clear lead, else the candidates
+ * come back for the comic to choose.
+ */
+export function disambiguateRoom(candidates: Room[], s: RoomSignals): RoomPickResult {
+  const scores: Record<string, number> = Object.fromEntries(candidates.map((r) => [r.id, 0]));
+  const why: Record<string, string[]> = Object.fromEntries(candidates.map((r) => [r.id, []]));
+  const add = (r: Room, pts: number, w: string) => {
+    scores[r.id]! += pts;
+    if (pts > 0) why[r.id]!.push(w);
+  };
+  if (candidates.length < 2) return { room: candidates[0] ?? null, candidates, scores };
+  const ids = new Set(candidates.map((r) => r.id));
+  const textTokens = tokens(s.text);
+
+  // 1. What the comic picked for this group and poster.
+  const pick = [...(s.history?.picks ?? [])].sort((a, b) => b.at - a.at).find((p) => p.groupId === s.groupId && samePerson(p.posterId, s.sender.id) && ids.has(p.roomId));
+  if (pick) add(candidates.find((r) => r.id === pick.roomId)!, ROOM_SIGNAL.picked, "you picked it for this group before");
+
+  // 2. An area or landmark word that belongs to one location only.
+  const seen = new Map<string, number>();
+  for (const r of candidates) for (const ph of new Set(phrasesOf(r).map(norm))) seen.set(ph, (seen.get(ph) ?? 0) + 1);
+  for (const r of candidates) {
+    const hit = phrasesOf(r).some((ph) => {
+      const key = norm(ph);
+      const d = distinctive(tokens(ph));
+      return seen.get(key) === 1 && d.length > 0 && d.every((t) => textTokens.includes(t));
+    });
+    if (hit) add(r, ROOM_SIGNAL.area, "the message names its area");
+  }
+
+  // 3. The poster is a known curator of one location.
+  const sameAsSender = (c: Curator) => {
+    const digits = (c.phone ?? "").replace(/\D/g, "");
+    const senderDigits = s.sender.id.split("@")[0]!.replace(/\D/g, "");
+    return Boolean((digits.length >= 8 && senderDigits.endsWith(digits.slice(-10))) || sameName(c.name, s.sender.name));
+  };
+  const who = new Set(s.curators.filter(sameAsSender).map((c) => c.id));
+  if (who.size) {
+    const runs = candidates.map((r) => r.shows.some((sh) => sh.days.some((d) => d.curatorIds.some((id) => who.has(id)) || (d.standIn && who.has(d.standIn.curatorId)))));
+    if (runs.some(Boolean) && !runs.every(Boolean)) candidates.forEach((r, i) => runs[i] && add(r, ROOM_SIGNAL.curator, "the poster curates there"));
+  }
+
+  // 4. The group's usual room.
+  const past = (s.history?.alerts ?? []).filter((a) => a.groupId === s.groupId && a.roomId && ids.has(a.roomId));
+  if (past.length) {
+    const counts = candidates.map((r) => past.filter((a) => a.roomId === r.id).length);
+    const top = Math.max(...counts);
+    const lead = candidates[counts.indexOf(top)]!;
+    if (counts.filter((c) => c === top).length === 1) add(lead, top >= 2 && top / past.length >= 0.75 ? ROOM_SIGNAL.usual : ROOM_SIGNAL.usualSome, "it's the usual room in this group");
+  }
+
+  // 5. The offered time fits one location's show times.
+  if (s.times?.length) {
+    const rows = candidates.map((r) => {
+      const t = timesOn(r, s.date);
+      return { r, known: t.length > 0, fits: t.some((x) => s.times!.includes(x)) };
+    });
+    if (rows.some((x) => x.fits) && !rows.every((x) => x.fits)) {
+      // A room with no times listed can't be ruled out, so the match counts for less against it.
+      const pts = rows.some((x) => !x.fits && !x.known) ? ROOM_SIGNAL.timeUnsure : ROOM_SIGNAL.time;
+      for (const x of rows) {
+        if (x.fits) add(x.r, pts, "the time matches its shows");
+        else if (x.known) add(x.r, ROOM_SIGNAL.timeMiss, "");
+      }
+    }
+  }
+
+  const ranked = [...candidates].sort((a, b) => scores[b.id]! - scores[a.id]!);
+  const [first, second] = ranked;
+  if (first && scores[first.id]! >= PICK_MIN && scores[first.id]! - (second ? scores[second.id]! : 0) >= PICK_LEAD) {
+    return { room: first, candidates: [first], why: why[first.id]!.join(", "), scores };
+  }
+  return { room: null, candidates, scores };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1087,36 +1228,52 @@ export function interpret(ai: AiRead, msg: GroupMsg, ctx: ReadCtx): Reading {
   const text = msg.text;
   const now = localParts(ctx.now, ctx.tz);
   const today = now.date;
-  const room = findRoom(ctx.rooms, ai.room, text);
-  const roomFields = { roomId: room.room?.id, roomName: room.room?.name ?? roomNameOf(room.candidates) ?? (ai.room?.trim() || undefined) };
+  const found = findRoom(ctx.rooms, ai.room, text);
+  // A name that fits several locations is settled by what the message and the group's history say (times only for offers).
+  const settle = (times?: string[], date?: string): { room: RoomMatch<Room>; why?: string } => {
+    if (found.room || found.candidates.length < 2) return { room: found };
+    const d = disambiguateRoom(found.candidates, { text, times, date, groupId: msg.groupId, sender: msg.sender, curators: ctx.curators, history: ctx.history });
+    return d.room ? { room: { room: d.room, candidates: [d.room] }, why: d.why } : { room: found };
+  };
+  const fieldsOf = (room: RoomMatch<Room>) => ({ roomId: room.room?.id, roomName: room.room?.name ?? roomNameOf(room.candidates) ?? (ai.room?.trim() || undefined) });
+  let room = found;
+  let roomFields = fieldsOf(room);
 
   switch (ai.kind) {
     case "spot_offer": {
       if (!SPOT_WORD.test(text)) return { kind: "other" };
       const { times, reachBy } = parseOfferTimes(text, now.time);
+      const date = parseDayHint(text, today);
+      const settled = settle(times, date);
+      room = settled.room;
+      roomFields = fieldsOf(room);
       const showId = showFor(room.room, ai.show);
       return {
         kind: "spot_offer",
         offer: {
           ...roomFields,
           showId,
-          date: parseDayHint(text, today),
+          date,
           times,
           reachBy,
           contact: resolveContact({ sender: msg.sender, mentioned: msg.mentioned, text, kind: ai.contactKind, name: ai.contactName, directory: ctx.directory, selfId: ctx.selfId }),
           busking: /\bbusk\w*/i.test(text),
           long: /\blong\b/i.test(text),
           ambiguousRooms: !room.room && room.candidates.length > 1 ? room.candidates.map((r) => `${r.name}, ${r.area}`) : undefined,
+          roomCandidates: !room.room && room.candidates.length > 1 ? room.candidates.map((r) => ({ id: r.id, name: r.name, area: r.area })) : undefined,
+          roomWhy: settled.why,
         },
       };
     }
     case "closure": {
       if (!CLOSURE_RE.test(text)) return { kind: "other" };
+      roomFields = fieldsOf(settle().room);
       const { scope, days } = parseClosureScope(text);
       return { kind: "closure", closure: { ...roomFields, scope, days, ranges: closureRanges(scope, days, today) } };
     }
     case "opening_notice": {
       if (!/\bopen/i.test(text)) return { kind: "other" };
+      roomFields = fieldsOf(settle().room);
       const openAt = parseTimes(text.replace(/\bwill open\b/gi, "open"))[0];
       const website = /\bwebsite|registration|\.(in|com|co)\b/i.test(text);
       const where = roomFields.roomName ?? "A room";
@@ -1125,6 +1282,7 @@ export function interpret(ai: AiRead, msg: GroupMsg, ctx: ReadCtx): Reading {
     case "schedule_update": {
       const entries = parseSchedule(text);
       if (!entries.length) return { kind: "other" };
+      roomFields = fieldsOf(settle().room);
       return { kind: "schedule_update", schedule: { ...roomFields, entries } };
     }
     default:

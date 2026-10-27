@@ -14,6 +14,7 @@ import {
   type GroupUpdate,
   type MySpot,
   type Room,
+  type RoomPick,
   type SpotAlert,
   type WatchedGroup,
 } from "@spot/shared";
@@ -76,6 +77,17 @@ export async function setWatched(uid: string, group: { id: string; name: string 
   const ref = userDoc(uid, "watchedGroups", group.id);
   if (on) await setDoc(ref, { id: group.id, name: group.name, addedAt: Date.now() } satisfies WatchedGroup);
   else await deleteDoc(ref);
+}
+
+/**
+ * The comic says which of two locations an alert is about ("Which Comedy Theatre?"). The alert is updated and the choice is
+ * remembered for that group and poster, so their next post is settled by itself (roomPicks, read by the server).
+ */
+export async function pickAlertRoom(uid: string, a: SpotAlert, room: Room) {
+  const showId = room.shows.length === 1 ? room.shows[0]!.id : undefined;
+  await updateDoc(userDoc(uid, "spotAlerts", a.id), { roomId: room.id, roomName: room.name, roomWhy: "you picked it", roomCandidates: deleteField(), ...(showId ? { showId } : {}) });
+  const id = `${a.groupId}__${a.poster.id}__${room.brand ?? room.name}`.replace(/[^A-Za-z0-9_.@-]/g, "_").slice(0, 200);
+  await setDoc(userDoc(uid, "roomPicks", id), { groupId: a.groupId, posterId: a.poster.id, roomId: room.id, at: Date.now() } satisfies RoomPick);
 }
 
 export const dismissAlert = (uid: string, id: string) => updateDoc(userDoc(uid, "spotAlerts", id), { status: "dismissed" });

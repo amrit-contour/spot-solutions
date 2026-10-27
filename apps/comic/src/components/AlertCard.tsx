@@ -13,6 +13,7 @@ export function AlertCard({
   onAsk,
   onDismiss,
   onGotIt,
+  onPickRoom,
 }: {
   alert: SpotAlert;
   now: number;
@@ -24,6 +25,8 @@ export function AlertCard({
   onAsk: () => void;
   onDismiss: () => void;
   onGotIt?: () => void;
+  /** Which of the candidate rooms the offer is about. */
+  onPickRoom?: (roomId: string) => void;
 }) {
   const state = alertState(a, now);
   const live = state === "open" || state === "asked";
@@ -66,6 +69,17 @@ export function AlertCard({
         {a.score != null && <Chip title="How sure your alert rules were that this is a spot offer">{a.score}% sure</Chip>}
         {!a.roomId && a.roomName && <Chip tone="reading" title="Couldn't tell which of your rooms this is">Room not matched</Chip>}
       </div>
+
+      {live && !a.roomId && a.roomCandidates && a.roomCandidates.length > 1 && onPickRoom && (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="type-body-s text-on-surface-variant">Which {a.roomName ?? "room"}?</span>
+          {a.roomCandidates.map((c) => (
+            <Button key={c.id} size="sm" variant="tonal" onClick={() => onPickRoom(c.id)}>
+              {c.area || c.name}
+            </Button>
+          ))}
+        </div>
+      )}
 
       {clashWith && live && (
         <p className="flex items-start gap-2 rounded-md bg-error-container px-3 py-2 type-body-s text-on-error-container">

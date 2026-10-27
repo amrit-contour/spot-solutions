@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { clashNote, localDate, type GroupUpdate, type SpotAlert } from "@spot/shared";
 import { Button, Chip, Empty, IconBell, IconCheck, IconClose, IconGroup, IconInbox, IconWarn, PageHeader, SectionTitle, Spinner } from "@spot/ui";
-import { TZ, applyUpdate, dismissAlert, dismissUpdate, gotTheSpot, splitAlerts, useClock, useGroupUpdates, useMySpotList, useSpotAlerts, useWatchedGroups } from "../lib/alerts";
+import { TZ, applyUpdate, dismissAlert, dismissUpdate, gotTheSpot, pickAlertRoom, splitAlerts, useClock, useGroupUpdates, useMySpotList, useSpotAlerts, useWatchedGroups } from "../lib/alerts";
 import { RosterProvider, useFirestoreRoster, useRoster } from "../lib/roster";
 import { ago } from "../lib/time";
 import { AlertAskSheet } from "../components/AlertAskSheet";
@@ -70,6 +70,10 @@ function AlertsPage({ uid }: { uid: string }) {
         highlight={focusId === a.id}
         onAsk={() => setAsking(a.id)}
         onDismiss={() => void dismissAlert(uid, a.id)}
+        onPickRoom={(roomId) => {
+          const room = roster.rooms.find((r) => r.id === roomId);
+          if (room) void pickAlertRoom(uid, a, room).then(() => toast.success(`Remembered for ${a.poster.name ?? "them"} in ${a.groupName ?? "this group"}`), (e: Error) => void toast.error(e.message));
+        }}
         onGotIt={() => {
           void gotTheSpot(uid, a, a.times[0]).then(() => dismissAlert(uid, a.id));
           toast.success("Added to My spots");

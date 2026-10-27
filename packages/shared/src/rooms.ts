@@ -268,6 +268,10 @@ export interface SpotAlert {
   roomId?: string;
   /** The room as the comic knows it, or as the poster wrote it when it isn't one of theirs. */
   roomName?: string;
+  /** The name fits several of the comic's rooms (two Comedy Theatres) and nothing settled it: tap one to say which. */
+  roomCandidates?: { id: string; name: string; area: string }[];
+  /** How a name that fitted several rooms was settled ("the time matches its shows"). */
+  roomWhy?: string;
   showId?: string;
   date: string;
   times: string[];

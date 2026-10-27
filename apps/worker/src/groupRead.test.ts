@@ -103,3 +103,24 @@ describe("readGroupMessage: rules first", () => {
     expect(down.path).toBe("rules-fallback");
   });
 });
+
+describe("a chain with two locations (Comedy Theatre)", () => {
+  const BUSK = "Busking spot available at 6pm today at comedy theatre. DM if you can reach by 5.40pm.";
+  const indi = BLR_ROSTER.rooms.find((r) => r.name === "Comedy Theatre" && r.area === "Indiranagar")!;
+  const history = { picks: [{ groupId: "g@g.us", posterId: "919800000001@c.us", roomId: indi.id, at: 1 }] };
+  const never = async () => {
+    throw new Error("model not called");
+  };
+  it("rules-fast: offers the two locations when nothing settles it, uses the remembered pick when there is one", async () => {
+    const a = await readGroupMessage(never, msg(BUSK), ctx, 1000);
+    expect(a.path).toBe("rules-fast");
+    expect(a.reading.kind === "spot_offer" && a.reading.offer.roomCandidates).toHaveLength(2);
+    const b = await readGroupMessage(never, msg(BUSK), { ...ctx, history }, 1000);
+    expect(b.reading.kind === "spot_offer" && b.reading.offer).toMatchObject({ roomId: indi.id });
+  });
+  it("model path: the same pick applies to what the model reads", async () => {
+    const ask = async () => '{"kind":"spot_offer","room":"comedy theatre","show":"","contact":"sender","contact_name":""}';
+    const r = await readGroupMessage(ask, msg("anyone free for a thing at comedy theatre? spot, DM"), { ...ctx, history }, 1000);
+    expect(r.reading.kind === "spot_offer" && r.reading.offer.roomId).toBe(indi.id);
+  });
+});

@@ -496,3 +496,70 @@ describe("classifyFast: the rules-first path", () => {
     expect(offer(r).roomId).toBeUndefined();
   });
 });
+
+describe("one name, several locations (Comedy Theatre)", () => {
+  const CHURCH = BLR_ROSTER.rooms.find((r) => r.name === "Comedy Theatre" && r.area === "Church Street")!;
+  const INDI = BLR_ROSTER.rooms.find((r) => r.name === "Comedy Theatre" && r.area === "Indiranagar")!;
+  const withRooms = (edit: (rooms: typeof BLR_ROSTER.rooms) => void, extra: Partial<ReadCtx> = {}) => {
+    const roster = buildBlrRoster();
+    edit(roster.rooms);
+    return ctx({ rooms: roster.rooms, curators: roster.curators, ...extra });
+  };
+  const ct = (rooms: typeof BLR_ROSTER.rooms, area: string) => rooms.find((r) => r.name === "Comedy Theatre" && r.area === area)!;
+  const BUSK = "Busking spot available at 6pm today at comedy theatre. DM if you can reach by 5.40pm.";
+
+  it("stays unsettled with nothing to go on: both come back as candidates", () => {
+    const o = offer(read(BUSK));
+    expect(o.roomId).toBeUndefined();
+    expect(o.roomCandidates?.map((c) => c.id).sort()).toEqual([CHURCH.id, INDI.id].sort());
+    expect(o.roomCandidates?.map((c) => c.area).sort()).toEqual(["Church Street", "Indiranagar"]);
+  });
+  it("an area or landmark word in the text picks it", () => {
+    const c = withRooms((rooms) => { ct(rooms, "Indiranagar").pin = { lat: 12.97, lng: 77.64, label: "Comedy Theatre, 100 Feet Road" }; });
+    const o = offer(read("Busking spot at 6pm today at comedy theatre near 100 feet road. DM", {}, c));
+    expect(o).toMatchObject({ roomId: INDI.id, roomName: "Comedy Theatre", roomWhy: "the message names its area" });
+    expect(o.roomCandidates).toBeUndefined();
+  });
+  it("the time picks it when the other location's known shows don't fit, and not when it has no times listed", () => {
+    expect(offer(read(BUSK)).roomId).toBeUndefined(); // Indiranagar lists no times: it can't be ruled out
+    const c = withRooms((rooms) => { ct(rooms, "Indiranagar").shows[0]!.times = ["19:00", "21:00"]; });
+    expect(offer(read(BUSK, {}, c))).toMatchObject({ roomId: CHURCH.id, roomWhy: "the time matches its shows" });
+  });
+  it("the poster being a curator of one location picks it", () => {
+    const c = withRooms((rooms) => rooms.length, {});
+    const navneeth = c.curators.find((x) => x.name === "Navneeth")!;
+    navneeth.phone = "+91 98765 00001";
+    const o = offer(read("Spot at 7pm tonight at comedy theatre, DM", { sender: { id: "919876500001@c.us", name: "Navneeth" } }, c));
+    expect(o).toMatchObject({ roomId: CHURCH.id, roomWhy: "the poster curates there" });
+    // someone nobody knows: not guessed
+    expect(offer(read("Spot at 7pm tonight at comedy theatre, DM", { sender: { id: "919876500099@c.us", name: "Someone" } }, c)).roomId).toBeUndefined();
+  });
+  it("the group's usual room needs a clear habit; one past alert is not enough", () => {
+    const past = (n: number) => Array.from({ length: n }, () => ({ groupId: "g1@g.us", roomId: INDI.id }));
+    expect(offer(read("Spot at 7pm tonight at comedy theatre, DM", {}, ctx({ history: { alerts: past(3) } })))).toMatchObject({ roomId: INDI.id, roomWhy: "it's the usual room in this group" });
+    expect(offer(read("Spot at 7pm tonight at comedy theatre, DM", {}, ctx({ history: { alerts: past(1) } }))).roomId).toBeUndefined();
+    // another group's habit doesn't count
+    expect(offer(read("Spot at 7pm tonight at comedy theatre, DM", {}, ctx({ history: { alerts: past(3).map((a) => ({ ...a, groupId: "other@g.us" })) } }))).roomId).toBeUndefined();
+  });
+  it("a remembered pick for this group and poster wins, and only for them", () => {
+    const history = { picks: [{ groupId: "g1@g.us", posterId: "919800000001@c.us", roomId: CHURCH.id, at: 1 }] };
+    expect(offer(read(BUSK, {}, ctx({ history })))).toMatchObject({ roomId: CHURCH.id, roomWhy: expect.stringContaining("you picked it for this group before") });
+    expect(offer(read(BUSK, { sender: { id: "919800000002@c.us", name: "Other" } }, ctx({ history }))).roomId).toBeUndefined();
+    expect(offer(read(BUSK, { groupId: "elsewhere@g.us" }, ctx({ history }))).roomId).toBeUndefined();
+  });
+  it("two signals that disagree leave it to the comic", () => {
+    // the time fits Church Street (+25) but the group's habit is Indiranagar (+40, and -15 for the time): a tie, so it is not guessed
+    const c = withRooms((rooms) => { ct(rooms, "Indiranagar").shows[0]!.times = ["19:00"]; }, {
+      history: { alerts: [1, 2, 3].map(() => ({ groupId: "g1@g.us", roomId: INDI.id })) },
+    });
+    const o = offer(read(BUSK, {}, c));
+    expect(o.roomId).toBeUndefined();
+    expect(o.roomCandidates).toHaveLength(2);
+  });
+  it("closures and opening notices settle the same way (the remembered pick)", () => {
+    const history = { picks: [{ groupId: "g1@g.us", posterId: "919800000001@c.us", roomId: INDI.id, at: 1 }] };
+    const m = msg("comedy theatre spots will open by 3:15pm");
+    const r = interpret({ kind: "opening_notice", room: "comedy theatre" }, m, ctx({ history }));
+    expect(r.kind === "opening_notice" && r.opening.roomId).toBe(INDI.id);
+  });
+});
