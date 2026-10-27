@@ -1010,6 +1010,8 @@ function Conversation({
         wide ? "min-h-0 flex-1 overflow-hidden rounded-lg border border-outline-variant" : "fixed inset-x-0 top-0 z-50 h-dvh touch-pan-y pt-[env(safe-area-inset-top)] sm:left-24",
       )}
     >
+      {/* The frame ends at the visual viewport, above iOS's translucent accessory bar and keyboard: keep its own surface under them. */}
+      {!wide && <div aria-hidden className="pointer-events-none absolute inset-x-0 top-full h-screen bg-surface" />}
       <header className="flex flex-none items-center gap-1 border-b border-outline-variant bg-surface px-1.5 py-1.5 lg:gap-2 lg:bg-surface-low lg:px-3 lg:py-2">
         <button type="button" onClick={onBack} aria-label="Back to chats" className="state-layer pressable inline-flex size-11 flex-none items-center justify-center rounded-full text-primary lg:hidden">
           <IconArrowLeft className="icon size-7" />

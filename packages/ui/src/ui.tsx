@@ -353,6 +353,9 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
             <div className={cx("mx-auto w-full px-4 py-6 sm:px-8 sm:py-8", wide ? "max-w-4xl" : "max-w-2xl")}>{children}</div>
           </div>
           {footer && <footer className="flex flex-none items-center justify-end gap-2 border-t border-outline-variant/60 bg-surface-low px-4 py-3 pb-[max(12px,calc(env(safe-area-inset-bottom)*var(--sheet-safe,1)))] sm:hidden">{footer}</footer>}
+          {/* The sheet is sized to the visual viewport, which ends above iOS's translucent form accessory bar and keyboard. This
+              extends the sheet's own surface (footer colour) below it, so nothing but the sheet shows through there. Off-screen otherwise. */}
+          <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 top-full h-screen", footer ? "bg-surface-low sm:bg-surface" : "bg-surface")} />
         </motion.div>
       )}
     </AnimatePresence>,
