@@ -55,7 +55,7 @@ export function ConnectionCard({ uid }: { uid: string }) {
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="type-title-m">{title}</h3>
-              <Chip tone={ok ? "success" : bad || stuck ? "error" : "neutral"} className="flex-none">{ok ? "Connected" : stuck ? "Not responding" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>
+              {!ok && <Chip tone={bad || stuck ? "error" : "neutral"} className="flex-none">{stuck ? "Not responding" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>}
             </div>
             <p className="mt-1 break-words type-body-m text-on-surface-variant">{detail}</p>
             {c.serverName && (

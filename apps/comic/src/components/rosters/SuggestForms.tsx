@@ -5,7 +5,8 @@ import {
   suggestRoomField, suggestShowField, type AskRule, type CuratorShared, type DayProposal, type RoomShared, type RoomField, type ShowField, type ShowShared, type SharedRoster,
   type SuggestionDraft, type Weekday,
 } from "@spot/shared";
-import { Button, Chip, Field, IconPlus, IconButton, IconClose, Segmented, Select, Switch, TextInput, TimePicker } from "@spot/ui";
+import { Button, Chip, Field, IconPlus, IconButton, IconClose, Segmented, Select, TextInput, TimePicker } from "@spot/ui";
+import { Card, ToggleRow } from "../ui";
 import { AskRuleEditor } from "../AskRuleEditor";
 import { LimitsEditor } from "../LimitsEditor";
 import { NotesEditor } from "../NotesEditor";
@@ -30,15 +31,7 @@ function Times({ times, onChange, label }: { times: string[]; onChange: (t: stri
   );
 }
 
-/** The switch in @spot/ui only labels itself for screen readers, so the words go beside it. */
-function SwitchRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex min-h-12 min-w-0 items-center gap-3">
-      <span className="min-w-0 flex-1 type-body-l">{label}</span>
-      <Switch label={label} checked={checked} onChange={onChange} />
-    </div>
-  );
-}
+const SwitchRow = ToggleRow;
 
 const showOptions = (room: RoomShared) => room.shows.map((s) => ({ value: s.id, label: s.name || "Show" }));
 
@@ -82,8 +75,8 @@ export function RoomFieldForm({ roster, room, onDraft }: { roster: SharedRoster;
       {field === "tags" && (
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-wrap gap-1.5">
-            {SUGGESTED_TAGS.map((t) => <Chip key={t} selected={tags.includes(t)} onClick={() => toggle(t)} className="h-8">{TAG_LABEL(t)}</Chip>)}
-            {custom.map((t) => <Chip key={t} selected onClick={() => toggle(t)} className="h-8" title="Tap to remove">{TAG_LABEL(t)}</Chip>)}
+            {SUGGESTED_TAGS.map((t) => <Chip key={t} selected={tags.includes(t)} onClick={() => toggle(t)} className="h-11">{TAG_LABEL(t)}</Chip>)}
+            {custom.map((t) => <Chip key={t} selected onClick={() => toggle(t)} className="h-11" title="Tap to remove">{TAG_LABEL(t)}</Chip>)}
           </div>
           <div className="flex min-w-0 gap-2">
             <TextInput value={tagText} onChange={(e) => setTagText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())} placeholder="Add your own tag" maxLength={30} className="min-w-0 flex-1" />
@@ -140,13 +133,13 @@ function People({ people, onChange }: { people: Person[]; onChange: (p: Person[]
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {people.map((p, i) => (
-        <div key={i} className="flex min-w-0 items-start gap-2 rounded-md bg-surface-container p-3">
+        <Card key={i} tone="high" className="flex min-w-0 items-start gap-2 p-3">
           <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
             <Field label={i === 0 ? "Who to ask" : "Co-curator"}><TextInput value={p.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Vishal" autoComplete="off" /></Field>
             <Field label="Their number (optional)"><TextInput value={p.phone} onChange={(e) => set(i, { phone: e.target.value })} placeholder="+91 98765 43210" inputMode="tel" autoComplete="off" /></Field>
           </div>
           <IconButton icon={IconClose} label="Remove this curator" onClick={() => onChange(people.filter((_, j) => j !== i))} />
-        </div>
+        </Card>
       ))}
       <div>
         <Button variant="tonal" size="sm" icon={IconPlus} onClick={() => onChange([...people, { name: "", phone: "" }])}>{people.length ? "Add a co-curator" : "Add a curator"}</Button>
@@ -196,7 +189,7 @@ export function DayForm({ roster, room, onDraft }: { roster: SharedRoster; room:
       {room.shows.length > 1 && <Select label="Which show" value={showId} onChange={(id) => { setShowId(id); change(room.shows.find((s) => s.id === id), wd); }} options={showOptions(room)} />}
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Which day">
         {WEEK_ORDER.map((d) => (
-          <Chip key={d} selected={wd === d} onClick={() => { setWd(d); change(show, d); }} className="h-9 min-w-12 justify-center" title={DAY_NAMES[d]}>
+          <Chip key={d} selected={wd === d} onClick={() => { setWd(d); change(show, d); }} className="h-11 min-w-12 justify-center" title={DAY_NAMES[d]}>
             {DAY_SHORT[d]}
           </Chip>
         ))}
@@ -284,7 +277,7 @@ export function NewShowFields({ taken, onChange }: { taken: string[]; onChange: 
       <Field label="Days it runs">
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days">
           {WEEK_ORDER.map((d) => (
-            <Chip key={d} selected={days.includes(d)} onClick={() => setDays(days.includes(d) ? days.filter((x) => x !== d) : [...days, d])} className="h-9 min-w-12 justify-center" title={DAY_NAMES[d]}>{DAY_SHORT[d]}</Chip>
+            <Chip key={d} selected={days.includes(d)} onClick={() => setDays(days.includes(d) ? days.filter((x) => x !== d) : [...days, d])} className="h-11 min-w-12 justify-center" title={DAY_NAMES[d]}>{DAY_SHORT[d]}</Chip>
           ))}
         </div>
       </Field>

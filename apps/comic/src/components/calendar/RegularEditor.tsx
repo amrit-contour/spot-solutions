@@ -2,7 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { DAY_NAMES, NTH_LABEL, nthWeekdayOf, regularLabel, spotDateLabel, validateRegular, weekdayOf, type RegularCadence, type RegularSpot, type Weekday } from "@spot/shared";
 import { Button, ConfirmDialog, Field, Segmented, Select, Sheet, TextArea, TextInput, TimePicker, IconTrash } from "@spot/ui";
-import { ToggleRow } from "../ui";
+import { Card, Notice, SectionHeader, ToggleRow } from "../ui";
 import { useAsks } from "../../lib/asks";
 import { useRoster } from "../../lib/roster";
 
@@ -89,15 +89,16 @@ export function RegularEditor({ value, onClose, today }: { value: RegularSpot | 
     >
       <div className="flex min-w-0 flex-col gap-6">
         {problems.length > 0 && (
-          <div role="alert" className="rounded-md bg-error-container p-4 text-on-error-container">
-            <p className="type-title-s">Fix this to save</p>
-            <ul className="mt-1 list-disc pl-5 type-body-m">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
-          </div>
+          <Notice tone="error" title="Fix this to save">
+            <ul className="list-disc pl-5">{problems.map((p) => <li key={p}>{p}</li>)}</ul>
+          </Notice>
         )}
-        <p className="rounded-md bg-surface-low px-4 py-3 type-title-s" aria-live="polite">
-          {regularLabel({ ...draft, weekdays: days, nth }, DAY_NAMES)}
-          {draft.time ? `, ${draft.time}` : ""}
-        </p>
+        <Card tone="high" className="type-title-s" >
+          <p aria-live="polite">
+            {regularLabel({ ...draft, weekdays: days, nth }, DAY_NAMES)}
+            {draft.time ? `, ${draft.time}` : ""}
+          </p>
+        </Card>
 
         <Field label="Room">
           <Select
@@ -175,12 +176,12 @@ export function RegularEditor({ value, onClose, today }: { value: RegularSpot | 
         </Field>
 
         {(draft.skipped?.length ?? 0) > 0 && (
-          <div className="min-w-0">
-            <h3 className="mb-2 type-title-s">Skipped dates</h3>
+          <div className="flex min-w-0 flex-col gap-2">
+            <SectionHeader title="Skipped dates" />
             <ul className="flex flex-wrap gap-2">
               {draft.skipped!.filter((d) => d >= today).concat(draft.skipped!.filter((d) => d < today)).map((d) => (
                 <li key={d}>
-                  <button type="button" onClick={() => set({ skipped: draft.skipped!.filter((x) => x !== d) })} className="state-layer pressable h-9 rounded-full bg-surface-high px-3.5 type-label-l" aria-label={`Put ${spotDateLabel(d)} back`}>
+                  <button type="button" onClick={() => set({ skipped: draft.skipped!.filter((x) => x !== d) })} className="state-layer pressable h-11 rounded-full bg-surface-high px-4 type-label-l" aria-label={`Put ${spotDateLabel(d)} back`}>
                     {spotDateLabel(d)} · put back
                   </button>
                 </li>

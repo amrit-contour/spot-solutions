@@ -2,8 +2,9 @@ import { useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import { toSharedRoster, type PublishedRosterDoc, type RoomShared, type SuggestionDraft } from "@spot/shared";
-import { Button, Field, IconBuilding, IconMic, IconPen, IconSearch, IconTrash, IconUserCheck, IconPlus, IconClock, Sheet, TextArea, type Icon } from "@spot/ui";
+import { Button, Field, IconMic, IconPen, IconSearch, IconTrash, IconUserCheck, IconPlus, IconClock, Sheet, TextArea, type Icon } from "@spot/ui";
 import { sendSuggestion } from "../../lib/rosters";
+import { IconTile, ListGroup, ListRow, Notice } from "../ui";
 import { AddRoomForm, AddShowForm, CuratorFieldForm, DayForm, RemoveRoomForm, RemoveShowForm, RoomFieldForm, ShowFieldForm, type OnDraft } from "./SuggestForms";
 
 type Kind = "room" | "show" | "day" | "curator" | "addShow" | "removeShow" | "removeRoom" | "addRoom";
@@ -94,28 +95,15 @@ export function SuggestSheet({ roster, room, open, onClose, user }: { roster: Pu
         {!kind ? (
           <>
             <p className="type-body-l text-on-surface-variant">What is wrong or missing at {room?.name}? Pick one. {roster.ownerName ?? "The owner"} and the maintainers see it and decide.</p>
-            <ul className="flex min-w-0 flex-col gap-2">
+            <ListGroup>
               {options.map((o) => (
-                <li key={o.kind} className="min-w-0">
-                  <button onClick={() => setKind(o.kind)} className="state-layer pressable flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg bg-surface-low p-4 text-left">
-                    <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container"><o.icon className="icon size-5" /></span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate type-title-s">{o.title}</span>
-                      <span className="block type-body-s text-on-surface-variant">{o.text}</span>
-                    </span>
-                  </button>
-                </li>
+                <ListRow key={o.kind} onClick={() => setKind(o.kind)} leading={<IconTile icon={o.icon} />} title={o.title} subtitle={o.text} className="[&_.truncate]:whitespace-normal" />
               ))}
-            </ul>
+            </ListGroup>
           </>
         ) : (
           <>
-            {kind === "addRoom" && (
-              <div className="flex items-start gap-3 rounded-md bg-surface-container p-4">
-                <IconBuilding aria-hidden className="icon mt-0.5 size-5 flex-none text-primary" />
-                <p className="min-w-0 type-body-m">Suggest a room that {roster.title} is missing. Add one mic or show now; the maintainers can add more.</p>
-              </div>
-            )}
+            {kind === "addRoom" && <Notice>Suggest a room that {roster.title} is missing. Add one mic or show now; the maintainers can add more.</Notice>}
             {form}
             <Field label="Why? (optional)" hint="Helps the maintainers decide, for example how you know.">
               <TextArea value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} className="min-h-20" placeholder="Their Instagram says the mic moved to Thursdays" />

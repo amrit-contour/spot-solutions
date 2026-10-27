@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { askDayLabel, openNow, upcomingGroups, type Ask, type PlannedAsk } from "@spot/shared";
 import { Button, IconPlus, IconBuilding, IconChat, IconClock, IconMenuDots, IconButton, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
 import { EmptyState, Page, Section } from "../components/ui";
-import { useShowMissedAsks } from "../lib/alerts";
+import { useAskPrefs, useShowMissedAsks } from "../lib/alerts";
 import { draftFor, useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { shortDate } from "../lib/time";
@@ -31,6 +31,7 @@ export function Asks() {
   const [modesOpen, setModesOpen] = useState(false);
 
   const showMissed = useShowMissedAsks();
+  const { voice: voiceDefault } = useAskPrefs();
   const openAll = useMemo(() => openNow(plan), [plan]);
   // A ping day that came and went, with the show still ahead: kept apart so it never reads like a rule that fired today.
   const dueToday = useMemo(() => openAll.filter((a) => a.due !== "overdue"), [openAll]);
@@ -52,7 +53,7 @@ export function Asks() {
   const send = async (a: PlannedAsk, text?: string, voice?: boolean) => {
     mark(a.id, true);
     try {
-      const draft = draftFor(a, text ?? messageFor(a, store.template));
+      const draft = draftFor(a, text ?? messageFor(a, store.template), voiceDefault);
       await store.sendAsk(voice === undefined ? draft : { ...draft, voice });
       toast.success(`Sent to ${a.curatorName?.split(/\s+/)[0] ?? "the curator"}.`);
       setEditing(null);
@@ -64,7 +65,7 @@ export function Asks() {
   };
   const skip = async (a: PlannedAsk) => {
     try {
-      await store.skipAsk(a, draftFor(a, messageFor(a, store.template)));
+      await store.skipAsk(a, draftFor(a, messageFor(a, store.template), voiceDefault));
       toast(`Skipped ${a.label}, ${shortDate(a.showDate)}.`);
     } catch {
       toast.error("Couldn't skip that. Try again.");

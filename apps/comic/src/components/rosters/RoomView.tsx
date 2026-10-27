@@ -1,5 +1,6 @@
 import { DAY_NAMES, WEEK_ORDER, askRuleFor, askRuleLabel, formatValue, showSummary, timesLabel, type CuratorShared, type RoomShared, type ShowShared } from "@spot/shared";
 import { Button, Chip, IconPen, Sheet } from "@spot/ui";
+import { ListGroup } from "../ui";
 
 const TAG_LABEL = (t: string) => t.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 
@@ -9,12 +10,12 @@ function ShowBlock({ show, curators }: { show: ShowShared; curators: CuratorShar
     <section className="flex min-w-0 flex-col gap-2">
       <h3 className="type-title-m">{showSummary(show)}</h3>
       {show.note && <p className="type-body-m text-on-surface-variant">{show.note}</p>}
-      <ul className="flex min-w-0 flex-col overflow-hidden rounded-md bg-surface-low">
+      <ListGroup>
         {days.map((d) => {
           const who = d.curatorIds.map((id) => curators.find((c) => c.id === id)).filter((c): c is CuratorShared => Boolean(c));
           const rule = askRuleFor(show, d.weekday);
           return (
-            <li key={d.weekday} className="flex min-w-0 flex-col gap-0.5 border-b border-outline-variant/40 px-3 py-3 last:border-b-0">
+            <div key={d.weekday} className="flex min-w-0 flex-col gap-0.5 px-4 py-3">
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="w-24 flex-none type-label-l text-on-surface-variant">{DAY_NAMES[d.weekday]}</span>
                 <span className="min-w-0 flex-1 break-words type-body-l">
@@ -29,11 +30,11 @@ function ShowBlock({ show, curators }: { show: ShowShared; curators: CuratorShar
                   d.note ?? "",
                 ].filter(Boolean).join(" · ")}
               </span>
-            </li>
+            </div>
           );
         })}
-        {days.length === 0 && <li className="px-3 py-3 type-body-m text-on-surface-variant">No days listed.</li>}
-      </ul>
+        {days.length === 0 && <p className="px-4 py-3 type-body-m text-on-surface-variant">No days listed.</p>}
+      </ListGroup>
     </section>
   );
 }

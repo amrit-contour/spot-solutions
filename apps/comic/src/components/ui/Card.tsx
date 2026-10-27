@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cx } from "@spot/ui";
 
-const TONE = { low: "bg-surface-low", high: "bg-surface-high", outlined: "border border-outline-variant" } as const;
+const TONE = { low: "bg-surface-low", high: "bg-surface-high", outlined: "border border-outline-variant", secondary: "bg-secondary-container text-on-secondary-container" } as const;
 
 /** The one card: 16px radius, 16px padding. Static, or pressable (a link or a button) with the same shape. */
 export function Card({ children, className, tone = "low", pad = true, highlight, id, dim }: { children: ReactNode; className?: string; tone?: keyof typeof TONE; pad?: boolean; highlight?: boolean; id?: string; dim?: boolean }) {

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { changeTitle, describeChange, type RosterChange } from "@spot/shared";
 import { Button, Chip } from "@spot/ui";
+import { CheckRow, ListGroup, SectionHeader } from "../ui";
 
 const OP: Record<RosterChange["op"], { label: string; tone: "success" | "primary" | "error" }> = {
   added: { label: "Added", tone: "success" },
@@ -14,7 +15,7 @@ export function ChangeDetail({ change }: { change: RosterChange }) {
   const line = t.diff ? <>{t.diff}</> : t.from !== undefined || t.to !== undefined ? (
     <>{t.from !== undefined && t.from}{t.from !== undefined && t.to !== undefined && <span aria-label="becomes"> → </span>}{t.to !== undefined && t.to}</>
   ) : t.summary ? <>{t.summary}</> : null;
-  return line ? <span className="mt-1 block break-words type-body-s text-on-surface-variant">{line}</span> : null;
+  return line ? <span className="break-words">{line}</span> : null;
 }
 
 const groupOf = (c: RosterChange) => (c.level === "curator" ? "Curators" : c.label.split(" · ")[0]!);
@@ -44,29 +45,27 @@ export function ChangeList({ changes, picked, onPick, verb = "Added" }: { change
         <Button size="sm" variant="outlined" onClick={() => toggle(changes.map((c) => c.id), false)}>Select none</Button>
       </div>
       {groups.map(([group, list]) => (
-        <section key={group} className="min-w-0">
-          <div className="mb-2 flex min-w-0 items-center gap-2">
-            <h3 className="min-w-0 flex-1 truncate type-title-m">{group}</h3>
-            <Button size="sm" variant="text" onClick={() => toggle(list.map((c) => c.id), !list.every((c) => picked.has(c.id)))}>
-              {list.every((c) => picked.has(c.id)) ? "None" : "All"}
-            </Button>
-          </div>
-          <ul className="flex min-w-0 flex-col overflow-hidden rounded-md bg-surface-low">
+        <section key={group} className="flex min-w-0 flex-col gap-2">
+          <SectionHeader
+            title={group}
+            action={
+              <Button size="sm" variant="text" onClick={() => toggle(list.map((c) => c.id), !list.every((c) => picked.has(c.id)))}>
+                {list.every((c) => picked.has(c.id)) ? "None" : "All"}
+              </Button>
+            }
+          />
+          <ListGroup>
             {list.map((c) => (
-              <li key={c.id} className="min-w-0 border-b border-outline-variant/40 last:border-b-0">
-                <label className="state-layer flex min-h-12 min-w-0 cursor-pointer items-start gap-3 px-3 py-3">
-                  <input type="checkbox" className="mt-1 size-5 flex-none accent-[var(--md-sys-color-primary)]" checked={picked.has(c.id)} onChange={(e) => toggle([c.id], e.target.checked)} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Chip tone={OP[c.op].tone} className="flex-none">{c.op === "added" ? verb : OP[c.op].label}</Chip>
-                      <span className="min-w-0 truncate type-body-l">{changeTitle(c)}</span>
-                    </span>
-                    <ChangeDetail change={c} />
-                  </span>
-                </label>
-              </li>
+              <CheckRow
+                key={c.id}
+                checked={picked.has(c.id)}
+                onChange={(on) => toggle([c.id], on)}
+                lead={<Chip tone={OP[c.op].tone} className="flex-none">{c.op === "added" ? verb : OP[c.op].label}</Chip>}
+                title={changeTitle(c)}
+                detail={<ChangeDetail change={c} />}
+              />
             ))}
-          </ul>
+          </ListGroup>
         </section>
       ))}
     </div>

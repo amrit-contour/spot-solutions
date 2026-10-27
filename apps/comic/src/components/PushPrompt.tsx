@@ -1,13 +1,22 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button, IconBell, IconPhone } from "@spot/ui";
+import { Button, Chip, IconBell, IconPhone } from "@spot/ui";
 import { Card, IconTile } from "./ui";
-import { disablePush, enablePush, usePushState } from "../lib/push";
+import { disablePush, enablePush, sendTestPush, usePushState, type PushState } from "../lib/push";
+
+const STATUS: Record<PushState, { label: string; tone: "success" | "error" | "neutral" }> = {
+  on: { label: "Allowed", tone: "success" },
+  off: { label: "Off", tone: "neutral" },
+  denied: { label: "Blocked", tone: "error" },
+  "ios-install": { label: "Add to Home Screen", tone: "neutral" },
+  unsupported: { label: "Not supported", tone: "error" },
+};
 
 /** The card that turns spot alerts on for this device. Hidden once they are on. */
 export function PushPrompt({ uid, always }: { uid: string; /** Show the "on" state too (Settings). */ always?: boolean }) {
   const [state, setState] = usePushState(uid);
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
   if (state === "on" && !always) return null;
 
   const turnOn = async () => {
@@ -30,6 +39,18 @@ export function PushPrompt({ uid, always }: { uid: string; /** Show the "on" sta
     setBusy(false);
   };
 
+  const test = async () => {
+    setTesting(true);
+    try {
+      const r = await sendTestPush();
+      toast.success(r.devices > 1 ? `Sent to ${r.sent} of your ${r.devices} devices.` : "Test sent. It should arrive in a moment.");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const text =
     state === "on"
       ? "This device gets a notification the moment a spot is offered in a group you watch."
@@ -45,7 +66,10 @@ export function PushPrompt({ uid, always }: { uid: string; /** Show the "on" sta
     <Card className="flex items-start gap-3">
       <IconTile tone="primary" icon={state === "ios-install" ? IconPhone : IconBell} />
       <div className="min-w-0 flex-1">
-        <p className="type-title-m">{state === "on" ? "Spot alerts are on" : "Turn on spot alerts"}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="type-title-m">{state === "on" ? "Spot alerts are on" : "Turn on spot alerts"}</p>
+          {always && <Chip tone={STATUS[state].tone} className="flex-none">{STATUS[state].label}</Chip>}
+        </div>
         <p className="mt-0.5 type-body-m text-on-surface-variant">{text}</p>
         {state === "off" && (
           <Button className="mt-4" icon={IconBell} loading={busy} onClick={() => void turnOn()}>
@@ -53,9 +77,14 @@ export function PushPrompt({ uid, always }: { uid: string; /** Show the "on" sta
           </Button>
         )}
         {state === "on" && always && (
-          <Button className="mt-4" variant="outlined" loading={busy} onClick={() => void turnOff()}>
-            Turn off on this device
-          </Button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button variant="tonal" icon={IconBell} loading={testing} onClick={() => void test()}>
+              Send test push
+            </Button>
+            <Button variant="outlined" loading={busy} onClick={() => void turnOff()}>
+              Turn off on this device
+            </Button>
+          </div>
         )}
       </div>
     </Card>

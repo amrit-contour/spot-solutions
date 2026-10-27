@@ -45,3 +45,4 @@ export * from "./comicAgent.ts";
 export * from "./memberSearch.ts";
 export * from "./backfill.ts";
 export * from "./lineupActivity.ts";
+export * from "./comicSettings.ts";

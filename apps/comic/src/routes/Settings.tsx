@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { signInWithPopup, signOut } from "firebase/auth";
 import { toast } from "sonner";
-import { Avatar, sharpPhoto, Button, IconArrowRight, IconBell, IconCalendarMark, IconChat, IconGroup, IconInbox, IconMoon, IconShield, IconSun, IconTemplate, PageHeader, Segmented, SettingRow, Switch, savedBrand, savedMode, setBrand, setMode, useBrand, type Brand, type ThemeMode } from "@spot/ui";
+import { Avatar, sharpPhoto, Button, IconArrowRight, IconBell, IconCalendarMark, IconChat, IconGroup, IconInbox, IconMoon, IconShield, IconSun, IconTemplate, PageHeader, Segmented, TextInput, savedBrand, savedMode, setBrand, setMode, useBrand, type Brand, type ThemeMode } from "@spot/ui";
 import { auth, google } from "@spot/ui/firebase";
-import { IconTile, ListGroup, ListRow, Page, Section } from "../components/ui";
+import { IconTile, ListGroup, ListRow, Page, Section, ToggleRow } from "../components/ui";
 import { useComicSettings, useWatchedGroups } from "../lib/alerts";
+import { COMIC_PUSH_KEYS, askSendFromOf, askVoiceDefault, type ComicPushKey } from "@spot/shared";
 import { useCommunity } from "../lib/rosters";
 import { PushPrompt } from "../components/PushPrompt";
 import { ConnectionCard } from "../components/ConnectionCard";
@@ -12,7 +13,15 @@ import { AgentHelp } from "../components/AgentHelp";
 import { RoomModesSheet, TemplateSheet } from "../components/AskSheets";
 
 const chevron = <IconArrowRight aria-hidden className="icon size-5" />;
-const row = (children: React.ReactNode) => <div className="px-4">{children}</div>;
+const row = (children: React.ReactNode) => <div className="px-4 py-1">{children}</div>;
+
+const PUSH_ROWS: Record<ComicPushKey, { label: string; hint: string }> = {
+  spotAlert: { label: "Spot offers", hint: "A group you watch offers a spot." },
+  askOpen: { label: "Ask window opens", hint: "Time to ask a curator for a spot." },
+  askClosing: { label: "Ask closing soon", hint: "About two hours before an ask window closes." },
+  askReply: { label: "Curator replies", hint: "A curator answered an ask." },
+  opening: { label: "Opening times", hint: "A group says when spots open." },
+};
 
 /** Settings, grouped: who you are, the connection, notifications, asks, group alerts, calendar, the agent, appearance. */
 export function Settings({ uid }: { uid: string }) {
@@ -60,16 +69,29 @@ export function Settings({ uid }: { uid: string }) {
 
         <Section title="Notifications">
           <PushPrompt uid={uid} always />
-        </Section>
+          <ListGroup>
+            {COMIC_PUSH_KEYS.map((k) =>
+              row(<ToggleRow key={k} label={PUSH_ROWS[k].label} hint={PUSH_ROWS[k].hint} checked={settings.push?.[k] !== false} onChange={(v) => void set({ push: { [k]: v } })} />),
+            )}
+          </ListGroup>
+          <p className="px-1 type-body-s text-on-surface-variant">These choices apply to every device you get notifications on.</p>        </Section>
 
         <Section title="Asks">
           <ListGroup>
             <ListRow onClick={() => setTemplate(true)} leading={<IconTile tone="neutral" icon={IconTemplate} />} title="Ask message" subtitle="The words every ask starts from" trailing={chevron} />
             <ListRow onClick={() => setModes(true)} leading={<IconTile tone="neutral" icon={IconChat} />} title="Send or review, per room" subtitle="Which rooms send by themselves" trailing={chevron} />
             {row(
-              <SettingRow label="Show asks I missed" info="The ping day passed but the show hasn't: it is listed under “Missed: still time to ask” on Asks. Off: only asks due today are listed." className="min-h-14">
-                <Switch label="Show asks I missed" checked={settings.showMissedAsks !== false} onChange={(v) => void set({ showMissedAsks: v })} />
-              </SettingRow>,
+              <ToggleRow label="Show asks I missed" info="The ping day passed but the show hasn't: it is listed under “Missed: still time to ask” on Asks. Off: only asks due today are listed." checked={settings.showMissedAsks !== false} onChange={(v) => void set({ showMissedAsks: v })} />,
+            )}
+            {row(<ToggleRow label="Send in my voice" hint="New asks are written the way you write. You can change it on each ask." checked={askVoiceDefault(settings)} onChange={(v) => void set({ askVoice: v })} />)}
+            {row(
+              <div className="flex min-h-12 min-w-0 items-center gap-3">
+                <label htmlFor="ask-start" className="min-w-0 flex-1 py-2 type-title-s">
+                  Asks go out from
+                  <span className="block type-body-s font-normal text-on-surface-variant">Each ping day. Rooms set to send by themselves wait until then.</span>
+                </label>
+                <div className="w-36 flex-none"><TextInput id="ask-start" type="time" step={900} value={askSendFromOf(settings)} onChange={(e) => { if (e.target.value) void set({ askSendFrom: e.target.value }); }} /></div>
+              </div>,
             )}
           </ListGroup>
         </Section>
@@ -79,9 +101,7 @@ export function Settings({ uid }: { uid: string }) {
             <ListRow to="/groups" leading={<IconTile tone="neutral" icon={IconGroup} />} title="Groups to watch" subtitle={groups.loading ? "…" : groups.data.length ? `${groups.data.length} watched` : "None yet"} trailing={chevron} />
             <ListRow to="/groups" leading={<IconTile tone="neutral" icon={IconBell} />} title="Alert rules" subtitle="How sure a post must look to push at once" trailing={chevron} />
             {row(
-              <SettingRow label="Apply group updates automatically" info="When a group says a room is full, or who curates which day, your rooms are updated for you and it is listed under Alerts. Off: each one waits for a tap." className="min-h-14">
-                <Switch label="Apply group updates automatically" checked={Boolean(settings.autoApplyGroupUpdates)} onChange={(v) => void set({ autoApplyGroupUpdates: v })} />
-              </SettingRow>,
+              <ToggleRow label="Apply group updates automatically" info="When a group says a room is full, or who curates which day, your rooms are updated for you and it is listed under Alerts. Off: each one waits for a tap." checked={Boolean(settings.autoApplyGroupUpdates)} onChange={(v) => void set({ autoApplyGroupUpdates: v })} />,
             )}
           </ListGroup>
           <p className="flex items-start gap-2 px-1 pt-1 type-body-s text-on-surface-variant">

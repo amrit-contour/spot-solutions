@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import { describeSuggestion, suggestionConflict, toSharedRoster, type PublishedRosterDoc, type RosterSuggestion } from "@spot/shared";
-import { Button, Chip, IconCheck, IconClose, IconWarn } from "@spot/ui";
+import { Button, Chip, IconCheck, IconClose } from "@spot/ui";
+import { Notice, Section } from "../ui";
 import { approveSuggestion, rejectSuggestion, withdrawSuggestion } from "../../lib/rosters";
 
 const when = (at: number) => new Date(at).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
@@ -51,10 +52,7 @@ function Item({ roster, s, maintainer, user }: { roster: PublishedRosterDoc; s: 
       {s.note && <p className="break-words type-body-m italic text-on-surface-variant">"{s.note}"</p>}
       <p className="type-label-m text-on-surface-variant">{s.byName ?? "A member"} · {when(s.createdAt)}</p>
       {conflict && (
-        <p className="flex items-start gap-2 rounded-md bg-tertiary-container p-3 type-body-s text-on-tertiary-container">
-          <IconWarn aria-hidden className="icon mt-0.5 size-4 flex-none" />
-          <span className="min-w-0">This has changed in the roster since it was suggested. Check it before you approve.</span>
-        </p>
+        <Notice tone="warn">This has changed in the roster since it was suggested. Check it before you approve.</Notice>
       )}
       {pending && maintainer && (
         <div className="flex flex-wrap gap-2 pt-1">
@@ -75,15 +73,11 @@ export function SuggestionsQueue({ roster, suggestions, maintainer, user }: { ro
   const decided = suggestions.filter((s) => s.status !== "pending").slice(0, 5);
   if (!pending.length && !decided.length) return null;
   return (
-    <section className="flex min-w-0 flex-col gap-3" aria-label={maintainer ? "Suggestions to review" : "Your suggestions"}>
-      <h2 className="type-title-m">
-        {maintainer ? "Suggestions to review" : "Your suggestions"}
-        {pending.length > 0 && <span className="ml-2 type-label-m tabular text-on-surface-variant">{pending.length} waiting</span>}
-      </h2>
-      <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
+    <Section title={maintainer ? "Suggestions to review" : "Your suggestions"} count={pending.length > 0 ? pending.length : undefined}>
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2">
         {pending.map((s) => <Item key={s.id} roster={roster} s={s} maintainer={maintainer} user={user} />)}
         {decided.map((s) => <Item key={s.id} roster={roster} s={s} maintainer={maintainer} user={user} />)}
       </ul>
-    </section>
+    </Section>
   );
 }

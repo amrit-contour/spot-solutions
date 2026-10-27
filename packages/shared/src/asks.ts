@@ -159,6 +159,8 @@ export const askHandled = (a: Pick<Ask, "status" | "skipped">) => Boolean(a.skip
 export interface PlanContext {
   asks?: Ask[];
   mySpots?: MySpot[];
+  /** When asks start going out on the ping day, "HH:MM" (the comic's setting). Default ASK_SEND_FROM. */
+  sendFrom?: string;
 }
 
 const openAsksOnly = (a: PlannedAsk) => a.state === "open";
@@ -195,7 +197,7 @@ export function planAsks(rooms: Room[], curators: Curator[], range: { from: stri
         // "Spots open by 3:15" said in a group moves the start of this one date's window to that time.
         const opening = openingFor(show, showDate);
         const openMs = opening ? zonedMs(showDate, opening.at, tz) : 0;
-        const sendFrom = opening && openMs < closesAt ? openMs : Math.max(dayStart, Math.min(zonedMs(window.date, ASK_SEND_FROM, tz), closesAt - 3 * HOUR_MS));
+        const sendFrom = opening && openMs < closesAt ? openMs : Math.max(dayStart, Math.min(zonedMs(window.date, ctx.sendFrom ?? ASK_SEND_FROM, tz), closesAt - 3 * HOUR_MS));
         const limit = limitsBlock(room, ctx.mySpots ?? [], { date: showDate, showId: show.id, source: "ask" });
         const phone = c.primary?.phone?.trim();
         out.push({

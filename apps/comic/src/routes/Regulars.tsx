@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { DAY_NAMES, formatTime, isoAddDays, regularDates, regularLabel, spotDateLabel, suggestRegulars, type RegularSpot } from "@spot/shared";
 import { Button, CompactButton, IconPlus, IconArrowLeft, IconRepeat, PageHeader, Spinner } from "@spot/ui";
-import { CardButton, EmptyState, IconTile, Page, Section } from "../components/ui";
+import { Card, CardButton, EmptyState, IconTile, Page, Section } from "../components/ui";
 import { useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { newRegularId } from "../lib/regulars";
@@ -44,7 +44,7 @@ export function Regulars() {
         actions={<CompactButton icon={IconPlus} label="Add a regular" variant="filled" onClick={() => setEditing(blank(today))} />}
       />
       <Page>
-        <Link to="/spots" className="state-layer pressable -mt-2 -mb-2 inline-flex h-11 w-fit items-center gap-2 rounded-full pr-3 type-label-l text-primary">
+        <Link to="/spots" className="state-layer pressable -mt-2 -mb-2 -ml-2 inline-flex h-11 w-fit items-center gap-2 rounded-full pr-3 pl-2 type-label-l text-primary">
           <IconArrowLeft className="icon size-5" /> My spots
         </Link>
         {store.loading ? (
@@ -55,12 +55,14 @@ export function Regulars() {
               <Section title="From your rooms">
                 <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                   {suggestions.map((r) => (
-                    <li key={r.id} className="flex min-w-0 items-center gap-3 rounded-lg bg-secondary-container p-4 text-on-secondary-container">
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate type-title-s">You marked {r.roomName}{r.showName ? `, ${r.showName}` : ""} as a regular</span>
-                        <span className="block truncate type-body-s">{regularLabel(r, DAY_NAMES)}. Add it to your calendar?</span>
-                      </span>
-                      <Button size="sm" variant="tonal" onClick={() => setEditing(r)}>Set up</Button>
+                    <li key={r.id} className="min-w-0">
+                      <Card tone="secondary" className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate type-title-s">You marked {r.roomName}{r.showName ? `, ${r.showName}` : ""} as a regular</span>
+                          <span className="block truncate type-body-s">{regularLabel(r, DAY_NAMES)}. Add it to your calendar?</span>
+                        </span>
+                        <Button size="sm" variant="filled" onClick={() => setEditing(r)}>Set up</Button>
+                      </Card>
                     </li>
                   ))}
                 </ul>

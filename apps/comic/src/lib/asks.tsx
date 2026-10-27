@@ -7,6 +7,7 @@ import { DEFAULT_ASK_TEMPLATE, DEFAULT_SETTINGS, cleanNotes, isoAddDays, localDa
 import { useCollection, userDoc } from "./data";
 import { plain, useRoster } from "./roster";
 import { runCommand } from "./commands";
+import { useAskPrefs } from "./alerts";
 
 export const TZ = DEFAULT_SETTINGS.timezone;
 
@@ -164,19 +165,20 @@ export function useNowMs(everyMs = 30_000) {
 export function useAskPlan(now: number) {
   const roster = useRoster();
   const { asks, spots, regulars } = useAsks();
+  const { sendFrom } = useAskPrefs();
   const today = localDate(new Date(now), TZ);
   // `now` moves every 30 s; the plan only changes on the minute, which is plenty.
   const minute = Math.floor(now / 60_000);
   // A show where the comic has a regular spot that date is not one to ask for.
   const plan = useMemo(
-    () => planAsks(roster.rooms, roster.curators, { from: today, to: isoAddDays(today, 7) }, new Date(minute * 60_000), TZ, { asks, mySpots: mergeRegulars(spots, regulars, today, isoAddDays(today, 7)) }),
-    [roster.rooms, roster.curators, asks, spots, regulars, today, minute],
+    () => planAsks(roster.rooms, roster.curators, { from: today, to: isoAddDays(today, 7) }, new Date(minute * 60_000), TZ, { asks, mySpots: mergeRegulars(spots, regulars, today, isoAddDays(today, 7)), sendFrom }),
+    [roster.rooms, roster.curators, asks, spots, regulars, today, minute, sendFrom],
   );
   return { plan, today };
 }
 
 /** A draft ask document for a planned one: what is saved (and sent). */
-export function draftFor(a: PlannedAsk, message: string): Ask {
+export function draftFor(a: PlannedAsk, message: string, voice = true): Ask {
   return {
     ...(a.doc ?? {}),
     id: a.id,
@@ -193,7 +195,7 @@ export function draftFor(a: PlannedAsk, message: string): Ask {
     showName: a.showName,
     ...(a.curatorName ? { curatorName: a.curatorName } : {}),
     mode: a.mode,
-    voice: a.doc?.voice ?? true,
+    voice: a.doc?.voice ?? voice,
     closesAt: a.closesAt,
   };
 }

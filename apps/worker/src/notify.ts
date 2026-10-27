@@ -1,8 +1,8 @@
 // Push notifications to a curator's devices (docs/fleet.md, "Push notifications").
 // Sends to every FCM token in users/{uid}/devices and prunes the ones Google says are dead.
 import { getMessaging } from "firebase-admin/messaging";
-import type { PushKind } from "@spot/shared";
-import { col } from "./firebase.ts";
+import { comicPushOn, type PushKind } from "@spot/shared";
+import { col, userRef } from "./firebase.ts";
 
 const APP_URL = "https://nothingbotcurate.web.app/settings#whatsapp";
 const TITLES: Record<PushKind, string> = {
@@ -51,6 +51,8 @@ const COMIC_URL = (process.env.NBS_COMIC_URL ?? "https://nothingbotcomedy.web.ap
  */
 export async function notifyComic(uid: string, msg: { kind: string; title: string; body: string; path: string; alertId?: string; ttlSec?: number }): Promise<number> {
   try {
+    // The comic's own switches (Settings > Notifications): a kind they turned off is never sent.
+    if (!(await comicPushEnabled(uid, msg.kind))) return 0;
     const snap = await col(uid, "devices").where("app", "==", "comic").get();
     const tokens = snap.docs.map((d) => (d.data().token as string | undefined) ?? d.id).filter(Boolean);
     if (!tokens.length) return 0;
@@ -67,4 +69,25 @@ export async function notifyComic(uid: string, msg: { kind: string; title: strin
     console.warn(`[notify] comic push for ${uid} failed:`, (e as Error).message);
     return 0;
   }
+}
+
+/** Is this kind of push on in users/{uid}.comicSettings.push? On unless switched off; a failed read doesn't silence anything. */
+export async function comicPushEnabled(uid: string, kind: string): Promise<boolean> {
+  try {
+    return comicPushOn((await userRef(uid).get()).data()?.comicSettings, kind);
+  } catch {
+    return true;
+  }
+}
+
+const ASK_TITLES: Record<"ask_open" | "ask_closing" | "ask_reply", string> = { ask_open: "Time to ask for a spot", ask_closing: "An ask is closing soon", ask_reply: "A curator replied" };
+
+/**
+ * An ask push (window opened, closing soon, a curator replied): to the comic's Comedy devices when they have any, respecting their
+ * switches; to the Curate devices otherwise (a curator who also keeps rooms). Never sends when the comic turned that kind off.
+ */
+export async function pushAsk(uid: string, kind: "ask_open" | "ask_closing" | "ask_reply", text: string): Promise<void> {
+  if (!(await comicPushEnabled(uid, kind))) return;
+  const sent = await notifyComic(uid, { kind, title: ASK_TITLES[kind], body: text, path: "/asks", ttlSec: kind === "ask_reply" ? 86_400 : 3 * 3600 });
+  if (!sent) await notify(uid, kind, text);
 }

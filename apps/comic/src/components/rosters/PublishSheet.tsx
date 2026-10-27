@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import { applyPush, describeChanges, planPush, publishedRosterId, toSharedRoster, type Roster } from "@spot/shared";
-import { Button, Field, IconShield, Select, Sheet, TextInput } from "@spot/ui";
+import { Button, Field, Select, Sheet, TextInput } from "@spot/ui";
+import { Notice } from "../ui";
 import { useRoster } from "../../lib/roster";
 import { StaleRosterError, pushRoster, usePublishedRosters } from "../../lib/rosters";
 import { ChangeList, defaultPicks } from "./ChangeList";
@@ -99,10 +100,7 @@ export function PublishSheet({ open, onClose, user, initialId }: { open: boolean
         <p className="type-body-l text-on-surface-variant">
           Send your rooms to a community roster other comics can follow. Only what is public in a roster goes: venues, shows, days, ask windows and curators. Your notes, your role and your spots stay private.
         </p>
-        <div className="flex items-start gap-3 rounded-md bg-tertiary-container p-4 text-on-tertiary-container">
-          <IconShield aria-hidden className="icon mt-0.5 size-5 flex-none" />
-          <p className="min-w-0 type-body-m">Curator phone numbers are part of a roster. They are only visible to signed-in, approved members of the app, never on the open web.</p>
-        </div>
+        <Notice tone="privacy">Curator phone numbers are part of a roster. They are only visible to signed-in, approved members of the app, never on the open web.</Notice>
 
         {mine.length > 0 && (
           <Field label="Which roster">
@@ -128,10 +126,10 @@ export function PublishSheet({ open, onClose, user, initialId }: { open: boolean
         <p className="type-title-s" aria-live="polite">
           {roomsHere} of your {store.rooms.length} room{store.rooms.length === 1 ? "" : "s"} {roomsHere === 1 ? "is" : "are"} in {cityName || "that city"}.
         </p>
-        {problem && roomsHere === 0 && cityName ? <p role="alert" className="rounded-md bg-error-container p-4 type-body-m text-on-error-container">{problem}</p> : null}
+        {problem && roomsHere === 0 && cityName ? <Notice tone="error">{problem}</Notice> : null}
 
         {nothing ? (
-          <p className="rounded-md bg-surface-container p-4 type-body-m">Nothing to publish. {current!.title} already matches your rooms.</p>
+          <Notice>Nothing to publish. {current!.title} already matches your rooms.</Notice>
         ) : changes.length > 0 ? (
           <>
             <p className="type-body-l text-on-surface-variant">

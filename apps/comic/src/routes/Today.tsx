@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { askDayLabel, closesLabel, isoAddDays, openNow, spotState, suggestRegulars, upcomingGroups, type Ask, type CalendarSpot, type PlannedAsk } from "@spot/shared";
-import { Button, Chip, Empty, IconBuilding, IconCalendarMark, IconChat, IconClock, IconRepeat, PageHeader, Spinner, SectionTitle } from "@spot/ui";
+import { Button, Chip, IconBuilding, IconCalendarMark, IconChat, IconClock, IconRepeat, PageHeader, Spinner } from "@spot/ui";
+import { CardButton, EmptyState, IconTile, Page, Section } from "../components/ui";
 import { useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { ago, dateTime } from "../lib/time";
@@ -19,10 +20,8 @@ const RECENT_MS = 3 * 86_400_000;
 /** Short card for an ask on the Today page; it opens the Asks page rather than repeating its buttons. */
 function OpenRow({ a, now }: { a: PlannedAsk; now: number }) {
   return (
-    <Link to="/asks" className="state-layer pressable flex min-w-0 items-center gap-3 rounded-lg bg-surface-low p-3.5">
-      <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
-        <IconBuilding className="icon size-5" />
-      </span>
+    <CardButton to="/asks" className="flex items-center gap-3">
+      <IconTile icon={IconBuilding} />
       <span className="min-w-0 flex-1">
         <span className="block truncate type-title-s">{a.label}</span>
         <span className="block truncate type-body-s text-on-surface-variant">
@@ -32,7 +31,7 @@ function OpenRow({ a, now }: { a: PlannedAsk; now: number }) {
       <Chip tone={a.closesAt - now < 3 * 3_600_000 ? "error" : "neutral"} className="flex-none">
         {closesLabel(a.closesAt, now)}
       </Chip>
-    </Link>
+    </CardButton>
   );
 }
 
@@ -42,7 +41,7 @@ function ReplyRow({ ask, now }: { ask: Ask; now: number }) {
   const r = ask.lastReply!;
   const who = ask.curatorName?.split(/\s+/)[0] ?? "The curator";
   return (
-    <Link to="/asks" className="state-layer pressable flex min-w-0 flex-col gap-1 rounded-lg bg-surface-low p-3.5">
+    <CardButton to="/asks" className="flex flex-col gap-1">
       <span className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate type-title-s">
           {who} {REPLY_LABEL[r.decision]}
@@ -55,9 +54,14 @@ function ReplyRow({ ask, now }: { ask: Ask; now: number }) {
         {ask.roomName} · {ago(r.at, now)}
       </span>
       <span className="line-clamp-2 type-body-m">“{r.text}”</span>
-    </Link>
+    </CardButton>
   );
 }
+
+/** A text link in a section's heading row, 44px tall. */
+const SectionLink = ({ to, children }: { to: string; children: string }) => (
+  <Link to={to} className="state-layer pressable -mr-2 inline-flex min-h-11 items-center rounded-full px-3 type-label-l text-primary">{children}</Link>
+);
 
 /** Today: asks to make now, tonight's spots, and the replies that came in lately. */
 export function Today({ uid }: { uid?: string }) {
@@ -85,39 +89,38 @@ export function Today({ uid }: { uid?: string }) {
   const nothing = !loading && roster.rooms.length === 0 && store.spots.length === 0 && store.regulars.length === 0;
   return (
     <div className="w-full">
-      <PageHeader title="Today" subtitle="Your day at a glance." actions={<Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full text-primary"><IconRepeat className="icon size-5" /></Link>} />
-      <div className="flex min-w-0 flex-col gap-7 px-4 pt-3 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12 lg:max-w-3xl">
+      <PageHeader width="narrow" title="Today" subtitle="Your day at a glance." actions={<Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full text-primary"><IconRepeat className="icon size-5" /></Link>} />
+      <Page>
         {uid && <ConnectionBanner uid={uid} />}
         {loading ? (
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : (
           <>
             {toCheck > 0 && (
-              <Link to="/spots" className="state-layer pressable flex min-w-0 items-center gap-3 rounded-lg bg-secondary-container p-3.5 text-on-secondary-container">
+              <CardButton to="/spots" tone="secondary" className="flex min-h-14 items-center gap-3">
                 <span className="min-w-0 flex-1 type-title-s">{toCheck === 1 ? "1 spot to check: did it happen?" : `${toCheck} spots to check: did they happen?`}</span>
                 <span className="type-label-l">See</span>
-              </Link>
+              </CardButton>
             )}
             <CalendarView spots={calSpots} today={today} selected={selected} onSelect={setSelected} mode={mode} onMode={setMode} />
             <DayPanel date={selected} today={today} spots={calSpots} allSpots={all} onAdd={(d) => setEditing(blankSpot(d))} onOpen={setEditing} />
             {suggestions.length > 0 && (
-              <Link to="/spots/regulars" className="state-layer pressable flex min-w-0 items-center gap-3 rounded-lg bg-surface-low p-3.5">
-                <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container"><IconRepeat className="icon size-5" /></span>
+              <CardButton to="/spots/regulars" className="flex items-center gap-3">
+                <IconTile icon={IconRepeat} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate type-title-s">Add your regulars to the calendar</span>
                   <span className="block truncate type-body-s text-on-surface-variant">You marked {suggestions[0]!.roomName}{suggestions.length > 1 ? ` and ${suggestions.length - 1} more` : ""} as a regular.</span>
                 </span>
-              </Link>
+              </CardButton>
             )}
 
             {nothing ? (
-              <Empty icon={IconCalendarMark} title="Add your rooms too" action={<Link to="/rooms"><Button>Go to Rooms</Button></Link>}>
+              <EmptyState icon={IconCalendarMark} title="Add your rooms too" action={<Link to="/rooms"><Button>Go to Rooms</Button></Link>}>
                 Add the rooms you go to. Then the asks to make and the replies show up here as well.
-              </Empty>
+              </EmptyState>
             ) : (
               <>
-            <section aria-label="Asks open now" className="min-w-0">
-              <SectionTitle action={open.length > 0 ? <Link to="/asks" className="type-label-l text-primary">Open Asks</Link> : undefined}>Ask now</SectionTitle>
+            <Section title="Ask now" label="Asks open now" action={open.length > 0 ? <SectionLink to="/asks">Open Asks</SectionLink> : undefined}>
               {open.length > 0 ? (
                 <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                   {open.slice(0, 4).map((a) => (
@@ -126,15 +129,14 @@ export function Today({ uid }: { uid?: string }) {
                   {open.length > 4 && <li className="type-body-s text-on-surface-variant">+{open.length - 4} more on the Asks page</li>}
                 </ul>
               ) : (
-                <p className="flex min-w-0 items-start gap-2 type-body-m text-on-surface-variant">
+                <p className="flex min-w-0 items-start gap-2 px-1 type-body-m text-on-surface-variant">
                   <IconClock aria-hidden className="icon mt-0.5 size-4 flex-none" />
                   <span>{next ? `Nothing to ask right now. The next one opens ${askDayLabel(next.date, today).toLowerCase()}: ${next.asks[0]!.label}.` : "Nothing to ask right now."}</span>
                 </p>
               )}
-            </section>
+            </Section>
 
-            <section aria-label="Recent replies" className="min-w-0">
-              <SectionTitle action={replies.length > 0 ? <Link to="/asks" className="type-label-l text-primary">All asks</Link> : undefined}>Recent replies</SectionTitle>
+            <Section title="Recent replies" action={replies.length > 0 ? <SectionLink to="/asks">All asks</SectionLink> : undefined}>
               {replies.length > 0 ? (
                 <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                   {replies.map((a) => (
@@ -142,17 +144,17 @@ export function Today({ uid }: { uid?: string }) {
                   ))}
                 </ul>
               ) : (
-                <p className="flex min-w-0 items-start gap-2 type-body-m text-on-surface-variant">
+                <p className="flex min-w-0 items-start gap-2 px-1 type-body-m text-on-surface-variant">
                   <IconChat aria-hidden className="icon mt-0.5 size-4 flex-none" />
                   <span>No replies in the last three days.</span>
                 </p>
               )}
-            </section>
+            </Section>
               </>
             )}
           </>
         )}
-      </div>
+      </Page>
       <SpotEditor value={editing} onClose={() => setEditing(null)} today={today} />
     </div>
   );

@@ -6,6 +6,9 @@ import { auth, db } from "@spot/ui/firebase";
 import {
   DEFAULT_SETTINGS,
   alertAskId,
+  askSendFromOf,
+  askVoiceDefault,
+  type ComicPushPrefs,
   alertSpotId,
   type StoredAlertRules,
   alertState,
@@ -53,6 +56,23 @@ export interface ComicSettings {
   alertRules?: StoredAlertRules;
   /** Asks > Open now lists asks whose ping day has passed but whose show hasn't ("Missed: still time to ask"). Default on. */
   showMissedAsks?: boolean;
+  /** Which pushes this comic wants (default all on). Read by the worker before it sends. */
+  push?: ComicPushPrefs;
+  /** When asks start going out on the ping day, "HH:MM" 24 h (default 09:00). */
+  askSendFrom?: string;
+  /** New asks are written in my voice (default on). */
+  askVoice?: boolean;
+}
+
+/** The ask settings the planner and the ask sheets read: when asks open for sending, and whether they go in my voice. Defaults when signed out (the dev demo). */
+export function useAskPrefs(): { sendFrom: string; voice: boolean } {
+  const uid = auth.currentUser?.uid;
+  const [s, setS] = useState<ComicSettings>({});
+  useEffect(() => {
+    if (!uid) return;
+    return onSnapshot(doc(db, "users", uid), (d) => setS((d.data()?.comicSettings as ComicSettings | undefined) ?? {}), () => undefined);
+  }, [uid]);
+  return { sendFrom: askSendFromOf(s), voice: askVoiceDefault(s) };
 }
 
 /** Whether Asks lists the asks I missed (a setting, default on). Signed out (the dev demo) it stays on. */

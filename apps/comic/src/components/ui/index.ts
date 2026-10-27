@@ -6,3 +6,5 @@ export * from "./EmptyState";
 export * from "./StatTile";
 export * from "./SearchField";
 export * from "./ToggleRow";
+export * from "./Notice";
+export * from "./CheckRow";

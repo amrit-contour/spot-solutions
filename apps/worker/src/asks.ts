@@ -26,11 +26,11 @@ import {
   type PlannedAsk,
   type Room,
 } from "@spot/shared";
-import { mergeRegulars, type RegularSpot } from "@spot/shared";
+import { askSendFromOf, askVoiceDefault, mergeRegulars, type RegularSpot } from "@spot/shared";
 import { col, db, userRef } from "./firebase.ts";
 import { AiPolicyError } from "./aiRouting.ts";
 import { generateJson } from "./llm.ts";
-import { notify } from "./notify.ts";
+import { pushAsk } from "./notify.ts";
 import { sessions } from "./sessions.ts";
 import { deliverableId } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
@@ -66,13 +66,15 @@ async function loadComic(uid: string) {
     asks: asks.docs.map((d) => withId<Ask>(d)),
     spots: mergeRegulars(spots.docs.map((d) => withId<MySpot>(d)), regulars.docs.map((d) => withId<RegularSpot>(d)), today, isoAddDays(today, PLAN_DAYS)),
     template: (user.data()?.comic?.askTemplate as string | undefined) ?? undefined,
+    sendFrom: askSendFromOf(user.data()?.comicSettings),
+    voice: askVoiceDefault(user.data()?.comicSettings),
   };
 }
 
 const firstName = (s?: string) => (s ?? "").trim().split(/\s+/)[0] ?? "";
 
 /** The ask as a draft document, with the message already filled in from the template. */
-function draftOf(a: PlannedAsk, template: string | undefined, mode: Ask["mode"], now: number): Ask {
+function draftOf(a: PlannedAsk, template: string | undefined, mode: Ask["mode"], now: number, voice = true): Ask {
   return {
     id: a.id,
     roomId: a.roomId,
@@ -88,7 +90,7 @@ function draftOf(a: PlannedAsk, template: string | undefined, mode: Ask["mode"],
     showName: a.showName,
     ...(a.curatorName ? { curatorName: a.curatorName } : {}),
     mode,
-    voice: true,
+    voice,
     closesAt: a.closesAt,
   };
 }
@@ -185,7 +187,7 @@ export async function tickAsks(uid: string, client: WAWebJS.Client) {
   const nowMs = nowDate.getTime();
   const today = localDate(nowDate, tz);
   const data = await loadComic(uid);
-  const plan = planAsks(data.rooms, data.curators, { from: today, to: isoAddDays(today, PLAN_DAYS) }, nowDate, tz, { asks: data.asks, mySpots: data.spots });
+  const plan = planAsks(data.rooms, data.curators, { from: today, to: isoAddDays(today, PLAN_DAYS) }, nowDate, tz, { asks: data.asks, mySpots: data.spots, sendFrom: data.sendFrom });
 
   for (const a of openNow(plan)) {
     const due = askDue(a, nowMs);
@@ -194,7 +196,7 @@ export async function tickAsks(uid: string, client: WAWebJS.Client) {
     try {
       if (due === "send") {
         // create() fails when the comic already has a draft: send that one.
-        await ref.create(draftOf(a, data.template, "auto", nowMs)).catch((e: { code?: number }) => {
+        await ref.create(draftOf(a, data.template, "auto", nowMs, data.voice)).catch((e: { code?: number }) => {
           if (e.code !== 6) throw e;
         });
         await sendAsk(uid, a.id);
@@ -203,12 +205,12 @@ export async function tickAsks(uid: string, client: WAWebJS.Client) {
         const kind = due === "remind_open" ? "open" : "closing";
         const stamp = kind === "open" ? { remindedOpenAt: nowMs } : { remindedCloseAt: nowMs };
         if (a.doc) await ref.update(stamp);
-        else await ref.create({ ...draftOf(a, data.template, "review", nowMs), ...stamp });
-        await notify(uid, kind === "open" ? "ask_open" : "ask_closing", reminderText(a, kind, today, nowMs));
+        else await ref.create({ ...draftOf(a, data.template, "review", nowMs, data.voice), ...stamp });
+        await pushAsk(uid, kind === "open" ? "ask_open" : "ask_closing", reminderText(a, kind, today, nowMs));
       }
     } catch (e) {
       console.error(`[asks] ${uid} ${a.id} ${due} failed`, e);
-      if (due === "send") await notify(uid, "ask_open", `Couldn't send your ask for ${a.label} ${a.showDate}: ${(e as Error).message} Send it from the Asks page.`);
+      if (due === "send") await pushAsk(uid, "ask_open", `Couldn't send your ask for ${a.label} ${a.showDate}: ${(e as Error).message} Send it from the Asks page.`);
     }
   }
 
@@ -252,9 +254,9 @@ export async function readReplies(uid: string, client: WAWebJS.Client, data: { r
       if (!digits) continue;
       chatId = await deliverableId(client, `${digits}@c.us`);
     }
+    if (await isNeverRead(uid, client, chatId)) continue; // on Never read: not opened
     let messages: ReplyMessage[];
     try {
-    if (await isNeverRead(uid, client, chatId)) continue; // on Never read: not opened
       messages = await curatorMessages(client, chatId, ask.sentAt!);
     } catch {
       continue; // chat not loadable right now: next round
@@ -287,13 +289,13 @@ async function applyReply(uid: string, ask: Ask, room: Room | undefined, curator
       if (e.code !== 6) throw e;
     });
     await ref.update({ status: "got_it", evidence, lastReply: reply, readAt });
-    await notify(uid, "ask_reply", `${who} said yes: ${label}, ${when}.${reply.unsure ? ` They only replied "${reply.text}", so check it.` : " It's in My spots."}`);
+    await pushAsk(uid, "ask_reply", `${who} said yes: ${label}, ${when}.${reply.unsure ? ` They only replied "${reply.text}", so check it.` : " It's in My spots."}`);
   } else if (reply.decision === "declined") {
     await ref.update({ status: "declined", evidence, lastReply: reply, readAt });
-    await notify(uid, "ask_reply", `${who} can't fit you in at ${label}, ${when}.`);
+    await pushAsk(uid, "ask_reply", `${who} can't fit you in at ${label}, ${when}.`);
   } else {
     await ref.update({ lastReply: reply, readAt });
-    await notify(uid, "ask_reply", `${who} replied about ${label}, ${when}: "${reply.text.slice(0, 80)}". Open Asks to decide.`);
+    await pushAsk(uid, "ask_reply", `${who} replied about ${label}, ${when}: "${reply.text.slice(0, 80)}". Open Asks to decide.`);
   }
   if (ask.source === "group_alert" && ask.alertId) await applyAlertReply(uid, ask.alertId, reply);
   console.log(`[asks] ${uid} ${ask.id}: reply read as ${reply.decision}`);

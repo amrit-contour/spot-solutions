@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { type Roster } from "@spot/shared";
-import { Button, Field, IconImport, IconWarn, Segmented, Sheet, TextArea, TextInput } from "@spot/ui";
+import { Button, Field, IconImport, Segmented, Sheet, TextArea, TextInput } from "@spot/ui";
+import { Card, Notice } from "./ui";
 import { parseRosterRemote, requestFromFile, type ImportRequest } from "../lib/parseRoster";
 
 export interface ParsedImport {
@@ -86,10 +87,10 @@ export function PasteImportSheet({ open, onClose, city, onParsed }: { open: bool
         {mode === "file" && (
           <Field label="A file" hint="CSV, Excel, PDF or a screenshot. PDFs and pictures need a Gemini key (Settings, AI models).">
             <input ref={picker} type="file" accept={ACCEPT} className="hidden" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(""); }} />
-            <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-md bg-surface-container p-4">
+            <Card tone="high" className="flex min-w-0 flex-wrap items-center gap-3">
               <Button variant="tonal" onClick={() => picker.current?.click()} disabled={busy}>{file ? "Choose another" : "Choose a file"}</Button>
               <span className="min-w-0 flex-1 truncate type-body-m text-on-surface-variant">{file ? `${file.name} (${(file.size / 1000).toFixed(file.size > 99_999 ? 0 : 1)} KB)` : "Nothing chosen yet"}</span>
-            </div>
+            </Card>
           </Field>
         )}
 
@@ -100,12 +101,7 @@ export function PasteImportSheet({ open, onClose, city, onParsed }: { open: bool
         )}
 
         {busy && <p role="status" className="type-body-m text-on-surface-variant">Reading it. A list in the usual format takes a second; anything else goes to your AI model and can take a minute or two.</p>}
-        {error && (
-          <div role="alert" className="flex items-start gap-3 rounded-md bg-error-container p-4 text-on-error-container">
-            <IconWarn aria-hidden className="icon mt-0.5 size-5 flex-none" />
-            <p className="min-w-0 type-body-m break-words">{error}</p>
-          </div>
-        )}
+        {error && <Notice tone="error">{error}</Notice>}
       </div>
     </Sheet>
   );

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { deleteDoc, doc, setDoc } from "firebase/firestore";
 import { getApp } from "firebase/app";
+import { connectFunctionsEmulator, getFunctions, httpsCallable } from "firebase/functions";
 import { toast } from "sonner";
 import { db } from "@spot/ui/firebase";
 import { isStandalone } from "./install";
@@ -131,4 +132,21 @@ export function useForegroundPush(openAsk: (alertId: string) => void) {
     navigator.serviceWorker.addEventListener("message", on);
     return () => navigator.serviceWorker.removeEventListener("message", on);
   }, [openAsk]);
+}
+
+let emulatorConnected = false;
+
+/** "Send test push": a notification from the server to this account's Comedy devices (a Cloud Function, so it needs no WhatsApp server). */
+export async function sendTestPush(): Promise<{ sent: number; devices: number }> {
+  const fns = getFunctions(getApp(), "asia-south1");
+  if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "1" && !emulatorConnected) {
+    emulatorConnected = true;
+    connectFunctionsEmulator(fns, "127.0.0.1", 5001);
+  }
+  try {
+    return (await httpsCallable<unknown, { sent: number; devices: number }>(fns, "sendComicTestPush")({})).data;
+  } catch (e) {
+    const m = (e as { message?: string }).message;
+    throw new Error(m && !/^internal$/i.test(m) ? m : "Couldn't send the test. Check your connection and try again.");
+  }
 }

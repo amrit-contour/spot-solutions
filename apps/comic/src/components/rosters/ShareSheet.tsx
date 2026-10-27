@@ -6,6 +6,7 @@ import type { MemberEntry } from "../../lib/members";
 import { MemberPicker } from "../MemberPicker";
 import { useRoster } from "../../lib/roster";
 import { sendShare } from "../../lib/rosters";
+import { CheckRow, ListGroup, Notice, SectionHeader } from "../ui";
 
 /** Send a copy of some of my rooms to one other member. They find it in Community, review it and take what they want. */
 export function ShareSheet({ open, onClose, user }: { open: boolean; onClose: () => void; user: User }) {
@@ -76,27 +77,16 @@ export function ShareSheet({ open, onClose, user }: { open: boolean; onClose: ()
         <Field label="A message (optional)">
           <TextArea value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} className="min-h-20" placeholder="These are the Sunday mics I know" />
         </Field>
-        <section className="min-w-0">
-          <div className="mb-2 flex min-w-0 items-center gap-2">
-            <h3 className="min-w-0 flex-1 truncate type-title-m">Rooms to send ({picked.length})</h3>
-            <Button size="sm" variant="text" onClick={() => setSkip(skip.size ? new Set() : new Set(store.rooms.map((r) => r.id)))}>{skip.size ? "All" : "None"}</Button>
-          </div>
-          <ul className="flex min-w-0 flex-col overflow-hidden rounded-md bg-surface-low">
+        <section className="flex min-w-0 flex-col gap-2">
+          <SectionHeader title="Rooms to send" count={picked.length} action={<Button size="sm" variant="text" onClick={() => setSkip(skip.size ? new Set() : new Set(store.rooms.map((r) => r.id)))}>{skip.size ? "All" : "None"}</Button>} />
+          <ListGroup>
             {store.rooms.map((r) => (
-              <li key={r.id} className="min-w-0 border-b border-outline-variant/40 last:border-b-0">
-                <label className="state-layer flex min-h-12 min-w-0 cursor-pointer items-center gap-3 px-3 py-2">
-                  <input type="checkbox" className="size-5 flex-none accent-[var(--md-sys-color-primary)]" checked={!skip.has(r.id)} onChange={() => toggle(r.id)} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate type-body-l">{r.name}</span>
-                    <span className="block truncate type-body-s text-on-surface-variant">{[r.area, r.city].filter(Boolean).join(" · ")}</span>
-                  </span>
-                </label>
-              </li>
+              <CheckRow key={r.id} checked={!skip.has(r.id)} onChange={() => toggle(r.id)} title={r.name} detail={[r.area, r.city].filter(Boolean).join(" · ") || undefined} />
             ))}
-            {store.rooms.length === 0 && <li className="px-3 py-4 type-body-m text-on-surface-variant">You have no rooms yet.</li>}
-          </ul>
+            {store.rooms.length === 0 && <p className="px-4 py-4 type-body-m text-on-surface-variant">You have no rooms yet.</p>}
+          </ListGroup>
         </section>
-        {error && <p role="alert" className="rounded-md bg-error-container p-4 type-body-m text-on-error-container">{error}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
       </div>
     </Sheet>
   );

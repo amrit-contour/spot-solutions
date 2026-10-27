@@ -61,11 +61,11 @@ export function CalendarView({ spots, today, selected, onSelect, mode, onMode }:
   const wk = weekDates(selected);
   const heading = mode === "month" || wk[0]!.slice(0, 7) === wk[6]!.slice(0, 7) ? `${monthName(selected)}${yr(selected)}` : `${monthName(wk[0]!).slice(0, 3)} / ${monthName(wk[6]!).slice(0, 3)}${yr(wk[6]!)}`;
   return (
-    <section aria-label="Calendar" className="min-w-0 rounded-xl bg-surface-low p-2.5 pb-2">
+    <section aria-label="Calendar" className="min-w-0 rounded-lg bg-surface-low p-3 pb-2">
       <div className="mb-1 flex min-w-0 items-center gap-2 px-1.5">
         <h2 className="min-w-0 truncate type-title-m">{heading}</h2>
         {selected !== today && (
-          <button onClick={() => onSelect(today)} className="state-layer pressable h-8 flex-none rounded-full px-3 type-label-l text-primary">
+          <button onClick={() => onSelect(today)} className="state-layer pressable h-11 flex-none rounded-full px-3 type-label-l text-primary">
             Today
           </button>
         )}
@@ -81,7 +81,6 @@ export function CalendarView({ spots, today, selected, onSelect, mode, onMode }:
         <div className="w-40 flex-none">
           <Segmented
             full
-            size="sm"
             value={mode}
             onChange={(m) => {
               writeMode(m);

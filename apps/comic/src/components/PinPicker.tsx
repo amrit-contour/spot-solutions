@@ -2,6 +2,7 @@ import { useState } from "react";
 import { VenuePin, Field, TextInput, Spinner, IconSearch, IconMap } from "@spot/ui";
 import type { Pin } from "@spot/shared";
 import { usePlaceSearch, type PlaceResult } from "../lib/placeSearch";
+import { ListGroup } from "./ui";
 
 /**
  * The room's map pin: search a place (OpenStreetMap, free), or paste a Google Maps link or type coordinates (VenuePin).
@@ -34,19 +35,19 @@ export function PinPicker({ pin, onChange, near }: { pin: Pin | undefined; onCha
         <p className="type-body-s text-on-surface-variant">Nothing found. Try the area or street instead, or paste a Google Maps link below.</p>
       )}
       {results.length > 0 && (
-        <ul className="flex min-w-0 flex-col overflow-hidden rounded-md bg-surface-container">
+        <ListGroup>
           {results.map((r) => (
-            <li key={r.id} className="min-w-0">
-              <button onClick={() => pick(r)} className="state-layer flex min-h-14 w-full min-w-0 items-center gap-3 px-3 py-2 text-left">
+            <div key={r.id} className="min-w-0">
+              <button onClick={() => pick(r)} className="state-layer pressable flex min-h-14 w-full min-w-0 items-center gap-3 px-4 py-2 text-left">
                 <IconMap aria-hidden className="icon size-5 flex-none text-primary" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate type-body-l">{r.name}</span>
                   <span className="block truncate type-body-s text-on-surface-variant">{r.detail}</span>
                 </span>
               </button>
-            </li>
+            </div>
           ))}
-        </ul>
+        </ListGroup>
       )}
       <VenuePin key={version} lat={pin?.lat} lng={pin?.lng} onChange={(p) => onChange(p ? { ...pin, ...p } : undefined)} />
       {pin?.label && <p className="type-body-s text-on-surface-variant">Pinned from: {pin.label}</p>}

@@ -4,6 +4,7 @@ import { ASK_VARIABLES, DEFAULT_ASK_TEMPLATE, askHints, renderAsk, type PlannedA
 import { Bubble, Button, Chip, Field, Segmented, Sheet, TextArea } from "@spot/ui";
 import { ToggleRow } from "./ui";
 import { useAsks } from "../lib/asks";
+import { useAskPrefs } from "../lib/alerts";
 import { useRoster } from "../lib/roster";
 import { dateTime } from "../lib/time";
 
@@ -11,13 +12,14 @@ import { dateTime } from "../lib/time";
 export function AskEditSheet({ ask, message, onClose, onSend }: { ask: PlannedAsk | null; message: string; onClose: () => void; onSend: (text: string, voice: boolean) => void }) {
   const store = useAsks();
   const [text, setText] = useState("");
-  const [voice, setVoice] = useState(true);
+  const prefs = useAskPrefs();
+  const [voice, setVoice] = useState(prefs.voice);
   const [last, setLast] = useState<PlannedAsk | null>(null);
   if (ask !== last) {
     setLast(ask);
     if (ask) {
       setText(message);
-      setVoice(ask.doc?.voice ?? true);
+      setVoice(ask.doc?.voice ?? prefs.voice);
     }
   }
   if (!ask) return <Sheet open={false} onClose={onClose} title="" children={null} />;
@@ -132,7 +134,7 @@ export function RoomModesSheet({ open, onClose }: { open: boolean; onClose: () =
     <Sheet open={open} onClose={onClose} title="Send or review" footer={<Button onClick={onClose}>Done</Button>}>
       <div className="flex min-w-0 flex-col gap-4">
         <p className="type-body-l text-on-surface-variant">
-          Pick what happens when a room's ask window opens. <strong className="font-medium text-on-surface">Send for me</strong> sends the ask by itself from 9 AM that day, once.{" "}
+          Pick what happens when a room's ask window opens. <strong className="font-medium text-on-surface">Send for me</strong> sends the ask by itself from your send time (Settings, then Asks; 9 AM unless you change it) that day, once.{" "}
           <strong className="font-medium text-on-surface">Ask me first</strong> leaves a draft here and sends you a reminder.
         </p>
         {rooms.length === 0 ? (

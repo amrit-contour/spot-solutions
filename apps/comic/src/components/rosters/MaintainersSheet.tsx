@@ -5,6 +5,7 @@ import { Button, IconButton, IconTrash, Sheet } from "@spot/ui";
 import { setCoMaintainers } from "../../lib/rosters";
 import type { MemberEntry } from "../../lib/members";
 import { MemberPicker } from "../MemberPicker";
+import { ListGroup, ListRow, Notice } from "../ui";
 
 /** Owner only: who else approves suggestions. They don't need to be publishers. */
 export function MaintainersSheet({ roster, open, onClose }: { roster: PublishedRosterDoc; open: boolean; onClose: () => void }) {
@@ -47,23 +48,17 @@ export function MaintainersSheet({ roster, open, onClose }: { roster: PublishedR
     <Sheet open={open} onClose={onClose} title="Co-maintainers" footer={<Button variant="text" onClick={onClose}>Done</Button>}>
       <div className="flex min-w-0 flex-col gap-6">
         <p className="type-body-l text-on-surface-variant">Co-maintainers approve or reject suggestions for {roster.title}. They can't publish from their own rooms or change who maintains it.</p>
-        <ul className="flex min-w-0 flex-col overflow-hidden rounded-md bg-surface-low">
-          <li className="flex min-h-12 min-w-0 items-center gap-3 border-b border-outline-variant/40 px-3 py-2">
-            <span className="min-w-0 flex-1 truncate type-body-l">{roster.ownerName ?? "Owner"}</span>
-            <span className="type-label-m text-on-surface-variant">Owner</span>
-          </li>
+        <ListGroup>
+          <ListRow title={roster.ownerName ?? "Owner"} trailing={<span className="type-label-m">Owner</span>} />
           {roster.coMaintainers.map((u) => (
-            <li key={u} className="flex min-h-12 min-w-0 items-center gap-3 border-b border-outline-variant/40 px-3 py-1 last:border-b-0">
-              <span className="min-w-0 flex-1 truncate type-body-l">{names[u] ?? "Member"}</span>
-              <IconButton icon={IconTrash} label={`Remove ${names[u] ?? "this person"}`} onClick={() => void remove(u)} />
-            </li>
+            <ListRow key={u} title={names[u] ?? "Member"} className="py-1" trailing={<IconButton icon={IconTrash} label={`Remove ${names[u] ?? "this person"}`} onClick={() => void remove(u)} />} />
           ))}
-        </ul>
+        </ListGroup>
         <div className="flex min-w-0 flex-col gap-3">
           <MemberPicker label="Add a co-maintainer" hint="Anyone approved in the app. Type a name or email." value={picked} onChange={setPicked} exclude={[roster.ownerUid, ...roster.coMaintainers]} />
-          {picked && <Button onClick={() => void add()} loading={busy} className="h-12 self-start">Add {picked.name}</Button>}
+          {picked && <Button onClick={() => void add()} loading={busy} className="self-start">Add {picked.name}</Button>}
         </div>
-        {error && <p role="alert" className="rounded-md bg-error-container p-4 type-body-m text-on-error-container">{error}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
       </div>
     </Sheet>
   );
