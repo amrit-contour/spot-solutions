@@ -38,7 +38,7 @@ export async function deliverableId(client: WAWebJS.Client, to: string) {
   }
 }
 
-export type Sendable = string | WAWebJS.Poll | WAWebJS.Location;
+export type Sendable = string | WAWebJS.Poll | WAWebJS.Location | WAWebJS.MessageMedia;
 
 /** Send one message (text, poll or pin) through the queue: typing pause, id fallbacks, counters. */
 export function sendContent(client: WAWebJS.Client, to: string, content: Sendable, typeMs = 0, options?: WAWebJS.MessageSendOptions) {

@@ -61,7 +61,7 @@ import { safeFetch } from "./safeFetch.ts";
 import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
-import { getMedia, getThread, listThreads, summarizeThread } from "./chats.ts";
+import { chatFor, getMedia, getThread, listThreads, reactMessage, sendMedia, summarizeThread } from "./chats.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { addDirect, settleRound } from "./replies.ts";
 import { askForSpot } from "./groupWatch.ts";
@@ -545,9 +545,12 @@ const handlers: Record<Command["type"], Handler> = {
    * A message to one chat. `voice` (Messages page): write the text in the curator's voice first. The rewrite is checked against
    * the typed text and falls back to it, so it can only change the wording. Returns what actually went out.
    */
-  async send_message(uid, { to, body, rich, voice, name, tags }) {
+  async send_message(uid, { to: toRaw, comicId, groupId, body, rich, voice, name, tags }) {
     const r = rich as ComicAction["rich"] | undefined;
     const client = sessions.require(uid);
+    // The Messages page names the chat (comicId / groupId): it is opened through the same checks as reading it (roster or linked
+    // group only, Never read refused) and sent to the id WhatsApp itself lists, so a phone id vs @lid mix-up can't lose the send.
+    const to = comicId || groupId ? (await chatFor(uid, { comicId, groupId })).id._serialized : toRaw;
     let text = String(body ?? "");
     if (voice && text.trim() && (r?.kind ?? "text") === "text") text = await inVoice(uid, "reply", text, { name: String(name ?? "there") });
     // "@Amrit" typed in a group becomes a real tag: WhatsApp needs "@<their id>" in the text and the id in mentions. A tag can be
@@ -609,6 +612,8 @@ const handlers: Record<Command["type"], Handler> = {
   list_threads: (uid) => listThreads(uid),
   get_thread: getThread,
   get_media: getMedia,
+  react_message: reactMessage,
+  send_media: sendMedia,
   summarize_thread: summarizeThread,
   // Nothing BOT Comedy, Rooms → Import from text, file or link: turns pasted text, a file or a link into rooms. Nothing is saved
   // here (the app shows the result in the merge-with-review sheet). The payload can hold a person's pasted list and curator
@@ -628,7 +633,7 @@ const handlers: Record<Command["type"], Handler> = {
 };
 
 /** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */
-const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "get_media", "summarize_thread", "list_voice_sources", "parse_roster"]);
+const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "get_media", "react_message", "send_media", "summarize_thread", "list_voice_sources", "parse_roster"]);
 
 /** The confirmation as the curator set it up: the text (in their voice), then the venue pin if that's on. */
 /** Is this comic the curator's own WhatsApp? */

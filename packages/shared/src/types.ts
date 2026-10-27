@@ -451,6 +451,8 @@ export type CommandType =
   | "list_threads"
   | "get_thread"
   | "get_media"
+  | "react_message"
+  | "send_media"
   | "summarize_thread"
   | "list_voice_sources"
   | "parse_roster"

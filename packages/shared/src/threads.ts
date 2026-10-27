@@ -54,6 +54,9 @@ export interface WaChatLike {
   recent?: WaMessageLike[];
 }
 
+/** What a media message carries, so the page can show a photo and label the rest ("Open on your phone"). */
+export type ThreadMediaKind = "image" | "video" | "audio" | "document" | "other";
+
 export type ThreadMessageKind = "text" | "poll" | "location" | "media" | "sticker" | "deleted" | "other";
 
 /** An emoji under a bubble: how many people used it, and whether one of them is you. */
@@ -85,6 +88,8 @@ export interface ThreadMessage {
   author?: string;
   reactions?: ReactionChip[];
   mentions?: ThreadMention[];
+  /** kind "media": what it is. */
+  media?: ThreadMediaKind;
 }
 
 export interface ThreadItem {
@@ -112,6 +117,8 @@ const MEDIA_LABEL: Record<string, string> = {
   album: "[photos]",
   groups_v4_invite: "[group invite]",
 };
+
+const MEDIA_KIND: Record<string, ThreadMediaKind> = { image: "image", video: "video", audio: "audio", ptt: "audio", document: "document" };
 
 /** A show's WhatsApp group in the chat list. Only groups linked to one of your shows are ever listed or opened. */
 export interface GroupThreadItem {
@@ -181,7 +188,8 @@ export function toThreadMessage(m: WaMessageLike, names?: Map<string, string>): 
   const label = MEDIA_LABEL[m.type] ?? (m.hasMedia ? "[attachment]" : "[message]");
   // A caption on a photo or document is the text worth showing.
   const caption = m.body?.trim();
-  return { ...base, kind: MEDIA_LABEL[m.type] || m.hasMedia ? "media" : "other", text: caption ? `${label} ${caption}` : label };
+  const isMedia = Boolean(MEDIA_LABEL[m.type] || m.hasMedia);
+  return { ...base, kind: isMedia ? "media" : "other", ...(isMedia && { media: MEDIA_KIND[m.type] ?? "other" }), text: caption ? `${label} ${caption}` : label };
 }
 
 /**
@@ -372,8 +380,10 @@ export interface ThreadMember {
 
 /** The biggest sticker the app fetches (bytes of the file). Anything larger shows as a label instead. */
 export const STICKER_MAX_BYTES = 150_000;
+/** The biggest photo the app fetches to show in a chat. It travels as a short-lived command result (Firestore documents hold 1 MB), so bigger ones show a label. */
+export const PHOTO_MAX_BYTES = 600_000;
 
-/** get_media: one sticker as a data URL, read from WhatsApp for this one request and returned, never stored. */
+/** get_media: one sticker or photo as a data URL, read from WhatsApp for this one request and returned, never stored. */
 export interface ThreadMediaResult {
   dataUrl: string | null;
   reason?: "too_big" | "unavailable";

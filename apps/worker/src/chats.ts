@@ -1,10 +1,11 @@
 // The Messages page, server side. Chats are read live from the curator's own WhatsApp when asked and returned as a command
 // result; nothing is kept. Only comics in the roster and groups linked to a show are ever listed or opened (no personal chats or other groups),
 // and nothing here sends.
-import type WAWebJS from "whatsapp-web.js";
+import WAWebJS from "whatsapp-web.js";
 import {
   THREAD_FETCH_MAX,
   THREAD_PAGE,
+  PHOTO_MAX_BYTES,
   STICKER_MAX_BYTES,
   authorNames,
   comicChatKeys,
@@ -31,6 +32,8 @@ import { generateJson } from "./llm.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
 import { isNeverRead, neverReadFor } from "./neverRead.ts";
+import { parseEmoji, parsePhotoPayload, reactTo, sendPhoto } from "./chatActions.ts";
+import { sendContent } from "./sendQueue.ts";
 import { THREAD_ASSIST_SCHEMA, buildThreadPrompt, parseThreadAssist, showLines } from "./threadAssist.ts";
 
 /** Messages the model reads. Enough for a back-and-forth about one spot, small enough for a local model. */
@@ -145,7 +148,7 @@ function groupCache(uid: string): GroupMember[] {
 }
 
 /** The WhatsApp chat of someone in the roster. Throws for anyone else, so this can never open a personal chat. */
-async function chatOf(uid: string, comicId: unknown) {
+export async function chatOf(uid: string, comicId: unknown) {
   const client = sessions.require(uid);
   const snap = await col(uid, "comics").doc(String(comicId ?? "")).get();
   if (!snap.exists) throw new Error("That person isn't in your Comics list, so their chat can't be opened here.");
@@ -211,26 +214,53 @@ async function groupMembersOf(client: WAWebJS.Client, group: WAWebJS.GroupChat, 
   return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/**
- * get_media: one sticker, fetched from WhatsApp for this request and returned as a data URL (never stored; the result is a
- * short-lived command result like the chat text). Only stickers, only from a chat that can be opened here, and nothing over
- * STICKER_MAX_BYTES.
- */
-export async function getMedia(uid: string, payload: Record<string, unknown>): Promise<ThreadMediaResult> {
-  const chat = payload.groupId ? await groupOf(uid, payload.groupId) : (await chatOf(uid, payload.comicId)).chat;
-  const id = String(payload.messageId ?? "");
-  if (!id) throw new Error("Which message?");
+/** The chat a payload names: a comic's (`comicId`) or a linked group (`groupId`). Both refuse Never read and anyone outside Comics and your shows. */
+export async function chatFor(uid: string, payload: Record<string, unknown>) {
+  return payload.groupId ? await groupOf(uid, payload.groupId) : (await chatOf(uid, payload.comicId)).chat;
+}
+
+/** One message of an opened chat, by id. It must belong to that chat; WhatsApp's by-id lookup is tried first, then the chat's recent messages. */
+async function messageIn(uid: string, chat: WAWebJS.Chat, id: string): Promise<WAWebJS.Message | undefined> {
   const client = sessions.require(uid);
   let msg: WAWebJS.Message | undefined = await client.getMessageById(id).catch(() => undefined);
-  // The message must belong to the chat that was asked for; otherwise look for it in that chat.
   if (!msg || (msg.id.remote !== chat.id._serialized && msg.from !== chat.id._serialized && msg.to !== chat.id._serialized)) {
     msg = (await chat.fetchMessages({ limit: 100 })).find((m) => m.id._serialized === id);
   }
-  if (!msg || msg.type !== "sticker") return { dataUrl: null, reason: "unavailable" };
+  return msg;
+}
+
+/**
+ * get_media: one sticker or photo, fetched from WhatsApp for this request and returned as a data URL (never stored; the result is
+ * a short-lived command result like the chat text). Only from a chat that can be opened here, and nothing over the size limit
+ * (the result is a Firestore document): bigger ones come back as "too_big" and the page says to open them on the phone.
+ */
+export async function getMedia(uid: string, payload: Record<string, unknown>): Promise<ThreadMediaResult> {
+  const chat = await chatFor(uid, payload);
+  const id = String(payload.messageId ?? "");
+  if (!id) throw new Error("Which message?");
+  const msg = await messageIn(uid, chat, id);
+  if (!msg || (msg.type !== "sticker" && msg.type !== "image")) return { dataUrl: null, reason: "unavailable" };
   const media = await msg.downloadMedia().catch(() => undefined);
   if (!media?.data || !media.mimetype.startsWith("image/")) return { dataUrl: null, reason: "unavailable" };
-  if ((media.data.length * 3) / 4 > STICKER_MAX_BYTES) return { dataUrl: null, reason: "too_big" };
+  if ((media.data.length * 3) / 4 > (msg.type === "sticker" ? STICKER_MAX_BYTES : PHOTO_MAX_BYTES)) return { dataUrl: null, reason: "too_big" };
   return { dataUrl: `data:${media.mimetype};base64,${media.data}` };
+}
+
+/** react_message: react to one message in an opened chat. An empty emoji takes your reaction back. */
+export async function reactMessage(uid: string, payload: Record<string, unknown>) {
+  const emoji = parseEmoji(payload.emoji);
+  const chat = await chatFor(uid, payload);
+  const id = String(payload.messageId ?? "");
+  if (!id) throw new Error("Which message?");
+  return reactTo(await messageIn(uid, chat, id), emoji);
+}
+
+/** send_media: a photo (already squeezed by the app) with an optional caption, to an opened chat. Nothing of it is kept. */
+export async function sendMedia(uid: string, payload: Record<string, unknown>) {
+  const photo = parsePhotoPayload(payload);
+  const chat = await chatFor(uid, payload);
+  const client = sessions.require(uid);
+  return sendPhoto<WAWebJS.MessageMedia>((to, media, opts) => sendContent(client, to, media, 0, opts), (mime, data, name) => new WAWebJS.MessageMedia(mime, data, name), chat.id._serialized, photo);
 }
 
 /** summarize_thread: a sentence, a suggested reply, and actions backed by quotes. Suggests only; sends and changes nothing. */
