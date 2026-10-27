@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
-import { runDoctor, summarize, hasCriticalFailure } from "./doctor.mjs";
+import { runDoctor, summarize, hasCriticalFailure, sameServerDeps } from "./doctor.mjs";
 import { parseEnv } from "./doctor-run.mjs";
 
 const P = { appDir: "/app", dataDir: "/new/data", envFile: "/app/apps/worker/.env", legacyDataDirs: ["/old/data"], legacyChromeDirs: ["/old/chrome"] };
@@ -126,5 +126,16 @@ describe("doctor", () => {
   it("a check that throws becomes a failed check, not a crash", async () => {
     const { d } = machine(healthy(), { browserCheck: async () => { throw new Error("boom"); } });
     expect(byId(await runDoctor(d, { only: ["browser"] }), "browser").detail).toMatch(/boom/);
+  });
+});
+
+describe("sameServerDeps", () => {
+  const lock = (worker, comic) => `lockfileVersion: '9.0'\n\nimporters:\n\n  apps/comic:\n    dependencies:\n      ${comic}\n\n  apps/worker:\n    dependencies:\n      ${worker}\n\n  packages/shared:\n    devDependencies:\n      vitest: 5.0.5\n\npackages:\n\n  a@1: {}\n`;
+  it("ignores changes outside the server (a filtered install keeps a pruned lockfile)", () => {
+    const pruned = lock("tsx: 4.0.0", "react: 19.0.0").replace("  a@1: {}\n", "");
+    expect(sameServerDeps(pruned, lock("tsx: 4.0.0", "react: 19.2.0"))).toBe(true);
+  });
+  it("notices when the server's own packages changed", () => {
+    expect(sameServerDeps(lock("tsx: 4.0.0", "react: 19.0.0"), lock("tsx: 4.1.0", "react: 19.0.0"))).toBe(false);
   });
 });

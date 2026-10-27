@@ -17,6 +17,29 @@ export const NOT_MIGRATED = new Set(["console-token", "live-stats.json", "live-s
 const sessionsDir = (d) => path.join(d.paths.dataDir, "wwebjs");
 const hasEntries = (d, dir) => { try { return d.fs.readdirSync(dir).length > 0; } catch { return false; } };
 
+/** The workspace packages the server installs (`pnpm install --filter "@spot/worker..."`). */
+const SERVER_IMPORTERS = ["apps/worker", "packages/shared"];
+
+/** One importer's block under `importers:` in a pnpm lockfile, or null when it isn't there. */
+function importerBlock(lock, name) {
+  const lines = lock.split("\n");
+  const start = lines.indexOf(`  ${name}:`);
+  if (start < 0 || !lines.slice(0, start).includes("importers:")) return null;
+  let end = start + 1;
+  while (end < lines.length && (lines[end] === "" || lines[end].startsWith("    "))) end++;
+  return lines.slice(start, end).join("\n").trimEnd();
+}
+
+/**
+ * Whether the installed packages match what this version needs. A filtered install writes a pruned copy of the lockfile, so
+ * the whole files differ as soon as anything outside the server changes (the apps' packages); compare the server's own entries.
+ */
+export function sameServerDeps(have, want) {
+  const blocks = SERVER_IMPORTERS.map((n) => [importerBlock(have, n), importerBlock(want, n)]);
+  if (blocks.every(([h, w]) => h === null && w === null)) return have === want; // not a pnpm lockfile shape: compare whole
+  return blocks.every(([h, w]) => h === w);
+}
+
 export const CHECKS = [
   {
     id: "node", title: "Node.js runtime", critical: true,
@@ -34,7 +57,7 @@ export const CHECKS = [
       // pnpm keeps a copy of the lockfile it installed from; a different one means an update didn't finish installing.
       const have = d.readText(path.join(d.paths.appDir, "node_modules", ".pnpm", "lock.yaml"));
       const want = d.readText(path.join(d.paths.appDir, "pnpm-lock.yaml"));
-      if (want && have && have !== want) return { ok: false, detail: "The installed packages are older than this version needs", repairable: true };
+      if (want && have && !sameServerDeps(have, want)) return { ok: false, detail: "The installed packages are older than this version needs", repairable: true };
       return { ok: true, detail: "Packages are installed" };
     },
     repair: async (d) => { await d.installDeps(); return "Packages reinstalled"; },

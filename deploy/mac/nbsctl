@@ -358,7 +358,7 @@ pull_model() {
 cmd_update() {
   TASK_NAME=update; STARTED="$(( $(date +%s) * 1000 ))"; FROM="$(cat "$APP/VERSION" 2>/dev/null || echo none)"
   [[ -x "$(node_bin)" && -f "$APP/apps/worker/package.json" ]] || task_fail "Nothing BOT Server isn't set up on this Mac yet. Run setup first."
-  local tmp; tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' RETURN
+  local tmp; tmp="$(mktemp -d)"; trap 'rm -rf "${tmp:-}"; trap - RETURN' RETURN # RETURN traps are global: clear it, or it fires again after tmp is gone
   step "Checking the latest version"; progress running "Checking the latest version"
   local base="${NBS_DIST_URL:-https://nothingbotcurating.web.app}"
   curl -fsSL --max-time 30 "$base/dl/nothing-bot-server.json?t=$(date +%s)" -o "$tmp/version.json" || task_fail "Couldn't reach the update site (nothingbotcurating.web.app). Check this Mac's internet."
@@ -384,6 +384,8 @@ cmd_update() {
   [[ -f "$tmp/stage/apps/worker/package.json" && "$(cat "$tmp/stage/VERSION" 2>/dev/null)" == "$latest" ]] || task_fail "The download isn't the version it claims to be."
 
   step "Installing files"; progress running "Installing files"
+  # VERSION is written last, once everything below worked: a half-finished update is retried instead of "already up to date".
+  mv "$tmp/stage/VERSION" "$tmp/VERSION.new"
   local oldlock newlock
   oldlock="$(sha256_of "$APP/pnpm-lock.yaml" 2>/dev/null || echo none)"
   cp -R "$tmp/stage/." "$APP/" || task_fail "Copying the new files failed."
@@ -401,6 +403,7 @@ cmd_update() {
   # puppeteer's own download when it installs from its store cache).
   step "Checking everything"; progress running "Checking WhatsApp's browser and settings"
   run_doctor --repair || task_fail "Something this version needs couldn't be set up (see the log). Check the internet connection and try again."
+  cp "$tmp/VERSION.new" "$APP/VERSION"
 
   step "Restarting"; progress running "Restarting the worker"
   # kickstart without -k leaves a running process alone, so an update would keep serving the old code.
