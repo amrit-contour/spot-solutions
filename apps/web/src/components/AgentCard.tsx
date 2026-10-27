@@ -9,7 +9,8 @@ import { useApp } from "../lib/app";
 import { runCommand, useDocument } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
 import { Button, Info, SettingRow, Switch, TimePicker, cx } from "@spot/ui";
-import { IconChatCheck, IconCheck, IconLogout, IconPhone, IconQr, IconSend, IconServer, IconShield } from "@spot/ui";
+import { IconChatCheck, IconLogout, IconQr, IconSend, IconShield } from "@spot/ui";
+import { LinkStatusPill, type LinkView } from "./LinkStatusPill";
 
 const QR_SIZE = 216;
 const DEFAULTS = DEFAULT_SETTINGS.agent as AgentSettings;
@@ -24,7 +25,10 @@ export function AgentCard() {
 
   const mainReady = session?.status === "ready";
   const status = agent?.status ?? "idle";
-  const view = !workerOnline && status !== "ready" ? "offline" : status === "ready" ? "ready" : status === "qr" ? "qr" : status === "starting" || status === "authenticated" || busy === "link" ? "starting" : "idle";
+  const view: LinkView = !workerOnline && status !== "ready" ? "offline" : status === "ready" ? "ready" : status === "qr" ? "qr" : status === "starting" || status === "authenticated" || busy === "link" ? "starting" : "idle";
+
+  const showQr = view === "qr" && Boolean(agent?.qr);
+  const pillLabel = view === "ready" ? "Connected" : view === "offline" ? "Server offline" : view === "starting" ? "Starting the agent…" : view === "qr" ? "Waiting for scan" : "Not linked";
 
   const run = async (kind: "link" | "unlink" | "test", type: "connect_agent" | "logout_agent" | "test_agent", done?: string) => {
     setBusy(kind);
@@ -40,17 +44,18 @@ export function AgentCard() {
 
   return (
     <section id="agent" className="overflow-hidden rounded-xl bg-surface-low p-4 sm:p-6">
-      <div className="grid items-center gap-6 md:grid-cols-[1fr_auto] md:gap-8">
+      <div className={cx("grid items-center gap-6", showQr && "md:grid-cols-[1fr_auto] md:gap-8")}>
         <div>
           <div className="flex items-center gap-3">
             <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
               <IconChatCheck className="icon size-5" />
             </span>
-            <h2 className="type-headline-s">{view === "ready" ? "Agent number is linked" : "Agent number"}</h2>
+            <h2 className="type-headline-s">Agent number</h2>
             <Info label="About the agent number">
               A second WhatsApp number for Nothing BOT Curate to talk to you from. It only ever messages your own number, and only reads messages you send it. It never messages comics, groups or anyone else: anything that goes to comics still goes out from your own WhatsApp, and only after you say yes.
             </Info>
           </div>
+          <div className="mt-3"><LinkStatusPill view={view} label={pillLabel} /></div>
           <AnimatePresence mode="wait" initial={false}>
             <motion.div key={view} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
               {view === "ready" && (
@@ -102,24 +107,16 @@ export function AgentCard() {
 
         </div>
 
-        <div className={cx("relative order-first mx-auto grid w-full place-items-center rounded-xl-plus bg-surface-lowest md:order-none md:w-[256px]", view === "qr" ? "aspect-square max-w-[256px]" : "h-36 md:h-[256px]")}>
-          <AnimatePresence mode="wait">
-            {view === "qr" && agent?.qr ? (
-              <motion.div key={agent.qr} className="relative" initial={{ opacity: 0, filter: "blur(6px)" }} animate={{ opacity: 1, filter: "blur(0px)" }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
-                <QRCodeSVG value={agent.qr} size={QR_SIZE} bgColor="transparent" fgColor="var(--md-sys-color-on-surface)" level="M" />
+        {showQr && (
+          <div className="relative order-first mx-auto grid aspect-square w-full max-w-[256px] place-items-center rounded-xl-plus bg-surface-lowest md:order-none md:w-[256px]">
+            <AnimatePresence mode="wait">
+              <motion.div key={agent!.qr} className="relative" initial={{ opacity: 0, filter: "blur(6px)" }} animate={{ opacity: 1, filter: "blur(0px)" }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>
+                <QRCodeSVG value={agent!.qr!} size={QR_SIZE} bgColor="transparent" fgColor="var(--md-sys-color-on-surface)" level="M" />
                 <span className="scanline pointer-events-none absolute inset-x-0 top-0 h-0.5 rounded-full bg-primary/70 shadow-[0_0_12px_var(--md-sys-color-primary)]" />
               </motion.div>
-            ) : (
-              <motion.div key={view} initial={{ opacity: 0, transform: "scale(0.94)" }} animate={{ opacity: 1, transform: "scale(1)" }} exit={{ opacity: 0 }} transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }} className="flex flex-col items-center gap-3 text-center">
-                <span className={cx("relative grid size-14 place-items-center rounded-full md:size-20", view === "ready" ? "bg-secondary-container text-on-secondary-container" : view === "offline" ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary")}>
-                  {view === "starting" && <span className="pulse-ring absolute inset-0 rounded-full bg-primary/30" />}
-                  {view === "ready" ? <IconCheck className="icon size-7 md:size-10" /> : view === "offline" ? <IconServer className="icon size-7 md:size-10" /> : <IconPhone className="icon size-7 md:size-10" />}
-                </span>
-                <span className="type-label-l text-on-surface-variant">{view === "ready" ? "Connected" : view === "offline" ? "Server offline" : view === "starting" ? "Starting the agent…" : "Not linked"}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+            </AnimatePresence>
+          </div>
+        )}
       </div>
       {agent?.phone && (
         <div className="mt-6 grid gap-x-8 gap-y-2 rounded-lg bg-surface-container px-4 py-2 md:grid-cols-2">

@@ -200,25 +200,27 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       )}
     >
       <div className={cx(width === "narrow" && "mx-auto w-full max-w-[44rem]")}>
-      <div className="flex min-h-11 items-center gap-3">
-        <h1 className="min-w-0 flex-1 truncate type-headline-m sm:type-display-s">{title}</h1>
+      {/* Wraps instead of squeezing: the title keeps its natural width, so a wide action (week switcher) drops to a second line
+          rather than turning "Requests" into "Re…". Phones reserve the top-right corner for the account button (absolute),
+          so small actions still sit just left of it on the title's line. */}
+      <div className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 max-sm:pr-[3.25rem]">
+        <h1 className="min-w-0 max-w-full flex-auto truncate type-headline-m sm:type-display-s">{title}</h1>
         {trailing && <div className="flex flex-none items-center">{trailing}</div>}
-        {/* Page actions live on the title's line at every width; the title truncates to make room. */}
         {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
         {/* Phones: the account button rides the title's line (desktop keeps it in the nav rail), so the pinned header stays one row tall. */}
-        <div className="flex-none sm:hidden">{accountMenu()}</div>
+        <div className="absolute top-0 right-0 flex h-11 items-center sm:hidden">{accountMenu()}</div>
       </div>
       {children}
       {bar && <div className="mt-2 sm:mt-3">{bar}</div>}
       </div>
     </header>
     {/* One meta row under the title: connection chip (phones) and the subtitle share a left edge with the title, 8px under it.
-        They sit on one line when they fit and wrap cleanly when they don't. It scrolls away with the page. */}
+        On phones they stack (chip, then the subtitle on its own line, never a paragraph beside a pill); from 600px they share a line. It scrolls away with the page. */}
     {(phoneStatus || subtitle) && (
       <div className="px-4 pt-0.5 pb-3 sm:px-8">
-        <div className={cx("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5", width === "narrow" && "mx-auto w-full max-w-[44rem]")}>
+        <div className={cx("flex min-w-0 flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3", width === "narrow" && "mx-auto w-full max-w-[44rem]")}>
           {phoneStatus && <div className="flex min-w-0 max-w-full flex-none sm:hidden">{phoneStatus}</div>}
-          {subtitle && <p className="min-w-0 flex-1 basis-48 type-body-m text-on-surface-variant">{subtitle}</p>}
+          {subtitle && <p className="min-w-0 max-w-full type-body-m sm:flex-1 sm:basis-48 text-on-surface-variant">{subtitle}</p>}
         </div>
       </div>
     )}

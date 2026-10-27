@@ -195,11 +195,10 @@ export function SettingsPage() {
   return (
     <div className="w-full">
       <PageHeader title="Settings" subtitle="How Nothing BOT Curate talks on your behalf" />
-      <p className="px-4 pb-3 type-body-s text-on-surface-variant sm:px-8"><a className="underline underline-offset-4" href="/privacy">Privacy</a> · <a className="underline underline-offset-4" href="/terms">Terms</a></p>
       <div className="flex flex-col gap-6 px-4 pb-12 sm:px-8 lg:flex-row lg:items-start lg:gap-8">
         {/* Phones and tablets: a bar pinned under the top edge. `contents` keeps it a direct child of the page column, so it sticks for the whole page. */}
         <div className="contents lg:hidden">
-          <StickyBar title="Settings" className="-mt-2">
+          <StickyBar className="-mt-2">
             <SettingsLinks current={tab} />
           </StickyBar>
         </div>
@@ -331,6 +330,9 @@ export function SettingsPage() {
           <AiModels />
         </Section>
         )}
+        <p className="pt-2 text-center type-body-s text-on-surface-variant lg:text-start">
+          <a className="underline underline-offset-4" href="/privacy">Privacy</a> · <a className="underline underline-offset-4" href="/terms">Terms</a>
+        </p>
         </div>
 
       </div>

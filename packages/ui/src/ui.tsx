@@ -240,7 +240,7 @@ export function Segmented<T extends string | number>({ value, onChange, options,
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className={cx("touch-manipulation relative flex min-w-0 flex-1 basis-0 items-center justify-center gap-1.5 rounded-full type-label-l whitespace-nowrap transition-colors duration-150", compact ? "px-2.5" : "px-3.5", active ? "text-on-secondary-container" : "text-on-surface-variant")}
+            className={cx("touch-manipulation relative flex items-center justify-center gap-1.5 rounded-full type-label-l whitespace-nowrap transition-colors duration-150", compact ? "min-w-0 flex-auto px-2 sm:px-2.5" : "min-w-0 flex-1 basis-0 px-2 sm:px-3.5", active ? "text-on-secondary-container" : "text-on-surface-variant")}
           >
             {active && <motion.span layoutId={id} className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
             {o.icon && <o.icon className="icon relative size-4" />}

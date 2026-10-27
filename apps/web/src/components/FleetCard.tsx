@@ -45,33 +45,38 @@ export function FleetCard() {
 
   return (
     <section className="rounded-xl bg-surface-low p-4 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex items-start gap-3">
         <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
           <IconServer className="icon size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="type-title-m">{moving ? `Moving off ${here}…` : stale ? `${here} isn't responding` : `Running on ${here}`}</h2>
-          <p className="type-body-s text-on-surface-variant">
+          <h2 className="truncate type-title-m" title={moving ? `Moving off ${here}` : stale ? `${here} isn't responding` : `Running on ${here}`}>{moving ? `Moving off ${here}…` : stale ? `${here} isn't responding` : `Running on ${here}`}</h2>
+          <p className="mt-0.5 type-body-s text-on-surface-variant">
             {stale ? "Another server will take over in a moment. " : ""}
             {vault ? `Login backed up ${timeAgo(vault.savedAt, now)}` : "Login not backed up yet"}
           </p>
+          {pinned && (
+            <Chip tone="primary" className="mt-2 max-w-full">
+              <span className="truncate">{pinned === lease.server ? "Kept on this server" : `Kept on ${serverName(servers, pinned)}`}</span>
+            </Chip>
+          )}
         </div>
-        {pinned && <Chip tone="primary">Kept on {serverName(servers, pinned)}</Chip>}
       </div>
       {online.length > 1 && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-col gap-2 min-[400px]:flex-row min-[400px]:flex-wrap">
           {pinned === lease.server ? (
-            <Button size="sm" variant="outlined" onClick={() => void pin(null)}>
+            <Button size="sm" variant="outlined" className="w-full min-[400px]:w-auto" onClick={() => void pin(null)}>
               Stop keeping on this server
             </Button>
           ) : (
-            <Button size="sm" variant="tonal" onClick={() => void pin(lease.server)}>
+            <Button size="sm" variant="tonal" className="w-full min-[400px]:w-auto" onClick={() => void pin(lease.server)}>
               Keep on this server
             </Button>
           )}
           {others.length > 0 && (
+            <div className="flex [&>div]:flex-1 min-[400px]:contents">
             <Menu trigger={(t) => (
-              <Button size="sm" variant="outlined" loading={busy} disabled={moving} onClick={t}>
+              <Button size="sm" variant="outlined" className="w-full min-[400px]:w-auto" loading={busy} disabled={moving} onClick={t}>
                 Move to…
                 <IconArrowDown className="icon size-4" />
               </Button>
@@ -82,6 +87,7 @@ export function FleetCard() {
                 </MenuItem>
               ))}
             </Menu>
+            </div>
           )}
         </div>
       )}
