@@ -4,6 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-dark-32.png" media="(prefers-color-scheme: light)" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-light-32.png" media="(prefers-color-scheme: dark)" />
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-dark-16.png" media="(prefers-color-scheme: light)" />
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-light-16.png" media="(prefers-color-scheme: dark)" />
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <title>Nothing BOT Server</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,300..800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -42,6 +48,11 @@
   .mono { font-family: "Roboto Mono", monospace; font-size: 13px; }
   header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 24px; }
   .logo { width: 48px; height: 48px; flex: none; }
+  /* The mark is the dark tile on a light page and the light tile on a dark one, so it always reads. */
+  .logo.lg-l { display: none; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo.lg-d { display: none; } :root:not([data-theme="light"]) .logo.lg-l { display: block; } }
+  :root[data-theme="dark"] .logo.lg-d { display: none; }
+  :root[data-theme="dark"] .logo.lg-l { display: block; }
   .grow { flex: 1; min-width: 0; }
   header > .grow { flex: 1 1 240px; }
   .grid { display: grid; gap: 16px; }
@@ -339,7 +350,7 @@ const meter = (label, used, total, detail) => {
   const p = total ? Math.min(1, used / total) : 0;
   return `<div class="mrow"><div class="stat"><span>${label}</span><span class="muted">${detail}</span></div><div class="meter"><i class="${p > .9 ? "warn" : ""}" style="width:${(p * 100).toFixed(1)}%"></i></div></div>`;
 };
-const logo = `<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="14" fill="var(--primary)"/><path d="M19 0h10l9 42H10z" fill="var(--on-primary)" opacity=".13"/><ellipse cx="24" cy="40.5" rx="12" ry="2.6" fill="var(--on-primary)" opacity=".25"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="var(--on-primary)"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="var(--primary)"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="var(--primary)"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="var(--on-primary)" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="var(--on-primary)"/></svg>`;
+const logo = `<svg class="logo lg-d" viewBox="0 0 512 512" aria-hidden="true"><clipPath id="lgd"><rect width="512" height="512" rx="112"/></clipPath><g clip-path="url(#lgd)"><rect width="512" height="512" fill="#000000"/><g transform="translate(0 15)"><g fill="none" stroke="#FFFFFF" stroke-width="26"><rect x="112" y="110" width="288" height="110" rx="26"/><rect x="112" y="262" width="288" height="110" rx="26"/></g><circle cx="340" cy="165" r="18" fill="#7ED957"/><circle cx="340" cy="317" r="18" fill="#FFFFFF"/></g></g></svg><svg class="logo lg-l" viewBox="0 0 512 512" aria-hidden="true"><clipPath id="lgl"><rect width="512" height="512" rx="112"/></clipPath><g clip-path="url(#lgl)"><rect width="512" height="512" fill="#FFFFFF"/><g transform="translate(0 15)"><g fill="none" stroke="#000000" stroke-width="26"><rect x="112" y="110" width="288" height="110" rx="26"/><rect x="112" y="262" width="288" height="110" rx="26"/></g><circle cx="340" cy="165" r="18" fill="#7ED957"/><circle cx="340" cy="317" r="18" fill="#000000"/></g><rect x="2" y="2" width="508" height="508" fill="none" stroke="#000" stroke-opacity=".14" stroke-width="4"/></g></svg>`;
 
 let state = null, aiv = null, conn = null, editing = false, phone = null, bootId = null, restarting = false, stopModel = false, ctlBusy = null;
 // Collapsible sections: open state per section, remembered on this machine.

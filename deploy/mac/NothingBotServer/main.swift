@@ -121,10 +121,20 @@ struct ContentView: View {
 
 struct Logo: View {
     var size: CGFloat = 44
+    @Environment(\.colorScheme) private var scheme
+    /// The app's mark: the dark-tile logo on a light window, the light-tile logo on a dark one (so the tile always reads).
+    private var mark: NSImage? {
+        Bundle.main.url(forResource: scheme == .dark ? "logo-light" : "logo-dark", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+    }
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(brand.gradient)
-            Image(systemName: "mic.fill").font(.system(size: size * 0.48, weight: .semibold)).foregroundStyle(.white)
+        Group {
+            if let mark {
+                Image(nsImage: mark).resizable().interpolation(.high)
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
+            } else {
+                // Running unbundled (swift run): the system symbol.
+                Image(systemName: "server.rack").font(.system(size: size * 0.5, weight: .semibold)).foregroundStyle(brand)
+            }
         }
         .frame(width: size, height: size)
     }
@@ -402,7 +412,7 @@ struct NothingBotServerApp: App {
         MenuBarExtra {
             MenuContent().environmentObject(server)
         } label: {
-            Image(systemName: server.allUp ? "mic.circle.fill" : "mic.circle")
+            Image(systemName: "server.rack").opacity(server.running ? 1 : 0.55)
         }
     }
 }

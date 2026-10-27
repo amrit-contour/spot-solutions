@@ -314,18 +314,25 @@ Step "Desktop and Start Menu shortcuts"
 $shell = New-Object -ComObject WScript.Shell
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
+# Curating keeps its own icon (downloaded). The server console uses the Nothing BOT Server icon, which ships in the code
+# download (deploy\windows\nbs-server.ico, also inside the Windows zip next to this script).
 $icon = "$Root\nbs.ico"
 try { Invoke-WebRequest "https://spot-solutions.web.app/icons/spot.ico" -OutFile $icon } catch { $icon = $null }
+$serverIcon = "$Root\nbs-server.ico"
+foreach ($src in @("$PSScriptRoot\nbs-server.ico", "$AppDir\deploy\windows\nbs-server.ico")) {
+  if ($src -and (Test-Path $src)) { Copy-Item $src $serverIcon -Force; break }
+}
+if (-not (Test-Path $serverIcon)) { $serverIcon = $null }
 $places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT Server")
 New-Item -ItemType Directory -Force -Path $places[1] | Out-Null
 foreach ($dir in $places) {
   foreach ($sc in @(
-    @{ Name = "Nothing BOT Server Console"; Url = "http://localhost:7420" },
-    @{ Name = "Nothing BOT Curating"; Url = "https://spot-solutions.web.app" }
+    @{ Name = "Nothing BOT Server Console"; Url = "http://localhost:7420"; Icon = $serverIcon },
+    @{ Name = "Nothing BOT Curating"; Url = "https://spot-solutions.web.app"; Icon = $icon }
   )) {
     $lnk = $shell.CreateShortcut("$dir\$($sc.Name).lnk")
     if (Test-Path $edge) { $lnk.TargetPath = $edge; $lnk.Arguments = "--app=$($sc.Url)" } else { $lnk.TargetPath = $sc.Url }
-    if ($icon) { $lnk.IconLocation = $icon }
+    if ($sc.Icon) { $lnk.IconLocation = $sc.Icon }
     $lnk.Save()
   }
 }

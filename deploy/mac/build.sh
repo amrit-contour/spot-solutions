@@ -44,13 +44,10 @@ cat > "$APP/Contents/Info.plist" <<EOF
 EOF
 
 echo "▸ Icon"
-ICONSET="$TMP/AppIcon.iconset"; mkdir -p "$ICONSET"
-SRC=../../apps/web/public/icons/icon-512.png
-for s in 16 32 128 256 512; do
-  sips -z $s $s "$SRC" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-  d=$((s * 2)); [[ $d -le 512 ]] && sips -z $d $d "$SRC" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns" 2>/dev/null || echo "  (icon skipped)"
+# AppIcon.iconset is the owner's final icon (dark server-rack tile on the macOS icon grid; AppIcon-master.svg is its source,
+# 16 and 32 px are the hand-tuned pixel versions). Logos for the window header follow light/dark mode.
+iconutil -c icns AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
+cp NothingBotServer/logo-dark.png NothingBotServer/logo-light.png "$APP/Contents/Resources/"
 
 echo "▸ Signing (ad-hoc)"
 codesign --force --deep --sign - "$APP"

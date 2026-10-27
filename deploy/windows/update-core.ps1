@@ -75,6 +75,22 @@ function Update-Launcher {
   $t = [regex]::Replace($t, '(?m)^(while \(\$true\) \{)\r?$', '$1' + "`r`n  if (Stopped) { Start-Sleep 10; continue }")
   Set-Content -Encoding UTF8 $f $t
 }
+# The console shortcut's icon is the Nothing BOT Server icon (it arrives with the code). Servers installed before it existed
+# get it here: copy the file and point the existing Console shortcuts at it. Never fatal.
+function Update-ConsoleIcon {
+  try {
+    $src = "$AppDir\deploy\windows\nbs-server.ico"
+    if (-not (Test-Path $src)) { return }
+    $dst = "$Root\nbs-server.ico"
+    Copy-Item $src $dst -Force
+    $shell = New-Object -ComObject WScript.Shell
+    $dirs = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT Server")
+    foreach ($d in $dirs) {
+      $f = "$d\Nothing BOT Server Console.lnk"
+      if (Test-Path $f) { $l = $shell.CreateShortcut($f); if ($l.IconLocation -notlike "*nbs-server.ico*") { $l.IconLocation = $dst; $l.Save() } }
+    }
+  } catch { Write-Host "Couldn't refresh the console icon: $($_.Exception.Message)" }
+}
 function Test-NoLocal { return ((Get-EnvValue "NBS_NO_LOCAL_MODEL") -match '^(1|true|yes)$') }
 function Get-ModelName([string]$Default = "gemma3:4b") {
   $m = Get-EnvValue "NBS_LOCAL_MODEL"
@@ -222,6 +238,7 @@ try {
   }
   Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
   Update-Launcher
+  Update-ConsoleIcon
 
   Set-Progress "running" "Restarting the worker"
   Start-Worker

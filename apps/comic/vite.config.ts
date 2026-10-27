@@ -11,7 +11,7 @@ export default defineConfig({
     Icons({ compiler: "jsx", jsx: "react", scale: 1 }),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "favicon-nbc.svg", "icons/apple-touch-icon.png", "icons/nbc/*.png", "manifest-classic.webmanifest"],
+      includeAssets: ["favicon.svg", "favicon-nbc.svg", "favicon.ico", "favicon-nbc.ico", "icons/apple-touch-icon.png", "icons/*.png", "icons/nbc/*.png", "manifest-classic.webmanifest"],
       // This is the NBC (default) manifest; the Classic one is public/manifest-classic.webmanifest (see @spot/ui theme).
       manifest: {
         id: "/",
@@ -26,8 +26,11 @@ export default defineConfig({
         theme_color: "#000000",
         categories: ["entertainment", "productivity"],
         icons: [
-          { src: "/icons/nbc/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icons/nbc/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "/icons/nbc/icon-48.png", sizes: "48x48", type: "image/png", purpose: "any" },
+          { src: "/icons/nbc/icon-96.png", sizes: "96x96", type: "image/png", purpose: "any" },
+          { src: "/icons/nbc/icon-144.png", sizes: "144x144", type: "image/png", purpose: "any" },
+          { src: "/icons/nbc/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icons/nbc/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
           { src: "/icons/nbc/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
         shortcuts: [

@@ -59,6 +59,8 @@ In the console, **Storage**, type the new folder (for example `/Volumes/Backup H
 
 The server updates itself: the console checks every 30 minutes and installs a new release a few minutes after it appears (turn that off under **Updates** in the console), or press **Update now** there or **Update** on the Server page of the app. A Mac set up before this release needs one manual update first: **More → Update Nothing BOT Server**, or run the install command again. Either keeps your key and WhatsApp session. If you run several servers, stop any still on an older release first, see [multi-server.md](multi-server.md).
 
+**The app's own icon is not part of an update.** Updates replace the server code in `~/Library/Application Support/NothingBotServer/app` (the console page, its favicon and logo included). The app in `/Applications` (Dock icon, window header, menu bar) is never replaced by an update, because re-signing or swapping a running app from a background job is not safe. A Mac installed before the server-rack icon keeps the old Dock icon until you run the install command above once more (it replaces the app and keeps your data).
+
 ## For a Mac that stays on
 
 - Keep it on power, and turn on **Keep awake, even with the lid closed**. With a second server in the fleet, an account moves there if this Mac goes to sleep or offline (see [multi-server.md](multi-server.md)).

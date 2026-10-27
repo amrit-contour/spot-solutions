@@ -101,6 +101,8 @@ The console also warns at the top when the data drive has under 2 GB free, with 
 
 ## Update
 
+The Console shortcut uses the Nothing BOT Server icon (`nbs-server.ico`, shipped in the code and the zip). An update copies it to `C:\NothingBotServer` and points an existing Console shortcut at it; Windows may need a sign-out or an icon-cache refresh to show it.
+
 The server updates itself: the console checks every 30 minutes and installs a release a few minutes after it appears (switch off under **Updates**), or press **Update now** (or **Update** on the Server page of the app). Nothing needs an admin prompt: the update runs as the SYSTEM task above. A PC installed before this release needs the manual route once, which is to run the installer again. Re-running is safe: it stops the old worker and its browsers, updates the code, keeps your key, `.env` and WhatsApp logins, and restarts the tasks. It keeps the last choice between local model and Gemini-only unless you set `NBS_NO_LOCAL_MODEL`.
 
 Use the PowerShell one-liner, or download the zip again. The `.cmd` in an old unzipped folder runs the `install.ps1` stored next to it, which may be out of date.

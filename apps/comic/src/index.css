@@ -1,2 +1,14 @@
 @import "tailwindcss";
 @import "@spot/ui/styles.css";
+
+/* ComicLogo: one tile visible at a time. NBC shows the dark tile on a light UI and the light tile on a dark UI; Classic shows brown. */
+.cm-logo { display: inline-block; line-height: 0; }
+.cm-logo-l, .cm-logo-c { display: none; }
+:root[data-brand="classic"] .cm-logo-d, :root[data-brand="classic"] .cm-logo-l { display: none; }
+:root[data-brand="classic"] .cm-logo-c { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root[data-brand="nbc"]:not([data-theme="light"]) .cm-logo-d { display: none; }
+  :root[data-brand="nbc"]:not([data-theme="light"]) .cm-logo-l { display: block; }
+}
+:root[data-brand="nbc"][data-theme="dark"] .cm-logo-d { display: none; }
+:root[data-brand="nbc"][data-theme="dark"] .cm-logo-l { display: block; }

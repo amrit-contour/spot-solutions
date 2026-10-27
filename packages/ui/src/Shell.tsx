@@ -65,6 +65,7 @@ export function AppShell({
   phoneStatus,
   railFooter,
   banner,
+  logo,
   children,
 }: {
   nav: NavEntry[];
@@ -78,6 +79,8 @@ export function AppShell({
   railFooter?: ReactNode;
   /** Full-width strip above the page (e.g. demo banner). */
   banner?: ReactNode;
+  /** The app's own mark for the rail; defaults to the curator app's Logo. */
+  logo?: ReactNode;
   children: ReactNode;
 }) {
   const loc = useLocation();
@@ -89,7 +92,7 @@ export function AppShell({
         {/* Rail >= 600px */}
         <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-24 flex-none flex-col items-center gap-3 bg-surface pt-[calc(1.25rem+env(safe-area-inset-top))] pb-5 sm:flex">
           <NavLink to="/" aria-label={`${appName} home`} className="mb-5">
-            <Logo className="size-11" />
+            {logo ?? <Logo className="size-11" />}
           </NavLink>
           {nav.map((n) => (
             <NavItem key={n.to} {...n} rail />

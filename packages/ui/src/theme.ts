@@ -168,7 +168,12 @@ function syncBrandIcons(brand: Brand) {
   const nbc = brand === "nbc";
   const set = (sel: string, href: string) => document.querySelectorAll<HTMLLinkElement>(sel).forEach((l) => l.getAttribute("href") !== href && l.setAttribute("href", href));
   // NBC is the default: its assets are what index.html and the generated manifest.webmanifest serve before any JS runs.
-  set('link[rel="icon"]', nbc ? "/favicon-nbc.svg" : "/favicon.svg");
+  set('link[rel="icon"]:not([data-icon-nbc])', nbc ? "/favicon-nbc.svg" : "/favicon.svg");
+  // Icons an app declares per brand (PNG/ICO fallbacks, light/dark variants): data-icon-nbc and data-icon-classic hold the two URLs.
+  document.querySelectorAll<HTMLLinkElement>("link[data-icon-nbc]").forEach((l) => {
+    const href = l.getAttribute(nbc ? "data-icon-nbc" : "data-icon-classic");
+    if (href && l.getAttribute("href") !== href) l.setAttribute("href", href);
+  });
   set('link[rel="apple-touch-icon"]', nbc ? "/icons/nbc/apple-touch-icon.png" : "/icons/apple-touch-icon.png");
   set('link[rel="manifest"]', nbc ? "/manifest.webmanifest" : "/manifest-classic.webmanifest");
 }

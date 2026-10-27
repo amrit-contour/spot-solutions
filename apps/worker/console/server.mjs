@@ -9,7 +9,7 @@ import "./envcompat.mjs";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFileSync, writeFileSync, existsSync, chmodSync, statSync, openSync, readSync, closeSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, existsSync, chmodSync, statSync, openSync, readSync, closeSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -45,7 +45,12 @@ const live = createLive({ file: process.env.NBS_STATS_FILE ?? path.join(DATA, "l
 const JOIN_URL = process.env.NBS_JOIN_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net/redeemJoinCode";
 const OLLAMA = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const HTML = readFileSync(new URL("./index.html", import.meta.url));
-const FAVICON = readFileSync(new URL("./favicon.svg", import.meta.url));
+// Brand icons (Nothing BOT Server): a theme-switching SVG favicon with PNG/ICO fallbacks and the home-screen icon.
+// All public (they load before the sign-in token does).
+const ASSET_TYPES = { svg: "image/svg+xml", png: "image/png", ico: "image/x-icon" };
+const ASSETS = new Map(
+  readdirSync(new URL("./assets/", import.meta.url)).map((f) => ["/" + f, { type: ASSET_TYPES[f.split(".").pop()], body: readFileSync(new URL("./assets/" + f, import.meta.url)) }]),
+);
 
 if (!existsSync(TOKEN_FILE)) writeFileSync(TOKEN_FILE, randomBytes(18).toString("base64url"), { mode: 0o600 });
 // Lets the Windows "Open Server Console" shortcut and the installer print the remote link.
@@ -348,9 +353,10 @@ createServer(async (req, res) => {
       res.writeHead(302, { "set-cookie": `spot_console=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`, location: "/" });
       return res.end();
     }
-    if (url.pathname === "/favicon.svg" || url.pathname === "/favicon.ico") {
-      res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" });
-      return res.end(FAVICON);
+    const asset = req.method === "GET" ? ASSETS.get(url.pathname) : undefined;
+    if (asset?.type) {
+      res.writeHead(200, { "content-type": asset.type, "cache-control": "public, max-age=86400" });
+      return res.end(asset.body);
     }
     if (url.pathname === "/" && req.method === "GET") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });

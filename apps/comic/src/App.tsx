@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { ComicLogo } from "./components/ComicLogo";
 import { AccountMenu, AppShell, Spinner, IconAdd, IconCalendarMark, IconMic, IconBuilding, IconSettings, type NavEntry } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { SignIn } from "./routes/SignIn";
@@ -57,7 +58,7 @@ export default function App() {
       ) : user === null ? (
         <SignIn />
       ) : (
-        <AppShell nav={NAV} appName="Nothing BOT Comedy" accountMenu={(align) => <AccountMenu user={user} align={align} onSignOut={() => void signOut(auth)} />}>
+        <AppShell nav={NAV} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={(align) => <AccountMenu user={user} align={align} onSignOut={() => void signOut(auth)} />}>
           <Routes>
             <Route path="/" element={<Placeholder icon={IconCalendarMark} title="Today" subtitle="Your day at a glance." empty="Today is coming" text="A calendar of the spots you're on and the rooms you're watching will live here." />} />
             <Route path="/rooms/*" element={<RosterRoutes uid={user.uid} />} />

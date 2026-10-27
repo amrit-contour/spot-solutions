@@ -2,7 +2,14 @@
 <html lang="en" data-brand="nbc">
   <head>
     <meta charset="UTF-8" />
+    <!-- Tab icon: the SVG switches dark/light tile with the browser's colour scheme; PNG and ICO are fallbacks. @spot/ui's setBrand
+         swaps these for the Classic (brown) ones via the data-icon-* attributes. -->
     <link rel="icon" type="image/svg+xml" href="/favicon-nbc.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/nbc/favicon-dark-32.png" media="(prefers-color-scheme: light)" data-icon-nbc="/icons/nbc/favicon-dark-32.png" data-icon-classic="/icons/favicon-classic-32.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/nbc/favicon-light-32.png" media="(prefers-color-scheme: dark)" data-icon-nbc="/icons/nbc/favicon-light-32.png" data-icon-classic="/icons/favicon-classic-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/nbc/favicon-dark-16.png" media="(prefers-color-scheme: light)" data-icon-nbc="/icons/nbc/favicon-dark-16.png" data-icon-classic="/icons/favicon-classic-16.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/nbc/favicon-light-16.png" media="(prefers-color-scheme: dark)" data-icon-nbc="/icons/nbc/favicon-light-16.png" data-icon-classic="/icons/favicon-classic-16.png" />
+    <link rel="icon" sizes="16x16 32x32 48x48" href="/favicon-nbc.ico" data-icon-nbc="/favicon-nbc.ico" data-icon-classic="/favicon.ico" />
     <link rel="apple-touch-icon" href="/icons/nbc/apple-touch-icon.png" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
