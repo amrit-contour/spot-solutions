@@ -34,6 +34,7 @@ export * from "./adhoc.ts";
 export * from "./rooms.ts";
 export * from "./rosterMerge.ts";
 export * from "./rosterIO.ts";
+export * from "./rosterExport.ts";
 export * from "./rosterParse.ts";
 export * from "./rosterCommunity.ts";
 export * from "./rosterDescribe.ts";

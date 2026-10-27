@@ -50,7 +50,17 @@ export const CACHE_MS = 5 * 60_000;
 async function build(src: MemberSource): Promise<Member[]> {
   const [admins, access] = await Promise.all([src.adminEmails(), src.approvedAccess()]);
   const byUid = new Map(access.map((a) => [a.uid, a]));
-  const profiles = await src.authProfiles([...access.map((a) => ({ uid: a.uid })), ...admins.map((email) => ({ email }))]);
+  // Auth lookups add the display name and photo, and find admins with no access record. They must never take the whole list down
+  // (a malformed admin email, or an account without Auth read access, throws): fall back to what the access records hold.
+  const ids: Identifier[] = [...new Set(access.map((a) => a.uid).filter(Boolean))].map((uid) => ({ uid }));
+  for (const email of new Set(admins)) if (/^[^\s@]+@[^\s@]+$/.test(email)) ids.push({ email });
+  let profiles: AuthProfile[];
+  try {
+    profiles = await src.authProfiles(ids);
+  } catch (e) {
+    console.error("[members] auth lookup failed, using access records only", e);
+    profiles = access.map((a) => ({ uid: a.uid, email: a.email, displayName: a.name, photoURL: a.photo }));
+  }
   const out = new Map<string, Member>();
   for (const p of profiles) {
     const a = byUid.get(p.uid);

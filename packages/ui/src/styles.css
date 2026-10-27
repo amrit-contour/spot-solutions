@@ -183,3 +183,16 @@
 @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
 .indeterminate { animation: indeterminate 1.4s var(--ease-emphasized) infinite; }
 @media (prefers-reduced-motion: reduce) { .indeterminate { animation: none; transform: none; } }
+
+/* Date and time inputs: iOS Safari gives them an intrinsic width that ignores w-full inside flex/grid, which made sheets scroll sideways. */
+input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"] {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: start;
+}

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { type Roster } from "@spot/shared";
+import { RosterFormatError, fromCsv, fromRosterJson, type Roster } from "@spot/shared";
 import { Button, Field, IconImport, Segmented, Sheet, TextArea, TextInput } from "@spot/ui";
 import { Card, Notice } from "./ui";
 import { parseRosterRemote, requestFromFile, type ImportRequest } from "../lib/parseRoster";
@@ -11,10 +11,36 @@ export interface ParsedImport {
 }
 
 type Mode = "text" | "file" | "link";
+const isLocalFile = (f: File) => /\.(json|csv)$/i.test(f.name) && f.size < 5_000_000;
 const ACCEPT = ".csv,.tsv,.json,.txt,.xlsx,.pdf,.png,.jpg,.jpeg,.webp,.heic,image/*,application/pdf";
 
 /**
- * "Import from text, file or link": paste a list, pick a file, or give a link. The server reads it (list parser first, then the
+ * Roster JSON (an export or a backup) and our own CSV need no server: read them here. Returns null when the text is neither, so
+ * it goes to the list parser and the model like any other paste. A roster JSON that is broken says so instead of falling through.
+ */
+export function readRosterLocally(text: string, fileName?: string): Roster | null {
+  const t = text.trimStart();
+  if (t.startsWith("{") && /"rooms"\s*:|"format"\s*:\s*"nbc-roster"/.test(t)) {
+    try {
+      const r = fromRosterJson(text).roster;
+      if (r.rooms.length) return r;
+    } catch (e) {
+      if (e instanceof RosterFormatError) throw e;
+    }
+    return null;
+  }
+  const head = t.split(/\r?\n/, 1)[0]?.toLowerCase() ?? "";
+  if ((/\.csv$/i.test(fileName ?? "") || head.includes(",")) && /\b(room|name|venue)\b/.test(head) && head.split(",").length >= 3) {
+    try {
+      const r = fromCsv(text);
+      if (r.rooms.length) return r;
+    } catch { /* not our CSV: the server reads it */ }
+  }
+  return null;
+}
+
+/**
+ * "Import": paste a list, pick a file, or give a link. A roster JSON or our CSV is read here; anything else (WhatsApp list, TSV, Excel, PDF, screenshot, web page) is read by the server (list parser first, then the
  * account's model) and the rooms go to the review sheet. Nothing is saved from here.
  */
 export function PasteImportSheet({ open, onClose, city, onParsed }: { open: boolean; onClose: () => void; city?: string; onParsed: (p: ParsedImport) => void }) {
@@ -37,10 +63,19 @@ export function PasteImportSheet({ open, onClose, city, onParsed }: { open: bool
     setBusy(true);
     setError("");
     try {
+      const source = mode === "text" ? "Pasted text" : mode === "link" ? new URL(url.trim()).hostname : file!.name;
+      if (mode !== "link" && (mode === "text" || isLocalFile(file!))) {
+        const local = readRosterLocally(mode === "text" ? text : await file!.text(), mode === "file" ? file!.name : undefined);
+        if (local) {
+          setText("");
+          setFile(null);
+          onClose();
+          return onParsed({ roster: local, source });
+        }
+      }
       const req: ImportRequest = mode === "text" ? { text, city } : mode === "link" ? { url: url.trim(), city } : await requestFromFile(file!, city);
       const r = await parseRosterRemote(req);
       if (!r.rooms.length) throw new Error("I couldn't find any rooms in that.");
-      const source = mode === "text" ? "Pasted text" : mode === "link" ? new URL(url.trim()).hostname : file!.name;
       const how = r.source === "ai" || r.source === "list+ai" ? " Read with an AI model, so give it a once-over." : "";
       const warning = [...r.warnings, ...(how && !r.warnings.some((w) => /check the names/.test(w)) ? [how.trim()] : [])].join("\n") || undefined;
       setText("");
@@ -69,7 +104,7 @@ export function PasteImportSheet({ open, onClose, city, onParsed }: { open: bool
     >
       <div className="flex min-w-0 flex-col gap-5">
         <p className="type-body-l text-on-surface-variant">
-          Paste a curator list from WhatsApp or a sheet, upload a CSV, Excel, PDF or screenshot, or give a link. You review every room before anything is saved.
+          Paste a curator list or a roster export, upload a CSV, JSON, Excel, PDF or screenshot, or give a link. You review every room before anything is saved.
         </p>
         <Segmented
           value={mode}

@@ -85,4 +85,14 @@ describe("memberLister", () => {
     expect((await list(me)).members.length).toBeGreaterThan(0);
     expect(boom).toHaveBeenCalledTimes(2);
   });
+
+  it("still lists members from the access records when the Auth lookup fails, and never sends a malformed admin email to it", async () => {
+    const seen: unknown[] = [];
+    const src = { ...source(), approvedAccess: async () => [{ uid: "me", email: "me@example.com", name: "Me Myself" }, { uid: "sam1", email: "sam1@example.com", name: "Sam Rao" }], adminEmails: async () => ["not an email", "boss@example.com", "boss@example.com"],
+      authProfiles: async (ids: unknown[]) => { seen.push(ids); throw new Error("PERMISSION_DENIED"); } };
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const r = await memberLister(src)(me);
+    expect(r.members.map((m) => m.name)).toEqual(["Me Myself", "Sam Rao"]);
+    expect(seen[0]).toEqual([{ uid: "me" }, { uid: "sam1" }, { email: "boss@example.com" }]);
+  });
 });

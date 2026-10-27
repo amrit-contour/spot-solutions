@@ -121,7 +121,7 @@ export function Asks() {
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : noRooms ? (
           <EmptyState icon={IconRoom} title="Add your rooms first" action={<Link to="/rooms"><Button icon={IconPlus}>Go to Rooms</Button></Link>}>
-            Asks come from your rooms: which shows, who curates them and when to ask. Add them, or load the Bangalore starter.
+            Asks come from your rooms: which shows, who curates them and when to ask. Add them, or import a list.
           </EmptyState>
         ) : tab === "open" ? (
           <>
