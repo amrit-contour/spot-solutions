@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { DAY_NAMES, formatTime, isoAddDays, regularDates, regularLabel, spotDateLabel, suggestRegulars, type RegularSpot } from "@spot/shared";
-import { Button, CompactButton, Empty, IconAdd, IconArrowLeft, IconRepeat, PageHeader, SectionTitle, Spinner } from "@spot/ui";
+import { Button, CompactButton, IconPlus, IconArrowLeft, IconRepeat, PageHeader, Spinner } from "@spot/ui";
+import { CardButton, EmptyState, IconTile, Page, Section } from "../components/ui";
 import { useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { newRegularId } from "../lib/regulars";
@@ -12,10 +13,8 @@ const blank = (today: string): RegularSpot => ({ id: newRegularId(), roomName: "
 function RuleRow({ r, today, onOpen }: { r: RegularSpot; today: string; onOpen: () => void }) {
   const next = regularDates(r, today, isoAddDays(today, 400))[0];
   return (
-    <button onClick={onOpen} className="state-layer pressable flex w-full min-w-0 items-center gap-3 rounded-lg bg-surface-low p-3.5 text-left">
-      <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
-        <IconRepeat className="icon size-5" />
-      </span>
+    <CardButton onClick={onOpen} className="flex items-center gap-3">
+      <IconTile icon={IconRepeat} />
       <span className="min-w-0 flex-1">
         <span className="block truncate type-title-s">{r.roomName}{r.showName ? `, ${r.showName}` : ""}</span>
         <span className="block truncate type-body-s text-on-surface-variant">{regularLabel(r, DAY_NAMES)}{r.time ? `, ${formatTime(r.time)}` : ""}</span>
@@ -23,7 +22,7 @@ function RuleRow({ r, today, onOpen }: { r: RegularSpot; today: string; onOpen: 
           {r.endDate && r.endDate < today ? "Ended" : next ? `Next: ${spotDateLabel(next)}` : "No dates coming up"}
         </span>
       </span>
-    </button>
+    </CardButton>
   );
 }
 
@@ -39,12 +38,13 @@ export function Regulars() {
   return (
     <div className="w-full">
       <PageHeader
+        width="narrow"
         title="Regular spots"
         subtitle="The ones you do every week or month."
-        actions={<CompactButton icon={IconAdd} label="Add a regular" variant="filled" onClick={() => setEditing(blank(today))} />}
+        actions={<CompactButton icon={IconPlus} label="Add a regular" variant="filled" onClick={() => setEditing(blank(today))} />}
       />
-      <div className="flex min-w-0 flex-col gap-6 px-4 pt-3 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12 lg:max-w-3xl">
-        <Link to="/spots" className="state-layer pressable inline-flex h-11 w-fit items-center gap-2 rounded-full pr-3 type-label-l text-primary">
+      <Page>
+        <Link to="/spots" className="state-layer pressable -mt-2 -mb-2 inline-flex h-11 w-fit items-center gap-2 rounded-full pr-3 type-label-l text-primary">
           <IconArrowLeft className="icon size-5" /> My spots
         </Link>
         {store.loading ? (
@@ -52,11 +52,10 @@ export function Regulars() {
         ) : (
           <>
             {suggestions.length > 0 && (
-              <section aria-label="Suggested regulars" className="min-w-0">
-                <SectionTitle>From your rooms</SectionTitle>
+              <Section title="From your rooms">
                 <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                   {suggestions.map((r) => (
-                    <li key={r.id} className="flex min-w-0 items-center gap-3 rounded-lg bg-secondary-container p-3.5 text-on-secondary-container">
+                    <li key={r.id} className="flex min-w-0 items-center gap-3 rounded-lg bg-secondary-container p-4 text-on-secondary-container">
                       <span className="min-w-0 flex-1">
                         <span className="block truncate type-title-s">You marked {r.roomName}{r.showName ? `, ${r.showName}` : ""} as a regular</span>
                         <span className="block truncate type-body-s">{regularLabel(r, DAY_NAMES)}. Add it to your calendar?</span>
@@ -65,12 +64,12 @@ export function Regulars() {
                     </li>
                   ))}
                 </ul>
-              </section>
+              </Section>
             )}
             {rules.length === 0 ? (
-              <Empty icon={IconRepeat} title="No regular spots yet" action={<CompactButton icon={IconAdd} label="Add a regular" variant="filled" size="md" onClick={() => setEditing(blank(today))} />}>
+              <EmptyState icon={IconRepeat} title="No regular spots yet" action={<CompactButton icon={IconPlus} label="Add a regular" variant="filled" size="md" onClick={() => setEditing(blank(today))} />}>
                 Add the mic you do every Monday, or the show on the second Friday. It lands on your calendar by itself, and you only tap when you've done it.
-              </Empty>
+              </EmptyState>
             ) : (
               <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                 {rules.map((r) => (
@@ -80,7 +79,7 @@ export function Regulars() {
             )}
           </>
         )}
-      </div>
+      </Page>
       <RegularEditor value={editing} onClose={() => setEditing(null)} today={today} />
     </div>
   );

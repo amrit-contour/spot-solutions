@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { SPOT_SOURCE_LABEL, SPOT_STATE_LABEL, bySpotTime, formatTime, regularFromSpot, spotClashes, spotDateLabel, spotState, type CalendarSpot, type RegularSpot } from "@spot/shared";
-import { Button, Chip, IconAdd, IconCheck, IconClose, IconRepeat, IconSkip, IconWarn } from "@spot/ui";
+import { Button, Chip, IconPlus, IconCheck, IconRepeat, IconSkip, IconWarn } from "@spot/ui";
 import { useRoster } from "../../lib/roster";
 import { newRegularId, useSpotActions } from "../../lib/regulars";
 import { Stars } from "../SpotCards";
@@ -25,14 +25,14 @@ export function DayPanel({ date, today, spots, allSpots, onAdd, onOpen }: { date
   const title = date === today ? "Today" : spotDateLabel(date);
   return (
     <section aria-label={`Spots on ${spotDateLabel(date)}`} className="min-w-0">
-      <div className="mb-2 flex min-w-0 items-center gap-2">
-        <h2 className="min-w-0 flex-1 truncate type-title-m">{title}</h2>
-        <Button size="sm" variant="tonal" icon={IconAdd} onClick={() => onAdd(date)}>
+      <div className="mb-2 flex min-h-11 min-w-0 items-center gap-2 px-1">
+        <h2 className="min-w-0 flex-1 truncate type-title-s">{title}</h2>
+        <Button size="sm" variant="tonal" icon={IconPlus} onClick={() => onAdd(date)}>
           Add a spot
         </Button>
       </div>
       {list.length === 0 ? (
-        <p className="rounded-lg bg-surface-low px-4 py-5 type-body-m text-on-surface-variant">{date < today ? "Nothing on this day." : "Nothing booked this day yet."}</p>
+        <p className="rounded-lg border border-dashed border-outline-variant px-4 py-6 text-center type-body-m text-on-surface-variant">{date < today ? "Nothing on this day." : "Nothing booked this day yet."}</p>
       ) : (
         <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
           {list.map((s) => {
@@ -42,7 +42,7 @@ export function DayPanel({ date, today, spots, allSpots, onAdd, onOpen }: { date
             const canMark = !s.skippedRegular && s.date <= today && s.happened == null && s.status !== "cancelled";
             const sn = showName(s);
             return (
-              <li key={s.id} className={`flex min-w-0 flex-col gap-2 rounded-lg bg-surface-low p-3.5 ${state === "didnt" || s.skippedRegular ? "opacity-70" : ""}`}>
+              <li key={s.id} className={`flex min-w-0 flex-col gap-3 rounded-lg bg-surface-low p-4 ${state === "didnt" || s.skippedRegular ? "opacity-70" : ""}`}>
                 <button onClick={() => !s.skippedRegular && onOpen(s)} className="state-layer pressable -m-1 flex min-w-0 items-start gap-3 rounded-md p-1 text-left" aria-label={`Open ${s.roomName ?? "spot"}`} disabled={s.skippedRegular}>
                   <span className="w-14 flex-none pt-0.5 type-title-s tabular">{s.time ? formatTime(s.time) : <span className="type-label-m text-on-surface-variant">No time</span>}</span>
                   <span className="min-w-0 flex-1">
@@ -69,7 +69,7 @@ export function DayPanel({ date, today, spots, allSpots, onAdd, onOpen }: { date
                   <>
                     {canMark && (
                       <div className="grid grid-cols-2 gap-2">
-                        <Button size="sm" variant="text" icon={IconClose} onClick={() => void run(act.mark(s, false), "Marked as didn't happen.")}>Didn't happen</Button>
+                        <Button size="sm" variant="text" onClick={() => void run(act.mark(s, false), "Marked as didn't happen.")}>Didn't happen</Button>
                         <Button size="sm" variant="tonal" icon={IconCheck} onClick={() => void run(act.mark(s, true), "Marked as done. Add notes while it's fresh.")}>It happened</Button>
                       </div>
                     )}

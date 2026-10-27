@@ -1,5 +1,6 @@
 import { SPOT_SOURCE_LABEL, SPOT_STATE_LABEL, formatTime, spotHasNotes, spotState, type MySpot } from "@spot/shared";
-import { Button, Chip, IconBuilding, IconCheck, IconClose, IconStar, IconWarn } from "@spot/ui";
+import { Button, Chip, IconBuilding, IconCheck, IconStar, IconWarn } from "@spot/ui";
+import { Card, CardActions, Chips, IconTile } from "./ui";
 
 /** Five stars, filled up to `value`. */
 export function Stars({ value, size = "size-4" }: { value: number; size?: string }) {
@@ -20,26 +21,22 @@ export function SpotCard({ spot, today, clash, onOpen, onMark }: { spot: MySpot;
   const notes = spot.notes;
   const canMark = state === "tonight" || state === "to_check";
   return (
-    <div className={`flex min-w-0 flex-col gap-2.5 rounded-lg bg-surface-low p-3.5 ${state === "didnt" || state === "cancelled" ? "opacity-70" : ""}`}>
-      <button onClick={onOpen} className="state-layer pressable -m-1 flex min-w-0 flex-col gap-2 rounded-md p-1 text-left" aria-label={`Open ${spot.roomName ?? "spot"}`}>
-        <span className="flex min-w-0 items-start gap-3">
-          <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
-            <IconBuilding className="icon size-5" />
-          </span>
+    <Card dim={state === "didnt" || state === "cancelled"} className="flex flex-col gap-3">
+      <button onClick={onOpen} className="state-layer pressable -m-2 flex min-w-0 flex-col gap-3 rounded-md p-2 text-left" aria-label={`Open ${spot.roomName ?? "spot"}`}>
+        <span className="flex min-w-0 items-center gap-3">
+          <IconTile icon={IconBuilding} />
           <span className="min-w-0 flex-1">
             <span className="block truncate type-title-m">{spot.roomName || "Somewhere"}</span>
-            <span className="block truncate type-body-m text-on-surface-variant">{spot.time ? formatTime(spot.time) : "No time set"}</span>
+            <span className="block truncate type-body-s text-on-surface-variant">{spot.time ? formatTime(spot.time) : "No time set"}</span>
           </span>
-          <Chip tone={STATE_TONE[state]} className="flex-none">
-            {SPOT_STATE_LABEL[state]}
-          </Chip>
         </span>
-        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <Chips>
+          <Chip tone={STATE_TONE[state]}>{SPOT_STATE_LABEL[state]}</Chip>
           <Chip>{SPOT_SOURCE_LABEL[spot.source]}</Chip>
           {notes?.rating ? <Stars value={notes.rating} /> : null}
-        </span>
+        </Chips>
         {clash && clash.length > 0 && (
-          <span className="flex min-w-0 items-start gap-1.5 rounded-sm bg-error-container px-2.5 py-1.5 type-label-m text-on-error-container">
+          <span className="flex min-w-0 items-start gap-2 rounded-md bg-error-container px-3 py-2 type-body-s text-on-error-container">
             <IconWarn aria-hidden className="icon mt-0.5 size-4 flex-none" />
             <span className="min-w-0">
               Close to {clash[0]!.roomName || "another spot"}
@@ -52,16 +49,18 @@ export function SpotCard({ spot, today, clash, onOpen, onMark }: { spot: MySpot;
         )}
       </button>
       {canMark && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className="mr-auto type-label-m text-on-surface-variant">{state === "tonight" ? "After the set" : "Did this one happen?"}</span>
-          <Button size="sm" variant="text" icon={IconClose} onClick={() => onMark(false)}>
-            Didn't happen
-          </Button>
-          <Button size="sm" variant="tonal" icon={IconCheck} onClick={() => onMark(true)}>
-            It happened
-          </Button>
-        </div>
+        <CardActions spread>
+          <span className="type-label-m text-on-surface-variant">{state === "tonight" ? "After the set" : "Did this one happen?"}</span>
+          <span className="flex items-center gap-2">
+            <Button size="sm" variant="text" onClick={() => onMark(false)}>
+              Didn't happen
+            </Button>
+            <Button size="sm" variant="tonal" icon={IconCheck} onClick={() => onMark(true)}>
+              It happened
+            </Button>
+          </span>
+        </CardActions>
       )}
-    </div>
+    </Card>
   );
 }

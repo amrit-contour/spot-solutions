@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { clashingIds, spotClashes, spotStats, spotsByDay, type MySpot } from "@spot/shared";
-import { CompactButton, Empty, IconAdd, IconMic, IconRepeat, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { CompactButton, IconPlus, IconMic, IconRepeat, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { EmptyState, Page } from "../components/ui";
 import { useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { monthLabel, shortDate } from "../lib/time";
 import { SpotCard } from "../components/SpotCards";
@@ -44,12 +45,12 @@ export function MySpots() {
   return (
     <div className="w-full">
       <PageHeader
+        width="narrow"
         title="My spots"
-        subtitle="Everything you're booked for, and how it went."
         actions={
           <>
             <Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full text-primary"><IconRepeat className="icon size-5" /></Link>
-            <CompactButton icon={IconAdd} label="Add a spot" variant="filled" onClick={() => setEditing(blankSpot(today))} />
+            <CompactButton icon={IconPlus} label="Add a spot" variant="filled" onClick={() => setEditing(blankSpot(today))} />
           </>
         }
         bar={
@@ -60,41 +61,41 @@ export function MySpots() {
             onChange={setTab}
             options={[
               { value: "coming", label: "Coming up" },
-              { value: "past", label: `Past${toCheck.length ? ` · ${toCheck.length} to check` : ""}` },
+              { value: "past", label: "Past", badge: toCheck.length ? `${toCheck.length} to check` : undefined },
             ]}
           />
         }
       />
-      <div className="flex min-w-0 flex-col gap-6 px-4 pt-3 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12">
+      <Page>
         {store.loading ? (
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : (
           <>
             <SpotStatsHeader stats={stats} />
             {tab === "coming" && toCheck.length > 0 && (
-              <button onClick={() => setTab("past")} className="state-layer pressable flex min-w-0 items-center gap-3 rounded-lg bg-secondary-container p-4 text-left text-on-secondary-container">
+              <button onClick={() => setTab("past")} className="state-layer pressable flex min-h-14 min-w-0 items-center gap-3 rounded-lg bg-secondary-container px-4 py-3 text-left text-on-secondary-container">
                 <span className="min-w-0 flex-1 type-title-s">{toCheck.length === 1 ? "1 spot to check: did it happen?" : `${toCheck.length} spots to check: did they happen?`}</span>
                 <span className="type-label-l">See</span>
               </button>
             )}
             {days.length === 0 ? (
-              <Empty icon={IconMic} title={tab === "coming" ? "No spots booked" : "No past spots yet"} action={tab === "coming" ? <CompactButton icon={IconAdd} label="Add a spot" variant="filled" size="md" onClick={() => setEditing(blankSpot(today))} /> : undefined}>
+              <EmptyState icon={IconMic} title={tab === "coming" ? "No spots booked" : "No past spots yet"} action={tab === "coming" ? <CompactButton icon={IconPlus} label="Add a spot" variant="filled" size="md" onClick={() => setEditing(blankSpot(today))} /> : undefined}>
                 {tab === "coming" ? "When a curator says yes to an ask, the spot lands here. You can add one by hand too, like a spot you got in person." : "Spots you've done will list here, with your notes and ratings."}
-              </Empty>
+              </EmptyState>
             ) : (
-              <div className="flex min-w-0 flex-col gap-5">
+              <div className="flex min-w-0 flex-col gap-6">
                 {days.map((d, i) => {
                   const month = d.date.slice(0, 7);
                   const newMonth = i === 0 || days[i - 1]!.date.slice(0, 7) !== month;
                   return (
                     <section key={d.date} aria-label={shortDate(d.date)} className="min-w-0">
-                      {newMonth && <h2 className="mb-3 type-title-m text-on-surface-variant">{monthLabel(d.date)}</h2>}
-                      <div className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] gap-3">
-                        <div className="pt-3 text-center" aria-hidden>
+                      {newMonth && <h2 className="mb-2 px-1 type-title-s">{monthLabel(d.date)}</h2>}
+                      <div className="grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)] gap-3">
+                        <div className="pt-4 text-center" aria-hidden>
                           <p className={`type-label-m ${d.date === today ? "text-primary" : "text-on-surface-variant"}`}>{WEEKDAY(d.date)}</p>
                           <p className={`type-headline-s tabular ${d.date === today ? "text-primary" : ""}`}>{DAY_NUM(d.date)}</p>
                         </div>
-                        <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
+                        <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
                           {d.spots.map((s) => (
                             <li key={s.id} className="min-w-0">
                               <SpotCard spot={s} today={today} clash={clashes.has(s.id) ? spotClashes(all, s) : undefined} onOpen={() => setEditing(s)} onMark={(h) => void mark(s, h)} />
@@ -109,7 +110,7 @@ export function MySpots() {
             )}
           </>
         )}
-      </div>
+      </Page>
       <SpotEditor value={editing} onClose={() => setEditing(null)} today={today} />
     </div>
   );
