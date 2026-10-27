@@ -1,9 +1,8 @@
 import { restartLabel } from "@spot/shared";
 import { type ReactNode } from "react";
-import { NavLink } from "react-router-dom";
 import { signInWithPopup } from "firebase/auth";
 import { toast } from "sonner";
-import { AppShell, StatusDot, IconCalendar, IconCalendarMark, IconChat, IconComics, IconInbox, IconMic, IconPhone, IconSettings, type NavEntry } from "@spot/ui";
+import { AppShell, IconCalendar, IconCalendarMark, IconChat, IconComics, IconInbox, IconMic, IconSettings, type NavEntry } from "@spot/ui";
 import { CuratingLogo } from "./CuratingLogo";
 import { auth, google } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
@@ -59,17 +58,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
       appName="Nothing BOT Curate"
       logo={<CuratingLogo className="size-11" />}
       accountMenu={(align) => <AccountMenu align={align} status={{ tone: conn.tone, label: conn.label, detail: conn.detail, to: "/settings#whatsapp", linkLabel: "Settings" }} />}
-      railFooter={
-        <NavLink to="/settings#whatsapp" title={conn.detail ? `${conn.label} · ${conn.detail}` : conn.label} className="state-layer flex flex-col items-center gap-1.5 rounded-lg px-2 py-2 text-on-surface-variant">
-          <span className="relative">
-            <IconPhone className="icon size-6" />
-            <span className="absolute -right-1 -bottom-0.5">
-              <StatusDot tone={conn.tone} />
-            </span>
-          </span>
-          <span className="type-label-s">{conn.short}</span>
-        </NavLink>
-      }
+      // No status tile in the desktop rail: the coloured ring on the account avatar already shows it.
       banner={isDemoUser() ? <DemoBanner /> : undefined}
     >
       {children}
