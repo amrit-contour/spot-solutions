@@ -242,10 +242,13 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       ref={ref}
       data-stuck={stuck || undefined}
       data-collapsible={collapsible || undefined}
-      className="group/hdr sticky top-0 z-30"
+      // The solid colour MUST be on this sticky element itself. Safari on iOS 26 looks for a sticky/fixed, full-width bar at the
+      // top with an opaque background-color and extends that colour under the status bar; when it finds none (our colour used
+      // to live only on the child layer below, so this element was transparent) it draws its frosted "scroll edge" blur over
+      // the title and avatar instead. Requests and Chats looked fine only because their own sticky strips carry bg-surface.
+      className="group/hdr sticky top-0 z-30 bg-surface"
     >
-      {/* Solid surface (no backdrop-filter: iOS repaints it every scroll frame, which flickers) that rides up with the scroll,
-          so its bottom edge is always exactly where the page content begins. Only the hairline/shadow changes when stuck. */}
+      {/* Hairline/shadow layer (no backdrop-filter: iOS repaints it every scroll frame, which flickers). Only this changes when stuck. */}
       <div
         aria-hidden
         className={cx(

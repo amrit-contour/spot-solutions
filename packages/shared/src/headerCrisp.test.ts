@@ -42,6 +42,12 @@ describe("crisp header on iPhone", () => {
     expect(trigger).not.toMatch(/pressable|scale-|translate|will-change|transform/);
   });
 
+  it("the sticky page header carries its own opaque background (iOS 26 extends it under the status bar instead of blurring)", () => {
+    const h = pageHeader(ui("Shell.tsx"));
+    const cls = h.match(/className="group\/hdr sticky top-0[^"]*"/)?.[0] ?? "";
+    expect(cls).toMatch(/\bbg-surface\b/);
+  });
+
   it("the page header has no scroll-linked transforms, scale, will-change or backdrop blur", () => {
     const h = noComments(pageHeader(ui("Shell.tsx")));
     expect(h).not.toMatch(/style\.transform|translate[XY3]?\(|scale\(|will-change|backdrop-blur|backdrop-filter/);
