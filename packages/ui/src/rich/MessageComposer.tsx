@@ -233,21 +233,24 @@ export function MessageComposer({
   return (
     <div className="grid items-start gap-5 lg:grid-cols-2">
       {editor}
-      <MessagePreview value={value} vars={vars} known={variables?.map((v) => v.key)} />
+      <MessagePreview value={value} vars={vars} known={variables?.map((v) => v.key)} textFromLg />
     </div>
   );
 }
 
 /** What the comic will see: the text with WhatsApp formatting, the poll, and the pin, as separate bubbles. */
-export function MessagePreview({ value, vars, className, known }: { value: RichMessage; vars: TemplateVars; className?: string; known?: readonly string[] }) {
+export function MessagePreview({ value, vars, className, known, textFromLg }: { value: RichMessage; vars: TemplateVars; className?: string; known?: readonly string[]; /** Beside the editor on phones the field has its own eye/pen preview: show the text bubble only from lg up, and the panel below lg only when it has a pin or poll. */ textFromLg?: boolean }) {
   const r = renderRich(value, vars);
   const venue = String(vars.venue ?? "The venue");
+  const hideBelowLg = textFromLg && r.kind === "text" && !r.attachLocation;
   return (
-    <div className={cx("flex flex-col rounded-lg bg-surface-container p-4", className)}>
+    <div className={cx("flex-col rounded-lg bg-surface-container p-4", hideBelowLg ? "hidden lg:flex" : "flex", className)}>
       <span className="mb-3 type-label-m text-on-surface-variant">Preview</span>
       <div className="flex flex-col gap-1.5">
         {r.kind === "text" && (
-          <TemplateBubble text={value.body} vars={vars} known={known} />
+          <div className={cx(textFromLg && "hidden lg:block")}>
+            <TemplateBubble text={value.body} vars={vars} known={known} />
+          </div>
         )}
         {r.kind === "poll" && r.poll && (
           <Bubble outgoing meta="9:41 PM">

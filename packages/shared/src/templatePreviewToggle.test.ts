@@ -28,6 +28,7 @@ it("switching keeps the text and caret: the textarea is hidden, not unmounted", 
 it("the composer's side preview and the in-field preview share one renderer, and chips park while previewing", () => {
   expect(field).toMatch(/TemplateBubble/);
   expect(composer).toMatch(/TemplateBubble/);
+  expect(composer).toMatch(/hidden lg:flex/);
   expect(composer).toMatch(/disabled=\{previewing\}/);
   expect(preview).toMatch(/links: true/);
   expect(preview).toMatch(/Not a known variable/);
