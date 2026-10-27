@@ -229,7 +229,7 @@ export function Requests() {
                   onKeyDown={(e) => e.key === "Escape" && setQ("")}
                   placeholder="Search name, number or message"
                   aria-label="Search requests"
-                  className="h-10 w-full rounded-full border border-outline-variant bg-surface-low pr-3 pl-9 type-body-m outline-none placeholder:text-on-surface-variant/70 focus:border-primary"
+                  className="h-10 w-full rounded-full border border-outline-variant bg-surface-low pr-3 pl-9 type-body-m text-ellipsis outline-none placeholder:text-on-surface-variant/70 focus:border-primary"
                 />
               </label>
               <Menu
@@ -257,9 +257,9 @@ export function Requests() {
               )}
               </div>
               <div className="min-w-0 flex-1">
-            <div className="flex overflow-x-auto [scrollbar-width:none] sm:gap-1" role="tablist">
+            <div className="flex overflow-x-auto [scrollbar-width:none] max-sm:-mx-4 max-sm:px-4 max-sm:[scroll-padding-inline:1rem] sm:gap-1" role="tablist">
                   {LANES.map((l) => (
-                    <button key={l.id} role="tab" aria-selected={lane === l.id} onClick={() => setLane(l.id)} className="state-layer relative flex flex-1 items-center justify-center gap-1.5 rounded-t-sm px-2.5 pt-2 pb-3 type-title-s whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4">
+                    <button key={l.id} role="tab" aria-selected={lane === l.id} onClick={(e) => (setLane(l.id), e.currentTarget.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" }))} className="state-layer relative flex flex-1 items-center justify-center gap-1.5 rounded-t-sm px-2.5 pt-2 pb-3 type-title-s whitespace-nowrap sm:flex-none sm:gap-2 sm:px-4">
                       <span className={lane === l.id ? "text-primary" : "text-on-surface-variant"}>{l.label}</span>
                       <span className={cx("rounded-full px-1.5 type-label-s tabular", lane === l.id ? "bg-primary text-on-primary" : "bg-surface-high text-on-surface-variant")}>{grouped[l.id].length}</span>
                       {lane === l.id && <motion.span layoutId="lane-ink" className="absolute inset-x-3 bottom-0 h-[3px] rounded-t-full bg-primary" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
@@ -438,17 +438,20 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
         )}
       </AnimatePresence>
 
-      <div className="mt-3 flex min-w-0 items-center gap-1 border-t sm:gap-2 border-outline-variant/40 py-2 pr-3 pl-2 sm:pr-4 sm:pl-3">
-        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="state-layer inline-flex h-10 flex-none whitespace-nowrap items-center gap-1.5 rounded-full px-3 type-label-l text-on-surface-variant">
+      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 border-t border-outline-variant/40 py-2 pr-1.5 pl-1 sm:gap-x-2 sm:pr-4 sm:pl-3">
+        {/* Reading tools stay together on the left; the actions sit on the right and drop to their own line when they don't fit. */}
+        <div className="flex flex-none items-center sm:gap-2">
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="state-layer inline-flex h-10 flex-none whitespace-nowrap items-center gap-1 rounded-full px-2 type-label-l sm:gap-1.5 sm:px-3 text-on-surface-variant">
           {r.messages.length} message{r.messages.length > 1 ? "s" : ""}
           <IconArrowDown className={cx("icon size-4 transition-transform duration-200", open && "rotate-180")} />
         </button>
         <Confidence value={r.intent.confidence} />
-        <div className="min-w-0 flex-1" />
-        <Link to={`/messages?c=${encodeURIComponent(r.comicId)}`} className="state-layer pressable inline-flex h-10 flex-none items-center gap-1.5 rounded-full px-3 type-label-l whitespace-nowrap text-on-surface-variant" title={`Open the chat with ${r.comicName}`}>
+        <Link to={`/messages?c=${encodeURIComponent(r.comicId)}`} className="state-layer pressable inline-flex h-10 flex-none items-center gap-1.5 rounded-full px-2.5 type-label-l whitespace-nowrap text-on-surface-variant sm:px-3" title={`Open the chat with ${r.comicName}`}>
           <IconChat className="icon size-4" />
           <span className="max-xl:sr-only">Open chat</span>
         </Link>
+        </div>
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
         {held ? (
           <>
             <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} />
@@ -523,6 +526,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
             )}
           </>
         )}
+        </div>
       </div>
     </motion.li>
   );
