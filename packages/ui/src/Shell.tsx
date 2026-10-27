@@ -229,7 +229,8 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
     };
   }, [collapsible]);
   // Everything that moves is a transform or opacity of --p (set on the header), so scrolling never triggers layout.
-  const lift = (v: string): React.CSSProperties => ({ transform: `translate3d(0, calc(var(--p, 0) * ${v} * -1), 0)` });
+  // 2D translate and no will-change: a 3D/hinted layer makes iOS rasterize the header, and the title and avatar look blurred.
+  const lift = (v: string): React.CSSProperties => ({ transform: `translateY(calc(var(--p, 0) * ${v} * -1))` });
   return (
     <>
     {/* Desktop breathing room above the title. Outside the sticky bar, so the bar itself never changes height. */}
@@ -247,7 +248,7 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
         aria-hidden
         style={{ ...lift("var(--d, 0px)"), height: "calc(var(--hh, 100%) + var(--d, 0px))" }}
         className={cx(
-          "absolute inset-x-0 top-0 -z-10 bg-surface transition-shadow duration-200 will-change-transform motion-reduce:transition-none sm:h-full! sm:transform-none!",
+          "absolute inset-x-0 top-0 -z-10 bg-surface transition-shadow duration-200 motion-reduce:transition-none sm:h-full! sm:transform-none!",
           stuck ? "shadow-[0_1px_0_var(--color-outline-variant),0_6px_12px_-8px_rgb(0_0_0/0.5)]" : "shadow-[0_1px_0_transparent]",
         )}
       />
@@ -259,8 +260,8 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
           rather than turning "Requests" into "Re…". */}
       <div className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 max-sm:pr-[3.25rem]">
         <h1
-          style={collapsible ? { transform: "scale(calc(1 - var(--p, 0) * 0.2))", transformOrigin: "left center" } : undefined}
-          className="min-w-0 max-w-full flex-auto truncate type-headline-m will-change-transform motion-reduce:transform-none! sm:type-display-s sm:transform-none!"
+          // No scale on the title: a scaled text layer renders blurry on iPhone. The title keeps its size; the subtitle collapses.
+          className="min-w-0 max-w-full flex-auto truncate type-headline-m sm:type-display-s"
         >
           {title}
         </h1>
@@ -268,11 +269,11 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
         {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
       </div>
       {subtitle && (
-        <div ref={subRef} style={{ ...lift("var(--d, 0px)"), opacity: "clamp(0, calc(1 - var(--p, 0) * 2), 1)" }} className="pt-0.5 pb-1.5 will-change-[transform,opacity] group-data-[collapsed=1]/hdr:pointer-events-none sm:hidden">
+        <div ref={subRef} style={{ ...lift("var(--d, 0px)"), opacity: "clamp(0, calc(1 - var(--p, 0) * 2), 1)" }} className="pt-0.5 pb-1.5 group-data-[collapsed=1]/hdr:pointer-events-none sm:hidden">
           <p className="min-w-0 max-w-full type-body-m text-on-surface-variant">{subtitle}</p>
         </div>
       )}
-      <div style={lift("var(--d, 0px)")} className="will-change-transform sm:transform-none!">
+      <div style={lift("var(--d, 0px)")} className="sm:transform-none!">
         {children}
         {bar && <div className="mt-2 sm:mt-3">{bar}</div>}
       </div>
