@@ -355,6 +355,28 @@ pull_model() {
   "$(find_ollama)" pull "$1" || printf '  ! model pull failed; it will be retried on the next update\n' >&2
 }
 
+# The updater replaces the program, not the app in /Applications, so new icons (Dock, window header) would never reach an
+# installed app. Refresh them when this release's differ, re-sign ad hoc (the bundle's seal covers its resources) and tell
+# Launch Services. The Dock picks the icon up the next time the app opens.
+refresh_app_icons() {
+  local app="/Applications/Nothing BOT Server.app" src="$APP/deploy/mac" t
+  [[ -d "$app/Contents/Resources" && -d "$src/AppIcon.iconset" ]] || return 0
+  t="$(mktemp -d)"
+  if iconutil -c icns "$src/AppIcon.iconset" -o "$t/AppIcon.icns" 2>/dev/null \
+    && ! { cmp -s "$src/NothingBotServer/logo-dark.png" "$app/Contents/Resources/logo-dark.png" \
+      && cmp -s "$src/NothingBotServer/logo-light.png" "$app/Contents/Resources/logo-light.png" \
+      && [[ -f "$app/Contents/Resources/.icons-$(sha256_of "$t/AppIcon.icns")" ]]; }; then
+    cp "$t/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
+    cp "$src/NothingBotServer/logo-dark.png" "$src/NothingBotServer/logo-light.png" "$app/Contents/Resources/"
+    rm -f "$app/Contents/Resources/".icons-*; : > "$app/Contents/Resources/.icons-$(sha256_of "$t/AppIcon.icns")"
+    codesign --force --deep --sign - "$app" >/dev/null 2>&1 || true
+    touch "$app"
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" >/dev/null 2>&1 || true
+    ok "App icons refreshed (reopen the app to see them in the Dock)"
+  fi
+  rm -rf "$t"
+}
+
 cmd_update() {
   TASK_NAME=update; STARTED="$(( $(date +%s) * 1000 ))"; FROM="$(cat "$APP/VERSION" 2>/dev/null || echo none)"
   [[ -x "$(node_bin)" && -f "$APP/apps/worker/package.json" ]] || task_fail "Nothing BOT Server isn't set up on this Mac yet. Run setup first."
@@ -397,6 +419,7 @@ cmd_update() {
   # Every update, not only when packages changed: the browser build follows the pinned puppeteer, and a cache that is empty
   # or from an older install gets fixed here.
   install_self "$APP/deploy/mac/nbsctl"
+  refresh_app_icons || true
   write_agents          # the launch agents may have changed in this release
   ok "Version $latest"
   # Every update: find, reuse or download what this release needs (the browser build follows the pinned puppeteer; pnpm skips
