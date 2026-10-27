@@ -42,7 +42,7 @@ export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<unkn
     const end = () => {
       if (mode === "pull" && value >= TRIGGER) {
         setBusy(true);
-        set(TRIGGER * 0.7);
+        set(0); // the header's own sync icon takes over
         void Promise.resolve(refresh.current()).finally(() => {
           setBusy(false);
           set(0);
@@ -66,7 +66,7 @@ export function usePullToRefresh(enabled: boolean, onRefresh: () => Promise<unkn
 
 /** The little spinner that grows as you pull. Takes no room when idle. */
 export function PullIndicator({ pull, busy }: { pull: number; busy: boolean }) {
-  if (pull <= 0 && !busy) return null;
+  if (pull <= 0) return null;
   return (
     <div style={{ height: pull }} className={cx("grid place-items-center overflow-hidden text-primary", !busy && pull === 0 && "transition-[height]")} aria-hidden>
       <span style={{ opacity: Math.min(1, pull / TRIGGER), transform: `rotate(${pull * 4}deg)` }}>

@@ -1,9 +1,12 @@
-// A chat-list row you can swipe on a phone: left shows Done and Never read, right shows Needs reply. It follows your finger one to
-// one, rubber-bands past the buttons, settles on a spring that keeps your release speed, and a long swipe runs the first button.
+// A chat-list row you can swipe on a phone: one way shows a single action (Needs reply), the other way another (Clear).
+// The row follows your finger one to one up to the action's width, then resists (rubber band), the coloured action surface
+// grows with the row and has its own rounded edges (it never shows a clipped corner), the icon scales and fades in as you
+// pass the threshold, release settles on a spring that keeps your speed, and a long swipe runs the action with a short
+// confirmation (the icon turns into a tick) before the row slides back.
 // Mouse users get hover buttons and everyone gets the ⋯ menu instead (see the list row), so nothing here is gesture-only.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
-import { cx, type Icon } from "@spot/ui";
+import { animate, motion, useMotionValue, useReducedMotion, useTransform, type MotionValue } from "motion/react";
+import { cx, IconCheck, type Icon } from "@spot/ui";
 
 export interface SwipeAction {
   key: string;
@@ -13,42 +16,66 @@ export interface SwipeAction {
   run: () => void;
 }
 
-const W = 78; // one button's width
+const W = 88; // the action's resting width
+const FULL = W * 1.4; // pulled this far (or flicked towards it) the action runs
 const TONE = { primary: "bg-primary text-on-primary", error: "bg-error text-on-error", secondary: "bg-secondary text-on-secondary" } as const;
 const SLOP = 10;
 
 /** Only one row stays open at a time. */
 let closeOther: (() => void) | null = null;
 
+/** The further past the limit, the less the row follows: it slows before it stops. */
 const rubber = (over: number, dim: number) => (over * dim * 0.55) / (dim + 0.55 * Math.abs(over));
+
+type Side = "left" | "right";
 
 export function SwipeRow({ children, left, right, disabled }: { children: ReactNode; left: SwipeAction[]; right: SwipeAction[]; disabled?: boolean }) {
   const x = useMotionValue(0);
-  // The buttons only exist while the row is off centre (otherwise their corners bleed through the rounded clip).
-  const shown = useTransform(x, (v) => (Math.abs(v) < 0.5 ? "hidden" : "visible"));
-  const wrap = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const [open, setOpen] = useState<"left" | "right" | null>(null);
-  const [armed, setArmed] = useState<"left" | "right" | null>(null);
+  const [open, setOpen] = useState<Side | null>(null);
+  const [lit, setLit] = useState<Side | null>(null);
+  const [done, setDone] = useState<Side | null>(null);
   const drag = useRef<{ id: number; x0: number; y0: number; from: number; mode: "idle" | "h" | "v"; samples: { t: number; x: number }[]; moved: boolean } | null>(null);
-  const maxLeft = left.length * W; // x > 0 reveals the left buttons
-  const maxRight = right.length * W; // x < 0 reveals the right buttons
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const a = { left: left[0], right: right[0] };
+  // x > 0 reveals the left action, x < 0 the right one.
+  const lo = a.right ? -W : 0;
+  const hi = a.left ? W : 0;
 
   const settle = (to: number, velocity = 0) => {
-    animate(x, to, reduce ? { duration: 0.12, ease: "easeOut" } : { type: "spring", stiffness: 520, damping: 42, mass: 1, velocity });
-    const side = to > 0 ? "left" : to < 0 ? "right" : null;
+    animate(x, to, reduce ? { duration: 0.12, ease: "easeOut" } : { type: "spring", stiffness: 480, damping: 38, mass: 1, velocity });
+    const side: Side | null = to > 0 ? "left" : to < 0 ? "right" : null;
     setOpen(side);
     if (side) {
       closeOther?.();
       closeOther = () => settle(0);
     } else if (closeOther) closeOther = null;
   };
-  useEffect(() => () => void (closeOther = null), []);
+  useEffect(
+    () => () => {
+      timers.current.forEach(clearTimeout);
+      closeOther = null;
+    },
+    [],
+  );
 
-  const rowWidth = () => wrap.current?.offsetWidth ?? 360;
+  const commit = (side: Side, v: number) => {
+    const act = a[side];
+    if (!act) return settle(0, v);
+    // A short confirmation: the row stays a beat on the action, which shows a tick, then slides back.
+    setDone(side);
+    animate(x, side === "left" ? W : -W, reduce ? { duration: 0.1 } : { type: "spring", stiffness: 420, damping: 34, velocity: v });
+    timers.current.push(
+      setTimeout(() => act.run(), 260),
+      setTimeout(() => {
+        settle(0);
+        setDone(null);
+      }, 520),
+    );
+  };
 
   const onDown = (e: React.PointerEvent) => {
-    if (disabled || e.pointerType === "mouse" || (!left.length && !right.length)) return;
+    if (disabled || done || e.pointerType === "mouse" || (!a.left && !a.right)) return;
     x.stop();
     drag.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, from: x.get(), mode: "idle", samples: [{ t: e.timeStamp, x: e.clientX }], moved: false };
   };
@@ -68,16 +95,14 @@ export function SwipeRow({ children, left, right, disabled }: { children: ReactN
     if (d.mode !== "h") return;
     d.samples.push({ t: e.timeStamp, x: e.clientX });
     if (d.samples.length > 6) d.samples.shift();
-    // Past the buttons the row resists, and stops following soon after.
+    // 1:1 up to the action's width, then resistance; with no action on a side, only a little give.
     let next = d.from + dx - Math.sign(dx) * SLOP;
-    if (next > maxLeft) next = maxLeft + rubber(next - maxLeft, rowWidth());
-    if (next < -maxRight) next = -maxRight - rubber(-maxRight - next, rowWidth());
-    if (!left.length && next > 0) next = rubber(next, rowWidth()) * 0.4;
-    if (!right.length && next < 0) next = -rubber(-next, rowWidth()) * 0.4;
+    if (next > hi) next = hi + rubber(next - hi, 160) * (hi ? 1 : 0.35);
+    if (next < lo) next = lo - rubber(lo - next, 160) * (lo ? 1 : 0.35);
     x.set(next);
-    const side = next > maxLeft * 0.55 ? "left" : next < -maxRight * 0.55 ? "right" : null;
-    setArmed((a) => {
-      if (a !== side && side) navigator.vibrate?.(6);
+    const side: Side | null = next >= FULL ? "left" : next <= -FULL ? "right" : null;
+    setLit((l) => {
+      if (l !== side && side) navigator.vibrate?.(8);
       return side;
     });
   };
@@ -85,45 +110,33 @@ export function SwipeRow({ children, left, right, disabled }: { children: ReactN
     const d = drag.current;
     drag.current = null;
     if (!d || e.pointerId !== d.id || d.mode !== "h") return;
-    setArmed(null);
+    setLit(null);
     const s = d.samples;
     const v = s.length > 1 ? ((s[s.length - 1].x - s[0].x) / Math.max(1, s[s.length - 1].t - s[0].t)) * 1000 : 0; // px/s
     const cur = x.get();
-    const projected = cur + v * 0.18;
-    const full = rowWidth() * 0.62;
-    if (projected < -full && right.length) {
-      settle(0, v);
-      right[0].run();
-    } else if (projected > full && left.length) {
-      settle(0, v);
-      left[0].run();
-    } else if (projected < -maxRight * 0.45 && right.length) settle(-maxRight, v);
-    else if (projected > maxLeft * 0.45 && left.length) settle(maxLeft, v);
+    const projected = cur + v * 0.1;
+    if (a.right && projected <= -FULL) commit("right", v);
+    else if (a.left && projected >= FULL) commit("left", v);
+    else if (a.right && projected < -W * 0.5) settle(-W, v);
+    else if (a.left && projected > W * 0.5) settle(W, v);
     else settle(0, v);
   };
   const onCancel = () => {
     drag.current = null;
-    setArmed(null);
-    settle(open === "left" ? maxLeft : open === "right" ? -maxRight : 0);
+    setLit(null);
+    if (!done) settle(open === "left" ? W : open === "right" ? -W : 0);
   };
 
-  const run = (a: SwipeAction) => {
+  const run = (side: Side) => {
+    const act = a[side];
     settle(0);
-    a.run();
+    act?.run();
   };
 
   return (
-    <div ref={wrap} className="relative overflow-hidden rounded-lg">
-      <motion.div style={{ visibility: shown }} aria-hidden={open !== "left"} className="absolute inset-y-0 left-0 flex">
-        {left.map((a) => (
-          <ActionButton key={a.key} a={a} lit={armed === "left"} hidden={open !== "left"} onRun={run} />
-        ))}
-      </motion.div>
-      <motion.div style={{ visibility: shown }} aria-hidden={open !== "right"} className="absolute inset-y-0 right-0 flex">
-        {right.map((a) => (
-          <ActionButton key={a.key} a={a} lit={armed === "right" && a === right[0]} hidden={open !== "right"} onRun={run} />
-        ))}
-      </motion.div>
+    <div className="relative overflow-hidden rounded-lg">
+      {a.left && <Reveal side="left" a={a.left} x={x} lit={lit === "left"} done={done === "left"} open={open === "left"} onRun={() => run("left")} />}
+      {a.right && <Reveal side="right" a={a.right} x={x} lit={lit === "right"} done={done === "right"} open={open === "right"} onRun={() => run("right")} />}
       <motion.div
         style={{ x, touchAction: "pan-y" }}
         onPointerDown={onDown}
@@ -135,10 +148,10 @@ export function SwipeRow({ children, left, right, disabled }: { children: ReactN
           if (drag.current?.moved || open) {
             e.preventDefault();
             e.stopPropagation();
-            if (open) settle(0);
+            if (open && !done) settle(0);
           }
         }}
-        className="relative bg-surface"
+        className="relative rounded-lg bg-surface"
       >
         {children}
       </motion.div>
@@ -146,12 +159,31 @@ export function SwipeRow({ children, left, right, disabled }: { children: ReactN
   );
 }
 
-function ActionButton({ a, lit, hidden, onRun }: { a: SwipeAction; lit: boolean; hidden: boolean; onRun: (a: SwipeAction) => void }) {
-  const I = a.icon;
+/** The coloured surface behind the row: as wide as the gap the row has opened (plus a little tucked under it, so the row's own
+ *  rounded corners show colour, not a notch), with rounded edges, and the action's icon scaling and fading in as you pull. */
+function Reveal({ side, a, x, lit, done, open, onRun }: { side: Side; a: SwipeAction; x: MotionValue<number>; lit: boolean; done: boolean; open: boolean; onRun: () => void }) {
+  const pulled = useTransform(x, (v) => (side === "left" ? Math.max(0, v) : Math.max(0, -v)));
+  const width = useTransform(pulled, (v) => (v < 0.5 ? 0 : v + 24));
+  const scale = useTransform(pulled, [0, W * 0.4, W, FULL], [0.5, 0.72, 1, 1.12]);
+  const opacity = useTransform(pulled, [W * 0.15, W * 0.62], [0, 1]);
+  const I = done ? IconCheck : a.icon;
   return (
-    <button type="button" tabIndex={hidden ? -1 : 0} onClick={() => onRun(a)} style={{ width: W }} className={cx("pressable flex flex-col items-center justify-center gap-1 type-label-m", TONE[a.tone])}>
-      <I className={cx("icon size-6 transition-transform duration-150 ease-out", lit && "scale-125")} />
-      {a.label}
-    </button>
+    <motion.div style={{ width }} className={cx("absolute inset-y-0 overflow-hidden rounded-lg", side === "left" ? "left-0" : "right-0", TONE[a.tone])}>
+      <button
+        type="button"
+        tabIndex={open ? 0 : -1}
+        aria-hidden={!open}
+        onClick={onRun}
+        style={{ width: W }}
+        className={cx("pressable absolute inset-y-0 flex items-center justify-center type-label-m", side === "left" ? "left-0" : "right-0")}
+      >
+        <motion.span style={{ scale, opacity }} className="flex flex-col items-center gap-1">
+          <motion.span key={done ? "tick" : "icon"} initial={done ? { scale: 0.5 } : false} animate={{ scale: lit || done ? 1.2 : 1 }} transition={{ type: "spring", stiffness: 520, damping: 22 }}>
+            <I className="icon size-6" />
+          </motion.span>
+          {a.label}
+        </motion.span>
+      </button>
+    </motion.div>
   );
 }

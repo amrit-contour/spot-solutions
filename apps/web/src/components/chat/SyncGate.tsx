@@ -8,16 +8,14 @@ import { savedFromLabel } from "@spot/shared";
 import { Button, IconWarn, Spinner } from "@spot/ui";
 
 /** The inline strip: shown while what you see may be behind. */
-export function SyncBanner({ savedAt, now, tz, syncing, onRetry }: { savedAt: number | null; now: number; tz: string; syncing: boolean; onRetry: () => void }) {
+export function SyncBanner({ savedAt, now, tz, onRetry }: { savedAt: number | null; now: number; tz: string; onRetry: () => void }) {
   return (
     <div role="status" className="flex flex-none items-center gap-2 bg-tertiary-container px-4 py-2 text-on-tertiary-container">
-      {syncing ? <Spinner className="size-4 flex-none" /> : <IconWarn className="icon size-4 flex-none" />}
+      <IconWarn className="icon size-4 flex-none" />
       <p className="min-w-0 flex-1 type-body-s">{savedAt ? `Showing saved messages from ${savedFromLabel(savedAt, now, tz)}. New ones may be missing.` : "Not synced yet. What you see may be out of date."}</p>
-      {!syncing && (
-        <button type="button" onClick={onRetry} className="state-layer -my-1 -mr-2 flex-none rounded-full px-3 py-1.5 type-label-l">
-          Sync now
-        </button>
-      )}
+      <button type="button" onClick={onRetry} className="state-layer -my-1 -mr-2 flex-none rounded-full px-3 py-1.5 type-label-l">
+        Sync now
+      </button>
     </div>
   );
 }

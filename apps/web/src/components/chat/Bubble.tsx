@@ -1,15 +1,17 @@
 // One message in a chat: text, a poll, a pin, a picture or a label, with its reactions on the inner edge, and the ways to react
 // (long-press on a phone, a smiley button on hover for a mouse, right-click). Your own unsent messages are PendingBubble.
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { groupReactions, reactionEdge, reactionReservePx, type ReactionChip, type ThreadMessage, type ThreadMediaResult } from "@spot/shared";
+import { groupReactions, type ReactionChip, type ThreadMessage, type ThreadMediaResult } from "@spot/shared";
 import { PinCard, PollCard, WaText, Button, IconCheck, IconWarn, Spinner, cx } from "@spot/ui";
 import { MediaLabel, Photo, Sticker } from "./media";
-import { ReactionPicker } from "./ReactionPicker";
+import { ReactionDetails, ReactionPicker } from "./ReactionPicker";
 
 const clock = (at: number, tz: string) => new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", timeZone: tz }).format(new Date(at));
 
-const LONG_PRESS_MS = 420;
+const LONG_PRESS_MS = 400;
+/** After the picker has opened under a finger that is still down, it only counts as a slide once the finger has moved this far. */
+const SLIDE_SLOP = 12;
 const MOVE_SLOP = 8;
 
 const Smile = ({ className }: { className?: string }) => (
@@ -26,6 +28,7 @@ export function Bubble({
   media,
   reactions,
   onReact,
+  reactor,
   onOpenPhoto,
   onOpenMention,
 }: {
@@ -37,6 +40,8 @@ export function Bubble({
   reactions?: ReactionChip[];
   /** Omit to switch reacting off. Picking the emoji you already have takes it back (the caller works that out). */
   onReact?: (emoji: string) => void;
+  /** Who the other reactions are from, in a one-to-one chat (a group doesn't say). */
+  reactor?: string;
   onOpenPhoto: (src: string) => void;
   /** Tapping a tag in the text. */
   onOpenMention?: (m: { id?: string; token: string; name: string }) => void;
@@ -48,29 +53,44 @@ export function Bubble({
   const deleted = m.kind === "deleted";
   const caption = photo ? m.text.replace(/^\[photo\]\s*/, "") : "";
   const chips = groupReactions(reactions ?? m.reactions);
-  const edge = reactionEdge(out);
-  const reserve = chips.length ? reactionReservePx() : 0;
+  const total = chips.reduce((n, c) => n + c.count, 0);
 
   const box = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
-  const press = useRef<{ x: number; y: number; t: ReturnType<typeof setTimeout> } | null>(null);
+  const [who, setWho] = useState(false);
+  const [hover, setHover] = useState<string | null>(null);
+  const [holding, setHolding] = useState(false);
+  // One touch, start to finish. Before the picker opens a move past the slop (a scroll) cancels it; once it has opened,
+  // letting go selects nothing. Only a finger that has slid onto an emoji and lets go there picks it.
+  const press = useRef<{ x: number; y: number; t: ReturnType<typeof setTimeout>; open: boolean; slid: boolean } | null>(null);
   const [pressed, setPressed] = useState(false);
   const openPicker = () => {
     const r = box.current?.getBoundingClientRect();
-    if (r && onReact) setAnchor(r);
+    if (r && onReact) setAnchor((a) => a ?? r);
   };
   const cancel = () => {
     if (press.current) clearTimeout(press.current.t);
     press.current = null;
     setPressed(false);
+    setHolding(false);
+    setHover(null);
   };
+  const emojiAt = (x: number, y: number) => document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-emoji]")?.dataset.emoji ?? null;
+  // While the finger is down on the open picker the page must not scroll under it (a non-passive listener; React's are passive).
+  useEffect(() => {
+    const el = box.current;
+    if (!holding || !el) return;
+    const stop = (e: TouchEvent) => e.cancelable && e.preventDefault();
+    el.addEventListener("touchmove", stop, { passive: false });
+    return () => el.removeEventListener("touchmove", stop);
+  }, [holding]);
   const mine = chips.find((c) => c.byMe)?.emoji;
   const copyable = m.kind === "text";
 
   return (
     <div className={cx("group/b flex flex-col", out ? "items-end" : "items-start")}>
       {label && <span className="mt-1.5 mb-0.5 px-1 type-label-s text-on-surface-variant">{label}</span>}
-      <div className={cx("flex max-w-[88%] items-center gap-1 sm:max-w-[80%]", out && "flex-row-reverse")} style={{ marginBottom: reserve }}>
+      <div className={cx("flex max-w-[88%] items-end gap-1.5 sm:max-w-[80%]", out && "flex-row-reverse")}>
         <div
           ref={box}
           onContextMenu={(e) => {
@@ -81,27 +101,53 @@ export function Bubble({
           onPointerDown={(e) => {
             if (!onReact || e.pointerType === "mouse") return;
             setPressed(true);
+            const x = e.clientX;
+            const y = e.clientY;
             press.current = {
-              x: e.clientX,
-              y: e.clientY,
+              x,
+              y,
+              open: false,
+              slid: false,
               t: setTimeout(() => {
-                press.current = null;
+                if (!press.current) return;
+                press.current.open = true;
                 setPressed(false);
+                setHolding(true);
                 navigator.vibrate?.(8);
                 openPicker();
               }, LONG_PRESS_MS),
             };
           }}
-          onPointerMove={(e) => press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > MOVE_SLOP && cancel()}
-          onPointerUp={cancel}
-          onPointerCancel={cancel}
+          onPointerMove={(e) => {
+            const p = press.current;
+            if (!p) return;
+            const moved = Math.hypot(e.clientX - p.x, e.clientY - p.y);
+            if (!p.open) return moved > MOVE_SLOP ? cancel() : undefined;
+            if (moved > SLIDE_SLOP) p.slid = true;
+            setHover(p.slid ? emojiAt(e.clientX, e.clientY) : null);
+          }}
+          onPointerUp={(e) => {
+            const p = press.current;
+            if (p?.open) {
+              const pick = p.slid ? emojiAt(e.clientX, e.clientY) : null;
+              cancel();
+              // Letting go in place leaves the picker open for a tap; letting go on an emoji after sliding onto it picks it.
+              if (pick) {
+                setAnchor(null);
+                onReact?.(pick);
+              }
+            } else cancel();
+          }}
+          onPointerCancel={() => (press.current?.open ? (setHolding(false), setHover(null), (press.current = null)) : cancel())}
           className={cx(
-            "relative min-w-0 rounded-lg type-body-m transition-transform duration-150 ease-out [-webkit-touch-callout:none] pointer-coarse:select-none",
+            "relative min-w-0 rounded-lg type-body-m [-webkit-touch-callout:none] pointer-coarse:select-none",
+            "transition-[transform,box-shadow] ease-[cubic-bezier(0.23,1,0.32,1)]",
+            // Pressing sinks slowly (the hold is the feedback); letting go or opening is quick.
+            pressed ? "scale-[0.96] duration-[400ms]" : anchor ? "scale-[1.03] shadow-lg duration-200" : "duration-150",
             sticker ? "px-0.5 py-0.5" : photo ? "p-1" : "px-3.5 py-2",
             out ? "rounded-br-xs" : "rounded-bl-xs",
             !sticker && (out ? "bg-primary-container text-on-primary-container" : "bg-surface-highest text-on-surface"),
-            pressed && "scale-[0.985]",
-            anchor && "ring-2 ring-primary/60",
+            anchor && "ring-2 ring-primary/50",
           )}
         >
           {sticker ? (
@@ -127,38 +173,54 @@ export function Bubble({
             <WaText text={m.text} mentions={m.mentions ?? []} onMention={onOpenMention} />
           )}
           <div className={cx("mt-0.5 text-right type-label-s tabular", photo && "px-2.5 pb-0.5", sticker ? "text-on-surface-variant" : "opacity-60")}>{clock(m.at, tz)}</div>
-          {chips.length > 0 && (
-            <div className={cx("absolute flex gap-1", edge === "right" ? "right-2" : "left-2")} style={{ bottom: -reserve }}>
-              {chips.map((r) => (
-                <span
-                  key={r.emoji}
-                  className={cx("inline-flex h-6 items-center gap-0.5 rounded-full px-1.5 text-sm leading-none shadow-sm ring-1", r.byMe ? "bg-primary-container text-on-primary-container ring-primary" : "bg-surface text-on-surface ring-outline-variant")}
-                  title={r.byMe ? "You reacted" : undefined}
-                >
-                  <span aria-hidden>{r.emoji}</span>
-                  {r.count > 1 && <span className="type-label-s tabular">{r.count}</span>}
-                  <span className="sr-only">{r.byMe ? "reaction from you" : "reaction"}</span>
-                </span>
-              ))}
-            </div>
-          )}
         </div>
+        {chips.length > 0 && (
+          // Beside the bubble on its inner side (right of an incoming one, left of your own), flush with its bottom edge.
+          <button
+            type="button"
+            onClick={() => setWho(true)}
+            aria-label={`${total} ${total === 1 ? "reaction" : "reactions"}: ${chips.map((c) => c.emoji).join(" ")}${mine ? ", including yours" : ""}. Show who`}
+            className={cx(
+              "pressable relative inline-flex h-6 flex-none items-center gap-0.5 rounded-full px-1.5 text-sm leading-none ring-1 before:absolute before:-inset-2 before:content-['']",
+              mine ? "bg-primary-container text-on-primary-container ring-primary" : "bg-surface-high text-on-surface ring-outline-variant",
+            )}
+          >
+            <span className="flex" aria-hidden>
+              {chips.slice(0, 3).map((c) => (
+                <span key={c.emoji}>{c.emoji}</span>
+              ))}
+            </span>
+            {total > 1 && <span className="type-label-s tabular">{total}</span>}
+          </button>
+        )}
         {onReact && (
           <button
             type="button"
             onClick={openPicker}
             aria-label="React to this message"
-            className="state-layer hidden size-8 flex-none place-items-center rounded-full text-on-surface-variant opacity-0 transition-opacity duration-150 group-hover/b:opacity-100 focus-visible:opacity-100 pointer-fine:grid"
+            className="state-layer order-3 hidden size-8 flex-none place-items-center self-center rounded-full text-on-surface-variant opacity-0 transition-opacity duration-150 group-hover/b:opacity-100 focus-visible:opacity-100 pointer-fine:grid"
           >
             <Smile className="size-5" />
           </button>
         )}
       </div>
+      {who && (
+        <ReactionDetails
+          chips={chips}
+          other={reactor}
+          onClose={() => setWho(false)}
+          onRemove={(e) => {
+            setWho(false);
+            onReact?.(e);
+          }}
+        />
+      )}
       {anchor && onReact && (
         <ReactionPicker
           anchor={anchor}
           mine={mine}
-          onClose={() => setAnchor(null)}
+          hover={hover}
+          onClose={() => !holding && setAnchor(null)}
           onPick={(e) => {
             setAnchor(null);
             onReact(e);

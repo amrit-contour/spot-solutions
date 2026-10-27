@@ -235,7 +235,7 @@ export function Messages() {
             <Unavailable offline={!workerOnline} />
           ) : (
             <>
-              {!sync.ok && list.data && <div className="-mx-4 sm:-mx-8 lg:mx-0 lg:overflow-hidden lg:rounded-lg"><SyncBanner savedAt={list.data.at} now={now} tz={tz} syncing={sync.syncing} onRetry={() => void list.refresh(true)} /></div>}
+              {!sync.ok && !sync.syncing && list.data && <div className="-mx-4 sm:-mx-8 lg:mx-0 lg:overflow-hidden lg:rounded-lg"><SyncBanner savedAt={list.data.at} now={now} tz={tz} onRetry={() => void list.refresh(true)} /></div>}
               {demo && <p className="mb-3 rounded-lg bg-tertiary-container px-4 py-3 type-body-s text-on-tertiary-container">Sample chats built from the demo's requests. A real account shows your WhatsApp conversations here.</p>}
               <div className="sticky top-[var(--page-header-h,0px)] z-20 -mx-4 flex flex-col gap-2 bg-surface px-4 pt-2 pb-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:px-0">
                 <label className="relative block">
@@ -436,12 +436,9 @@ function GroupRow({ g, active, now, tz, onOpen }: { g: GroupThreadItem; active: 
 }
 
 function ThreadRow({ t, active, now, tz, onOpen, actions }: { t: ThreadItem; active: boolean; now: number; tz: string; onOpen: () => void; actions: { done: () => void; toggle: () => void; never: () => void } }) {
-  // Phones: swipe left for Done and Never read, right for Needs reply. Everyone: the ⋯ menu; a mouse also gets a Done button on hover.
-  const left: SwipeAction[] = [{ key: "needs", label: t.awaitingYou ? "Clear" : "Needs reply", icon: t.awaitingYou ? IconCheck : IconChat, tone: "secondary", run: actions.toggle }];
-  const right: SwipeAction[] = [
-    ...(t.awaitingYou ? [{ key: "done", label: "Done", icon: IconCheck, tone: "primary" as const, run: actions.done }] : []),
-    { key: "never", label: "Never read", icon: IconEye, tone: "error", run: actions.never },
-  ];
+  // Phones: swipe right for Needs reply, left for Clear (when they're waiting on you). Everyone: the ⋯ menu, which also has Never read.
+  const left: SwipeAction[] = t.awaitingYou ? [] : [{ key: "needs", label: "Needs reply", icon: IconChat, tone: "secondary", run: actions.toggle }];
+  const right: SwipeAction[] = t.awaitingYou ? [{ key: "clear", label: "Clear", icon: IconCheck, tone: "primary", run: actions.done }] : [];
   return (
     <li className="group/r relative">
       <SwipeRow left={left} right={right}>
@@ -563,7 +560,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
           <NeverReadButton comic={comic} onDone={onBack} />
         </>
       )}
-      context={<ThreadContext comic={comic} request={request} lineups={lineups} placedShow={placedShow} />}
+      pinned={<ThreadContext comic={comic} request={request} lineups={lineups} placedShow={placedShow} />}
       aboveComposer={<AssistCard source={source} comic={comic} request={request} lineups={lineups} onUseReply={(t) => setDraft({ kind: "text", body: t })} week={week} />}
       templates={(pick, trigger) => <SnippetMenu name={comic.name} vars={vars} builtins={["confirm", "ack", "reject", "cancelSpot"]} messages={COMIC_MESSAGE_KEYS} onPick={pick} trigger={trigger} />}
     />
@@ -727,6 +724,7 @@ function Conversation({
   onSent,
   header,
   context,
+  pinned,
   aboveComposer,
   templates,
   labelFor,
@@ -756,6 +754,8 @@ function Conversation({
   /** The header's content (avatar, name, actions). `sync` is the "Synced 2 min ago" line to show under the name. */
   header: (sync: string) => ReactNode;
   context?: ReactNode;
+  /** A card pinned right under the header: it stays put while the messages scroll. */
+  pinned?: ReactNode;
   aboveComposer?: ReactNode;
   templates: (pick: (m: RichMessage) => void, trigger: (toggle: () => void, open: boolean) => ReactNode) => ReactNode;
   /** The label over a run of their messages. */
@@ -781,6 +781,14 @@ function Conversation({
   const wide = useMediaQuery("(min-width: 1024px)");
   const frame = useRef<HTMLDivElement>(null);
   const { keyboard } = useVisualViewportFrame(frame, !wide);
+  // Phones: drag in from the left edge to go back; the chat follows your finger and slides away (or springs back).
+  const edge = useRef<{ id: number; x0: number; y0: number; t0: number; mode: "idle" | "h" } | null>(null);
+  const edgeEnd = (el: HTMLElement, go: boolean) => {
+    el.style.transition = "transform 240ms cubic-bezier(0.32, 0.72, 0, 1)";
+    el.style.transform = go ? "translateX(100%)" : "translateX(0)";
+    if (go) setTimeout(onBack, 200);
+    else setTimeout(() => (el.style.transition = el.style.transform = ""), 260);
+  };
 
   // Messages: the saved copy at once, then the newest page read live and refreshed while visible; older pages on demand.
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
@@ -914,19 +922,52 @@ function Conversation({
     <div
       ref={frame}
       data-keyboard={keyboard || undefined}
+      onPointerDown={(e) => {
+        if (wide || e.pointerType === "mouse" || e.clientX > 24) return;
+        edge.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, mode: "idle" };
+      }}
+      onPointerMove={(e) => {
+        const d = edge.current;
+        if (!d || e.pointerId !== d.id) return;
+        const dx = e.clientX - d.x0;
+        if (d.mode === "idle") {
+          if (Math.abs(e.clientY - d.y0) > 10 && Math.abs(e.clientY - d.y0) > dx) return void (edge.current = null);
+          if (dx < 10) return;
+          d.mode = "h";
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        }
+        const el = e.currentTarget as HTMLElement;
+        el.style.transition = "none";
+        el.style.transform = `translateX(${Math.max(0, dx - 10)}px)`;
+      }}
+      onPointerUp={(e) => {
+        const d = edge.current;
+        edge.current = null;
+        if (!d || d.mode !== "h" || e.pointerId !== d.id) return;
+        const dx = e.clientX - d.x0;
+        edgeEnd(e.currentTarget as HTMLElement, dx > window.innerWidth * 0.33 || dx / Math.max(1, e.timeStamp - d.t0) > 0.6);
+      }}
+      onPointerCancel={(e) => {
+        if (edge.current?.mode === "h") edgeEnd(e.currentTarget as HTMLElement, false);
+        edge.current = null;
+      }}
       className={cx(
         "flex flex-col bg-surface",
-        wide ? "min-h-0 flex-1 overflow-hidden rounded-lg border border-outline-variant" : "fixed inset-x-0 top-0 z-50 h-dvh pt-[env(safe-area-inset-top)] sm:left-24",
+        wide ? "min-h-0 flex-1 overflow-hidden rounded-lg border border-outline-variant" : "fixed inset-x-0 top-0 z-50 h-dvh touch-pan-y pt-[env(safe-area-inset-top)] sm:left-24",
       )}
     >
       <header className="flex flex-none items-center gap-1 border-b border-outline-variant bg-surface px-1.5 py-1.5 lg:gap-2 lg:bg-surface-low lg:px-3 lg:py-2">
-        <IconButton icon={IconArrowLeft} label="Back to chats" onClick={onBack} className="lg:hidden" />
+        <button type="button" onClick={onBack} aria-label="Back to chats" className="state-layer pressable -mr-1 inline-flex h-10 flex-none items-center rounded-full pr-3 pl-0.5 type-label-l text-primary lg:hidden">
+          <IconArrowLeft className="icon size-7" />
+          Chats
+        </button>
         {header(sync.label)}
         <IconButton icon={IconRefresh} label={newest.loading ? "Syncing this chat" : "Sync this chat"} onClick={() => void newest.refresh(true)} disabled={newest.loading} className={cx(newest.loading && "[&_svg]:animate-spin")} />
       </header>
-      {!sync.ok && newest.data && <SyncBanner savedAt={newest.data.at} now={now} tz={tz} syncing={sync.syncing} onRetry={() => void newest.refresh(true)} />}
+      {pinned}
+      {!sync.ok && !sync.syncing && newest.data && <SyncBanner savedAt={newest.data.at} now={now} tz={tz} onRetry={() => void newest.refresh(true)} />}
 
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 [-webkit-overflow-scrolling:touch] lg:bg-surface-lowest lg:px-4">
+      <div ref={scroller} className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-3 [-webkit-overflow-scrolling:touch] lg:bg-surface-lowest lg:px-4">
         <div ref={inner}>
           {context}
 
@@ -938,7 +979,7 @@ function Conversation({
             </div>
           )}
           {newest.loading && !messages.length ? (
-            <div className="grid place-items-center py-16 text-primary"><Spinner className="size-7" /></div>
+            <div className="h-40" aria-busy="true" />
           ) : newest.error && !messages.length ? (
             <ErrorNote message={newest.error} onRetry={() => void newest.refresh(true)} />
           ) : !messages.length && !pending.length ? (
@@ -964,6 +1005,7 @@ function Conversation({
                       media={media}
                       reactions={mineNow[r.m.id]?.chips}
                       onReact={r.m.kind === "deleted" ? undefined : (e) => reactTo(r.m, e)}
+                      reactor={isGroup ? undefined : labelFor(r.m)}
                       onOpenPhoto={setPhoto}
                       onOpenMention={openMention}
                     />
@@ -1035,10 +1077,29 @@ const STATUS_LABEL: Record<SpotRequest["status"], string> = {
   rejected: "Regret sent",
 };
 
+const STATUS_SHORT: Record<SpotRequest["status"], string> = { new: "Waiting", acked: "Acknowledged", assigned: "Placed", confirmed: "Confirmed", dismissed: "Closed", rejected: "Regret sent" };
+const cardKey = (id: string) => `spot.threadCard.${id}`;
+
+/** The comic's request and the week's actions, pinned under the header: one line when folded, the details and buttons when open. Remembered per chat. */
 function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: ReturnType<typeof useApp>["comics"][number]; request?: SpotRequest; lineups: Lineup[]; placedShow?: Show }) {
   const { uid, week, currentWeek, shows, venues, settings } = useApp();
   const now = useNow(60_000);
-  const [more, setMore] = useState(false);
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(cardKey(comic.id)) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setExpanded((v) => {
+      try {
+        localStorage.setItem(cardKey(comic.id), v ? "0" : "1");
+      } catch {
+        /* private mode: it just won't be remembered */
+      }
+      return !v;
+    });
   const today = localNow(new Date(now), settings.timezone).date;
   const prev = lastSpot(comic.history, today);
   const active = shows.filter((s) => s.active);
@@ -1046,6 +1107,9 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
   const preferred = new Set(r?.intent.preferredDays ?? []);
   const manyVenues = new Set(active.map((s) => s.venueId)).size > 1;
   const pills = r ? requestPills({ r, comic, shows, today, venueName: manyVenues ? venues.find((v) => v.id === r.intent.venueId)?.name : undefined }) : [];
+  const days = r?.intent.preferredDays ?? [];
+  const asked = !r ? "No request" : days.length === 1 ? `Asked for ${DAY_NAMES[days[0]]}` : days.length ? `Asked for ${days.map((d) => DAY_SHORT[d]).join(", ")}` : "Asked for any day";
+  const summary = r ? `${asked} · ${STATUS_SHORT[r.status]}` : asked;
 
   const place = async (show: Show) => {
     try {
@@ -1062,69 +1126,77 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
   };
 
   return (
-    <section aria-label="This week" className="my-3 rounded-lg bg-surface-low px-4 py-3 lg:bg-surface-container">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 type-label-m text-on-surface-variant">{week === currentWeek ? "This week" : `Week of ${formatDate(week)}`}</span>
-        {r ? (
-          <>
-            <Chip tone={open ? "primary" : "neutral"}>{STATUS_LABEL[r.status]}</Chip>
-            {r.intent.preferredDays.length ? r.intent.preferredDays.map((d) => <Chip key={d}>{DAY_SHORT[d]}</Chip>) : open ? <Chip>Any day</Chip> : null}
-          </>
-        ) : (
-          <Chip>No request</Chip>
-        )}
-        {placedShow && (
-          <Chip tone="success" icon={IconMic}>
-            {placedShow.name} · {DAY_SHORT[placedShow.weekday]} {formatTime(placedShow.startTime)}
-          </Chip>
-        )}
-        <button onClick={() => setMore((v) => !v)} aria-expanded={more} className="state-layer ml-auto inline-flex h-8 items-center gap-1 rounded-full px-2.5 type-label-m text-on-surface-variant">
-          Details <IconArrowDown className={cx("icon size-4 transition-transform duration-200", more && "rotate-180")} />
-        </button>
-      </div>
-      {more && (
-        <div className="mt-2.5 flex flex-col gap-2">
-          {r && (r.intent.note || r.messages.length > 0) && <p className="type-body-m text-on-surface-variant">{r.intent.note || `“${r.messages[r.messages.length - 1].body}”`}</p>}
-          <div className="flex flex-wrap gap-1.5">
-            <RequestPills pills={pills} />
-          </div>
-          <p className="type-body-s text-on-surface-variant">{prev ? `Last spot ${daysBetween(prev.date, today)} days ago (${prev.showName}).` : "No spots on record yet."}</p>
-        </div>
-      )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {!placedShow && (
-          <Menu
-            trigger={(toggle) => (
-              <Button size="sm" variant="tonal" icon={IconMic} onClick={toggle} disabled={!active.length}>
-                Place on a show
-              </Button>
+    <section aria-label="This week" className="mx-3 mt-2 mb-1 flex-none rounded-lg bg-surface-low lg:mx-4 lg:bg-surface-container">
+      <button type="button" onClick={toggle} aria-expanded={expanded} aria-controls={`card-${comic.id}`} className="state-layer pressable flex min-h-11 w-full items-center gap-2 rounded-lg px-3.5 text-left">
+        <span className={cx("size-2 flex-none rounded-full", open ? "bg-primary" : "bg-on-surface-variant/50")} aria-hidden />
+        <span className="min-w-0 flex-1 truncate type-label-l">
+          {summary}
+        </span>
+        <IconArrowDown className={cx("icon size-5 flex-none text-on-surface-variant transition-transform duration-200 ease-out", expanded && "rotate-180")} />
+      </button>
+      <div id={`card-${comic.id}`} inert={!expanded} className={cx("grid transition-[grid-template-rows] duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none", expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex max-h-[46dvh] flex-col gap-2.5 overflow-y-auto overscroll-contain px-4 pt-0.5 pb-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 type-label-m text-on-surface-variant">{week === currentWeek ? "This week" : `Week of ${formatDate(week)}`}</span>
+              {r ? (
+                <>
+                  <Chip tone={open ? "primary" : "neutral"}>{STATUS_LABEL[r.status]}</Chip>
+                  {r.intent.preferredDays.length ? r.intent.preferredDays.map((d) => <Chip key={d}>{DAY_SHORT[d]}</Chip>) : open ? <Chip>Any day</Chip> : null}
+                </>
+              ) : (
+                <Chip>No request</Chip>
+              )}
+              {placedShow && (
+                <Chip tone="success" icon={IconMic}>
+                  {placedShow.name} · {DAY_SHORT[placedShow.weekday]} {formatTime(placedShow.startTime)}
+                </Chip>
+              )}
+            </div>
+            {r && (r.intent.note || r.messages.length > 0) && <p className="type-body-m text-on-surface-variant">{r.intent.note || `“${r.messages[r.messages.length - 1].body}”`}</p>}
+            {pills.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                <RequestPills pills={pills} />
+              </div>
             )}
-          >
-            {(close) =>
-              [...active]
-                .sort((a, b) => Number(preferred.has(b.weekday)) - Number(preferred.has(a.weekday)))
-                .map((s) => {
-                  const l = lineups.find((x) => x.showId === s.id);
-                  return (
-                    <MenuItem key={s.id} highlighted={preferred.has(s.weekday)} hint={`${l?.slots.length ?? 0}/${s.slotCount}`} disabled={l?.status === "confirmed"} onClick={() => (close(), void place(s))}>
-                      {s.name}
-                      <span className="block type-body-s text-on-surface-variant">
-                        {DAY_SHORT[s.weekday]} · {formatTime(s.startTime)}
-                      </span>
-                    </MenuItem>
-                  );
-                })
-            }
-          </Menu>
-        )}
-        {open && (
-          <Button size="sm" variant="text" icon={IconSkip} onClick={() => void closeRequest()}>
-            Close request
-          </Button>
-        )}
-        <Link to={`/requests?q=${encodeURIComponent(comic.name)}`} className="state-layer ml-auto inline-flex h-9 items-center gap-1 rounded-full px-3 type-label-l text-primary">
-          Open in Requests <IconArrowRight className="icon size-4" />
-        </Link>
+            <p className="type-body-s text-on-surface-variant">{prev ? `Last spot ${daysBetween(prev.date, today)} days ago (${prev.showName}).` : "No spots on record yet."}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {!placedShow && (
+                <Menu
+                  trigger={(toggleMenu) => (
+                    <Button size="sm" variant="tonal" icon={IconMic} onClick={toggleMenu} disabled={!active.length}>
+                      Place on a show
+                    </Button>
+                  )}
+                >
+                  {(close) =>
+                    [...active]
+                      .sort((a, b) => Number(preferred.has(b.weekday)) - Number(preferred.has(a.weekday)))
+                      .map((s) => {
+                        const l = lineups.find((x) => x.showId === s.id);
+                        return (
+                          <MenuItem key={s.id} highlighted={preferred.has(s.weekday)} hint={`${l?.slots.length ?? 0}/${s.slotCount}`} disabled={l?.status === "confirmed"} onClick={() => (close(), void place(s))}>
+                            {s.name}
+                            <span className="block type-body-s text-on-surface-variant">
+                              {DAY_SHORT[s.weekday]} · {formatTime(s.startTime)}
+                            </span>
+                          </MenuItem>
+                        );
+                      })
+                  }
+                </Menu>
+              )}
+              {open && (
+                <Button size="sm" variant="text" icon={IconSkip} onClick={() => void closeRequest()}>
+                  Close request
+                </Button>
+              )}
+              <Link to={`/requests?q=${encodeURIComponent(comic.name)}`} className="state-layer ml-auto inline-flex h-9 items-center gap-1 rounded-full px-3 type-label-l text-primary">
+                Open in Requests <IconArrowRight className="icon size-4" />
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   );
