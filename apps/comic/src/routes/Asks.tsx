@@ -91,6 +91,7 @@ export function Asks() {
         bar={
           <Segmented
             full
+            compact
             size="sm"
             value={tab}
             onChange={setTab}

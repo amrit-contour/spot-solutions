@@ -21,12 +21,12 @@ export function AskOpenCard({ a, template, now, busy, onSend, onSkip, onEdit }: 
           <p className="truncate type-title-m">{a.label}</p>
           <p className="truncate type-body-s text-on-surface-variant">{dateTime(a.showDate, a.time)}</p>
         </div>
-        <Chip tone={urgent ? "error" : "neutral"} icon={IconClock} className="flex-none">
-          {closesLabel(a.closesAt, now)}
-        </Chip>
       </div>
 
       <Chips>
+        <Chip tone={urgent ? "error" : "neutral"} icon={IconClock}>
+          {closesLabel(a.closesAt, now)}
+        </Chip>
         {a.canSend ? (
           <Chip tone="fact" icon={IconUserCheck}>
             Ask {firstName(a.curatorName)}
