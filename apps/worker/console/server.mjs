@@ -20,7 +20,7 @@ import { createAi } from "./ai.mjs";
 import { createLive } from "./live.mjs";
 import { createStorage } from "./storageview.mjs";
 import { createBrowser } from "./fsbrowse.mjs";
-import { createWorkerControl, isStopped } from "./control.mjs";
+import { createWorkerControl, isStopped, modelStopped } from "./control.mjs";
 import { createMachine } from "./doctor-run.mjs";
 import { runDoctor, summarize } from "./doctor.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
@@ -138,6 +138,9 @@ async function runCmd(cmd, args, { timeout = 15000, env } = {}) {
 // Stop server / Start server: control.mjs does the platform work; the flag it keeps in .env is respected by the launchers and updaters.
 const workerCtl = createWorkerControl({
   platform: process.platform, uid: process.getuid?.() ?? 0, home: os.homedir(), dataDir: DATA, chromeDir: process.env.PUPPETEER_CACHE_DIR ?? "",
+  ollamaExe: OLLAMA_EXE,
+  // On a Mac the user may run their own Ollama (Ollama.app): then there is no agent of ours to stop or start.
+  modelManaged: () => !MAC || (existsSync(path.join(os.homedir(), "Library", "LaunchAgents", "app.nothingbot.server.ollama.plist")) && !existsSync(path.join(MAC_ROOT, ".external-ollama"))),
   run: runCmd, active: (svc) => isActive(svc === "ollama" ? "ollama" : "nothing-bot-server-worker"), readEnv, writeEnv, dry: DRY,
 });
 // Doctor (doctor.mjs): the same checks the installer and updater run, here for the "Check and repair" button.
@@ -512,13 +515,27 @@ createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
 
-    // Stop or start the WhatsApp worker (and optionally the local model). Returns the new state, the same on every platform.
+    // Stop or start the WhatsApp worker; {models: true} takes the local model with it (the header's "Stop server"/"Start server").
+    // Older pages send start without `models`: that also starts a model they had stopped. Returns the new state, the same on every platform.
     if (url.pathname === "/api/worker" && req.method === "POST") {
       const b = await body(req);
       if (b.action !== "stop" && b.action !== "start") return json(res, 400, { error: "action must be stop or start" });
       if (b.action === "start" && !existsSync(KEY_FILE)) return json(res, 400, { error: "This server isn't connected yet, so there is nothing to start." });
       try {
-        return json(res, 200, { ok: true, ...(await workerCtl.act(b.action, { models: b.models === true && !noLocalModel() })) });
+        const models = noLocalModel() ? false : typeof b.models === "boolean" ? b.models : undefined;
+        return json(res, 200, { ok: true, ...(await workerCtl.act(b.action, { models: b.action === "stop" ? models === true : models })) });
+      } catch (e) {
+        return json(res, 409, { error: e.message });
+      }
+    }
+
+    // Stop or start only the local model (Ollama); the worker keeps running and uses Gemini while it is off.
+    if (url.pathname === "/api/model" && req.method === "POST") {
+      const b = await body(req);
+      if (b.action !== "stop" && b.action !== "start") return json(res, 400, { error: "action must be stop or start" });
+      if (noLocalModel()) return json(res, 400, { error: "This server runs without a local model (Gemini only)." });
+      try {
+        return json(res, 200, { ok: true, ...(await workerCtl.act(`model-${b.action}`)) });
       } catch (e) {
         return json(res, 409, { error: e.message });
       }
@@ -536,6 +553,7 @@ createServer(async (req, res) => {
       const { service } = await body(req);
       if (service === "ollama" && noLocalModel()) return json(res, 400, { error: "This server runs without a local model (Gemini only)." });
       const unit = service === "ollama" ? "ollama" : "nothing-bot-server-worker";
+      if (unit === "ollama" && modelStopped(readEnv())) return json(res, 409, { error: "The local model is stopped. Press Start first." });
       if (unit !== "ollama" && isStopped(readEnv())) return json(res, 409, { error: "The server is stopped. Press Start server first." });
       await restart(unit);
       return json(res, 200, { ok: true, active: await isActive(unit) });

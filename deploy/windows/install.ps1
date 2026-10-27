@@ -236,7 +236,7 @@ Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyC
   Where-Object { $_.ExecutablePath -and $_.ExecutablePath -like "$ChromeDir\*" } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Seconds 2
-# Launcher: start Ollama if needed, then keep the worker running. Full paths, so it works as SYSTEM. Whether a local
+# Launcher: start Ollama if needed (unless the owner stopped it: NBS_MODEL_STOPPED), then keep the worker running. Full paths, so it works as SYSTEM. Whether a local
 # model is wanted, and where Ollama is, are looked up each time round, so turning it on later in the console just works.
 $Launcher = "$Root\run-worker.ps1"
 @'
@@ -246,6 +246,7 @@ $env:PUPPETEER_CACHE_DIR = '__CHROME__'
 $env:Path = '__NODEDIR__;' + $env:Path
 function Ollama-Up { try { Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null; $true } catch { $false } }
 function Stopped { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_WORKER_STOPPED=(1|true|yes)\s*$' } catch { $false } }
+function Model-Stopped { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_MODEL_STOPPED=(1|true|yes)\s*$' } catch { $false } }
 function No-Local { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_NO_LOCAL_MODEL=(1|true|yes)\s*$' } catch { $false } }
 function Find-Ollama {
   foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { return $c } }
@@ -258,7 +259,8 @@ while ($true) {
   # Idle while the owner has stopped the server (console: Stop server), and until the server is connected (a key exists).
   if (Stopped) { Start-Sleep 10; continue }
   if (-not (Test-Path '__KEYFILE__')) { Start-Sleep 10; continue }
-  if (-not (No-Local) -and -not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 } }
+  # Ollama is started only when a local model is wanted and the owner hasn't stopped it (console: Ollama, Stop).
+  if (-not (No-Local) -and -not (Model-Stopped) -and -not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 } }
   "$(Get-Date -Format s) starting worker" | Out-File -Append -Encoding utf8 '__DATADIR__\worker.log'
   & '__NODE__' '__APPDIR__\apps\worker\node_modules\tsx\dist\cli.mjs' --env-file-if-exists=.env src\index.ts *>> '__DATADIR__\worker.log'
   Start-Sleep 10

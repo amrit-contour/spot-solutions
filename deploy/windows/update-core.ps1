@@ -64,16 +64,24 @@ function Start-Worker {
   Enable-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue | Out-Null
   Start-ScheduledTask -TaskName $WorkerTask -ErrorAction SilentlyContinue
 }
-# Launchers from before "Stop server" don't look at the flag: teach them (it takes effect when the loop is next started).
+# Launchers from before "Stop server" / the Ollama Stop button don't look at the flags: teach them (it takes effect when the loop
+# is next started). Each patch is independent, so a launcher that knows the worker flag still learns the model flag.
 function Update-Launcher {
   $f = "$Root\run-worker.ps1"
   if (-not (Test-Path $f)) { return }
   $t = Get-Content $f -Raw
-  if ($t -match 'NBS_WORKER_STOPPED') { return }
-  $fn = "function Stopped { try { (Get-Content '$EnvFile' -Raw) -match '(?m)^NBS_WORKER_STOPPED=(1|true|yes)\s*$' } catch { `$false } }"
-  $t = $t.Replace("function No-Local {", "$fn`r`nfunction No-Local {")
-  $t = [regex]::Replace($t, '(?m)^(while \(\$true\) \{)\r?$', '$1' + "`r`n  if (Stopped) { Start-Sleep 10; continue }")
-  Set-Content -Encoding UTF8 $f $t
+  $orig = $t
+  if ($t -notmatch 'NBS_WORKER_STOPPED') {
+    $fn = "function Stopped { try { (Get-Content '$EnvFile' -Raw) -match '(?m)^NBS_WORKER_STOPPED=(1|true|yes)\s*$' } catch { `$false } }"
+    $t = $t.Replace("function No-Local {", "$fn`r`nfunction No-Local {")
+    $t = [regex]::Replace($t, '(?m)^(while \(\$true\) \{)\r?$', '$1' + "`r`n  if (Stopped) { Start-Sleep 10; continue }")
+  }
+  if ($t -notmatch 'NBS_MODEL_STOPPED') {
+    $fn = "function Model-Stopped { try { (Get-Content '$EnvFile' -Raw) -match '(?m)^NBS_MODEL_STOPPED=(1|true|yes)\s*$' } catch { `$false } }"
+    $t = $t.Replace("function No-Local {", "$fn`r`nfunction No-Local {")
+    $t = $t.Replace('if (-not (No-Local) -and -not (Ollama-Up))', 'if (-not (No-Local) -and -not (Model-Stopped) -and -not (Ollama-Up))')
+  }
+  if ($t -ne $orig) { Set-Content -Encoding UTF8 $f $t }
 }
 # The console shortcut's icon is the Nothing BOT Server icon (it arrives with the code). Servers installed before it existed
 # get it here: copy the file and point the existing Console shortcuts at it. Never fatal.
@@ -91,6 +99,8 @@ function Update-ConsoleIcon {
     }
   } catch { Write-Host "Couldn't refresh the console icon: $($_.Exception.Message)" }
 }
+# The owner stopped Ollama from the console (Ollama, Stop): updates leave it stopped until Start (or turning the local model on).
+function Test-ModelStopped { return ((Get-EnvValue "NBS_MODEL_STOPPED") -match '^(1|true|yes)$') }
 function Test-NoLocal { return ((Get-EnvValue "NBS_NO_LOCAL_MODEL") -match '^(1|true|yes)$') }
 function Get-ModelName([string]$Default = "gemma3:4b") {
   $m = Get-EnvValue "NBS_LOCAL_MODEL"
@@ -126,6 +136,7 @@ function Restart-Console {
 function Invoke-Pull([string]$Model) {
   $ollama = Find-Ollama
   if (-not $ollama) { return }
+  if (Test-ModelStopped) { return }   # stopped by the owner: no model download until Start
   $env:OLLAMA_MODELS = $ModelsDir
   $started = $null
   if (-not (Test-OllamaUp)) { $started = Start-Process -FilePath $ollama -ArgumentList "serve" -WindowStyle Hidden -PassThru }
@@ -182,6 +193,7 @@ try {
     [Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $ModelsDir, "Machine")
     [Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", "24h", "Machine")
     Stop-WorkerProcesses
+    Set-EnvValue "NBS_MODEL_STOPPED" "0"   # turning the local model on starts it
     Invoke-Pull (Get-ModelName)
     Set-EnvValue "NBS_NO_LOCAL_MODEL" "0"
     Set-Progress "running" "Restarting the worker"

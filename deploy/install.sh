@@ -116,10 +116,16 @@ Environment=OLLAMA_KEEP_ALIVE=24h
 Environment=OLLAMA_NUM_PARALLEL=1
 EOF
 systemctl daemon-reload
-systemctl enable --now ollama
-for _ in $(seq 1 30); do curl -fs http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
-ollama pull "${MODEL}"
-ok "Gemma ready"
+# Ollama the owner stopped from the console (NBS_MODEL_STOPPED=1 in .env) stays stopped until Start there.
+if grep -Eqi '^NBS_MODEL_STOPPED=(1|true|yes)[[:space:]]*$' "${ENV_FILE}" 2>/dev/null; then
+  systemctl disable --now ollama >/dev/null 2>&1 || true
+  ok "Ollama was stopped from the console: leaving it stopped (the model downloads when you start it)"
+else
+  systemctl enable --now ollama
+  for _ in $(seq 1 30); do curl -fs http://127.0.0.1:11434/api/tags >/dev/null && break; sleep 1; done
+  ollama pull "${MODEL}"
+  ok "Gemma ready"
+fi
 fi
 
 step "Service account and code"

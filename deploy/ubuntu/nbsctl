@@ -58,6 +58,8 @@ envset() { # envset KEY VALUE: keeps the file's owner and 600 mode
 # The owner pressed "Stop server" in the console: it sets NBS_WORKER_STOPPED=1 in .env and disables the unit. Nothing here starts it again.
 worker_stopped() { [[ "$(envget NBS_WORKER_STOPPED)" =~ ^(1|true|yes)$ ]]; }
 restart_worker() { if worker_stopped; then echo "(skip) the worker was stopped from the console; it stays stopped"; else sysctl_ restart nothing-bot-server-worker || true; fi; }
+# The owner stopped Ollama alone from the console: it is disabled, and nothing here starts it again (turning the local model on does).
+model_stopped() { [[ "$(envget NBS_MODEL_STOPPED)" =~ ^(1|true|yes)$ ]]; }
 no_local() { [[ "$(envget NBS_NO_LOCAL_MODEL)" =~ ^(1|true|yes)$ ]]; }
 model_name() { local m; m="$(envget NBS_LOCAL_MODEL)"; [[ "$m" =~ ^[A-Za-z0-9._:/-]{1,100}$ ]] || m="${1:-gemma3:4b}"; echo "$m"; }
 
@@ -121,6 +123,7 @@ if [[ "$TASK" == local-on ]]; then
     printf '[Service]\nEnvironment=OLLAMA_KEEP_ALIVE=24h\nEnvironment=OLLAMA_NUM_PARALLEL=1\n' > /etc/systemd/system/ollama.service.d/nothing-bot-server.conf
     systemctl daemon-reload
   fi
+  envset NBS_MODEL_STOPPED 0   # turning the local model on starts it
   sysctl_ enable --now ollama || fail "Couldn't start Ollama."
   pull_model "$(model_name)"
   envset NBS_NO_LOCAL_MODEL 0

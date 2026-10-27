@@ -109,6 +109,7 @@ export const CHECKS = [
     run: async (d) => {
       const env = d.parseEnv(d.readText(d.paths.envFile) ?? "");
       if (/^(1|true|yes)$/i.test(env.NBS_NO_LOCAL_MODEL ?? "")) return { ok: true, detail: "This server uses Gemini only; no local model needed" };
+      if (/^(1|true|yes)$/i.test(env.NBS_MODEL_STOPPED ?? "")) return { ok: true, detail: "Ollama is stopped (you stopped it in the console); Gemini is used" };
       const model = env.NBS_LOCAL_MODEL || d.defaultModel;
       const tags = await d.ollamaTags(); // null when unreachable
       if (!tags) return { ok: false, detail: "Ollama isn't running or isn't installed", repairable: true, background: true };

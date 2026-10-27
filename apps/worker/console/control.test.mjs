@@ -2,15 +2,15 @@ import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { commands, createWorkerControl, isStopped, modelStopped, workerState, LINUX_UNITS, MAC_LABELS } from "./control.mjs";
+import { commands, createWorkerControl, isStopped, modelStopped, modelState, workerState, UNMANAGED, WIN_MODEL_STOP_SCRIPT, LINUX_UNITS, MAC_LABELS } from "./control.mjs";
 import { WIN_STOP_SCRIPT, workerStopped, contextFor } from "./move.mjs";
 
 const REPO = path.join(import.meta.dirname, "..", "..", "..");
 const text = (...p) => readFileSync(path.join(REPO, ...p), "utf8");
 
 /** A fake machine: records every command, answers from a script, and keeps an in-memory .env. */
-function rig(platform, { activeUntil = 0, fail = () => false, out = {} } = {}) {
-  const calls = [], env = {};
+function rig(platform, { activeUntil = 0, fail = () => false, out = {}, managed = true, env0 = {} } = {}) {
+  const calls = [], env = { ...env0 };
   let t = 0, polls = 0;
   const ctl = createWorkerControl({
     platform, uid: 501, home: "/Users/me", dataDir: "/data", chromeDir: "C:\\chrome",
@@ -22,7 +22,7 @@ function rig(platform, { activeUntil = 0, fail = () => false, out = {} } = {}) {
     sleep: async (ms) => { t += ms; },
     now: () => t,
     graceMs: 30_000,
-    killPid: () => {},
+    killPid: () => {}, ollamaExe: "C:\\ollama.exe", modelManaged: () => managed,
   });
   return { ctl, calls, env, lines: () => calls.filter((c) => c.line !== "active?").map((c) => c.line) };
 }
@@ -88,6 +88,13 @@ describe("platform command builders", () => {
     expect(text("deploy", "windows", "update-core.ps1")).toContain("function Start-Worker");
     expect(text("deploy", "windows", "update-core.ps1").match(/Start-ScheduledTask -TaskName \$WorkerTask/g)).toHaveLength(1); // only inside Start-Worker
     expect(text("deploy", "mac", "nbsctl")).toContain("worker_stopped");
+    expect(text("deploy", "windows", "install.ps1")).toContain("NBS_MODEL_STOPPED");
+    expect(text("deploy", "windows", "install.ps1")).toContain("-not (Model-Stopped) -and -not (Ollama-Up)");
+    expect(text("deploy", "windows", "update-core.ps1")).toContain("NBS_MODEL_STOPPED"); // Update-Launcher patches old launchers
+    expect(text("deploy", "windows", "update-core.ps1")).toContain("function Test-ModelStopped");
+    expect(text("deploy", "mac", "nbsctl")).toContain("model_stopped");
+    expect(text("deploy", "ubuntu", "nbsctl")).toContain("model_stopped");
+    expect(text("deploy", "install.sh")).toContain("NBS_MODEL_STOPPED");
     expect(text("deploy", "ubuntu", "nbsctl")).not.toContain("sysctl_ restart nothing-bot-server-worker || true\n");
     expect(LINUX_UNITS.worker).toBe("nothing-bot-server-worker");
   });
@@ -98,7 +105,7 @@ describe("stop and start", () => {
     const r = rig("linux", { activeUntil: 3 });
     const v = await r.ctl.act("stop");
     expect(r.lines()).toEqual(["sudo -n /usr/bin/systemctl disable --now nothing-bot-server-worker"]);
-    expect(r.env).toMatchObject({ NBS_WORKER_STOPPED: "1", NBS_MODEL_STOPPED: "0" });
+    expect(r.env).toEqual({ NBS_WORKER_STOPPED: "1" }); // the model flag is left alone
     expect(v.state).toBe("stopped");
   });
   it("Ubuntu: forces after about 30 s", async () => {
@@ -181,5 +188,93 @@ describe("stop and start", () => {
     await first;
     const d = createWorkerControl({ platform: "linux", dry: true, run: async () => { throw new Error("ran"); }, active: async () => false, readEnv: () => ({ NBS_WORKER_STOPPED: "1" }), writeEnv: () => {} });
     await expect(d.act("start")).resolves.toMatchObject({ stopped: true }); // (the fake env doesn't change)
+  });
+});
+
+describe("Ollama on its own (model-stop / model-start)", () => {
+  it("shows running, stopping, stopped, starting or down", () => {
+    expect(modelState({ stopped: false, up: true, starting: false })).toBe("running");
+    expect(modelState({ stopped: false, up: false, starting: true })).toBe("starting");
+    expect(modelState({ stopped: false, up: false, starting: false })).toBe("down");
+    expect(modelState({ stopped: true, up: true, starting: false })).toBe("stopping");
+    expect(modelState({ stopped: true, up: false, starting: true })).toBe("stopped");
+  });
+  it("Ubuntu: disable --now / enable --now ollama, the worker is not touched, the flag is kept", async () => {
+    const r = rig("linux", { env0: { NBS_WORKER_STOPPED: "0" } });
+    const v = await r.ctl.act("model-stop");
+    expect(r.lines()).toEqual(["sudo -n /usr/bin/systemctl disable --now ollama"]);
+    expect(r.env).toMatchObject({ NBS_MODEL_STOPPED: "1", NBS_WORKER_STOPPED: "0" });
+    expect(v.model).toMatchObject({ stopped: true, managed: true });
+    r.calls.length = 0;
+    await r.ctl.act("model-start");
+    expect(r.lines()).toEqual(["sudo -n /usr/bin/systemctl enable --now ollama"]);
+    expect(r.env.NBS_MODEL_STOPPED).toBe("0");
+  });
+  it("Ubuntu: an old sudoers rule undoes the flag and says what to do", async () => {
+    const r = rig("linux", { fail: (l) => l.includes("disable --now ollama") });
+    await expect(r.ctl.act("model-stop")).rejects.toThrow(/needs one update/);
+    expect(r.env.NBS_MODEL_STOPPED).toBe("0");
+    const s = rig("linux", { env0: { NBS_MODEL_STOPPED: "1" }, fail: (l) => l.includes("enable --now ollama") });
+    await expect(s.ctl.act("model-start")).rejects.toThrow(/needs one update/);
+    expect(s.env.NBS_MODEL_STOPPED).toBe("1");
+  });
+  it("macOS: disable and unload, then enable, load if needed and kick", async () => {
+    const r = rig("darwin");
+    await r.ctl.act("model-stop");
+    expect(r.lines()).toEqual([`launchctl disable gui/501/${MAC_LABELS.ollama}`, `launchctl bootout gui/501/${MAC_LABELS.ollama}`]);
+    r.calls.length = 0;
+    await r.ctl.act("model-start");
+    expect(r.lines()).toEqual([`launchctl enable gui/501/${MAC_LABELS.ollama}`, `launchctl print gui/501/${MAC_LABELS.ollama}`, `launchctl kickstart gui/501/${MAC_LABELS.ollama}`]);
+  });
+  it("macOS: the user's own Ollama is not ours to stop or start", async () => {
+    const r = rig("darwin", { managed: false });
+    await expect(r.ctl.act("model-stop")).rejects.toThrow(UNMANAGED);
+    await expect(r.ctl.act("model-start")).rejects.toThrow(/isn't managed by Nothing BOT Server/);
+    expect(r.lines()).toEqual([]);
+    expect(r.env.NBS_MODEL_STOPPED).toBeUndefined();
+    expect((await r.ctl.view()).model.managed).toBe(false);
+  });
+  it("Windows: sets the flag and stops Ollama by path; Start clears it and launches Ollama", async () => {
+    const r = rig("win32");
+    await r.ctl.act("model-stop");
+    expect(r.lines()).toEqual([expect.stringContaining("ollama app.exe")]);
+    expect(WIN_MODEL_STOP_SCRIPT).toContain("ExecutablePath -like '*ollama*'");
+    expect(r.env.NBS_MODEL_STOPPED).toBe("1");
+    r.calls.length = 0;
+    await r.ctl.act("model-start");
+    expect(r.lines()[0]).toContain("Start-Process -FilePath 'C:\\ollama.exe' -ArgumentList serve");
+    expect(r.env.NBS_MODEL_STOPPED).toBe("0");
+    expect(commands("win32").startModel("C:\\it's\\o.exe")[1].at(-1)).toContain("'C:\\it''s\\o.exe'");
+  });
+  it("stopping the worker alone leaves the model flag; Stop server (models) sets it; Start with models:false leaves it", async () => {
+    const r = rig("linux", { env0: { NBS_MODEL_STOPPED: "1" } });
+    await r.ctl.act("stop");
+    expect(r.env.NBS_MODEL_STOPPED).toBe("1"); // already stopped by the owner: untouched
+    r.calls.length = 0;
+    await r.ctl.act("start", { models: false });
+    expect(r.lines()).toEqual(["sudo -n /usr/bin/systemctl enable --now nothing-bot-server-worker"]);
+    expect(r.env).toMatchObject({ NBS_WORKER_STOPPED: "0", NBS_MODEL_STOPPED: "1" });
+    const s = rig("linux");
+    await s.ctl.act("stop");
+    expect(s.env.NBS_MODEL_STOPPED).toBeUndefined();
+    await s.ctl.act("stop", { models: true });
+    expect(s.env.NBS_MODEL_STOPPED).toBe("1");
+    await s.ctl.act("start", { models: true });
+    expect(s.env).toMatchObject({ NBS_WORKER_STOPPED: "0", NBS_MODEL_STOPPED: "0" });
+  });
+  it("a worker stop that fails restores the model flag it found", async () => {
+    const r = rig("linux", { env0: { NBS_MODEL_STOPPED: "1" }, fail: (l) => l.includes("disable --now") });
+    await expect(r.ctl.act("stop", { models: true })).rejects.toThrow(/needs one update/);
+    expect(r.env.NBS_MODEL_STOPPED).toBe("1");
+  });
+  it("Stop server leaves an unmanaged Ollama alone and does not set the model flag", async () => {
+    const r = rig("darwin", { managed: false, out: { "ps -axo": "" } });
+    await r.ctl.act("stop", { models: true });
+    expect(r.lines().some((l) => l.includes("ollama"))).toBe(false);
+    expect(r.env.NBS_MODEL_STOPPED).toBeUndefined();
+  });
+  it("the view says the model is stopped for good until Start", async () => {
+    const r = rig("linux", { env0: { NBS_MODEL_STOPPED: "1" } });
+    expect((await r.ctl.view()).model.state).toBe("stopped");
   });
 });

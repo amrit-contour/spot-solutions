@@ -264,6 +264,7 @@
 
   /* ---- live dashboard ---- */
   .dot.warn { background: var(--primary); }
+  .dot.off { background: var(--on-surface-v); opacity: .6; } /* switched off by the owner: neither healthy nor a fault */
   .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
   @media (min-width: 560px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
   @media (min-width: 900px) { .tiles { grid-template-columns: repeat(6, 1fr); } }
@@ -401,7 +402,7 @@ const logo = classicTile + `<svg class="logo lg-d" viewBox="0 0 512 512" aria-hi
 
 // Health card: the server doctor's checks (GET /api/doctor) and repairs (POST /api/doctor/repair).
 let hl = { data: null, loading: false, busy: null, t0: 0, err: null, note: null };
-let state = null, aiv = null, conn = null, editing = false, phone = null, bootId = null, restarting = false, stopModel = false, ctlBusy = null;
+let state = null, aiv = null, conn = null, editing = false, phone = null, bootId = null, restarting = false, ctlBusy = null;
 // Collapsible sections: open state per section, remembered on this machine.
 let secs = {};
 try { secs = JSON.parse(localStorage.getItem("nbs-console-sections") || "{}"); } catch {}
@@ -508,6 +509,8 @@ function updateBanner(s) {
 
 // Things the owner must not be able to hide: they always show above the sections.
 // Stop server / Start server: "running" | "stopping" | "stopped" | "starting" | "down" (see workerControl in /api/status).
+// Ollama has its own Stop/Start: "running" | "stopping" | "stopped" | "starting" | "down" (workerControl.model in /api/status).
+const mstate = (s) => ctlBusy === "model-stop" ? "stopping" : ctlBusy === "model-start" ? "starting" : (s.workerControl?.model?.state ?? (s.services.ollama ? "running" : "down"));
 const wstate = (s) => ctlBusy === "stop" ? "stopping" : ctlBusy === "start" ? "starting" : (s.workerControl?.state ?? (s.services.worker ? "running" : "down"));
 // ---------- Health: check and repair ----------
 // The banner shows when the doctor says the browser is missing; before the first check, when the worker log says so.
@@ -586,7 +589,7 @@ function alerts(s) {
   const st = s.storage;
   if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Nothing BOT Server keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
   if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Nothing BOT Curating below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
-  else if (ws === "stopped" || ws === "stopping") out.push(`<div class="banner bad" role="alert"><div class="grow"><b>${ws === "stopping" ? "Stopping the server…" : "Your server is stopped."}</b><div class="small">${ws === "stopping" ? "WhatsApp is being saved and closed. This can take up to a minute." : "WhatsApp messages aren't being read. It stays stopped, even after a restart or an update, until you start it."}</div></div>${ws === "stopped" ? `<button data-worker="start">Start server</button>` : ""}</div>`);
+  else if (ws === "stopped" || ws === "stopping") out.push(`<div class="banner bad" role="alert"><div class="grow"><b>${ws === "stopping" ? "Stopping the server…" : "Your server is stopped."}</b><div class="small">${ws === "stopping" ? "WhatsApp is being saved and closed. This can take up to a minute." : "WhatsApp messages aren't being read. It stays stopped, even after a restart or an update, until you start it."}</div></div>${ws === "stopped" ? `<button data-worker="start" data-models="1">Start server</button>` : ""}</div>`);
   else if (ws === "starting") out.push(`<div class="banner busy" role="status">${spin}<div class="grow"><b>Starting the server…</b><div class="small">WhatsApp reconnects within a minute.</div></div></div>`);
   else if (!s.services.worker && !s.update.running) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The worker isn't running</b><div class="small">WhatsApp is offline until it starts. Try restarting it; the logs say why it stopped.</div></div><button data-restart="worker">Restart worker</button></div>`);
   return out.length ? `<div class="alerts">${out.join("")}</div>` : "";
@@ -662,7 +665,7 @@ function aiCard(s) {
   const summary = `${a.mode ? esc(a.modes[a.mode]) : "Built-in default"} · ${local ? "local model on" : "Gemini only"}${hasKey ? " · Gemini key set" : ""}`;
   return sec("ai", "AI models", summary, `
     <div class="blk">
-      <div class="row2"><div class="grow"><b>Local model on this computer</b><div class="muted small">${local ? (a.ollama.up ? `Ollama is running with ${a.ollama.models.length} model${a.ollama.models.length === 1 ? "" : "s"}. Chats stay on this machine.` : "On, but Ollama isn't answering. Restart it under Services.") : "Off. This server answers with Gemini only, and can't host accounts set to Local only."}</div></div>
+      <div class="row2"><div class="grow"><b>Local model on this computer</b><div class="muted small">${local ? (a.ollama.up ? `Ollama is running with ${a.ollama.models.length} model${a.ollama.models.length === 1 ? "" : "s"}. Chats stay on this machine.` : (state?.workerControl?.model?.stopped ? "On, but Ollama is stopped. Start it under Services." : "On, but Ollama isn't answering. Restart it under Services.")) : "Off. This server answers with Gemini only, and can't host accounts set to Local only."}</div></div>
         <button class="${local ? "tonal" : ""}" data-local="${local ? "off" : "on"}" ${localBusy ? "disabled" : ""}>${localBusy ? "Working…" : local ? "Turn off" : "Turn on"}</button></div>
       ${!local && lowMem ? `<div class="muted small" style="margin-top:6px">This computer has ${fmt(s.memory.total)} of memory. A local model wants about 8 GB; Gemini works fine without it.</div>` : ""}
       ${!local ? `<div class="muted small" style="margin-top:6px">Turning it on installs Ollama and downloads the model (about 3.5 GB). It runs in the background; this page shows progress.</div>` : ""}
@@ -923,7 +926,8 @@ function logSummary(text) {
 function render() {
   const s = state, c = s.config, k = c.key;
   const ws = wstate(s), wStopped = ws === "stopped" || ws === "stopping";
-  const allUp = !wStopped && s.services.worker && (s.services.ollama || !s.localModel); // Gemini-only servers have no Ollama
+  const ms = mstate(s), mOff = ms === "stopped" || ms === "stopping";
+  const allUp = !wStopped && s.services.worker && (s.services.ollama || !s.localModel || mOff); // Gemini-only servers have no Ollama; one the owner stopped is not a fault
   const steps = [
     { done: !!(k && k.projectId), title: "Connected to Nothing BOT Curating", body: k && k.projectId ? `Project <b>${esc(k.projectId)}</b> · <span class="mono">${esc(k.clientEmail)}</span>` : "Sign in with your Nothing BOT Curating account below, or use a join code. <a href=\"https://nothingbotcurating.web.app/help#several-servers\" target=\"_blank\" rel=\"noreferrer\">How ↗</a>" },
     { done: c.admins.length > 0, title: "Admins", body: c.admins.length ? c.admins.map(esc).join(", ") : "Emails that can see this server's page in the Nothing BOT Curating app. Connecting with your account adds yours." },
@@ -943,9 +947,8 @@ function render() {
   const serverSummary = `<span class="dot ${allUp ? "ok" : "bad"}" style="display:inline-block;width:8px;height:8px;margin-right:6px"></span>${wStopped ? "Stopped" : allUp ? "All running" : "Needs attention"} · CPU ${cpuPct}% · memory ${memPct}%${s.disk ? ` · ${lowDisk ? `<span class="err-text">${fmt(s.disk.free)} free</span>` : `${fmt(s.disk.free)} free`}` : ""}`;
   const serverBody = `<div class="eq">
       <div class="panel flush"><h3>Services</h3>
-        <div class="row"><span class="dot ${ws === "running" ? "ok" : "bad"}"></span><div class="grow"><b>Nothing BOT worker</b><div class="muted small">${{ running: "Running", stopping: "Stopping…", stopped: "Stopped. WhatsApp isn't being read.", starting: "Starting…" }[ws] ?? (k ? "Stopped. Check the logs below." : "Waits for the Firebase key")}</div></div>${ws === "running" || ws === "down" ? `${k ? `<button class="tonal sm" data-restart="worker">Restart</button>` : ""}${k && ws === "running" ? `<button class="tonal sm" data-worker="stop">Stop server</button>` : ""}` : ws === "stopped" ? `<button class="tonal sm" data-worker="start">Start server</button>` : ""}</div>
-        ${k && ws === "running" && s.localModel ? `<div class="row"><label class="chk" style="margin:0"><input type="checkbox" data-stop-model ${stopModel ? "checked" : ""}> Also stop the local model</label></div>` : ""}
-        ${s.localModel ? `<div class="row"><span class="dot ${s.services.ollama ? "ok" : "bad"}"></span><div class="grow"><b>Ollama</b><div class="muted small">${s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"} installed` : "Not responding"}</div></div><button class="tonal sm" data-restart="ollama">Restart</button></div>` : `<div class="row"><span class="dot ok"></span><div class="grow"><b>Local model</b><div class="muted small">Off: this server answers with Gemini only. Turn it on under AI models.</div></div></div>`}
+        <div class="row"><span class="dot ${ws === "running" ? "ok" : "bad"}"></span><div class="grow"><b>Nothing BOT worker</b><div class="muted small">${{ running: "Running", stopping: "Stopping…", stopped: "Stopped. WhatsApp isn't being read.", starting: "Starting…" }[ws] ?? (k ? "Stopped. Check the logs below." : "Waits for the Firebase key")}</div></div>${ws === "running" || ws === "down" ? `${k ? `<button class="tonal sm" data-restart="worker">Restart</button>` : ""}${k && ws === "running" ? `<button class="tonal sm" data-worker="stop">Stop</button>` : ""}` : ws === "stopped" ? `<button class="tonal sm" data-worker="start">Start</button>` : ""}</div>
+        ${s.localModel ? `<div class="row"><span class="dot ${ms === "running" ? "ok" : mOff ? "off" : "bad"}"></span><div class="grow"><b>Ollama</b><div class="muted small">${ms === "running" ? `Running · ${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"}` : ms === "stopping" ? "Stopping…" : ms === "stopped" ? "Stopped. Local AI is off; Gemini is used if you've added a key." : ms === "starting" ? "Starting…" : "Not responding"}</div></div>${ms === "running" || ms === "down" ? `<button class="tonal sm" data-restart="ollama">Restart</button>${ms === "running" ? `<button class="tonal sm" data-model="stop">Stop</button>` : ""}` : ms === "stopped" ? `<button class="tonal sm" data-model="start">Start</button>` : ""}</div>` : `<div class="row"><span class="dot ok"></span><div class="grow"><b>Local model</b><div class="muted small">Off: this server answers with Gemini only. Turn it on under AI models.</div></div></div>`}
         ${s.ollama.models.length ? `<div class="row"><div class="models">${s.ollama.models.map((m) => `<span class="chip neutral mono">${esc(m.name)} · ${fmt(m.size)}</span>`).join("")}</div></div>` : ""}
       </div>
       <div class="panel"><h3>Machine</h3>
@@ -1304,12 +1307,19 @@ function wire() {
   wireLayout();
   wireStorage();
   const logs = $("#logs"); if (logs) logs.scrollTop = logs.scrollHeight;
-  const sm = $("[data-stop-model]"); if (sm) sm.onchange = () => { stopModel = sm.checked; };
   document.querySelectorAll("[data-worker]").forEach((b) => b.onclick = async () => {
     const act = b.dataset.worker;
-    if (act === "stop" && !confirm("Stop the server?\n\nWhatsApp is saved and closed, and your messages are not read until you press Start server. It stays stopped after a restart or an update." + (stopModel && state?.localModel ? "\n\nThe local model is stopped too." : ""))) return;
+    if (act === "stop" && !confirm("Stop the worker?\n\nWhatsApp is saved and closed, and your messages are not read until you press Start. It stays stopped after a restart or an update. The local model keeps running.")) return;
     ctlBusy = act; render();
-    try { const r = await api("/api/worker", { action: act, models: act === "stop" && stopModel }); toast(act === "stop" ? "Server stopped" : r.state === "running" ? "Server running" : "Starting the server…"); }
+    try { const r = await api("/api/worker", { action: act, models: b.dataset.models === "1" }); toast(act === "stop" ? "Worker stopped" : r.state === "running" ? "Worker running" : "Starting the worker…"); }
+    catch (e) { toast(e.message); }
+    ctlBusy = null; refresh(true);
+  });
+  document.querySelectorAll("[data-model]").forEach((b) => b.onclick = async () => {
+    const act = b.dataset.model;
+    if (act === "stop" && !confirm("Stop Ollama?\n\nLocal AI turns off and the server uses Gemini if you've added a key. It stays stopped after a restart or an update until you press Start.")) return;
+    ctlBusy = "model-" + act; render();
+    try { const r = await api("/api/model", { action: act }); toast(act === "stop" ? "Ollama stopped" : r.model?.state === "running" ? "Ollama running" : "Starting Ollama…"); }
     catch (e) { toast(e.message); }
     ctlBusy = null; refresh(true);
   });

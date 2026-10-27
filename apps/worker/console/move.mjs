@@ -309,6 +309,10 @@ if (@(Get-Browsers).Count -or @(Get-Workers).Count) { Write-Output 'STILL_RUNNIN
 export function workerStopped(ctx) {
   try { return /^NBS_WORKER_STOPPED=(1|true|yes)\s*$/im.test(readFileSync(ctx.envFile, "utf8")); } catch { return false; }
 }
+/** True when the owner stopped the local model (NBS_MODEL_STOPPED=1): a move must not start Ollama again. */
+export function modelFlagStopped(ctx) {
+  try { return /^NBS_MODEL_STOPPED=(1|true|yes)\s*$/im.test(readFileSync(ctx.envFile, "utf8")); } catch { return false; }
+}
 export const winStopped = (out) => /STOPPED/.test(String(out));
 
 export function makeOps(ctx, { dry = false, log = console.log } = {}) {
@@ -422,7 +426,7 @@ Start-ScheduledTask -TaskName NothingBotServerConsole`);
       } else if (mac) {
         if (existsSync(ctl)) await sh("/bin/bash", [ctl, "restart", "all"], { strict: true });
       } else {
-        if (models) await sh("systemctl", ["start", "ollama"]);
+        if (models && !modelFlagStopped(ctx)) await sh("systemctl", ["start", "ollama"]);
         if (!keepStopped) await sh("systemctl", ["restart", "nothing-bot-server-worker"]);
         await sh("systemctl", ["restart", "nothing-bot-server-console"]);
       }

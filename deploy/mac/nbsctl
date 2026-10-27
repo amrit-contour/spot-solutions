@@ -189,6 +189,8 @@ retire_legacy() {
 # The owner pressed "Stop server" in the console (it sets NBS_WORKER_STOPPED=1 in .env and unloads + disables the worker agent).
 # start, setup and update then leave the worker alone, and the agent's own wrapper idles if it is ever loaded anyway.
 worker_stopped() { grep -Eqi '^NBS_WORKER_STOPPED=(1|true|yes)[[:space:]]*$' "$APP/apps/worker/.env" 2>/dev/null; }
+# The owner stopped Ollama alone from the console (NBS_MODEL_STOPPED=1): start, setup and update leave its agent alone too.
+model_stopped() { grep -Eqi '^NBS_MODEL_STOPPED=(1|true|yes)[[:space:]]*$' "$APP/apps/worker/.env" 2>/dev/null; }
 loaded() { launchctl print "gui/$UID_N/$1" >/dev/null 2>&1; }
 running() { launchctl print "gui/$UID_N/$1" 2>/dev/null | grep -q "state = running"; }
 
@@ -285,6 +287,7 @@ cmd_start() {
   for l in "${LABELS[@]}"; do
     [[ -f "$AGENTS/$l.plist" ]] || continue
     [[ "$l" == app.nothingbot.server.worker ]] && worker_stopped && continue   # stopped from the console: stays stopped until Start server
+    [[ "$l" == app.nothingbot.server.ollama ]] && model_stopped && continue     # Ollama stopped from the console: stays stopped until Start
     loaded "$l" || launchctl bootstrap "gui/$UID_N" "$AGENTS/$l.plist" 2>/dev/null || true
     launchctl kickstart "gui/$UID_N/$l" 2>/dev/null || true
   done
@@ -311,6 +314,7 @@ cmd_status() {
     local s=stopped
     if [[ $l == app.nothingbot.server.ollama ]] && no_local; then s=off
     elif [[ $l == app.nothingbot.server.ollama ]] && external_ollama; then ollama_up && s=external || s=stopped
+    elif [[ $l == app.nothingbot.server.ollama ]] && model_stopped && ! running "$l"; then s=stopped
     elif running "$l"; then s=running; elif loaded "$l"; then s=starting; fi
     echo "${l#app.nothingbot.server.}=$s"
   done
@@ -432,7 +436,7 @@ cmd_local() {
           [[ -x "$RT/ollama/ollama" ]] || task_fail "The Ollama download didn't contain the expected program."
         fi
       fi
-      env_set NBS_NO_LOCAL_MODEL 0
+      env_set NBS_NO_LOCAL_MODEL 0; env_set NBS_MODEL_STOPPED 0   # turning the local model on starts it
       write_agents; cmd_start >/dev/null
       pull_model "$(local_model_name)"
       progress running "Restarting the worker"
