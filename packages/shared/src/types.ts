@@ -280,6 +280,8 @@ export interface GroupMembersCache {
   groupId: string;
   at: number; // epoch ms
   members: GroupMember[];
+  /** The group's invite code (admins only), for opening it in WhatsApp: https://chat.whatsapp.com/<code>. */
+  inviteCode?: string;
 }
 
 export interface Comic {
@@ -297,14 +299,14 @@ export interface Comic {
   history?: SpotHistoryEntry[]; // newest first, capped
   onboarding?: "asked" | "done" | null;
   profile?: ComicProfile;
-}
-
-export type IntentKind = "spot_request" | "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "other";
-
   /** WhatsApp profile picture URL (they expire), or "none" when the person hides it. See profilePics.ts. */
   photoUrl?: string | null;
   /** When photoUrl was last fetched (ms). */
   photoAt?: number | null;
+}
+
+export type IntentKind = "spot_request" | "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "other";
+
 /** Fixed labels Gemma may attach to a request (see requestTags.ts). */
 export type IntentTag = "new_material" | "flexible_days" | "specific_time" | "longer_set" | "travelling" | "bringing_audience" | "first_time_here";
 
