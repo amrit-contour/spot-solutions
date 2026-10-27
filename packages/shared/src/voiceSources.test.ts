@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listVoiceSources, pickVoiceChats, toggleVoiceChats, voiceSourcesSummary, type VoiceChatLike } from "./voice.ts";
+import { listVoiceSources, pickVoiceChats, toggleVoiceChats, voiceLearnError, voiceSourcesSummary, type VoiceChatLike } from "./voice.ts";
 
 const chat = (id: string, name: string, ts: number, o: Partial<VoiceChatLike> = {}): VoiceChatLike => ({ id, name, isGroup: id.endsWith("@g.us"), timestamp: ts, ...o });
 const chats = [
@@ -49,5 +49,13 @@ describe("summary and toggling", () => {
     const on = toggleVoiceChats(six.slice(0, 2), six.slice(1, 4), true);
     expect(on.map((c) => c.name)).toEqual(["Bloom Comics", "Rohan", "Asha", "Ravi"]);
     expect(toggleVoiceChats(on, six.slice(0, 2), false).map((c) => c.name)).toEqual(["Asha", "Ravi"]);
+  });
+});
+
+describe("voiceLearnError", () => {
+  it("turns browser protocol errors into a friendly line", () => {
+    expect(voiceLearnError(new Error("Runtime.callFunctionOn timed out. ProtocolError"))).toMatch(/too long/);
+    expect(voiceLearnError("WhatsApp not linked")).toMatch(/isn't linked/);
+    expect(voiceLearnError(new Error("boom"))).toMatch(/Try again/);
   });
 });

@@ -178,3 +178,8 @@
 
 @keyframes page-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .page-enter { animation: page-enter 220ms var(--ease-out-strong) backwards; }
+
+/* Indeterminate progress: a short bar sliding along a track. Reduced motion shows a still half-bar. */
+@keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+.indeterminate { animation: indeterminate 1.4s var(--ease-emphasized) infinite; }
+@media (prefers-reduced-motion: reduce) { .indeterminate { animation: none; transform: none; } }

@@ -247,6 +247,15 @@ export function voiceSourcesSummary(sources: VoiceSources | undefined, show = 3)
   return `Learning from ${n} chat${n === 1 ? "" : "s"}: ${names.join(", ")}${n > show ? ` and ${n - show} more` : ""}.`;
 }
 
+/** A learning failure in plain words; the raw Puppeteer/WhatsApp text ("Runtime.callFunctionOn timed out") never reaches the owner. */
+export function voiceLearnError(raw: unknown): string {
+  const m = raw instanceof Error ? raw.message : String(raw ?? "");
+  if (/timed out|timeout|ProtocolError|Target closed|callFunctionOn|Execution context/i.test(m)) return "WhatsApp took too long to answer. Give it a moment, then try again.";
+  if (/not linked|not connected|no whatsapp|not ready|disconnected/i.test(m)) return "WhatsApp isn't linked right now. Link it in Settings, then try again.";
+  if (/not enough|no messages|too few/i.test(m)) return "There weren't enough of your own messages in those chats yet. Pick more chats and try again.";
+  return "Couldn't learn your voice this time. Try again in a minute.";
+}
+
 /** Tick or untick chats in the picker. */
 export function toggleVoiceChats(chats: VoiceSourceChat[], items: VoiceSourceChat[], on: boolean): VoiceSourceChat[] {
   const ids = new Set(items.map((i) => i.id));

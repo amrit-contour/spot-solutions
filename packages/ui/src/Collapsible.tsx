@@ -43,6 +43,7 @@ export function Collapsible({
   persist = true,
   plain,
   flush,
+  tone,
   onOpenChange,
   className,
   children,
@@ -62,6 +63,8 @@ export function Collapsible({
   plain?: boolean;
   /** The body spans the whole card (lists with their own rows, bands, full-width logs). Without it the body gets the card's 16px inset on the left, right and bottom, so its content lines up with the header's icon. */
   flush?: boolean;
+  /** Card surface; "container" for a card sitting inside another card. */
+  tone?: "low" | "container" | "high" | "outlined";
   /** Called with the initial state on mount, then on every change. */
   onOpenChange?: (open: boolean) => void;
   className?: string;
@@ -110,7 +113,7 @@ export function Collapsible({
       {body}
     </section>
   ) : (
-    <Card className={cx("overflow-hidden", className)}>
+    <Card tone={tone} className={cx("overflow-hidden", className)}>
       {header}
       {body}
     </Card>

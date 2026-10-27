@@ -23,6 +23,7 @@ import {
   snippetRich,
   storeMessage,
   pollProblem,
+  voiceLearnError,
   voiceSourcesSummary,
   type GroupInfo,
   type RichMessage,
@@ -49,8 +50,8 @@ import { VoiceSourcesSheet } from "../components/VoiceSourcesSheet";
 import { NeverReadCard } from "../components/NeverReadCard";
 import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "@spot/ui";
-import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
-import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose } from "@spot/ui";
+import { Bubble, Button, Collapsible, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
+import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose, IconWarn, IconRefresh, IconArrowRight } from "@spot/ui";
 
 const TABS = [
   { id: "whatsapp", label: "WhatsApp", icon: IconChat },
@@ -656,6 +657,8 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
   const voice = settings.voice ?? { enabled: false, profile: null };
   const profile = voice.profile ?? null;
   const [learning, setLearning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stage, setStage] = useState<string | null>(null);
   const [summary, setSummary] = useState(profile?.summary ?? "");
   const [trying, setTrying] = useState(false);
   const [preview, setPreview] = useState<{ reference: string; drafts: { text: string; problem: string | null }[] } | null>(null);
@@ -667,15 +670,17 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
 
   const save = (patch: Partial<NonNullable<typeof profile>>) => profile && saveSettings({ voice: { ...voice, profile: { ...profile, ...patch } } });
   const learn = async () => {
-    if (sources.mode === "selected" && !sources.chats.length) return void toast.error("Pick at least one chat");
+    if (sources.mode === "selected" && !sources.chats.length) return void setError("Pick at least one chat to learn from, or switch back to the recommended chats.");
     setLearning(true);
+    setError(null);
     try {
-      const r = await runCommand<{ samples: number; examples: number }>(uid, "learn_voice", {}, 15 * 60_000);
+      const r = await runCommand<{ samples: number; examples: number }>(uid, "learn_voice", {}, 15 * 60_000, { onStage: setStage });
       toast.success(`Learned from ${r.samples} of your messages`);
     } catch (e) {
-      toast.error((e as Error).message);
+      setError(voiceLearnError(e));
     } finally {
       setLearning(false);
+      setStage(null);
     }
   };
   const tryIt = async () => {
@@ -685,78 +690,100 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
     try {
       setPreview(await runCommand(uid, "preview_voice", { kind }, 5 * 60_000));
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(voiceLearnError(e));
     } finally {
       setTrying(false);
     }
   };
 
+  const learned = profile ? new Date(profile.learnedAt).toLocaleDateString([], { day: "numeric", month: "short" }) : "";
+  const status = learning ? (stage ?? "Reading your messages. This takes a minute or two.") : profile ? `Learned ${learned} from ${profile.sampleCount} messages` : "Not learned yet";
+  const picked = sources.chats.length;
+  const sourceLine = demo && sources.mode === "selected" ? "The demo has no WhatsApp, so there are no chats to choose from." : sources.mode === "selected" ? (picked ? `${picked} chat${picked === 1 ? "" : "s"}` : "No chats picked yet") : "Recent DMs and your show groups";
+
   return (
-    <Section
-      title="Your voice"
-      icon={IconSparkle}
-      description={
-        <>
-          Messages go out the way you write: your greetings, your Hinglish, your emoji, a little different for each comic. Nothing BOT Curate reads only messages <b>you</b> sent, in the chats you choose (by default your recent DMs and show groups), keeps a short description and up to 15 examples, and never stores the chats. Your template below is the guide and the safety net: if a draft changes or drops a date, time, venue or link, or the model is busy, the template goes out instead. It uses your AI models setting, so on Local only nothing leaves your server.
-        </>
-      }
-      aside={<Switch checked={voice.enabled && Boolean(profile)} disabled={!profile} onChange={(v) => saveSettings({ voice: { ...voice, enabled: v } })} label="Write messages in my voice" />}
-    >
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <span className="type-label-l text-on-surface-variant">Learn from</span>
-          <Segmented
-            size="sm"
-            value={sources.mode}
-            onChange={(mode) => void setSources({ ...sources, mode })}
-            options={[
-              { value: "recommended", label: "Recommended" },
-              { value: "selected", label: "Only chats I pick" },
-            ]}
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            {sources.mode === "selected" && (
-              <Button size="sm" variant="tonal" disabled={demo} onClick={() => setPicking(true)}>
-                Choose chats…
-              </Button>
-            )}
-            <span className="min-w-0 flex-1 basis-56 type-body-s text-on-surface-variant">{demo && sources.mode === "selected" ? "The demo has no WhatsApp, so there are no chats to choose from. On a real account this lists your groups and people." : voiceSourcesSummary(sources)}</span>
+    <section className="rounded-xl bg-surface-low p-4 sm:p-6">
+      {/* Header: icon, title + status, and the primary action on the same row. */}
+      <header className="flex items-center gap-3">
+        <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
+          <IconSparkle className="icon size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h2 className="min-w-0 type-title-l">Your voice</h2>
+            <Info label="About Your voice">
+              Messages go out the way you write: your greetings, your Hinglish, your emoji, a little different for each comic. Nothing BOT Curate reads only messages <b>you</b> sent, in the chats you choose (by default your recent DMs and show groups), keeps a short description and up to 15 examples, and never stores the chats. Your template below is the guide and the safety net: if a draft changes or drops a date, time, venue or link, or the model is busy, the template goes out instead. It uses your AI models setting, so on Local only nothing leaves your server.
+            </Info>
           </div>
+          <p role="status" className="type-body-s text-on-surface-variant">{status}</p>
+        </div>
+        <Button className="flex-none" size="sm" variant={profile ? "outlined" : "filled"} icon={IconSparkle} loading={learning} onClick={learn}>
+          {profile ? "Learn again" : "Learn my voice"}
+        </Button>
+      </header>
+
+      {learning && (
+        <div role="progressbar" aria-label="Learning your voice" className="mt-4 h-1 overflow-hidden rounded-full bg-surface-highest">
+          <div className="indeterminate h-full w-2/5 rounded-full bg-primary" />
+        </div>
+      )}
+      {error && !learning && (
+        <div role="alert" className="mt-4 flex items-center gap-3 rounded-lg bg-error-container px-4 py-3 text-on-error-container">
+          <IconWarn className="icon size-5 flex-none" />
+          <span className="min-w-0 flex-1 type-body-m">{error}</span>
+          <Button size="sm" variant="text" icon={IconRefresh} onClick={learn}>Retry</Button>
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-col gap-3">
+        {profile && (
+          <div className="flex items-center gap-3 rounded-lg bg-surface-container px-4 py-3">
+            <span className="min-w-0 flex-1">
+              <span className="block type-title-s">Write messages in my voice</span>
+              <span className="block type-body-s text-on-surface-variant">{voice.enabled ? "On. Templates are the fallback." : "Off. Your templates go out as written."}</span>
+            </span>
+            <Switch checked={voice.enabled} onChange={(v) => saveSettings({ voice: { ...voice, enabled: v } })} label="Write messages in my voice" />
+          </div>
+        )}
+
+        {/* Sources: one compact row, the action inline. */}
+        <div className="flex min-h-14 items-center gap-3 rounded-lg bg-surface-container px-4 py-2">
+          <span className="min-w-0 flex-1">
+            <span className="block type-title-s">Learns from</span>
+            <span className="block type-body-s text-on-surface-variant" title={voiceSourcesSummary(sources)}>
+              {sourceLine}
+              {sources.mode === "selected" && !demo && (
+                <>
+                  {" · "}
+                  <button type="button" className="underline underline-offset-2" onClick={() => void setSources({ ...sources, mode: "recommended" })}>use recommended</button>
+                </>
+              )}
+            </span>
+          </span>
+          <Button size="sm" variant="text" disabled={demo} onClick={() => setPicking(true)}>
+            Choose chats
+            <IconArrowRight className="icon size-4" aria-hidden />
+          </Button>
         </div>
         <VoiceSourcesSheet open={picking} onClose={() => setPicking(false)} value={sources.chats} onSave={(chats) => setSources({ mode: "selected", chats })} />
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant={profile ? "outlined" : "filled"} icon={IconSparkle} loading={learning} onClick={learn}>
-            {profile ? "Learn again" : "Learn my voice"}
-          </Button>
-          <span className="type-body-s text-on-surface-variant">
-            {learning
-              ? "Reading your messages. This takes a minute or two."
-              : profile
-                ? `Learned from ${profile.sampleCount} of your messages on ${new Date(profile.learnedAt).toLocaleDateString([], { day: "numeric", month: "short" })}.`
-                : "Needs your WhatsApp linked. Takes a minute or two."}
-          </span>
-        </div>
 
         {profile && (
           <>
             <div className="flex flex-col gap-2">
               <label htmlFor="voice-summary" className="type-label-l text-on-surface-variant">How you write</label>
               <TextArea id="voice-summary" value={summary} onChange={(e) => setSummary(e.target.value)} rows={5} className="min-h-0" />
-              <div className="flex justify-end gap-2">
-                {summary !== profile.summary && (
-                  <>
-                    <Button size="sm" variant="text" onClick={() => setSummary(profile.summary)}>Discard</Button>
-                    <Button size="sm" onClick={async () => { await save({ summary: summary.trim() }); toast.success("Saved"); }}>Save</Button>
-                  </>
-                )}
-              </div>
+              {summary !== profile.summary && (
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="text" onClick={() => setSummary(profile.summary)}>Discard</Button>
+                  <Button size="sm" onClick={async () => { await save({ summary: summary.trim() }); toast.success("Saved"); }}>Save</Button>
+                </div>
+              )}
             </div>
 
-            <div className="flex flex-col gap-2">
-              <span className="type-label-l text-on-surface-variant">Examples it copies ({profile.examples.length})</span>
+            <Collapsible id="voice-examples" tone="container" defaultOpen={false} title={`Examples (${profile.examples.length})`} subtitle="Messages it copies">
               <ul className="flex flex-col gap-1.5">
                 {profile.examples.map((ex, i) => (
-                  <li key={i} className="flex items-start gap-2 rounded-md bg-surface-container px-3 py-2">
+                  <li key={i} className="flex items-start gap-2 rounded-md bg-surface-high px-3 py-2">
                     <span className="min-w-0 flex-1 whitespace-pre-wrap type-body-m">{ex}</span>
                     <button className="state-layer pressable -mr-1 grid size-8 flex-none place-items-center rounded-full text-on-surface-variant" aria-label="Remove this example" onClick={() => save({ examples: profile.examples.filter((_, j) => j !== i) })}>
                       <IconClose className="icon size-4" />
@@ -764,12 +791,12 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
                   </li>
                 ))}
               </ul>
-            </div>
+            </Collapsible>
 
             <div className="flex flex-col gap-3 rounded-lg bg-surface-container p-4">
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-3">
                 <span className="min-w-0 flex-1 type-title-s">Try it on the message picked below</span>
-                <Button size="sm" variant="tonal" loading={trying} disabled={!kind} onClick={tryIt}>
+                <Button className="flex-none" size="sm" variant="tonal" loading={trying} disabled={!kind} onClick={tryIt}>
                   Write 3 versions
                 </Button>
               </div>
@@ -794,6 +821,6 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
           </>
         )}
       </div>
-    </Section>
+    </section>
   );
 }
