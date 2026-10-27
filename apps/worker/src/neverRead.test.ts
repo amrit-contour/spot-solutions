@@ -5,12 +5,17 @@ const boom = (what: string) => () => {
   throw new Error(`${what} must not be reached for a Never read chat`);
 };
 const classify = vi.fn(boom("classify"));
-const col = vi.fn(boom("firestore"));
+let watchedDocs: { id: string }[] = [];
+const col = vi.fn((_uid: string, name: string): { onSnapshot: (cb: (q: unknown) => void) => void } => {
+  if (name === "watchedGroups") return { onSnapshot: (cb: (q: unknown) => void) => cb({ docs: watchedDocs }) };
+  return (boom("firestore") as () => never)();
+});
+const firestoreTouched = () => col.mock.calls.filter((c) => c[1] !== "watchedGroups").length;
 const sent = vi.fn(boom("send"));
 const noted = { messagesIn: 0, liveIn: 0 };
 
 vi.mock("./gemma.ts", () => ({ classify: (...a: unknown[]) => classify(...(a as [])) }));
-vi.mock("./firebase.ts", () => ({ col: (...a: unknown[]) => col(...(a as [])), db: { runTransaction: boom("transaction") } }));
+vi.mock("./firebase.ts", () => ({ col: (...a: unknown[]) => col(...(a as [string, string])), db: { runTransaction: boom("transaction") } }));
 vi.mock("./classifyContext.ts", () => ({ classifyContext: boom("context"), countPriorRequests: boom("prior") }));
 vi.mock("./sendQueue.ts", () => ({ sendQueued: (...a: unknown[]) => sent(...(a as [])) }));
 vi.mock("./sendRich.ts", () => ({ sendRich: (...a: unknown[]) => sent(...(a as [])) }));
@@ -22,8 +27,10 @@ vi.mock("./commands.ts", () => ({ notice: boom("notice") }));
 vi.mock("./stats.ts", () => ({ counters: { get messagesIn() { return noted.messagesIn; }, set messagesIn(v: number) { noted.messagesIn = v; } }, live: { noteIn: () => void noted.liveIn++, noteSpot: () => undefined } }));
 
 let neverRead: { id: string; kind: "person" | "group"; addedAt: number }[] = [];
+let allGroups = false;
+let shows: { groupId?: string | null }[] = [];
 vi.mock("./userData.ts", () => ({
-  watchUser: () => ({ ready: Promise.resolve(), settings: { neverRead, debounceSeconds: 0 }, shows: [], venues: [] }),
+  watchUser: () => ({ ready: Promise.resolve(), settings: { neverRead, neverReadAllGroups: allGroups, debounceSeconds: 0 }, shows, venues: [] }),
 }));
 
 const { enqueue, catchUpSince, markLive } = await import("./intake.ts");
@@ -46,13 +53,16 @@ beforeEach(() => {
     { id: "120363000111@g.us", kind: "group", addedAt: 1 },
   ];
   markLive("u1");
+  allGroups = false;
+  shows = [];
+  watchedDocs = [];
 });
 
 describe("enqueue on the Never read list", () => {
   it("skips a listed number before any contact lookup, count, store or model call", async () => {
     await enqueue("u1", client(), msg("919876543210@c.us"));
     expect(classify).not.toHaveBeenCalled();
-    expect(col).not.toHaveBeenCalled();
+    expect(firestoreTouched()).toBe(0);
     expect(sent).not.toHaveBeenCalled();
     expect(noted.messagesIn).toBe(0);
     expect(noted.liveIn).toBe(0);
@@ -108,5 +118,45 @@ describe("isNeverRead", () => {
     await isNeverRead("u1", c, "55500000000001@lid");
     await isNeverRead("u1", c, "55500000000001@lid");
     expect((c as unknown as { getContactLidAndPhone: ReturnType<typeof vi.fn> }).getContactLidAndPhone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Never read any group", () => {
+  const watchedSnapshot = () => void (watchedDocs = [{ id: "120363222@g.us" }]);
+  it("silences every group except show groups and Comedy's watched groups, and leaves people alone", async () => {
+    watchedSnapshot();
+    allGroups = true;
+    shows = [{ groupId: "120363111@g.us" }, { groupId: null }];
+    expect(await isNeverRead("u2", client(), "120363999@g.us")).toBe(true);
+    expect(await isNeverRead("u2", client(), "120363111@g.us")).toBe(false);
+    expect(await isNeverRead("u2", client(), "120363222@g.us")).toBe(false);
+    expect(await isNeverRead("u2", client(), "919000000000@c.us")).toBe(false);
+    expect(await isNeverRead("u2", client(), "919876543210@c.us")).toBe(true); // the list still applies
+  });
+  it("skips an inbound group message before anything is read", async () => {
+    watchedSnapshot();
+    allGroups = true;
+    await enqueue("u3", client(), msg("120363777@g.us", { author: "919000000000@c.us" }));
+    expect(noted.messagesIn).toBe(0);
+    expect(classify).not.toHaveBeenCalled();
+  });
+  it("does nothing when it is off", async () => {
+    neverRead = [];
+    expect(await isNeverRead("u2", client(), "120363999@g.us")).toBe(false);
+  });
+});
+
+describe("linked groups win over the list", () => {
+  it("a listed group that is a show group or Comedy watched group is still read; others stay skipped", async () => {
+    neverRead = [
+      { id: "120363001@g.us", kind: "group", addedAt: 1 },
+      { id: "120363002@g.us", kind: "group", addedAt: 1 },
+      { id: "120363003@g.us", kind: "group", addedAt: 1 },
+    ];
+    shows = [{ groupId: "120363001@g.us" }];
+    watchedDocs = [{ id: "120363002@g.us" }];
+    expect(await isNeverRead("u4", client(), "120363001@g.us")).toBe(false);
+    expect(await isNeverRead("u4", client(), "120363002@g.us")).toBe(false);
+    expect(await isNeverRead("u4", client(), "120363003@g.us")).toBe(true);
   });
 });

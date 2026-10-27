@@ -67,6 +67,8 @@ export interface Settings {
   agent?: AgentSettings;
   /** People and groups whose messages are skipped before anything is read, stored or sent to the AI (neverRead.ts). */
   neverRead?: import("./neverRead.ts").NeverReadEntry[];
+  /** "Never read any group": every group chat is skipped except the curator's show groups and Comedy's watched groups. Missing counts as off. */
+  neverReadAllGroups?: boolean;
 }
 
 /** What the agent number may do for you. Linking it is the opt-in; these switch each part off again. */

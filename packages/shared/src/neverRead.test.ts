@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNeverRead, comicsOnNeverRead, compileNeverRead, defaultCountryCode, maskNumber, matchesNeverRead, neverReadLookups, normalizeNeverReadId, removeNeverRead, searchNeverRead, type NeverReadEntry } from "./neverRead.ts";
+import { addNeverRead, comicsOnNeverRead, compileNeverRead, groupSilenced, linkedGroups, pruneLinkedNeverRead, selectAllState, splitNeverRead, defaultCountryCode, maskNumber, matchesNeverRead, neverReadLookups, normalizeNeverReadId, removeNeverRead, searchNeverRead, type NeverReadEntry } from "./neverRead.ts";
 
 const e = (id: string, kind: "person" | "group" = "person"): NeverReadEntry => ({ id, kind, addedAt: 1 });
 
@@ -84,5 +84,62 @@ describe("list helpers", () => {
   it("finds roster comics on the list", () => {
     const comics = [{ id: "919876543210@c.us", name: "A" }, { id: "55512345678901@lid", chatId: "55512345678901@lid", phone: "919111111111", name: "B" }, { id: "x", name: "C" }];
     expect(comicsOnNeverRead(comics, ["919876543210@c.us", "919111111111@c.us"]).map((c) => c.name)).toEqual(["A", "B"]);
+  });
+});
+
+describe("never read any group", () => {
+  const m = compileNeverRead([e("919876543210@c.us")], { allGroups: true, exceptGroups: ["120363111@g.us", "120363222", null, undefined, "bad id"] });
+  it("matches every group but the exceptions", () => {
+    expect(matchesNeverRead(m, ["120363999@g.us"])).toBe(true);
+    expect(matchesNeverRead(m, ["120363111@g.us"])).toBe(false);
+    expect(matchesNeverRead(m, ["120363222@g.us"])).toBe(false); // bare id is a group id
+    expect(matchesNeverRead(m, ["120363111@g.us", "120363999@g.us"])).toBe(true);
+  });
+  it("leaves people alone and keeps the list", () => {
+    expect(matchesNeverRead(m, ["919000000000@c.us"])).toBe(false);
+    expect(matchesNeverRead(m, ["120363111@g.us", "919876543210@c.us"])).toBe(true);
+  });
+  it("is active even with an empty list, and off by default", () => {
+    expect(matchesNeverRead(compileNeverRead([], { allGroups: true }), ["1@g.us"])).toBe(true);
+    expect(matchesNeverRead(compileNeverRead([]), ["1@g.us"])).toBe(false);
+    expect(matchesNeverRead([e("1@g.us", "group")], ["2@g.us"], {}, { allGroups: true })).toBe(true);
+    expect(groupSilenced(compileNeverRead([]), "1@g.us")).toBe(false);
+  });
+});
+
+describe("card and sheet helpers", () => {
+  it("splits people and groups", () => {
+    const r = splitNeverRead([e("1@g.us", "group"), e("919876543210@c.us"), e("2@g.us", "group")]);
+    expect([r.people.length, r.groups.length]).toEqual([1, 2]);
+  });
+  it("select-all state: none, some, all of the visible rows", () => {
+    expect(selectAllState(["a", "b"], new Set())).toEqual({ selected: 0, all: false, some: false });
+    expect(selectAllState(["a", "b"], new Set(["a", "zzz"]))).toEqual({ selected: 1, all: false, some: true });
+    expect(selectAllState(["a", "b"], new Set(["a", "b"]))).toEqual({ selected: 2, all: true, some: false });
+    expect(selectAllState([], new Set(["a"]))).toEqual({ selected: 0, all: false, some: false });
+  });
+});
+
+describe("linked groups win", () => {
+  it("a linked group is never matched, even when it is on the list or all groups is on", () => {
+    const list = [e("1@g.us", "group"), e("2@g.us", "group")];
+    expect(matchesNeverRead(compileNeverRead(list, { exceptGroups: ["1@g.us"] }), ["1@g.us"])).toBe(false);
+    expect(matchesNeverRead(compileNeverRead(list, { exceptGroups: ["1@g.us"] }), ["2@g.us"])).toBe(true);
+    expect(matchesNeverRead(compileNeverRead(list, { allGroups: true, exceptGroups: ["1@g.us"] }), ["1@g.us"])).toBe(false);
+    expect(matchesNeverRead(compileNeverRead(list, { exceptGroups: ["1@g.us"] }), ["1@g.us", "919876543210@c.us"])).toBe(false);
+  });
+  it("a listed person writing in a linked group is still skipped", () => {
+    expect(matchesNeverRead(compileNeverRead([e("919876543210@c.us")], { exceptGroups: ["1@g.us"] }), ["1@g.us", "919876543210@c.us"])).toBe(true);
+  });
+  it("collects linked groups with their reason, first one wins", () => {
+    const m = linkedGroups({ shows: [{ name: "Open Mic - Monday", groupId: "1@g.us" }, { name: "Other", groupId: "1@g.us" }, { name: "None", groupId: null }], watched: [{ id: "2@g.us" }], hostPollGroupId: "3@g.us" });
+    expect([...m]).toEqual([["1@g.us", "Linked to Open Mic - Monday"], ["2@g.us", "Watched in Comedy"], ["3@g.us", "Used for the host poll"]]);
+  });
+  it("prunes list entries that became linked", () => {
+    const list = [{ ...e("1@g.us", "group"), name: "Mic" }, e("2@g.us", "group"), e("919876543210@c.us")];
+    const r = pruneLinkedNeverRead(list, new Map([["1@g.us", "Linked to Open Mic - Monday"]]));
+    expect(r.list.map((x) => x.id)).toEqual(["2@g.us", "919876543210@c.us"]);
+    expect(r.removed).toEqual([{ id: "1@g.us", name: "Mic", reason: "Linked to Open Mic - Monday" }]);
+    expect(pruneLinkedNeverRead(list, new Map()).removed).toEqual([]);
   });
 });

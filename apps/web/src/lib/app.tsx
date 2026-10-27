@@ -20,6 +20,7 @@ import { auth, db } from "@spot/ui/firebase";
 import { useCollection, useDocument, useNow } from "./data";
 import { cloneDemo, needsDemoClone } from "./demo";
 import { useForegroundPush } from "./push";
+import { useNeverReadLinkSync } from "./neverRead";
 import { setBrand } from "@spot/ui";
 
 interface UserDoc {
@@ -117,6 +118,9 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       ai: { ...aiFromLegacy(s), policy: s.ai?.policy ?? DEFAULT_AI_POLICY },
     };
   }, [userDoc.data]);
+
+  // A group on Never read that gets linked (show group, Comedy watched group) comes off the list: linked groups win.
+  useNeverReadLinkSync(uid, shows.data, settings, (patch) => setDoc(doc(db, "users", uid), { settings: patch }, { merge: true }));
 
   // Brand: the saved choice, else NBC (Classic for demo sandboxes so they match the published screenshots).
   const brand = settings.appearance?.brand ?? (user.isAnonymous ? "classic" : "nbc");

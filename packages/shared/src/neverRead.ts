@@ -77,16 +77,39 @@ export interface NeverReadMatcher {
   /** Any entry that is a lid (so a phone has to be mapped to a lid). */
   hasLids: boolean;
   ids: Set<string>;
+  /** "Never read any group": every @g.us id matches, except `exceptGroups`. */
+  allGroups: boolean;
+  exceptGroups: Set<string>;
 }
 
-export function compileNeverRead(entries: NeverReadEntry[] | undefined): NeverReadMatcher {
+export interface NeverReadOptions {
+  /** `settings.neverReadAllGroups`. */
+  allGroups?: boolean;
+  /** Linked groups (the curator's show groups, Comedy's watched groups, the host poll group): never silenced, whether by allGroups or by a list entry. Linked groups always win. */
+  exceptGroups?: Iterable<string | null | undefined>;
+}
+
+export function compileNeverRead(entries: NeverReadEntry[] | undefined, opts: NeverReadOptions = {}): NeverReadMatcher {
   const ids = new Set<string>();
   for (const e of entries ?? []) {
     const n = normalizeNeverReadId(e.id);
     if (n) ids.add(n.id);
   }
+  const except = new Set<string>();
+  for (const g of opts.exceptGroups ?? []) {
+    const n = g ? normalizeNeverReadId(g.includes("@") ? g : `${g}@g.us`) : null;
+    if (n?.kind === "group") except.add(n.id);
+  }
   const all = [...ids];
-  return { size: ids.size, hasPhones: all.some((i) => i.endsWith("@c.us")), hasLids: all.some((i) => i.endsWith("@lid")), ids };
+  const allGroups = !!opts.allGroups;
+  return { size: ids.size + (allGroups ? 1 : 0), hasPhones: all.some((i) => i.endsWith("@c.us")), hasLids: all.some((i) => i.endsWith("@lid")), ids, allGroups, exceptGroups: except };
+}
+
+/** Is this chat id a group that Never read silences ("Never read any group" on, and not linked)? */
+export function groupSilenced(m: NeverReadMatcher, id: string): boolean {
+  if (!m.allGroups) return false;
+  const n = normalizeNeverReadId(id);
+  return !!n && n.kind === "group" && !m.exceptGroups.has(n.id);
 }
 
 export interface NeverReadMaps {
@@ -114,11 +137,16 @@ function variants(id: string, maps: NeverReadMaps, m: NeverReadMatcher): string[
 }
 
 /** Is any of these ids (chat id, sender, author) on the list? Pass the lid maps when you have them. Typed numbers without a suffix count as phones. */
-export function matchesNeverRead(source: NeverReadEntry[] | NeverReadMatcher | undefined, ids: (string | null | undefined)[], maps: NeverReadMaps = {}): boolean {
-  const m = Array.isArray(source) || !source ? compileNeverRead(source as NeverReadEntry[] | undefined) : source;
+export function matchesNeverRead(source: NeverReadEntry[] | NeverReadMatcher | undefined, ids: (string | null | undefined)[], maps: NeverReadMaps = {}, opts: NeverReadOptions = {}): boolean {
+  const m = Array.isArray(source) || !source ? compileNeverRead(source as NeverReadEntry[] | undefined, opts) : source;
   if (!m.size) return false;
   for (const id of ids) {
     if (!id) continue;
+    if (m.exceptGroups.size) {
+      const g = normalizeNeverReadId(id);
+      if (g?.kind === "group" && m.exceptGroups.has(g.id)) continue; // linked: wins over the list
+    }
+    if (m.allGroups && groupSilenced(m, id)) return true;
     const plain = /^\+?\d[\d\s-]*$/.test(id.trim()) ? `${digitsOf(id)}@c.us` : id;
     if (variants(plain, maps, m).some((v) => m.ids.has(v))) return true;
   }
@@ -172,4 +200,39 @@ export function searchNeverRead(list: NeverReadEntry[], q: string): NeverReadEnt
 export function comicsOnNeverRead<C extends { id: string; chatId?: string; phone?: string; name: string }>(comics: C[], ids: string[]): C[] {
   const m = compileNeverRead(ids.map((id) => ({ id, kind: "person" as const, addedAt: 0 })));
   return comics.filter((c) => matchesNeverRead(m, [c.id, c.chatId, c.phone]));
+}
+
+/** The Never read list, grouped for the card: people first, then groups (each keeps its newest-first order). */
+export function splitNeverRead(list: NeverReadEntry[]): { people: NeverReadEntry[]; groups: NeverReadEntry[] } {
+  return { people: list.filter((e) => e.kind === "person"), groups: list.filter((e) => e.kind === "group") };
+}
+
+/** Rows a select-all would tick: the visible ones that are not already ticked. Empty when everything visible is ticked. */
+export function selectAllState(visibleIds: string[], picked: ReadonlySet<string>): { selected: number; all: boolean; some: boolean } {
+  const selected = visibleIds.filter((i) => picked.has(i)).length;
+  return { selected, all: visibleIds.length > 0 && selected === visibleIds.length, some: selected > 0 && selected < visibleIds.length };
+}
+
+/** Groups the app needs, by group id → why ("Linked to Open Mic - Monday", "Watched in Comedy", "Used for the host poll"). */
+export function linkedGroups(src: { shows?: { name: string; groupId?: string | null }[]; watched?: { id: string }[]; hostPollGroupId?: string | null }): Map<string, string> {
+  const out = new Map<string, string>();
+  const put = (raw: string | null | undefined, why: string) => {
+    const n = raw ? normalizeNeverReadId(raw.includes("@") ? raw : `${raw}@g.us`) : null;
+    if (n?.kind === "group" && !out.has(n.id)) out.set(n.id, why);
+  };
+  for (const s of src.shows ?? []) put(s.groupId, `Linked to ${s.name}`);
+  for (const w of src.watched ?? []) put(w.id, "Watched in Comedy");
+  put(src.hostPollGroupId, "Used for the host poll");
+  return out;
+}
+
+/** Drop list entries that are now linked groups. `removed` carries what to tell the curator. */
+export function pruneLinkedNeverRead(list: NeverReadEntry[] | undefined, linked: ReadonlyMap<string, string>): { list: NeverReadEntry[]; removed: { id: string; name?: string; reason: string }[] } {
+  const removed: { id: string; name?: string; reason: string }[] = [];
+  const kept = (list ?? []).filter((e) => {
+    const why = e.kind === "group" ? linked.get(e.id) : undefined;
+    if (why) removed.push({ id: e.id, name: e.name, reason: why });
+    return !why;
+  });
+  return { list: kept, removed };
 }
