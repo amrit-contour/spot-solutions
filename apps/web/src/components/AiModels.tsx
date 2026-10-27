@@ -6,6 +6,7 @@ import type { AiKeyStatus, AiProvider, AiRoute } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "@spot/ui/firebase";
 import { runCommand, timeAgo, useDocument, userDoc } from "../lib/data";
+import { serverName, useAllServers, useLease } from "../lib/fleet";
 import { Button, Chip, IconButton, Info, Segmented, Select, Spinner, Switch, TextInput, cx } from "@spot/ui";
 import { IconCheck, IconCpu, IconRefresh, IconShield, IconSparkle, IconTrash, IconWarn } from "@spot/ui";
 
@@ -57,6 +58,9 @@ export function AiModels() {
   const gemini = me.data?.aiKeys?.gemini;
   const geminiModels = me.data?.aiModels?.gemini ?? [];
   const fetchedAt = me.data?.aiModels?.fetchedAt;
+  const servers = useAllServers();
+  const lease = useLease(uid);
+  const host = serverName(servers, lease.data?.server);
   const [ollama, setOllama] = useState<OllamaList | null>(null);
   const [busy, setBusy] = useState<{ ollama?: boolean; gemini?: boolean }>({});
 
@@ -106,14 +110,26 @@ export function AiModels() {
     },
   };
 
+  const sw = settings.ai.autoSwitched;
+  const switched = sw && [settings.ai.primary, settings.ai.fallback].some((r) => r?.provider === "ollama" && r.model === sw.to) ? sw : null;
+
   return (
     <div className="flex flex-col gap-4">
       <GeminiKey status={gemini} count={geminiModels.length} fetchedAt={fetchedAt} onFetch={fetchGemini} fetching={!!busy.gemini} canFetch={workerOnline} />
 
+      {switched && (
+        <p role="status" className="flex items-start gap-2 rounded-lg bg-surface-container p-3 type-body-s text-on-surface-variant">
+          <IconWarn className="icon mt-0.5 size-4 flex-none" />
+          <span>
+            {switched.from} isn't installed on {switched.server}, so your model is now <span className="font-mono">{switched.to}</span>. Pick another below if you'd rather.
+          </span>
+        </p>
+      )}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-        <RouteCard title="Primary" info="Reads every incoming message first." route={settings.ai.primary} lists={lists} onChange={(r) => setAi({ primary: r })} />
+        <RouteCard title="Primary" host={host} info="Reads every incoming message first." route={settings.ai.primary} lists={lists} onChange={(r) => setAi({ primary: r })} />
         <RouteCard
           title="Fallback"
+          host={host}
           info="Used only if the primary fails or times out. When off, that message is skipped and noted in the server log."
           route={settings.ai.fallback}
           lists={lists}
@@ -216,7 +232,7 @@ function GeminiKey({ status, count, fetchedAt, onFetch, fetching, canFetch }: { 
   );
 }
 
-function RouteCard({ title, info, route, lists, onChange, toggle }: { title: string; info: string; route: AiRoute | null; lists: Lists; onChange: (r: AiRoute) => void; toggle?: { on: boolean; set: (v: boolean) => void } }) {
+function RouteCard({ title, host, info, route, lists, onChange, toggle }: { title: string; host: string; info: string; route: AiRoute | null; lists: Lists; onChange: (r: AiRoute) => void; toggle?: { on: boolean; set: (v: boolean) => void } }) {
   const { uid, workerOnline } = useApp();
   const [test, setTest] = useState<{ state: "idle" | "running" | "ok" | "fail"; msg?: string }>({ state: "idle" });
   useEffect(() => setTest({ state: "idle" }), [route?.provider, route?.model]);
@@ -224,7 +240,7 @@ function RouteCard({ title, info, route, lists, onChange, toggle }: { title: str
   const provider = route?.provider ?? "ollama";
   const list = lists[provider];
   const valid = Boolean(route && list.models.includes(route.model));
-  const problem = !route ? "" : !list.ready ? list.why : !list.models.length ? "No models fetched yet. Tap ↻ to fetch them." : !valid ? "Pick a model from the list" : "";
+  const problem = !route ? "" : !list.ready ? list.why : !list.models.length ? "No models fetched yet. Tap ↻ to fetch them." : !valid ? (provider === "ollama" && route.model ? `${route.model} isn't installed on ${host}. Install it from the server console's AI models, or pick another.` : "Pick a model from the list") : "";
 
   const runTest = async () => {
     if (!route) return;
@@ -356,6 +372,7 @@ function OllamaPanel({ ollama, loading, onRefresh, onPulled, online }: { ollama:
           Download
         </Button>
       </div>
+      <p className="mt-2 type-body-s text-on-surface-variant">Only models listed above are installed on this server. A model that isn't gets swapped for one that is. You can also install one from the server console's AI models.</p>
     </div>
   );
 }

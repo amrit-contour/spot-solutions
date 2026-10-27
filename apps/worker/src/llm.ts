@@ -2,10 +2,13 @@
 // falling back to their second choice if it fails. Ollama is local; Gemini uses the curator's
 // own key (from users/{uid}/secrets/ai), or the server's GEMINI_API_KEY if they have none.
 import { GoogleGenAI } from "@google/genai";
-import { AI_INTERACTIVE_DEADLINE_MS, DEFAULT_AI_POLICY, aiFailureMessage, routeBudgetMs, type AiRoute, type AiSettings } from "@spot/shared";
-import { col } from "./firebase.ts";
+import { AI_INTERACTIVE_DEADLINE_MS, DEFAULT_AI_POLICY, TTL_DAYS, aiFailureMessage, routeBudgetMs, type AiRoute, type AiSettings } from "@spot/shared";
+import { col, expireAt, userRef } from "./firebase.ts";
 import { counters, live } from "./stats.ts";
-import { AiPolicyError, IMPLICIT_GEMINI_MODEL, ollamaKeepAlive, planRoutes } from "./aiRouting.ts";
+import os from "node:os";
+import { AiPolicyError, IMPLICIT_GEMINI_MODEL, autoSwitchUpdate, canAutoSwitch, missingModelNoticeId, missingModelText, ollamaKeepAlive, planRoutes, planRoutesDetailed, type Substitution } from "./aiRouting.ts";
+import { DEFAULT_LOCAL_MODEL } from "./serverAi.ts";
+import { SERVER_ID } from "./serverIdentity.ts";
 
 export const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 // Slow laptops (an old i5 with 8 GB) can take a few minutes on a cold model. Waiting longer beats failing: messages are
@@ -95,6 +98,54 @@ function run(uid: string | null, route: AiRoute, prompt: string, schema: Schema,
   return route.provider === "gemini" ? gemini(uid, route.model, prompt, schema, temperature, timeoutMs) : ollama(route.model, prompt, schema, temperature, timeoutMs);
 }
 
+// ---- which Ollama models exist: cached, refreshed about every minute (the heartbeat and pulls refresh it too) ----
+const INSTALLED_TTL_MS = 60_000;
+let installedCache: { names: string[] | null; at: number } = { names: null, at: 0 };
+let installedRefresh: Promise<unknown> | null = null;
+/** Installed model names; null when unknown (Ollama down, or a Gemini-only server): routes are then left as configured. */
+async function installedModels(): Promise<string[] | null> {
+  if (NO_LOCAL_MODEL) return null;
+  if (Date.now() - installedCache.at > INSTALLED_TTL_MS) await (installedRefresh ??= ollamaState().finally(() => (installedRefresh = null)));
+  return installedCache.names;
+}
+/** Tests: forget what was cached. */
+export const resetInstalledCache = () => (installedCache = { names: null, at: 0 });
+
+// A routed model that isn't installed is logged once per model per hour, and the curator is told once (a notice).
+const LOG_EVERY_MS = 3600_000;
+const loggedAt = new Map<string, number>();
+const told = new Set<string>();
+async function noteSubstitution(uid: string | null, s: Substitution, routes: AiRoute[], localOnly: boolean, installed: string[] | null) {
+  const key = `${s.from}->${s.to ?? "none"}`;
+  if (Date.now() - (loggedAt.get(key) ?? 0) >= LOG_EVERY_MS) {
+    loggedAt.set(key, Date.now());
+    console.warn(`[llm] ollama/${s.from} isn't installed; ${s.to ? `using ollama/${s.to}` : routes.length ? `no local model installed, using ${routes[0].provider}/${routes[0].model}` : "no local model installed and nothing else to try"}`);
+  }
+  if (!uid || told.has(`${uid}|${key}`)) return;
+  told.add(`${uid}|${key}`);
+  const host = os.hostname();
+  // Save the working model as the setting so this never recurs, but only on a fresh, non-empty list that lacks the model.
+  let saved = false;
+  if (s.to && canAutoSwitch(installed, s.from, s.to)) {
+    try {
+      const doc = await userRef(uid).get();
+      const upd = autoSwitchUpdate((doc.data()?.settings as { ai?: AiSettings } | undefined)?.ai, s.from, s.to, { server: host, at: Date.now() });
+      if (upd) {
+        await userRef(uid).update(upd);
+        saved = true;
+        console.warn(`[llm] saved ollama/${s.to} as ${uid}'s model (was ollama/${s.from}, not installed on ${host})`);
+      }
+    } catch (e) {
+      console.warn("[llm] couldn't save the model switch:", (e as Error).message);
+    }
+  }
+  const text = missingModelText(host, s.from, s.to, { gemini: routes.some((r) => r.provider === "gemini"), localOnly, saved });
+  await col(uid, "notices")
+    .doc(missingModelNoticeId(SERVER_ID, s.from))
+    .create({ level: "warn", kind: "server", text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices), link: "/settings", linkLabel: saved ? "Pick another" : "AI models" })
+    .catch(() => undefined); // already told (ALREADY_EXISTS), or a write failure: the log line has it
+}
+
 // Local models run one generation at a time, so queue everything to avoid timeouts in bursts.
 let gate: Promise<unknown> = Promise.resolve();
 
@@ -110,7 +161,9 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
   if (opts.interactive) opts.onStage?.("Waiting for the model…");
   const task = gate.catch(() => undefined).then(async () => {
     // The account's AI policy decides which routes exist at all (local_only never reaches Gemini).
-    const routes = planRoutes(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY));
+    const installed = await installedModels();
+    const { routes, substitutions } = planRoutesDetailed(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY), installed, process.env.NBS_LOCAL_MODEL || DEFAULT_LOCAL_MODEL);
+    for (const s of substitutions) void noteSubstitution(uid, s, routes, (ai.policy ?? DEFAULT_AI_POLICY) === "local_only", installed);
     if (!routes.length) {
       counters.errors++;
       live.noteError();
@@ -175,6 +228,11 @@ export async function generateJsonFromFile(uid: string | null, ai: AiSettings, p
 }
 
 export async function ollamaState() {
+  const r = await readOllamaState();
+  installedCache = { names: r.up ? r.models.map((m) => m.name) : null, at: Date.now() };
+  return r;
+}
+async function readOllamaState() {
   // Gemini-only servers (NBS_NO_LOCAL_MODEL=1) have no Ollama at all: answer at once, no network call.
   if (NO_LOCAL_MODEL) return { up: false, models: [], loaded: [] as string[] };
   try {
