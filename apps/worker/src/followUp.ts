@@ -19,6 +19,7 @@ import {
 } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 import { AiPolicyError } from "./aiRouting.ts";
+import { isNeverRead } from "./neverRead.ts";
 import { applyReconcile, curatorReplies, groupsFor, readDecision } from "./reconcile.ts";
 import { notice } from "./commands.ts";
 import { enqueueTask, deliverableId } from "./sendQueue.ts";
@@ -61,6 +62,8 @@ export async function checkFollowUps(uid: string, client: WAWebJS.Client) {
   for (const s of await db.getAll(...waiting.map((r) => col(uid, "comics").doc(r.comicId)))) if (s.exists) comics.set(s.id, s.data() as Comic);
   const fresh: { r: SpotRequest; replies: string[]; lastAt: number }[] = [];
   for (const r of waiting) {
+    // On Never read: their chat is not opened at all.
+    if (await isNeverRead(uid, client, r.comicId, comics.get(r.comicId)?.chatId, r.contact?.chatId)) continue;
     const since = Math.min(...r.messages.map((m) => m.at), r.createdAt);
     try {
       const chatId = comics.get(r.comicId)?.chatId ?? r.contact?.chatId ?? r.comicId;

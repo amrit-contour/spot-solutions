@@ -8,6 +8,8 @@ interface Cache {
   shows: Show[];
   venues: Venue[];
   unsub: (() => void)[];
+  /** Resolves when the first settings snapshot has arrived (before that `settings` is only the defaults). */
+  ready: Promise<void>;
 }
 
 const caches = new Map<string, Cache>();
@@ -20,11 +22,16 @@ export function settingsFromDoc(data: Partial<Settings> | undefined): Settings {
 export function watchUser(uid: string): Cache {
   let c = caches.get(uid);
   if (c) return c;
-  const cache: Cache = { settings: DEFAULT_SETTINGS, shows: [], venues: [], unsub: [] };
+  let loaded!: () => void;
+  const cache: Cache = { settings: DEFAULT_SETTINGS, shows: [], venues: [], unsub: [], ready: new Promise<void>((r) => (loaded = r)) };
   cache.unsub.push(
-    userRef(uid).onSnapshot((s) => {
-      cache.settings = settingsFromDoc(s.data()?.settings);
-    }),
+    userRef(uid).onSnapshot(
+      (s) => {
+        cache.settings = settingsFromDoc(s.data()?.settings);
+        loaded();
+      },
+      () => loaded(), // an unreadable doc must not hold every message forever; the defaults apply
+    ),
     col(uid, "shows").onSnapshot((q) => {
       cache.shows = q.docs.map((d) => ({ ...(d.data() as Show), id: d.id }));
     }),

@@ -25,6 +25,7 @@ import { AiPolicyError } from "./aiRouting.ts";
 import { listGroupMembers } from "./people.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
+import { isNeverRead } from "./neverRead.ts";
 import { RECONCILE_SCHEMA, buildReconcilePrompt, parseReconcileDecision } from "./reconcilePrompt.ts";
 
 /** The curator's own messages to read per comic. */
@@ -107,6 +108,7 @@ export async function reconcileWaiting(uid: string, payload: Record<string, unkn
     const comic = comics.get(r.comicId);
     const since = Math.min(...r.messages.map((m) => m.at), r.createdAt);
     let replies: string[] = [];
+    if (await isNeverRead(uid, client, r.comicId, comic?.chatId, r.contact?.chatId)) continue; // on Never read: not opened
     try {
       replies = (await curatorReplies(client, comic?.chatId ?? r.comicId, since)).replies;
     } catch (e) {

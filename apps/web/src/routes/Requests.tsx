@@ -3,7 +3,7 @@ import { where } from "firebase/firestore";
 import { AnimatePresence, motion } from "motion/react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { updateDoc } from "firebase/firestore";
+import { deleteDoc, updateDoc } from "firebase/firestore";
 import {
   DAY_SHORT,
   HOLD_LABEL,
@@ -21,6 +21,7 @@ import {
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useCollection, useNow, userDoc } from "../lib/data";
 import { placeComic } from "../lib/lineup";
+import { useNeverRead } from "../lib/neverRead";
 import { PageHeader } from "@spot/ui";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "@spot/ui";
@@ -301,6 +302,14 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
     await placeComic(uid, week, show, r.comicId, lineups);
     toast.success(`${r.comicName.split(" ")[0]} → ${show.name}`);
   };
+  const nr = useNeverRead();
+  /** A dismissed request from someone who isn't a comic: put them on Never read and delete what we kept of them. */
+  const neverReadAgain = async () => {
+    const ids = [r.comicId, r.contact?.chatId].filter((x): x is string => Boolean(x));
+    await nr.add(ids.map((id) => ({ id, kind: "person" as const, name: r.comicName })));
+    await deleteDoc(userDoc(uid, "requests", r.id)).catch(() => undefined);
+    toast.success(`${r.comicName} won't be read again`);
+  };
   const setStatus = (status: SpotRequest["status"]) => updateDoc(userDoc(uid, "requests", r.id), { status, updatedAt: Date.now() });
   /** Closed by mistake: back to waiting (Held if a rule still holds it). A regret that went out isn't unsent. */
   const reopen = async () => {
@@ -416,9 +425,16 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
             </Button>
           </>
         ) : r.status === "dismissed" ? (
-          <Button size="sm" variant="tonal" onClick={() => void reopen()}>
-            Reopen
-          </Button>
+          <>
+            {!comic && (
+              <Button size="sm" variant="text" onClick={() => void neverReadAgain()}>
+                Not a comic: never read again
+              </Button>
+            )}
+            <Button size="sm" variant="tonal" onClick={() => void reopen()}>
+              Reopen
+            </Button>
+          </>
         ) : (
           <>
             {!placedIn && <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} />}

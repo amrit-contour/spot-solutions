@@ -21,6 +21,7 @@ import { isDirectHumanMessage, resolveContact } from "./intake.ts";
 import { AiPolicyError } from "./aiRouting.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
+import { dropNeverRead } from "./neverRead.ts";
 
 const MAX_CHATS = 300;
 const MESSAGES_PER_CHAT = 150;
@@ -31,9 +32,10 @@ const DAY_MS = 86_400_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 1:1 chats with traffic since `cutoff`. Skips groups, your own chat, broadcast/status and newsletters. */
-async function recentChats(client: ReturnType<typeof sessions.require>, cutoff: number) {
+async function recentChats(uid: string, client: ReturnType<typeof sessions.require>, cutoff: number) {
   const me = client.info?.wid?._serialized;
-  return (await client.getChats())
+  // Never read chats are dropped before any of their messages are fetched.
+  return (await dropNeverRead(uid, client, await client.getChats()))
     .filter((c) => !c.isGroup && !c.isReadOnly && ["c.us", "lid"].includes(c.id.server) && c.id._serialized !== me && c.timestamp * 1000 >= cutoff)
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, MAX_CHATS);
@@ -47,7 +49,7 @@ export async function scanHistory(uid: string, payload: Record<string, unknown>,
 
   // Cheap look for the sheet's estimate: when each chat last had traffic, nothing else.
   if (payload.preview) {
-    const chats = await recentChats(client, Date.now() - 21 * DAY_MS);
+    const chats = await recentChats(uid, client, Date.now() - 21 * DAY_MS);
     return { chatTimes: chats.map((c) => c.timestamp * 1000) };
   }
 
@@ -58,7 +60,7 @@ export async function scanHistory(uid: string, payload: Record<string, unknown>,
   const activeShows = shows.filter((s) => s.active);
   const rollover = rolloverDayFor(shows);
   const gap = burstGapMs(settings.debounceSeconds);
-  const chats = await recentChats(client, cutoff);
+  const chats = await recentChats(uid, client, cutoff);
 
   const out = { chatsScanned: 0, burstsChecked: 0, requestsCreated: 0, requestsUpdated: 0, held: 0, failed: 0, cancelled: false };
   const progress = { chats: chats.length, done: 0, found: 0 };

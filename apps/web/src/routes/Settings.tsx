@@ -46,6 +46,7 @@ import { NotifyCard } from "../components/NotifyCard";
 import { GoogleContactsCard } from "../components/GoogleContactsCard";
 import { AppearanceCard } from "../components/AppearanceCard";
 import { VoiceSourcesSheet } from "../components/VoiceSourcesSheet";
+import { NeverReadCard } from "../components/NeverReadCard";
 import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "@spot/ui";
 import { Bubble, Button, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
@@ -290,6 +291,8 @@ export function SettingsPage() {
         {tab === "rules" && (
           <>
         <RulesSection />
+
+        <NeverReadCard />
 
         <Section
           title="Replies to comics"

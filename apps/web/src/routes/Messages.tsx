@@ -46,13 +46,14 @@ import { placeAsTold, placeComic } from "../lib/lineup";
 import { PageHeader, appScroller } from "@spot/ui";
 import { Menu, MenuItem } from "@spot/ui";
 import { COMIC_MESSAGE_KEYS, SnippetMenu } from "../components/SnippetMenu";
+import { useNeverRead } from "../lib/neverRead";
 import { GroupPostsEditor } from "../components/GroupPosts";
 import { RequestPills, requestPills } from "../components/RequestTags";
 import { messageSummary } from "@spot/ui";
 import { ChatComposer, type Outgoing } from "../components/ChatComposer";
 import { PinCard, PollCard, WaText } from "@spot/ui";
-import { Avatar, Button, Chip, Empty, IconButton, Segmented, Select, Sheet, Spinner, cx } from "@spot/ui";
-import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconGroup, IconMic, IconRefresh, IconSearch, IconServer, IconSkip, IconSparkle } from "@spot/ui";
+import { Avatar, Button, Chip, ConfirmDialog, Empty, IconButton, Segmented, Select, Sheet, Spinner, cx } from "@spot/ui";
+import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconEye, IconGroup, IconMic, IconRefresh, IconSearch, IconServer, IconSkip, IconSparkle } from "@spot/ui";
 
 const OPEN = ["new", "acked"];
 
@@ -220,6 +221,7 @@ export function Messages() {
                     ))}
                   </ul>
                 )}
+                {list.data?.neverRead?.length ? <NeverReadFold items={list.data.neverRead} /> : null}
                 {list.data && !demo && <p className="px-2 pt-3 pb-1 type-body-s text-on-surface-variant">Updated {timeAgo(list.data.at, now)}. Unread counts come from WhatsApp; opening a chat here doesn't mark it read.</p>}
               </div>
             </>
@@ -426,12 +428,53 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
             {comic.phone && <p className="truncate type-body-s text-on-surface-variant tabular">+{comic.phone}</p>}
           </div>
           <AssistButton source={source} comic={comic} />
+          <NeverReadButton comic={comic} onDone={onBack} />
         </>
       }
       context={<ThreadContext comic={comic} request={request} lineups={lineups} placedShow={placedShow} />}
       aboveComposer={<AssistCard source={source} comic={comic} request={request} lineups={lineups} onUseReply={(t) => setDraft({ kind: "text", body: t })} week={week} />}
       templates={(pick, trigger) => <SnippetMenu name={comic.name} vars={vars} builtins={["confirm", "ack", "reject", "cancelSpot"]} messages={COMIC_MESSAGE_KEYS} onPick={pick} trigger={trigger} />}
     />
+  );
+}
+
+/** Header action: stop reading this person's chat altogether (Settings → Never read lists everyone). */
+function NeverReadButton({ comic, onDone }: { comic: ComicOf; onDone: () => void }) {
+  const nr = useNeverRead();
+  const [open, setOpen] = useState(false);
+  const ids = [comic.id, comic.chatId].filter((x): x is string => Boolean(x));
+  return (
+    <>
+      <IconButton icon={IconEye} label={`Never read ${comic.name}`} onClick={() => setOpen(true)} />
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Never read ${comic.name}?`}
+        confirmLabel="Never read"
+        onConfirm={async () => {
+          await nr.add(ids.map((id) => ({ id, kind: "person" as const, name: comic.name })));
+          toast.success(`${comic.name} added to Never read`);
+          onDone();
+        }}
+      >
+        Their messages are skipped: never read, never sent to AI, never stored. They are on your Comics list, so their spot requests will be ignored. This chat disappears from Messages. Undo it any time in Settings → Rules &amp; replies → Never read.
+      </ConfirmDialog>
+    </>
+  );
+}
+
+/** Chats left out of the list on purpose: names only, no previews, collapsed. */
+function NeverReadFold({ items }: { items: NonNullable<ListThreadsResult["neverRead"]> }) {
+  return (
+    <details className="mx-2 mt-3 rounded-lg bg-surface-container px-3 py-2">
+      <summary className="cursor-pointer type-label-l text-on-surface-variant">Never read · {items.length}</summary>
+      <ul className="mt-2 flex flex-col gap-1">
+        {items.map((i) => (
+          <li key={i.id} className="truncate type-body-s text-on-surface-variant">{i.name}{i.isGroup ? " (group)" : ""}</li>
+        ))}
+      </ul>
+      <Link to="/settings#rules" className="mt-2 inline-block type-label-m text-primary underline underline-offset-4">Manage in Settings</Link>
+    </details>
   );
 }
 

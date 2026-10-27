@@ -8,6 +8,7 @@ import WAWebJS from "whatsapp-web.js";
 import { TTL_DAYS, type SessionState } from "@spot/shared";
 import { FieldValue, col, expireAt, sessionRef, userRef } from "./firebase.ts";
 import { catchUpSince, enqueue, markLive } from "./intake.ts";
+import { isNeverRead } from "./neverRead.ts";
 import { handleSelfReply, handleVote } from "./replies.ts";
 import { unwatchUser, watchUser } from "./userData.ts";
 import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
@@ -352,7 +353,7 @@ class SessionManager {
       this.probeTimers.set(uid, setInterval(() => { if (this.clients.get(uid) === client && this.ready.has(uid)) void this.dogFor(uid).check().catch((e) => console.error("[health] check failed", e)); }, PROBE_EVERY_MS).unref());
     });
     client.on("vote_update", (vote) => {
-      handleVote(uid, client, vote).catch((e) => console.error("[poll] vote failed", e));
+      isNeverRead(uid, client, vote.voter).then((skip) => (skip ? undefined : handleVote(uid, client, vote))).catch((e) => console.error("[poll] vote failed", e));
     });
     // Your own messages: only used for mic-check answers in your "Message yourself" chat.
     client.on("message_create", (msg) => {

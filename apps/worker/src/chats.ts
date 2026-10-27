@@ -30,6 +30,7 @@ import { col } from "./firebase.ts";
 import { generateJson } from "./llm.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
+import { isNeverRead, neverReadFor } from "./neverRead.ts";
 import { THREAD_ASSIST_SCHEMA, buildThreadPrompt, parseThreadAssist, showLines } from "./threadAssist.ts";
 
 /** Messages the model reads. Enough for a back-and-forth about one spot, small enough for a local model. */
@@ -94,7 +95,12 @@ async function rosterComics(uid: string) {
 /** list_threads: the roster's chats and your show groups, newest first. Read from WhatsApp now, returned, not stored. */
 export async function listThreads(uid: string): Promise<ListThreadsResult> {
   const client = sessions.require(uid);
-  const [comics, chats] = await Promise.all([rosterComics(uid), client.getChats()]);
+  const [comics, allChats] = await Promise.all([rosterComics(uid), client.getChats()]);
+  // Never read chats: no preview, no unread count, no message of theirs is looked at. Only their names are handed back.
+  const skip = new Set<string>();
+  if ((await neverReadFor(uid)).size) for (const c of allChats) if (await isNeverRead(uid, client, c.id._serialized)) skip.add(c.id._serialized);
+  const chats = allChats.filter((c) => !skip.has(c.id._serialized));
+  const hiddenNames = allChats.filter((c) => skip.has(c.id._serialized)).map((c) => ({ id: c.id._serialized, name: c.name || `+${c.id.user}`, isGroup: c.isGroup }));
   const like: WaChatLike[] = chats.map((c) => ({
     id: c.id._serialized,
     isGroup: c.isGroup,
@@ -130,7 +136,7 @@ export async function listThreads(uid: string): Promise<ListThreadsResult> {
   const writers = like.filter((c) => c.isGroup && linked.has(c.id) && c.lastMessage && !c.lastMessage.fromMe);
   const ids = writers.flatMap((c) => [c.lastMessage!.author ?? "", ...(c.lastMessage!.mentionedIds ?? [])]);
   const names = ids.some(Boolean) ? await resolveNames(uid, client, ids, comics, groupCache(uid)).catch(() => new Map<string, string>()) : new Map<string, string>();
-  return { threads: matchThreads(like, comics), groups: matchGroupThreads(like, watchUser(uid).shows, comics, names), at: Date.now() };
+  return { threads: matchThreads(like, comics), groups: matchGroupThreads(like, watchUser(uid).shows, comics, names), ...(hiddenNames.length && { neverRead: hiddenNames }), at: Date.now() };
 }
 
 /** Who the worker last read in the linked groups (names for people who aren't in Comics). */
@@ -144,6 +150,7 @@ async function chatOf(uid: string, comicId: unknown) {
   const snap = await col(uid, "comics").doc(String(comicId ?? "")).get();
   if (!snap.exists) throw new Error("That person isn't in your Comics list, so their chat can't be opened here.");
   const comic = { ...(snap.data() as Comic), id: snap.id };
+  if (await isNeverRead(uid, client, comic.id, comic.chatId, comic.phone)) throw new Error(`${comic.name} is on your Never read list, so their chat isn't opened.`);
   let last: unknown;
   for (const key of [comic.chatId, ...comicChatKeys(comic)].filter((k): k is string => Boolean(k))) {
     try {
@@ -159,6 +166,7 @@ async function chatOf(uid: string, comicId: unknown) {
 export async function groupOf(uid: string, groupId: unknown) {
   const id = String(groupId ?? "");
   if (!id.endsWith("@g.us") || !watchUser(uid).shows.some((s) => s.groupId === id)) throw new Error("That group isn't linked to any of your shows, so it can't be opened here.");
+  if (await isNeverRead(uid, sessions.get(uid), id)) throw new Error("That group is on your Never read list, so it isn't opened.");
   return sessions.require(uid).getChatById(id);
 }
 

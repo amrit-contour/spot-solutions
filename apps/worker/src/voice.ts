@@ -25,6 +25,7 @@ import { col, userRef } from "./firebase.ts";
 import { generateJson } from "./llm.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
+import { dropNeverRead } from "./neverRead.ts";
 
 const PER_CHAT = 60;
 const DRAFT_TIMEOUT_MS = 30_000;
@@ -46,7 +47,7 @@ const asVoiceChat = (c: WAWebJS.Chat): VoiceChatLike & { chat: WAWebJS.Chat } =>
 /** list_voice_sources: every real chat (groups and people, not only comics) as names, for the "Choose chats" picker. No message content. */
 export async function listVoiceSourceChats(uid: string) {
   const client = sessions.require(uid);
-  const chats = await client.getChats();
+  const chats = await dropNeverRead(uid, client, await client.getChats());
   return { chats: listVoiceSources(chats.map(asVoiceChat), client.info?.wid?._serialized), at: Date.now() };
 }
 
@@ -59,7 +60,8 @@ export async function learnVoice(uid: string, _payload: Record<string, unknown>,
 
   const me = client.info?.wid?._serialized;
   const groupIds = new Set(shows.map((s) => s.groupId).filter(Boolean) as string[]);
-  const all = await client.getChats();
+  // Never read chats are not sampled, even if picked or recent.
+  const all = await dropNeverRead(uid, client, await client.getChats());
   const sources = settings.voice?.sources;
   const chats = pickVoiceChats(sources, all.map(asVoiceChat), { groupIds, me }).map((c) => c.chat);
   if (sources?.mode === "selected" && !sources.chats.length) throw new Error("Pick at least one chat");

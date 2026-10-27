@@ -41,6 +41,7 @@ import { inVoice } from "./voice.ts";
 import { counters, live } from "./stats.ts";
 import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
 import { notice } from "./commands.ts";
+import { dropNeverRead, isNeverRead } from "./neverRead.ts";
 
 const MAX_CONTEXT = 12;
 
@@ -96,6 +97,8 @@ const liveSince = new Map<string, number>();
 export const markLive = (uid: string) => liveSince.set(uid, Date.now());
 
 export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.Message, opts: { quiet?: boolean } = {}) {
+  // Never read comes first: nothing about this message is read, counted, stored or sent to a model.
+  if (await isNeverRead(uid, client, msg.from, msg.author)) return;
   if (!isDirectHumanMessage(msg)) return;
   const since = liveSince.get(uid);
   if (!opts.quiet && (!since || msg.timestamp * 1000 < since - 5_000)) return;
@@ -161,6 +164,8 @@ async function retryLater(uid: string, client: WAWebJS.Client, key: string, p: P
 }
 
 async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
+  // Added to Never read while this burst was waiting (or being retried): drop it unread.
+  if (await isNeverRead(uid, client, p.contact.id, p.contact.chatId)) return;
   const { settings, shows } = watchUser(uid);
   const week = weekOf(new Date(), settings.timezone, rolloverDayFor(shows));
   const reqRef = col(uid, "requests").doc(`${week}_${p.contact.id}`);
@@ -416,10 +421,12 @@ const CATCHUP_MAX_AGE_MS = 3 * 24 * 3600_000;
  */
 export async function catchUpSince(uid: string, client: WAWebJS.Client, sinceMs: number) {
   const since = Math.max(sinceMs - 60_000, Date.now() - CATCHUP_MAX_AGE_MS);
-  const chats = (await client.getChats())
+  let chats = (await client.getChats())
     .filter((c) => !c.isGroup && !c.isReadOnly && c.timestamp * 1000 > since)
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, 60);
+  // Never read chats are not even opened.
+  chats = await dropNeverRead(uid, client, chats);
   let n = 0;
   for (const chat of chats) {
     const msgs = await chat.fetchMessages({ limit: 15 }).catch(() => []);

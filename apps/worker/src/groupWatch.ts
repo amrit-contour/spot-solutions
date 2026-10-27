@@ -47,6 +47,7 @@ import {
 import { col, FieldValue, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
+import { isNeverRead } from "./neverRead.ts";
 import { generateJson } from "./llm.ts";
 import { lidToPhoneIds, resolveNames } from "./chatNames.ts";
 import { asMessageLike } from "./chats.ts";
@@ -111,11 +112,15 @@ function attach(uid: string, client: WAWebJS.Client) {
     if (!msg.from.endsWith("@g.us") || msg.fromMe) return;
     const group = isWatched(uid, msg.from);
     if (!group) return;
-    if (msg.type !== "chat" || !msg.body?.trim() || msg.isStatus) return;
-    if (Date.now() - msg.timestamp * 1000 > STALE_MS) return;
-    if (!worthReading(msg.body)) return;
     // One at a time per account, in order: "Closed" must be read after the offer it closes.
-    const next = (chains.get(uid) ?? Promise.resolve()).catch(() => undefined).then(() => handle(uid, client, msg, group));
+    const next = (chains.get(uid) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+      // Never read first (the group itself, or the person who wrote): before any text is looked at.
+      if (await isNeverRead(uid, client, msg.from, msg.author)) return;
+      if (msg.type !== "chat" || !msg.body?.trim() || msg.isStatus) return;
+      if (Date.now() - msg.timestamp * 1000 > STALE_MS) return;
+      if (!worthReading(msg.body)) return;
+      await handle(uid, client, msg, group);
+    });
     chains.set(uid, next);
     next.catch((e) => console.error(`[groups] ${uid} couldn't read a message`, e));
   });

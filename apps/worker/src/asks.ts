@@ -36,6 +36,7 @@ import { deliverableId } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
 import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
+import { isNeverRead } from "./neverRead.ts";
 import { applyAlertReply } from "./groupWatch.ts";
 import { ASK_REPLY_SCHEMA, NOT_TEXT, readAskReply, type ReplyMessage } from "./askReplyPrompt.ts";
 
@@ -253,6 +254,7 @@ export async function readReplies(uid: string, client: WAWebJS.Client, data: { r
     }
     let messages: ReplyMessage[];
     try {
+    if (await isNeverRead(uid, client, chatId)) continue; // on Never read: not opened
       messages = await curatorMessages(client, chatId, ask.sentAt!);
     } catch {
       continue; // chat not loadable right now: next round

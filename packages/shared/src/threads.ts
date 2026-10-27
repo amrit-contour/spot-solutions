@@ -348,6 +348,8 @@ export interface ListThreadsResult {
   threads: ThreadItem[];
   /** Your show groups. Missing from older servers. */
   groups?: GroupThreadItem[];
+  /** Chats on your Never read list that were left out: names only, no previews. Missing from older servers. */
+  neverRead?: { id: string; name: string; isGroup: boolean }[];
   at: number;
 }
 
