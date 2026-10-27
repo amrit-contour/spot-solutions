@@ -102,6 +102,15 @@
   .mfoot { margin-top: 20px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
   .meter > i { display: block; height: 100%; background: var(--primary); border-radius: inherit; transition: width .5s cubic-bezier(.23,1,.32,1); }
   .meter > i.warn { background: var(--error); }
+  :root { --m-cpu: #5fc23e; --m-mem: #0f8f86; --m-disk: #6b7a99; --m-warn: #d98a00; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --m-cpu: #9be86f; --m-mem: #3fd0c4; --m-disk: #9aa8c7; --m-warn: #ffb23e; } }
+  :root[data-theme="dark"] { --m-cpu: #9be86f; --m-mem: #3fd0c4; --m-disk: #9aa8c7; --m-warn: #ffb23e; }
+  :root[data-brand="classic"] { --m-cpu: #7ab51d; --m-mem: #1f7f8c; --m-disk: #8a7a68; --m-warn: #c27a00; }
+  @media (prefers-color-scheme: dark) { :root[data-brand="classic"]:not([data-theme="light"]) { --m-cpu: #a8d44a; --m-mem: #5fc7d4; --m-disk: #c0a98f; --m-warn: #f0b04a; } }
+  :root[data-brand="classic"][data-theme="dark"] { --m-cpu: #a8d44a; --m-mem: #5fc7d4; --m-disk: #c0a98f; --m-warn: #f0b04a; }
+  .meter > i.m-cpu { background: var(--m-cpu); } .meter > i.m-mem { background: var(--m-mem); } .meter > i.m-disk { background: var(--m-disk); }
+  .meter > i.m-cpu.hot, .meter > i.m-mem.hot, .meter > i.m-disk.hot { background: var(--m-warn); }
+  .meter > i.m-cpu.warn, .meter > i.m-mem.warn, .meter > i.m-disk.warn { background: var(--error); }
   .stat { font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
   .stat b { font-weight: 600; font-size: 14px; }
   button, .btn { appearance: none; border: 0; cursor: pointer; font: 600 14px "Roboto Flex", sans-serif; letter-spacing: .01em; height: 40px; padding: 0 18px; border-radius: 99px; background: var(--primary); color: var(--on-primary); transition: transform .16s cubic-bezier(.23,1,.32,1), opacity .15s; display: inline-flex; align-items: center; gap: 8px; }
@@ -173,6 +182,15 @@
   .menuwrap { position: relative; flex: none; }
   .menu { position: absolute; z-index: 30; right: 0; top: calc(100% + 4px); min-width: 160px; padding: 6px; display: grid; gap: 2px; background: var(--s-high); border: 1px solid var(--outline-v); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); }
   .menu button { background: transparent; color: var(--on-surface); height: 38px; justify-content: flex-start; border-radius: 8px; padding: 0 12px; font-weight: 500; }
+  .dispmenu { min-width: 232px; max-width: calc(100vw - 32px); padding: 10px; gap: 10px; }
+  .dispmenu .menulabel { font: 600 12px/1 inherit; color: var(--on-surface-v); margin: 0 0 6px 2px; }
+  .dispmenu .theme { display: flex; }
+  .dispmenu .theme button { flex: 1; height: 32px; padding: 0 10px; justify-content: center; border-radius: 999px; font-size: 13px; }
+  .dispmenu .theme button[aria-pressed="true"] { background: var(--primary-c); color: var(--on-primary-c); }
+  .dispmenu .menusep { height: 1px; background: var(--outline-v); margin: 0 -4px; }
+  .menuwrap:has(.dispbtn) { margin-left: auto; }
+  .dispbtn { width: 40px; height: 40px; background: var(--s-high); border-radius: 999px; }
+  .dispbtn[aria-expanded="true"] { background: var(--primary-c); color: var(--on-primary-c); }
   .menu button:hover:not(:disabled) { background: var(--s-highest); }
   .menu button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
   details.sec.dragging { opacity: .45; }
@@ -393,9 +411,9 @@ async function api(path, body) {
   if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { status: r.status });
   return j;
 }
-const meter = (label, used, total, detail) => {
+const meter = (label, used, total, detail, kind = "") => {
   const p = total ? Math.min(1, used / total) : 0;
-  return `<div class="mrow"><div class="stat"><span>${label}</span><span class="muted">${detail}</span></div><div class="meter"><i class="${p > .9 ? "warn" : ""}" style="width:${(p * 100).toFixed(1)}%"></i></div></div>`;
+  return `<div class="mrow"><div class="stat"><span>${label}</span><span class="muted">${detail}</span></div><div class="meter"><i class="${kind ? "m-" + kind : ""} ${p > .9 ? "warn" : p > .75 ? "hot" : ""}" style="width:${(p * 100).toFixed(1)}%"></i></div></div>`;
 };
 const classicTile = `<svg class="logo lg-c" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="115" fill="#7A5416"/><g transform="translate(0.0 0.0)"><g transform="translate(0 14)"><rect x="99" y="97" width="314" height="136" rx="34" fill="#F2BC6E"/><path d="M142 135H262" stroke="#7A5416" stroke-width="14" stroke-linecap="round"/><path d="M142 165H262" stroke="#7A5416" stroke-width="14" stroke-linecap="round"/><path d="M142 195H262" stroke="#7A5416" stroke-width="14" stroke-linecap="round"/><circle cx="350" cy="165" r="22" fill="#FFF8F4"/><rect x="99" y="251" width="314" height="136" rx="34" fill="#F2BC6E"/><path d="M142 289H262" stroke="#FFF8F4" stroke-width="14" stroke-linecap="round"/><path d="M142 319H262" stroke="#FFF8F4" stroke-width="14" stroke-linecap="round"/><path d="M142 349H262" stroke="#FFF8F4" stroke-width="14" stroke-linecap="round"/><circle cx="350" cy="319" r="22" fill="#7A5416"/></g></g></svg>`;
 const logo = classicTile + `<svg class="logo lg-d" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="115" fill="#000000"/><g transform="translate(0.0 0.0)"><g transform="translate(0 14)"><rect x="99" y="97" width="314" height="136" rx="34" fill="#7ED957"/><path d="M142 135H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><path d="M142 165H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><path d="M142 195H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><circle cx="350" cy="165" r="22" fill="#FFFFFF"/><rect x="99" y="251" width="314" height="136" rx="34" fill="#7ED957"/><path d="M142 289H262" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/><path d="M142 319H262" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/><path d="M142 349H262" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/><circle cx="350" cy="319" r="22" fill="#000000"/></g></g></svg><svg class="logo lg-l" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="115" fill="#FFFFFF"/><g transform="translate(0.0 0.0)"><g transform="translate(0 14)"><rect x="99" y="97" width="314" height="136" rx="34" fill="#7ED957"/><path d="M142 135H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><path d="M142 165H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><path d="M142 195H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><circle cx="350" cy="165" r="22" fill="#000000"/><rect x="99" y="251" width="314" height="136" rx="34" fill="#7ED957"/><path d="M142 289H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><path d="M142 319H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><path d="M142 349H262" stroke="#000000" stroke-width="14" stroke-linecap="round"/><circle cx="350" cy="319" r="22" fill="#000000"/></g></g><rect x="2" y="2" width="508" height="508" rx="113" fill="none" stroke="#000" stroke-opacity=".14" stroke-width="4"/></svg>`;
@@ -430,6 +448,7 @@ function normaliseLayout(l) {
 let layout = normaliseLayout(null);
 try { layout = normaliseLayout(JSON.parse(localStorage.getItem("nbs-console-layout") || "null")); } catch {}
 const saveLayout = () => { try { localStorage.setItem("nbs-console-layout", JSON.stringify(layout)); } catch {} };
+const slidersSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>`;
 let custMode = false, menuFor = null, dragId = null, dropAt = null, blockIds = []; // blockIds: sections that exist on this server, in order
 const gripSvg = `<svg viewBox="0 0 18 18" aria-hidden="true"><g fill="currentColor"><circle cx="6.5" cy="4" r="1.4"/><circle cx="11.5" cy="4" r="1.4"/><circle cx="6.5" cy="9" r="1.4"/><circle cx="11.5" cy="9" r="1.4"/><circle cx="6.5" cy="14" r="1.4"/><circle cx="11.5" cy="14" r="1.4"/></g></svg>`;
 const dotsSvg = `<svg viewBox="0 0 18 18" aria-hidden="true"><g fill="currentColor"><circle cx="3.5" cy="9" r="1.5"/><circle cx="9" cy="9" r="1.5"/><circle cx="14.5" cy="9" r="1.5"/></g></svg>`;
@@ -952,9 +971,9 @@ function render() {
         ${s.ollama.models.length ? `<div class="row"><div class="models">${s.ollama.models.map((m) => `<span class="chip neutral mono">${esc(m.name)} · ${fmt(m.size)}</span>`).join("")}</div></div>` : ""}
       </div>
       <div class="panel"><h3>Machine</h3>
-        ${meter("CPU", s.cpu.usage, 1, `${cpuPct}% · ${s.cpu.cores} cores · load ${s.cpu.load[0].toFixed(2)}`)}
-        ${meter("Memory", s.memory.total - s.memory.free, s.memory.total, `${fmt(s.memory.total - s.memory.free)} of ${fmt(s.memory.total)}`)}
-        ${s.disk ? meter(/^[A-Za-z]:/.test(s.disk.dir || "") ? `Disk (${s.disk.dir.slice(0, 2)})` : "Disk", s.disk.total - s.disk.free, s.disk.total, `${fmt(s.disk.free)} free of ${fmt(s.disk.total)}`) : ""}
+        ${meter("CPU", s.cpu.usage, 1, `${cpuPct}% · ${s.cpu.cores} cores · load ${s.cpu.load[0].toFixed(2)}`, "cpu")}
+        ${meter("Memory", s.memory.total - s.memory.free, s.memory.total, `${fmt(s.memory.total - s.memory.free)} of ${fmt(s.memory.total)}`, "mem")}
+        ${s.disk ? meter(/^[A-Za-z]:/.test(s.disk.dir || "") ? `Disk (${s.disk.dir.slice(0, 2)})` : "Disk", s.disk.total - s.disk.free, s.disk.total, `${fmt(s.disk.free)} free of ${fmt(s.disk.total)}`, "disk") : ""}
         <div class="muted small mfoot">${esc(s.cpu.model)}</div>
       </div></div>${healthCard()}`;
   const blocks = {
@@ -979,9 +998,11 @@ function render() {
   <header>${logo}
     <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Nothing BOT Server <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
     <span class="chip ${allUp ? "ok" : "bad"}">${wStopped ? "Server stopped" : allUp ? "All services running" : "Needs attention"}</span>
-    <button type="button" class="tonal sm" data-cust-toggle aria-pressed="${custMode}">${custMode ? "Done customizing" : "Customize"}</button>
-    <div class="theme" role="group" aria-label="Theme">${["system", "light", "dark"].map((t) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
-    <div class="theme" role="group" aria-label="Brand">${[["nbc", "NBC"], ["classic", "Classic"]].map(([k, n]) => `<button type="button" data-brand-set="${k}" aria-pressed="${brand === k}">${n}</button>`).join("")}</div>
+    <span class="menuwrap"><button type="button" class="menubtn dispbtn" data-menu-display aria-haspopup="menu" aria-expanded="${menuFor === "display"}" aria-label="Display options" title="Display options">${slidersSvg}</button>${menuFor === "display" ? `<div class="menu dispmenu" role="menu" aria-label="Display options">
+      <div class="menugroup" role="group" aria-label="Theme"><div class="menulabel">Theme</div><div class="theme">${["system", "light", "dark"].map((t) => `<button type="button" role="menuitemradio" aria-checked="${theme === t}" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div></div>
+      <div class="menugroup" role="group" aria-label="Brand"><div class="menulabel">Brand</div><div class="theme">${[["nbc", "NBC"], ["classic", "Classic"]].map(([k, n]) => `<button type="button" role="menuitemradio" aria-checked="${brand === k}" data-brand-set="${k}" aria-pressed="${brand === k}">${n}</button>`).join("")}</div></div>
+      <div class="menusep"></div>
+      <button type="button" role="menuitem" data-cust-toggle>${custMode ? "Done customizing" : "Customize page"}</button></div>` : ""}</span>
   </header>
   ${alerts(s)}
   ${custBar}
@@ -1009,7 +1030,19 @@ function dropSection(id, onto, after) {
 }
 function focusAfter(sel) { setTimeout(() => document.querySelector(sel)?.focus(), 0); }
 function wireLayout() {
-  document.querySelectorAll("[data-cust-toggle]").forEach((b) => b.onclick = (e) => { e.preventDefault(); custMode = !custMode; menuFor = null; render(); });
+  document.querySelectorAll("[data-cust-toggle]").forEach((b) => b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); const fromMenu = menuFor === "display"; custMode = !custMode; menuFor = null; render(); if (fromMenu) focusAfter("[data-menu-display]"); });
+  const dbtn = $("[data-menu-display]"); if (dbtn) dbtn.onclick = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    menuFor = menuFor === "display" ? null : "display"; render();
+    focusAfter(menuFor ? `.dispmenu [aria-checked="true"]` : "[data-menu-display]");
+  };
+  const dm = $(".dispmenu"); if (dm) dm.onkeydown = (e) => {
+    const items = [...dm.querySelectorAll("button")], i = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); menuFor = null; render(); focusAfter("[data-menu-display]"); }
+    else if (e.key === "Tab") { menuFor = null; render(); }
+  };
   const done = $("[data-cust-done]"); if (done) done.onclick = () => { custMode = false; menuFor = null; render(); };
   const reset = $("[data-layout-reset]"); if (reset) reset.onclick = () => { layout = normaliseLayout(null); saveLayout(); menuFor = null; render(); toast("Layout reset"); };
   document.querySelectorAll("[data-show]").forEach((b) => b.onclick = () => { layout.hidden = layout.hidden.filter((x) => x !== b.dataset.show); saveLayout(); render(); });
@@ -1286,12 +1319,12 @@ function wire() {
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.onclick = () => {
     theme = b.dataset.themeSet; applyTheme();
     try { localStorage.setItem("nbs-console-theme", theme); } catch {}
-    render();
+    render(); focusAfter(`[data-theme-set="${theme}"]`);
   });
   document.querySelectorAll("[data-brand-set]").forEach((b) => b.onclick = () => {
     brand = b.dataset.brandSet; applyBrand();
     try { localStorage.setItem("nbs-console-brand", brand); } catch {}
-    render();
+    render(); focusAfter(`[data-brand-set="${brand}"]`);
   });
   document.querySelectorAll("details.sec").forEach((d) => d.ontoggle = () => {
     // Browsers also fire "toggle" for a section that was just drawn already open. That is not the owner opening it, and acting on it
