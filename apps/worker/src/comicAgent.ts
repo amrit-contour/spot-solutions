@@ -12,6 +12,8 @@ import {
   type AgentScope,
   type Ask,
   type ComicPending,
+  comicAskText,
+  pollForPending,
   type Curator,
   type MySpot,
   type RegularSpot,
@@ -19,7 +21,7 @@ import {
   type SpotAlert,
 } from "@spot/shared";
 import { col, expireAt, userRef } from "./firebase.ts";
-import { readMemory, readSettings, sendToCurator, writeMemory } from "./agentOutbox.ts";
+import { readMemory, readSettings, sendQuestion, sendToCurator, writeMemory } from "./agentOutbox.ts";
 import { generateJson } from "./llm.ts";
 import { sendAsk } from "./asks.ts";
 import { askForSpot } from "./groupWatch.ts";
@@ -89,6 +91,10 @@ function depsFor(uid: string): ComicDeps {
     },
     // One question at a time: a new comic question replaces any curator one that was waiting.
     writePending: async (p) => void (await writeMemory(uid, { comicPending: p, ...(p ? { pending: null, sideAsk: null } : {}) })),
+    async askPending(p) {
+      const id = await sendQuestion(uid, comicAskText(p), { poll: pollForPending(p), kind: "comic" });
+      if (id) await writeMemory(uid, { comicPending: { ...p, pollId: id } });
+    },
     async apply(w) {
       const batch = col(uid, "rooms").firestore.batch();
       for (const r of w.rooms) batch.set(col(uid, "rooms").doc(r.id), plain(r));

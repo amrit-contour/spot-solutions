@@ -378,8 +378,8 @@ export type ActionPlan =
   | { type: "adhoc_pick"; showId: string; roundId: string; comicId: string; comicName: string };
 
 export type PendingAction =
-  | { stage: "confirm"; plan: ActionPlan; summary: string; createdAt: number; expiresAt: number }
-  | { stage: "choose"; choices: { label: string; plan: ActionPlan; summary: string }[]; prompt: string; createdAt: number; expiresAt: number };
+  | { stage: "confirm"; plan: ActionPlan; summary: string; createdAt: number; expiresAt: number; pollId?: string }
+  | { stage: "choose"; choices: { label: string; plan: ActionPlan; summary: string }[]; prompt: string; createdAt: number; expiresAt: number; pollId?: string };
 
 export const confirmPending = (plan: ActionPlan, summary: string, now: number): PendingAction => ({ stage: "confirm", plan, summary, createdAt: now, expiresAt: now + AGENT_CONFIRM_TTL_MS });
 export const choosePending = (prompt: string, choices: { label: string; plan: ActionPlan; summary: string }[], now: number): PendingAction => ({ stage: "choose", choices, prompt, createdAt: now, expiresAt: now + AGENT_CONFIRM_TTL_MS });

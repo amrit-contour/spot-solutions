@@ -8,7 +8,7 @@ import { isAdminEmail, startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
 import { checkBrowserAtStart } from "./browserHeal.ts";
 import { agentSessions } from "./agentSession.ts";
-import { onAgentMessage } from "./agent.ts";
+import { onAgentMessage, onAgentVote } from "./agent.ts";
 import { fleet } from "./fleet.ts";
 import { DEFAULT_AI_POLICY, type AiPolicy } from "@spot/shared";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
@@ -109,6 +109,7 @@ async function main() {
     }, delayMs).unref();
   };
   agentSessions.hooks.onMessage = onAgentMessage;
+  agentSessions.hooks.onVote = onAgentVote;
   fleet.start({
     retryPending: rescanCommands,
     onAcquire: (uid) => {

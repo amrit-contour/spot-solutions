@@ -1,6 +1,7 @@
 // Everything the agent number sends goes through here: one place that checks it is linked, switched on, has the curator's number,
 // stays inside the rate limits, and uses the send queue (typing, jitter). It only ever addresses the curator's own number.
-import { resolvePlaceholders, AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyRich, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type SideAsk, type Settings } from "@spot/shared";
+import WAWebJS from "whatsapp-web.js";
+import { logPoll, pollForPending, yesNoPoll, resolvePlaceholders, type AgentPollSpec, type AskKind, type PollRecord, AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyRich, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type SideAsk, type Settings } from "@spot/shared";
 import { sessionRef, userRef } from "./firebase.ts";
 import { agentRef, agentSessions } from "./agentSession.ts";
 import { deliverableId, sendContent, sendQueued } from "./sendQueue.ts";
@@ -11,6 +12,8 @@ export interface AgentMemory {
   pending?: PendingAction | null;
   /** "Curate or Comedy?", asked of an account that uses both when a message could mean either. */
   sideAsk?: SideAsk | null;
+  /** Polls the agent sent (newest last): what a vote on each one means. See agentPolls.ts. */
+  polls?: PollRecord[];
   lastDigestOn?: string | null;
   /** How far the new-request, follow-up and notice scans have got (epoch ms). Moves only after a successful send. */
   cursor?: { requests?: number; actions?: number; notices?: number };
@@ -91,6 +94,37 @@ export async function sendToCurator(uid: string, text: string, o: { unprompted?:
   return true;
 }
 
+/**
+ * Ask a question: as a one-answer poll when `poll` is given and the account hasn't turned polls off, otherwise (or when the poll
+ * can't be sent) as the plain text, which always works too. Returns the poll's message id when a poll went out, null when the text did,
+ * and undefined when nothing was sent (not linked, off, rate limit). A poll is remembered so a vote can be matched to its question.
+ */
+export async function sendQuestion(uid: string, text: string, o: { poll: AgentPollSpec | null; kind: AskKind; unprompted?: boolean }): Promise<string | null | undefined> {
+  if (o.poll && (await readSettings(uid)).agent?.agentPolls !== false) {
+    const id = await sendPoll(uid, o.poll, Boolean(o.unprompted)).catch((e) => {
+      console.warn(`[agent] ${uid} poll failed, asking in text instead:`, (e as Error).message);
+      return null;
+    });
+    if (id) {
+      const mem = await readMemory(uid);
+      await writeMemory(uid, { polls: logPoll(mem.polls, { id, kind: o.kind, options: o.poll.options, answers: o.poll.answers, at: Date.now() }) });
+      return id;
+    }
+  }
+  return (await sendToCurator(uid, text, { unprompted: o.unprompted })) ? null : undefined;
+}
+
+/** The poll message id, or null when it can't go out here (the caller then sends text). Throws when WhatsApp refuses it. */
+async function sendPoll(uid: string, spec: AgentPollSpec, unprompted: boolean): Promise<string | null> {
+  const client = agentSessions.get(uid);
+  if (!client) return null;
+  if (!(await readSettings(uid)).agent?.enabled) return null;
+  const phone = await curatorPhone(uid);
+  if (!phone || !reserve(uid, unprompted)) return null;
+  const m = await sendContent(client, `${phone}@c.us`, new WAWebJS.Poll(spec.question, spec.options, { allowMultipleAnswers: false, messageSecret: undefined }), spec.question.length);
+  return (m as { id?: { _serialized?: string } } | undefined)?.id?._serialized ?? null;
+}
+
 // ---- batching: several things that happen close together become one message ----
 interface Batch {
   items: NotifyItem[];
@@ -136,7 +170,8 @@ export async function flushNotify(uid: string, force = false): Promise<"none" | 
  */
 export async function sendMicCheck(uid: string, text: string): Promise<boolean> {
   if (!(await agentOn(uid, "notify"))) return false;
-  return sendToCurator(uid, text, { unprompted: true }).catch(() => false);
+  const r = await sendQuestion(uid, text, { poll: yesNoPoll(text), kind: "mic", unprompted: true }).catch(() => undefined);
+  return r !== undefined;
 }
 
 // ---- questions: the app's Updates item is the source of truth, the agent just asks the same thing ----
@@ -153,8 +188,9 @@ export async function askCurator(uid: string, text: string, pending?: PendingAct
       const mem = await readMemory(uid);
       if (mem.pending && mem.pending.expiresAt > Date.now()) return false;
     }
-    if (!(await sendToCurator(uid, text, { unprompted: true }))) return false;
-    if (pending) await writeMemory(uid, { pending });
+    const pollId = await sendQuestion(uid, text, { poll: pending ? pollForPending(pending) : null, kind: "pending", unprompted: true });
+    if (pollId === undefined) return false;
+    if (pending) await writeMemory(uid, { pending: pollId ? { ...pending, pollId } : pending });
     return true;
   } catch (e) {
     console.warn(`[agent] ${uid} couldn't ask on WhatsApp (the question stays in Updates):`, (e as Error).message);

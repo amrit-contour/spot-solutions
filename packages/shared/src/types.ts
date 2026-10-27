@@ -87,6 +87,8 @@ export interface AgentSettings {
   politeNote: boolean;
   /** Name people in lists as real WhatsApp mentions (tappable, shown as their name). Off: plain first names. Default on. */
   agentTagPeople?: boolean;
+  /** Ask yes/no and pick-one questions as WhatsApp polls you tap (typing the answer still works). Off: plain text questions. Default on. */
+  agentPolls?: boolean;
 }
 
 export interface ComicProfile {

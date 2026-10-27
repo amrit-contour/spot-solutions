@@ -124,6 +124,7 @@ export interface SideAsk {
   text: string;
   createdAt: number;
   expiresAt: number;
+  pollId?: string;
 }
 
 // ---------------------------------------------------------------- per-scope texts

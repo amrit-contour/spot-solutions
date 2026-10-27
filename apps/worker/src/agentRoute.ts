@@ -25,6 +25,8 @@ import {
 export interface RouteHandlers {
   say(text: string): Promise<unknown>;
   now(): number;
+  /** Asks "Curate or Comedy?" (a poll when the agent uses them). Absent: said as plain text. */
+  askSide?(a: SideAsk): Promise<unknown>;
   readSideAsk(): Promise<SideAsk | null>;
   /** Writing a question clears any waiting yes/number of either side: one question at a time. */
   writeSideAsk(a: SideAsk | null): Promise<void>;
@@ -88,8 +90,9 @@ export async function dispatch(scope: AgentScope, text: string, h: RouteHandlers
   const choice = chooseSide(text, { curate: cu, comedy: co });
   if (choice === "curate" || choice === "comedy") return runSide(choice, text);
   if (choice === "ask") {
-    await h.writeSideAsk({ text, createdAt: now, expiresAt: now + SIDE_TTL_MS });
-    return void (await h.say(SIDE_QUESTION));
+    const ask = { text, createdAt: now, expiresAt: now + SIDE_TTL_MS };
+    await h.writeSideAsk(ask);
+    return void (await (h.askSide ? h.askSide(ask) : h.say(SIDE_QUESTION)));
   }
   // Neither side's rules read it: the model, Curate first, then Comedy.
   if ((await h.curate.run(text)) === "done") return;

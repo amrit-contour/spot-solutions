@@ -145,6 +145,9 @@ export function AgentCard() {
           <SettingRow label="Tag people in replies" info="When a reply lists people (a lineup, who's waiting, new requests), they are tagged so WhatsApp shows their name and you can tap them. Off, or if WhatsApp refuses the tags, you get first names.">
             <Switch checked={A.agentTagPeople !== false} onChange={(v) => set({ agentTagPeople: v })} label="Tag people in replies" disabled={!A.enabled} />
           </SettingRow>
+          <SettingRow label="Ask with polls" info="When the agent asks you something (yes or no, or pick one), it sends a WhatsApp poll you tap, and reads your vote. You can still type yes, no or a number. Off, or if WhatsApp won't send a poll, it asks in plain text.">
+            <Switch checked={A.agentPolls !== false} onChange={(v) => set({ agentPolls: v })} label="Ask with polls" disabled={!A.enabled} />
+          </SettingRow>
           <SettingRow label="Reply to strangers" info="If someone else messages the agent number: off means silence (nothing they send is read or kept); on means one polite line, once, telling them to message you directly.">
             <Switch checked={A.politeNote} onChange={(v) => set({ politeNote: v })} label="Reply to strangers" disabled={!A.enabled} />
           </SettingRow>

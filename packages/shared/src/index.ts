@@ -18,6 +18,7 @@ export * from "./voice.ts";
 export * from "./neverRead.ts";
 export * from "./agent.ts";
 export * from "./agentScope.ts";
+export * from "./agentPoll.ts";
 export * from "./displayNames.ts";
 export * from "./tagPeople.ts";
 export * from "./richText.ts";

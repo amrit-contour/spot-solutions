@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   voice: { enabled: false, profile: null },
   scanDays: 7,
   retention: { closedRequestsWeeks: 8 },
-  agent: { enabled: true, notify: true, answer: true, actions: true, digest: true, digestTime: "10:00", politeNote: false, agentTagPeople: true },
+  agent: { enabled: true, notify: true, answer: true, actions: true, digest: true, digestTime: "10:00", politeNote: false, agentTagPeople: true, agentPolls: true },
 };
 
 /** Loose yes/no for replies to offers and mic checks (English + common Hindi/Kannada). null = unclear. */

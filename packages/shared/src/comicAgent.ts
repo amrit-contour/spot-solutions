@@ -438,8 +438,8 @@ export function needsConfirm(plan: ComicPlan, auto: boolean): boolean {
 }
 
 export type ComicPending =
-  | { stage: "confirm"; plan: ComicPlan; summary: string; createdAt: number; expiresAt: number }
-  | { stage: "choose"; prompt: string; choices: { label: string; plan: ComicPlan }[]; createdAt: number; expiresAt: number };
+  | { stage: "confirm"; plan: ComicPlan; summary: string; createdAt: number; expiresAt: number; pollId?: string }
+  | { stage: "choose"; prompt: string; choices: { label: string; plan: ComicPlan }[]; createdAt: number; expiresAt: number; pollId?: string };
 
 export const comicConfirm = (plan: ComicPlan, now: number): ComicPending => ({ stage: "confirm", plan, summary: plan.summary, createdAt: now, expiresAt: now + AGENT_CONFIRM_TTL_MS });
 export const comicChoose = (prompt: string, choices: { label: string; plan: ComicPlan }[], now: number): ComicPending => ({ stage: "choose", prompt, choices, createdAt: now, expiresAt: now + AGENT_CONFIRM_TTL_MS });

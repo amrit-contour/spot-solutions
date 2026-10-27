@@ -8,11 +8,12 @@ import type WAWebJS from "whatsapp-web.js";
 import {
   ACTION_INTENTS, DAY_NAMES, HELP_TEXT, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
   formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, rolloverDayFor, senderIsCurator, showDay,
-  stepPending, strictNo, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
+  stepPending, strictNo, pollForPending, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
 } from "@spot/shared";
 import { col, userRef } from "./firebase.ts";
 import { agentSessions } from "./agentSession.ts";
-import { curatorPhone, agentOn, flushNotify, queueNotify, queuedCount, readMemory, readSettings, sendToCurator, writeMemory, type AgentMemory } from "./agentOutbox.ts";
+import { curatorPhone, agentOn, flushNotify, queueNotify, queuedCount, readMemory, readSettings, sendQuestion, sendToCurator, writeMemory, type AgentMemory } from "./agentOutbox.ts";
+import { applyVote, closeMicPolls } from "./agentPolls.ts";
 import { AiPolicyError } from "./aiRouting.ts";
 import { generateJson } from "./llm.ts";
 import { loadComics, runHandler } from "./commands.ts";
@@ -52,6 +53,40 @@ async function handle(uid: string, client: WAWebJS.Client, msg: WAWebJS.Message)
   await converse(uid, msg.body.trim());
 }
 
+/** Hooked to the agent session's "vote_update" event: a tap on one of the agent's polls. Same queue as messages, so it can't race them. */
+export function onAgentVote(uid: string, client: WAWebJS.Client, vote: WAWebJS.PollVote) {
+  const run = (chains.get(uid) ?? Promise.resolve()).catch(() => undefined).then(() => handleVote(uid, client, vote));
+  const tail = run.catch((e) => console.error(`[agent] ${uid} handling a vote failed:`, (e as Error).message));
+  chains.set(uid, tail);
+  void tail.then(() => chains.get(uid) === tail && chains.delete(uid));
+}
+
+async function handleVote(uid: string, client: WAWebJS.Client, vote: WAWebJS.PollVote) {
+  const pollId = vote.parentMessage?.id?._serialized;
+  if (!pollId || vote.parentMessage.to?.endsWith("@g.us")) return;
+  // Same rule as text: only the curator's own number, in the one-to-one chat. Anyone else's tap is ignored without a word.
+  let resolved: string | null = null;
+  if (vote.voter.endsWith("@lid")) resolved = (await client.getContactLidAndPhone([vote.voter]).catch(() => []))[0]?.pn ?? null;
+  if (!senderIsCurator({ from: vote.voter, resolvedPhone: resolved, curatorPhone: await curatorPhone(uid) })) return;
+  if (!(await readSettings(uid)).agent?.enabled) return;
+  await applyVote(voteDeps(uid), pollId, vote.selectedOptions.map((o) => o.name));
+}
+
+const voteDeps = (uid: string) => ({
+  readMemory: () => readMemory(uid),
+  writeMemory: (p: Record<string, unknown>) => writeMemory(uid, p),
+  say: (t: string) => say(uid, t),
+  now: () => Date.now(),
+  answer: async (kind: string, text: string) => {
+    if (kind === "mic") {
+      const A = (await readSettings(uid)).agent!;
+      await curateMic(uid, text, A);
+      return;
+    }
+    await converse(uid, text);
+  },
+});
+
 /** Optional (off by default): one polite line, once per sender. Nothing about their message is read or kept; only a hash of who it was. */
 async function politeNote(uid: string, client: WAWebJS.Client, from: string) {
   if (from.includes("broadcast") || from.endsWith("@newsletter")) return;
@@ -69,12 +104,33 @@ async function politeNote(uid: string, client: WAWebJS.Client, from: string) {
 
 const say = (uid: string, text: string) => sendToCurator(uid, text).catch((e) => console.warn(`[agent] ${uid} reply failed:`, (e as Error).message));
 
+/** Ask the question that was just stored as pending: a poll when the account uses them (else the text), remembering the poll's id on it. */
+async function askPending(uid: string, p: PendingAction) {
+  try {
+    const id = await sendQuestion(uid, askText(p), { poll: pollForPending(p), kind: "pending" });
+    if (id) await writeMemory(uid, { pending: { ...p, pollId: id } });
+  } catch (e) {
+    console.warn(`[agent] ${uid} reply failed:`, (e as Error).message);
+  }
+}
+
+/** "Curate or Comedy?" as a poll (text when polls are off or fail). */
+async function askSide(uid: string, a: SideAsk) {
+  try {
+    const id = await sendQuestion(uid, SIDE_QUESTION, { poll: SIDE_POLL, kind: "side" });
+    if (id) await writeMemory(uid, { sideAsk: { ...a, pollId: id } });
+  } catch (e) {
+    console.warn(`[agent] ${uid} reply failed:`, (e as Error).message);
+  }
+}
+
 async function converse(uid: string, text: string) {
   const A = (await readSettings(uid)).agent!;
   const scope = await scopeFor(uid);
   await dispatch(scope, text, {
     say: (t) => say(uid, t),
     now: () => Date.now(),
+    askSide: (a) => askSide(uid, a),
     readSideAsk: async () => (await readMemory(uid)).sideAsk ?? null,
     // One question at a time: asking "Curate or Comedy?" drops any yes/number that was waiting.
     writeSideAsk: async (a) => void (await writeMemory(uid, a ? { sideAsk: a, pending: null, comicPending: null } : { sideAsk: null })),
@@ -98,7 +154,7 @@ async function curatePending(uid: string, text: string, A: AgentSettings): Promi
     else await runPlan(uid, step.plan);
     return true;
   }
-  if (step.type === "chosen") return void (await say(uid, askText(step.pending))), true;
+  if (step.type === "chosen") return void (await askPending(uid, step.pending)), true;
   if (step.type === "cancel") {
     // "no" to "clear the group?" means keep everyone for next week.
     if (mem.pending?.stage === "confirm" && mem.pending.plan.type === "cleanup") {
@@ -126,6 +182,7 @@ async function curateMic(uid: string, text: string, A: AgentSettings): Promise<b
   const yn = micAnswer(text);
   if (yn === null) return false;
   const done = await answerMicCheck(uid, yn);
+  if (done) await closeMicPolls({ readMemory: () => readMemory(uid), writeMemory: (p) => writeMemory(uid, p) });
   await say(uid, done ?? "Nothing is waiting on a yes or no right now.");
   return true;
 }
@@ -149,7 +206,7 @@ async function curateRun(uid: string, text: string, scope: AgentScope): Promise<
     if (!A.actions) return void (await say(uid, "Doing things for you is switched off in Settings, so I didn't touch anything.")), "done";
     const r = await plan(uid, intent);
     if (r.pending) await writeMemory(uid, { pending: r.pending, comicPending: null, sideAsk: null });
-    return void (await say(uid, r.pending ? askText(r.pending) : (r.reply ?? "I couldn't work that out."))), "done";
+    return void (await (r.pending ? askPending(uid, r.pending) : say(uid, r.reply ?? "I couldn't work that out."))), "done";
   }
   return "unknown";
 }

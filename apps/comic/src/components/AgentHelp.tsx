@@ -24,6 +24,13 @@ interface LogRow {
   status: "done" | "failed" | "cancelled";
 }
 
+/** users/{uid}.settings.agent.agentPolls: questions as WhatsApp polls (default on). The worker reads it for both apps. */
+function useAgentPolls(uid: string) {
+  const [on, setOn] = useState(true);
+  useEffect(() => onSnapshot(doc(db, "users", uid), (s) => setOn(s.data()?.settings?.agent?.agentPolls !== false), () => undefined), [uid]);
+  return [on, (v: boolean) => setDoc(doc(db, "users", uid), { settings: { agent: { agentPolls: v } } }, { merge: true })] as const;
+}
+
 /** users/{uid}.comicSettings.agentAuto: do what the agent is asked without repeating it back first. */
 function useAgentAuto(uid: string) {
   const [auto, setAuto] = useState(false);
@@ -34,6 +41,7 @@ function useAgentAuto(uid: string) {
 /** Settings: "What you can say" to the agent number, how it checks with you, and what it did lately (users/{uid}/agentLog). */
 export function AgentHelp({ uid }: { uid: string }) {
   const [auto, setAuto] = useAgentAuto(uid);
+  const [polls, setPolls] = useAgentPolls(uid);
   const alsoCurate = useAgentScope(uid).curate;
   const log = useCollection<LogRow>(uid, "agentLog", [orderBy("at", "desc"), limit(15)], "log");
   const now = useClock(60_000);
@@ -66,6 +74,9 @@ export function AgentHelp({ uid }: { uid: string }) {
       <div className="rounded-lg bg-surface-low px-4">
         <SettingRow label="Do it without asking" info="Off (recommended): before it changes a curator, closes or pauses a room, or messages anyone, the agent repeats what it will do and waits for your yes. On: it just does it and tells you.">
           <Switch label="Do it without asking" checked={auto} onChange={(v) => void setAuto(v)} />
+        </SettingRow>
+        <SettingRow label="Ask with polls" info="When the agent asks you something (yes or no, or pick one), it sends a WhatsApp poll you tap, and reads your vote. You can still type yes, no or a number. Off, or if WhatsApp won't send a poll, it asks in plain text.">
+          <Switch label="Ask with polls" checked={polls} onChange={(v) => void setPolls(v)} />
         </SettingRow>
       </div>
       <div className="min-w-0">

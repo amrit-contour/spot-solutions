@@ -37,6 +37,8 @@ export interface ComicDeps {
   settings(): Promise<{ answer: boolean; actions: boolean; auto: boolean; tz: string }>;
   /** A fresh read of rooms, curators, asks, spots (with regulars folded in), alerts and the ask template. */
   load(): Promise<Omit<ComicWorld, "auto" | "today" | "nowMs" | "tz">>;
+  /** Asks a stored question (a poll when the agent uses them). Absent: said as plain text. */
+  askPending?(p: ComicPending): Promise<unknown>;
   readPending(): Promise<ComicPending | null>;
   writePending(p: ComicPending | null): Promise<void>;
   /** Writes the documents the app would write (merge: a draft keeps its reminder stamps). */
@@ -96,6 +98,8 @@ export function comicAgent(d: ComicDeps) {
     }
   }
 
+  const ask = (p: ComicPending) => (d.askPending ? d.askPending(p) : d.say(comicAskText(p)));
+
   /** Plans what was asked: answers, asks a question, or runs. */
   async function act(intent: ComicIntent): Promise<void> {
     const s = await d.settings();
@@ -106,7 +110,7 @@ export function comicAgent(d: ComicDeps) {
     const p = planComic(intent, w);
     if (p.pending) {
       await d.writePending(p.pending);
-      return void (await d.say(comicAskText(p.pending)));
+      return void (await ask(p.pending));
     }
     if (p.run) return run(p.run);
     await d.say(p.reply ?? "I couldn't work that out.");
@@ -123,7 +127,7 @@ export function comicAgent(d: ComicDeps) {
       if (step.type === "reprompt") return void (await d.say(step.text)), true;
       if (step.type === "chosen") {
         await d.writePending(step.pending);
-        return void (await d.say(comicAskText(step.pending))), true;
+        return void (await ask(step.pending)), true;
       }
       await d.writePending(null);
       if (step.type === "execute") {

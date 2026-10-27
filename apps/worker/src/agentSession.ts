@@ -33,6 +33,8 @@ interface Hooks {
   onReady?: (uid: string, source: "local" | "cloud" | "fresh") => void;
   /** Set by agent.ts: a message arrived for the agent. */
   onMessage?: (uid: string, client: WAWebJS.Client, msg: WAWebJS.Message) => void;
+  /** Set by agent.ts: a tap on one of the agent's polls. */
+  onVote?: (uid: string, client: WAWebJS.Client, vote: WAWebJS.PollVote) => void;
 }
 
 class AgentSessionManager {
@@ -146,6 +148,7 @@ class AgentSessionManager {
       this.hooks.onReady?.(uid, this.sources.get(uid) ?? "local");
     });
     client.on("message", (msg) => this.hooks.onMessage?.(uid, client, msg));
+    client.on("vote_update", (vote) => this.hooks.onVote?.(uid, client, vote));
     client.on("disconnected", async (reason) => {
       if (this.clients.get(uid) !== client) return;
       console.warn(`[agent] ${uid} disconnected: ${reason}`);
