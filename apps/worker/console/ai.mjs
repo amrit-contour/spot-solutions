@@ -12,11 +12,12 @@ export const MODES = {
   local_only: "Local only (chats never reach Gemini)",
 };
 const GEMINI = process.env.NBS_GEMINI_URL ?? "https://generativelanguage.googleapis.com/v1beta";
-const KEY_RE = /^[A-Za-z0-9_-]{20,200}$/;
+// Gemini keys from AI Studio are long URL-safe strings (classic "AIza…" keys, and newer formats that may include dots).
+const KEY_RE = /^[A-Za-z0-9._-]{20,300}$/;
 const NAME_RE = /^[A-Za-z0-9._:/-]{1,100}$/;
 
 export const maskKey = (k) => (k ? `••••${String(k).slice(-4)}` : null);
-export const validKey = (k) => typeof k === "string" && KEY_RE.test(k);
+export const validKey = (k) => typeof k === "string" && KEY_RE.test(k.trim());
 export const validModel = (m) => typeof m === "string" && NAME_RE.test(m);
 export const validMode = (m) => typeof m === "string" && Object.hasOwn(MODES, m);
 
@@ -138,9 +139,14 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     return mine;
   }
 
-  async function setKey(key) {
+  async function setKey(raw) {
+    // Copying from AI Studio often brings a space or line break along; never let that fail a good key.
+    const key = typeof raw === "string" ? raw.replace(/\s+/g, "") : raw;
     if (key === "" || key === null) { writeEnv({ GEMINI_API_KEY: "" }); await restartWorker(); return; }
-    if (!validKey(key)) throw new Error("That doesn't look like a Gemini key. It is a long string from Google AI Studio.");
+    if (!validKey(key)) throw new Error("That doesn't look like a Gemini key. Copy it again from Google AI Studio (aistudio.google.com/apikey).");
+    // Ask Google instead of guessing from the shape: a key it rejects is never saved.
+    const check = await fetchImpl(`${GEMINI}/models?pageSize=1`, { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    if (check && (check.status === 400 || check.status === 401 || check.status === 403)) throw new Error("Google didn't accept this key. Check it's an API key from Google AI Studio and that the Gemini API is enabled for it.");
     writeEnv({ GEMINI_API_KEY: key });
     await restartWorker();
   }
