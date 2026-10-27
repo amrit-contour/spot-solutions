@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { DEFAULT_SETTINGS, RosterFormatError, fromCsv, fromRosterJson, groupByArea, localDate, roomMatches, toCsv, toRosterJson, type Room } from "@spot/shared";
-import { Button, CompactButton, IconAdd, IconBuilding, IconImport, IconMenuDots, IconButton, IconSearch, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { Button, CompactButton, IconPlus, IconBuilding, IconImport, IconMenuDots, IconButton, IconSearch, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
 import { EmptyState, Page, SearchField, Section } from "../components/ui";
 import { useRoster } from "../lib/roster";
 import { blankRoom } from "../lib/rooms";
@@ -88,7 +88,7 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
         title="Rooms"
         actions={
           <>
-            {tab === "rooms" && <CompactButton icon={IconAdd} label="Add a room" variant="filled" onClick={startNew} />}
+            {tab === "rooms" && <CompactButton icon={IconPlus} label="Add a room" variant="filled" onClick={startNew} />}
             <Menu align="right" trigger={(open) => <IconButton icon={IconMenuDots} label="Import and export" onClick={open} />}>
               {(close) => (
                 <>
@@ -129,7 +129,7 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
             title="No rooms yet"
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button icon={IconAdd} onClick={startNew}>Add a room</Button>
+                <Button icon={IconPlus} onClick={startNew}>Add a room</Button>
                 <Button variant="tonal" icon={IconImport} onClick={() => file.current?.click()}>Import</Button>
                 <Button variant="outlined" onClick={() => void starter()}>Load the Bangalore starter</Button>
               </div>

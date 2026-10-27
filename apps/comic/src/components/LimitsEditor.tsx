@@ -1,5 +1,5 @@
 import type { Limit, RoomShow } from "@spot/shared";
-import { Button, Chip, IconAdd, IconButton, IconTrash, Segmented, Select, Stepper } from "@spot/ui";
+import { Button, Chip, IconPlus, IconButton, IconTrash, Segmented, Select, Stepper } from "@spot/ui";
 import { ToggleRow } from "./ui";
 import { validateLimit } from "../lib/rooms";
 
@@ -51,7 +51,7 @@ export function LimitsEditor({ limits, shows, onChange }: { limits: Limit[]; sho
         );
       })}
       <div>
-        <Button variant="tonal" icon={IconAdd} onClick={() => onChange([...limits, { scope: "room", perMonth: 1 }])}>
+        <Button variant="tonal" icon={IconPlus} onClick={() => onChange([...limits, { scope: "room", perMonth: 1 }])}>
           Add a limit
         </Button>
       </div>

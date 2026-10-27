@@ -13,7 +13,7 @@ import {
   type AlertRule,
   type ResolvedAlertRules,
 } from "@spot/shared";
-import { Button, Chip, Collapsible, IconAdd, IconClose, IconRefresh, IconTrash, Switch, TextInput } from "@spot/ui";
+import { Button, Chip, Collapsible, IconPlus, IconClose, IconRefresh, IconTrash, Switch, TextInput } from "@spot/ui";
 import { Card, Section } from "./ui";
 import { saveAlertRules, useComicSettings } from "../lib/alerts";
 
@@ -172,7 +172,7 @@ function RuleRow({ rule: r, problem, onChange, onReset, onDelete }: { rule: Aler
           </div>
           <div className="mt-2 flex min-w-0 gap-2">
             <TextInput value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPhrase())} placeholder="Add a word or phrase" aria-label={`Add a phrase to "${r.label}"`} />
-            <Button variant="tonal" size="sm" icon={IconAdd} onClick={addPhrase}>Add</Button>
+            <Button variant="tonal" size="sm" icon={IconPlus} onClick={addPhrase}>Add</Button>
           </div>
         </div>
       )}
@@ -233,7 +233,7 @@ function AddRule({ onAdd, disabled }: { onAdd: (r: AlertRule) => void; disabled?
           <input type="range" min={-100} max={100} step={5} value={weight} onChange={(e) => setWeight(Number(e.target.value))} aria-label="Weight" className="w-full accent-primary" />
         </div>
         <div className="flex justify-end">
-          <Button size="sm" icon={IconAdd} onClick={add} disabled={!ok}>Add rule</Button>
+          <Button size="sm" icon={IconPlus} onClick={add} disabled={!ok}>Add rule</Button>
         </div>
       </div>
     </div>

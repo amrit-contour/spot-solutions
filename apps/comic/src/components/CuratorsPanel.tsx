@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DAY_SHORT, curatorUsage, daysLabel, type Curator } from "@spot/shared";
-import { Button, ConfirmDialog, IconAdd, IconButton, IconComics, IconPen, IconTrash, Sheet } from "@spot/ui";
+import { Button, ConfirmDialog, IconPlus, IconButton, IconComics, IconPen, IconTrash, Sheet } from "@spot/ui";
 import { useRoster } from "../lib/roster";
 import { CuratorForm } from "./CuratorForm";
 import { Card, EmptyState, Section } from "./ui";
@@ -41,9 +41,9 @@ export function CuratorsPanel({ q }: { q: string }) {
 
   return (
     <>
-      <Section title="Curators" count={list.length} action={<Button icon={IconAdd} variant="tonal" size="sm" onClick={() => setEditing("new")}>Add a curator</Button>}>
+      <Section title="Curators" count={list.length} action={<Button icon={IconPlus} variant="tonal" size="sm" onClick={() => setEditing("new")}>Add a curator</Button>}>
         {list.length === 0 ? (
-          <EmptyState icon={IconComics} title={store.curators.length ? "No one matches" : "No curators yet"} action={!store.curators.length && <Button icon={IconAdd} onClick={() => setEditing("new")}>Add a curator</Button>}>
+          <EmptyState icon={IconComics} title={store.curators.length ? "No one matches" : "No curators yet"} action={!store.curators.length && <Button icon={IconPlus} onClick={() => setEditing("new")}>Add a curator</Button>}>
             {store.curators.length ? "Try another name." : "Curators are who you ask for a spot. Add them here, or while adding a show."}
           </EmptyState>
         ) : (

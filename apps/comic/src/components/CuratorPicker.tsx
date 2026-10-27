@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button, IconAdd, IconSearch, TextInput } from "@spot/ui";
+import { Button, IconPlus, IconSearch, TextInput } from "@spot/ui";
 import type { Curator } from "@spot/shared";
 import { useRoster } from "../lib/roster";
 import { CuratorForm } from "./CuratorForm";
@@ -54,7 +54,7 @@ export function CuratorPicker({ exclude, onPick, onClose }: { exclude: string[];
       </ul>
       <div className="flex justify-between gap-2">
         <Button variant="text" onClick={onClose}>Cancel</Button>
-        <Button variant="tonal" icon={IconAdd} onClick={() => setAdding(true)}>New curator</Button>
+        <Button variant="tonal" icon={IconPlus} onClick={() => setAdding(true)}>New curator</Button>
       </div>
     </div>
   );

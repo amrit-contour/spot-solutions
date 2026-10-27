@@ -5,7 +5,7 @@ import {
   suggestRoomField, suggestShowField, type AskRule, type CuratorShared, type DayProposal, type RoomShared, type RoomField, type ShowField, type ShowShared, type SharedRoster,
   type SuggestionDraft, type Weekday,
 } from "@spot/shared";
-import { Button, Chip, Field, IconAdd, IconButton, IconClose, Segmented, Select, Switch, TextInput, TimePicker } from "@spot/ui";
+import { Button, Chip, Field, IconPlus, IconButton, IconClose, Segmented, Select, Switch, TextInput, TimePicker } from "@spot/ui";
 import { AskRuleEditor } from "../AskRuleEditor";
 import { LimitsEditor } from "../LimitsEditor";
 import { NotesEditor } from "../NotesEditor";
@@ -24,7 +24,7 @@ function Times({ times, onChange, label }: { times: string[]; onChange: (t: stri
         </div>
       ))}
       <div>
-        <Button variant="tonal" size="sm" icon={IconAdd} onClick={() => onChange([...times, times.length ? "22:00" : "21:00"])}>Add a time</Button>
+        <Button variant="tonal" size="sm" icon={IconPlus} onClick={() => onChange([...times, times.length ? "22:00" : "21:00"])}>Add a time</Button>
       </div>
     </div>
   );
@@ -149,7 +149,7 @@ function People({ people, onChange }: { people: Person[]; onChange: (p: Person[]
         </div>
       ))}
       <div>
-        <Button variant="tonal" size="sm" icon={IconAdd} onClick={() => onChange([...people, { name: "", phone: "" }])}>{people.length ? "Add a co-curator" : "Add a curator"}</Button>
+        <Button variant="tonal" size="sm" icon={IconPlus} onClick={() => onChange([...people, { name: "", phone: "" }])}>{people.length ? "Add a co-curator" : "Add a curator"}</Button>
       </div>
     </div>
   );

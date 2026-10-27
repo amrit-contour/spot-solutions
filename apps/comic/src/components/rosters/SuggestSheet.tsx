@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import { toSharedRoster, type PublishedRosterDoc, type RoomShared, type SuggestionDraft } from "@spot/shared";
-import { Button, Field, IconBuilding, IconMic, IconPen, IconSearch, IconTrash, IconUserCheck, IconAdd, IconClock, Sheet, TextArea, type Icon } from "@spot/ui";
+import { Button, Field, IconBuilding, IconMic, IconPen, IconSearch, IconTrash, IconUserCheck, IconPlus, IconClock, Sheet, TextArea, type Icon } from "@spot/ui";
 import { sendSuggestion } from "../../lib/rosters";
 import { AddRoomForm, AddShowForm, CuratorFieldForm, DayForm, RemoveRoomForm, RemoveShowForm, RoomFieldForm, ShowFieldForm, type OnDraft } from "./SuggestForms";
 
@@ -13,7 +13,7 @@ const OPTIONS: { kind: Kind; icon: Icon; title: string; text: string; needsShow?
   { kind: "show", icon: IconClock, title: "Times or when to ask", text: "Start times, ask window, name, how often.", needsShow: true },
   { kind: "room", icon: IconPen, title: "A detail of the room", text: "Name, area, tags, other ways to ask, limits." },
   { kind: "curator", icon: IconSearch, title: "A curator's number", text: "A wrong or new number or Instagram handle." },
-  { kind: "addShow", icon: IconAdd, title: "Add a show", text: "A mic or show this room is missing." },
+  { kind: "addShow", icon: IconPlus, title: "Add a show", text: "A mic or show this room is missing." },
   { kind: "removeShow", icon: IconMic, title: "Remove a show", text: "A show that has stopped.", needsShow: true },
   { kind: "removeRoom", icon: IconTrash, title: "Remove this room", text: "It has closed or doesn't run mics." },
 ];

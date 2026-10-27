@@ -1,5 +1,5 @@
 import type { RoomNote } from "@spot/shared";
-import { Field, IconButton, IconTrash, TextInput, Menu, MenuItem, Button, IconAdd } from "@spot/ui";
+import { Field, IconButton, IconTrash, TextInput, Menu, MenuItem, Button, IconPlus } from "@spot/ui";
 
 const KIND_LABEL: Record<RoomNote["kind"], string> = {
   instagram: "Instagram",
@@ -38,7 +38,7 @@ export function NotesEditor({ notes, onChange }: { notes: RoomNote[]; onChange: 
         </div>
       ))}
       <div>
-        <Menu trigger={(open) => <Button variant="tonal" icon={IconAdd} onClick={open}>Add a way to ask</Button>}>
+        <Menu trigger={(open) => <Button variant="tonal" icon={IconPlus} onClick={open}>Add a way to ask</Button>}>
           {(close) => KINDS.map((k) => <MenuItem key={k} onClick={() => { onChange([...notes, { kind: k }]); close(); }}>{KIND_LABEL[k]}</MenuItem>)}
         </Menu>
       </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DAY_NAMES, DAY_SHORT, WEEK_ORDER, type DayPlan, type RoomShow, type Weekday } from "@spot/shared";
-import { Button, Chip, Field, IconAdd, IconButton, IconClose, Segmented, TextInput, TimePicker } from "@spot/ui";
+import { Button, Chip, Field, IconPlus, IconButton, IconClose, Segmented, TextInput, TimePicker } from "@spot/ui";
 import { ToggleRow } from "./ui";
 import { useRoster } from "../lib/roster";
 import { AskRuleEditor } from "./AskRuleEditor";
@@ -29,7 +29,7 @@ function TimesList({ times, onChange, label }: { times: string[]; onChange: (t: 
         </div>
       ))}
       <div>
-        <Button variant="tonal" size="sm" icon={IconAdd} onClick={() => onChange([...times, times.length ? "22:00" : "21:00"])}>
+        <Button variant="tonal" size="sm" icon={IconPlus} onClick={() => onChange([...times, times.length ? "22:00" : "21:00"])}>
           Add a time
         </Button>
       </div>
@@ -71,7 +71,7 @@ function DayCard({ day, onChange, onCopy, canCopy, showName }: { day: DayPlan; o
         <CuratorPicker exclude={ids} onPick={(id) => onChange({ ...day, curatorIds: [...ids, id] })} onClose={() => setPicking(false)} />
       ) : (
         <div>
-          <Button variant="tonal" size="sm" icon={IconAdd} onClick={() => setPicking(true)}>
+          <Button variant="tonal" size="sm" icon={IconPlus} onClick={() => setPicking(true)}>
             {ids.length ? "Add a co-curator" : "Add a curator"}
           </Button>
         </div>

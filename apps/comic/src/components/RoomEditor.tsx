@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { SUGGESTED_TAGS, showSummary, type Room, type RoomShow } from "@spot/shared";
-import { Button, Chip, ConfirmDialog, Field, IconAdd, IconPen, IconTrash, Sheet, TextArea, TextInput } from "@spot/ui";
+import { Button, Chip, ConfirmDialog, Field, IconPlus, IconPen, IconTrash, Sheet, TextArea, TextInput } from "@spot/ui";
 import { useRoster, plain } from "../lib/roster";
 import { blankShow, newRoomIdFor, validateRoom, validateShow } from "../lib/rooms";
 import { LimitsEditor } from "./LimitsEditor";
@@ -182,7 +182,7 @@ export function RoomEditor({ value, onClose }: { value: Room | null; onClose: ()
                 </button>
               ))}
               <div>
-                <Button variant="tonal" icon={IconAdd} onClick={() => { setIsNewShow(true); setEditingShow(blankShow(draft.shows)); }}>
+                <Button variant="tonal" icon={IconPlus} onClick={() => { setIsNewShow(true); setEditingShow(blankShow(draft.shows)); }}>
                   Add a show
                 </Button>
               </div>
