@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, orderBy, limit, setDoc } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
+import { useAgentScope } from "@spot/ui/agentScope";
+import { OTHER_APP_NOTE } from "@spot/shared";
 import { IconChatCheck, SectionTitle, SettingRow, Switch } from "@spot/ui";
 import { useCollection } from "../lib/data";
 import { ago } from "../lib/time";
@@ -32,6 +34,7 @@ function useAgentAuto(uid: string) {
 /** Settings: "What you can say" to the agent number, how it checks with you, and what it did lately (users/{uid}/agentLog). */
 export function AgentHelp({ uid }: { uid: string }) {
   const [auto, setAuto] = useAgentAuto(uid);
+  const alsoCurate = useAgentScope(uid).curate;
   const log = useCollection<LogRow>(uid, "agentLog", [orderBy("at", "desc"), limit(15)], "log");
   const now = useClock(60_000);
   return (
@@ -58,6 +61,7 @@ export function AgentHelp({ uid }: { uid: string }) {
             </div>
           ))}
         </div>
+        {alsoCurate && <p className="mt-3 type-body-s text-on-surface-variant">{OTHER_APP_NOTE.comedy}</p>}
       </div>
       <div className="rounded-lg bg-surface-low px-4">
         <SettingRow label="Do it without asking" info="Off (recommended): before it changes a curator, closes or pauses a room, or messages anyone, the agent repeats what it will do and waits for your yes. On: it just does it and tells you.">

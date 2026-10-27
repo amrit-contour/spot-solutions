@@ -3,10 +3,12 @@
 // app (they have rooms, or comicSettings). It reads only what the comic says to the agent: never their chats.
 import {
   TTL_DAYS,
+  agentScope,
   isoAddDays,
   localDate,
   mergeRegulars,
   regularWindow,
+  type AgentScope,
   type Ask,
   type ComicPending,
   type Curator,
@@ -16,7 +18,7 @@ import {
   type SpotAlert,
 } from "@spot/shared";
 import { col, expireAt, userRef } from "./firebase.ts";
-import { agentOn, readMemory, readSettings, sendToCurator, writeMemory } from "./agentOutbox.ts";
+import { readMemory, readSettings, sendToCurator, writeMemory } from "./agentOutbox.ts";
 import { generateJson } from "./llm.ts";
 import { sendAsk } from "./asks.ts";
 import { askForSpot } from "./groupWatch.ts";
@@ -26,23 +28,27 @@ const withId = <T,>(d: FirebaseFirestore.QueryDocumentSnapshot) => ({ ...(d.data
 /** Firestore refuses undefined; drop it (and keep the rest as it is). */
 const plain = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
-const known = new Map<string, number>();
-const KNOWN_MS = 10 * 60_000;
-const notComic = new Map<string, number>();
+const scopes = new Map<string, { at: number; scope: AgentScope }>();
+const SCOPE_MS = 60_000;
 
-/** Does this account use the Comedy app? (rooms, or comic settings). Re-checked every ten minutes. */
-export async function isComicAccount(uid: string): Promise<boolean> {
-  const now = Date.now();
-  if ((known.get(uid) ?? 0) > now) return true;
-  if ((notComic.get(uid) ?? 0) > now) return false;
-  const user = (await userRef(uid).get()).data();
-  const yes = Boolean(user?.comicSettings) || !(await col(uid, "rooms").limit(1).get()).empty;
-  (yes ? known : notComic).set(uid, now + (yes ? KNOWN_MS : 60_000));
-  return yes;
-}
-
-export async function hasShows(uid: string): Promise<boolean> {
-  return !(await col(uid, "shows").where("active", "==", true).limit(1).get()).empty;
+/** Which apps this account uses (agentScope, shared): decides what the agent number does for it. Re-read every minute. */
+export async function scopeFor(uid: string): Promise<AgentScope> {
+  const hit = scopes.get(uid);
+  if (hit && Date.now() - hit.at < SCOPE_MS) return hit.scope;
+  const has = async (c: string) => !(await col(uid, c).limit(1).get()).empty;
+  const [shows, venues, lineups, rooms, devices, user] = await Promise.all([has("shows"), has("venues"), has("lineups"), has("rooms"), col(uid, "devices").get(), userRef(uid).get()]);
+  const apps = devices.docs.map((d) => d.data().app as string | undefined);
+  const scope = agentScope({
+    shows,
+    venues,
+    lineups,
+    rooms,
+    comicSettings: user.data()?.comicSettings != null,
+    curateDevice: apps.some((a) => a !== "comic"),
+    comicDevice: apps.some((a) => a === "comic"),
+  });
+  scopes.set(uid, { at: Date.now(), scope });
+  return scope;
 }
 
 function depsFor(uid: string): ComicDeps {
@@ -81,7 +87,7 @@ function depsFor(uid: string): ComicDeps {
       return p.comicPending ?? null;
     },
     // One question at a time: a new comic question replaces any curator one that was waiting.
-    writePending: async (p) => void (await writeMemory(uid, { comicPending: p, ...(p ? { pending: null } : {}) })),
+    writePending: async (p) => void (await writeMemory(uid, { comicPending: p, ...(p ? { pending: null, sideAsk: null } : {}) })),
     async apply(w) {
       const batch = col(uid, "rooms").firestore.batch();
       for (const r of w.rooms) batch.set(col(uid, "rooms").doc(r.id), plain(r));
@@ -113,9 +119,5 @@ function depsFor(uid: string): ComicDeps {
   };
 }
 
-/** The comic's conversation, or null when this account doesn't use the Comedy app or the agent is off. */
-export async function comicFor(uid: string) {
-  if (!(await agentOn(uid))) return null;
-  if (!(await isComicAccount(uid))) return null;
-  return comicAgent(depsFor(uid));
-}
+/** The comic's conversation (the caller has checked the account uses Comedy). */
+export const comicFor = (uid: string) => comicAgent(depsFor(uid));

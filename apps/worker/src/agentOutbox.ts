@@ -1,6 +1,6 @@
 // Everything the agent number sends goes through here: one place that checks it is linked, switched on, has the curator's number,
 // stays inside the rate limits, and uses the send queue (typing, jitter). It only ever addresses the curator's own number.
-import { AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyBatch, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type Settings } from "@spot/shared";
+import { AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyBatch, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type SideAsk, type Settings } from "@spot/shared";
 import { sessionRef, userRef } from "./firebase.ts";
 import { agentRef, agentSessions } from "./agentSession.ts";
 import { sendQueued } from "./sendQueue.ts";
@@ -9,6 +9,8 @@ import { settingsFromDoc } from "./userData.ts";
 /** What the agent remembers between messages, in users/{uid}/session/agent (owner-readable, worker-written). */
 export interface AgentMemory {
   pending?: PendingAction | null;
+  /** "Curate or Comedy?", asked of an account that uses both when a message could mean either. */
+  sideAsk?: SideAsk | null;
   lastDigestOn?: string | null;
   /** How far the new-request, follow-up and notice scans have got (epoch ms). Moves only after a successful send. */
   cursor?: { requests?: number; actions?: number; notices?: number };

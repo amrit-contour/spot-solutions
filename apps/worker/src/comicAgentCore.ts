@@ -153,7 +153,7 @@ export function comicAgent(d: ComicDeps) {
     },
 
     /** The model reads the message. True when handled (an unreadable message gets the "what I can do" card). */
-    async byModel(text: string): Promise<boolean> {
+    async byModel(text: string, o: { quiet?: boolean } = {}): Promise<boolean> {
       const s = await d.settings();
       if (!s.answer && !s.actions) return false;
       const w = await world();
@@ -167,6 +167,8 @@ export function comicAgent(d: ComicDeps) {
       } catch {
         intent = { name: "unknown", text };
       }
+      // quiet: the caller has another side to try, so an unreadable message is not answered here.
+      if (o.quiet && intent.name === "unknown") return false;
       await act(intent);
       return true;
     },

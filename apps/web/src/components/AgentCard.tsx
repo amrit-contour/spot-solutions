@@ -4,7 +4,8 @@ import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { DEFAULT_SETTINGS, type AgentSettings, type SessionState } from "@spot/shared";
+import { DEFAULT_SETTINGS, OTHER_APP_NOTE, type AgentSettings, type SessionState } from "@spot/shared";
+import { useAgentScope } from "@spot/ui/agentScope";
 import { useApp } from "../lib/app";
 import { runCommand, useDocument } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
@@ -20,6 +21,7 @@ export function AgentCard() {
   const agent = useDocument<SessionState>(["users", uid, "session", "agent"]).data;
   const [busy, setBusy] = useState<"link" | "unlink" | "test" | null>(null);
   const demo = isDemoUser();
+  const alsoComedy = useAgentScope(uid).comedy;
   const A: AgentSettings = { ...DEFAULTS, ...settings.agent };
   const set = (patch: Partial<AgentSettings>) => saveSettings({ agent: { ...A, ...patch } });
 
@@ -143,6 +145,27 @@ export function AgentCard() {
           <SettingRow label="Reply to strangers" info="If someone else messages the agent number: off means silence (nothing they send is read or kept); on means one polite line, once, telling them to message you directly.">
             <Switch checked={A.politeNote} onChange={(v) => set({ politeNote: v })} label="Reply to strangers" disabled={!A.enabled} />
           </SettingRow>
+        </div>
+      )}
+      {agent?.phone && (
+        <div className="mt-4 min-w-0 rounded-lg bg-surface-container p-4">
+          <h3 className="type-title-m">What you can say</h3>
+          <div className="mt-2 grid min-w-0 gap-x-8 gap-y-3 md:grid-cols-2">
+            {[
+              { title: "Ask me", lines: ["Monday lineup?", "Who's waiting?", "What's left to confirm?", "Who asked for Tuesday?", "When did Rohan last perform?"] },
+              { title: "Tell me (I repeat it back and wait for your yes)", lines: ["Add Rohan to Tuesday", "Remove Rohan from Monday", "Confirm Monday", "Mark Monday happened (or didn't happen)", "Bloom moved Thursday to 9 PM"] },
+            ].map((g) => (
+              <div key={g.title} className="min-w-0">
+                <p className="type-label-l text-on-surface-variant">{g.title}</p>
+                <ul className="mt-1 flex flex-col gap-1">
+                  {g.lines.map((l) => (
+                    <li key={l} className="break-words type-body-m">“{l}”</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          {alsoComedy && <p className="mt-3 type-body-s text-on-surface-variant">{OTHER_APP_NOTE.curate}</p>}
         </div>
       )}
       <p className="mt-5 flex items-start gap-2 type-body-s text-on-surface-variant">

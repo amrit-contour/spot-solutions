@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./firebase": "./src/firebase.ts",
+    "./agentScope": "./src/agentScope.ts",
     "./styles.css": "./src/styles.css"
   },
   "scripts": {

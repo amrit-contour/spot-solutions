@@ -6,9 +6,9 @@
 import { createHash } from "node:crypto";
 import type WAWebJS from "whatsapp-web.js";
 import {
-  ACTION_INTENTS, DAY_NAMES, HELP_TEXT, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, askText, composeDigest, digestDue, formatAsked, formatLastPerformed, formatLineup,
+  ACTION_INTENTS, DAY_NAMES, HELP_TEXT, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, composeDigest, digestDue, formatAsked, formatLastPerformed, formatLineup,
   formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, rolloverDayFor, senderIsCurator, showDay,
-  stepPending, strictNo, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type Comic, type Lineup, type PersonRef, type Settings, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
+  stepPending, strictNo, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
 } from "@spot/shared";
 import { col, userRef } from "./firebase.ts";
 import { agentSessions } from "./agentSession.ts";
@@ -21,7 +21,8 @@ import { recordOutcome, settleRound } from "./replies.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { sessions } from "./sessions.ts";
 import { sendQueued } from "./sendQueue.ts";
-import { comicFor, hasShows } from "./comicAgent.ts";
+import { comicFor, scopeFor } from "./comicAgent.ts";
+import { dispatch } from "./agentRoute.ts";
 
 // ---------------------------------------------------------------- incoming messages
 
@@ -68,69 +69,82 @@ async function politeNote(uid: string, client: WAWebJS.Client, from: string) {
 const say = (uid: string, text: string) => sendToCurator(uid, text).catch((e) => console.warn(`[agent] ${uid} reply failed:`, (e as Error).message));
 
 async function converse(uid: string, text: string) {
-  const settings = await readSettings(uid);
-  const A = settings.agent!;
+  const A = (await readSettings(uid)).agent!;
+  const scope = await scopeFor(uid);
+  await dispatch(scope, text, {
+    say: (t) => say(uid, t),
+    now: () => Date.now(),
+    readSideAsk: async () => (await readMemory(uid)).sideAsk ?? null,
+    // One question at a time: asking "Curate or Comedy?" drops any yes/number that was waiting.
+    writeSideAsk: async (a) => void (await writeMemory(uid, a ? { sideAsk: a, pending: null, comicPending: null } : { sideAsk: null })),
+    curate: {
+      answerPending: (t) => curatePending(uid, t, A),
+      micAnswer: (t) => curateMic(uid, t, A),
+      run: (t) => curateRun(uid, t, scope),
+    },
+    comic: comicFor(uid),
+  });
+}
+
+/** Curate: something is waiting for a yes, a number or a no. True when this message answered it (or was a late answer to it). */
+async function curatePending(uid: string, text: string, A: AgentSettings): Promise<boolean> {
   const mem = await readMemory(uid);
-  const now = Date.now();
-
-  // 0. Nothing BOT Comedy: a comic's own question waiting for an answer (comicAgent.ts). Accounts without rooms skip this.
-  const comic = await comicFor(uid);
-  if (comic && (await comic.answerPending(text))) return;
-
-  // 1. Something is waiting for a yes, a number or a no.
-  const step = stepPending(mem.pending, text, now);
-  if (step.type !== "none") await writeMemory(uid, { pending: step.type === "chosen" ? step.pending : null });
+  const step = stepPending(mem.pending, text, Date.now());
+  if (step.type === "none") return false;
+  await writeMemory(uid, { pending: step.type === "chosen" ? step.pending : null });
   if (step.type === "execute") {
-    if (!A.actions) return void (await say(uid, "Actions are switched off in Settings, so I did nothing."));
-    return void (await runPlan(uid, step.plan));
+    if (!A.actions) await say(uid, "Actions are switched off in Settings, so I did nothing.");
+    else await runPlan(uid, step.plan);
+    return true;
   }
-  if (step.type === "chosen") return void (await say(uid, askText(step.pending)));
+  if (step.type === "chosen") return void (await say(uid, askText(step.pending))), true;
   if (step.type === "cancel") {
     // "no" to "clear the group?" means keep everyone for next week.
     if (mem.pending?.stage === "confirm" && mem.pending.plan.type === "cleanup") {
       await keepGroup(uid, mem.pending.plan.lineupId);
-      return void (await say(uid, "Okay, I left the group as it is. Your scheduled group posts go out for next week's show as usual."));
+      return void (await say(uid, "Okay, I left the group as it is. Your scheduled group posts go out for next week's show as usual.")), true;
     }
-    return void (await say(uid, "Okay, nothing was changed."));
+    return void (await say(uid, "Okay, nothing was changed.")), true;
   }
   if (step.type === "reprompt") {
     await writeMemory(uid, { pending: mem.pending });
-    return void (await say(uid, step.text));
+    return void (await say(uid, step.text)), true;
   }
   if (step.type === "expired") {
     await say(uid, "That one timed out after 10 minutes, so nothing was changed. Ask me again if you still want it.");
-    if (strictYes(text) || strictNo(text)) return;
+    return strictYes(text) || strictNo(text);
   }
+  return false; // drop: a new request, the old question is gone
+}
 
-  // 2. A plain yes/no answers the latest open mic check.
-  if (A.notify) {
-    const yn = micAnswer(text);
-    if (yn !== null) {
-      const done = await answerMicCheck(uid, yn);
-      return void (await say(uid, done ?? "Nothing is waiting on a yes or no right now."));
-    }
-  }
+/** Curate: a plain yes/no answers the latest open mic check. */
+async function curateMic(uid: string, text: string, A: AgentSettings): Promise<boolean> {
+  if (!A.notify) return false;
+  const yn = micAnswer(text);
+  if (yn === null) return false;
+  const done = await answerMicCheck(uid, yn);
+  await say(uid, done ?? "Nothing is waiting on a yes or no right now.");
+  return true;
+}
 
-  // 3. Anything else: what do they mean? A comic's commands first; the model reads them too when the account has no shows.
-  if (comic && (await comic.byRules(text))) return;
-  const alsoCurator = !comic || (await hasShows(uid));
-  if (comic && !alsoCurator && (await comic.byModel(text))) return;
+/** Curate: what do they mean? Rules, then the model. Never touches Comedy. */
+async function curateRun(uid: string, text: string, scope: AgentScope): Promise<"done" | "unknown"> {
+  const settings = await readSettings(uid);
+  const A = settings.agent!;
   const intent = parseIntentByRules(text) ?? (A.answer || A.actions ? await modelIntent(uid, settings, text) : { name: "unknown" as const });
-  if (intent.name === "help") return void (await say(uid, HELP_TEXT));
-  if (intent.name === "unknown") {
-    if (comic && (await comic.byModel(text))) return;
-    return void (await say(uid, `I didn't get that.\n\n${HELP_TEXT}`));
-  }
+  if (intent.name === "help") return void (await say(uid, agentHelpText(scope))), "done";
+  if (intent.name === "unknown") return "unknown";
   if (QUESTION_INTENTS.includes(intent.name)) {
-    if (!A.answer) return void (await say(uid, "Answering questions is switched off in Settings."));
-    return void (await say(uid, await answer(uid, intent)));
+    if (!A.answer) return void (await say(uid, "Answering questions is switched off in Settings.")), "done";
+    return void (await say(uid, await answer(uid, intent))), "done";
   }
   if (ACTION_INTENTS.includes(intent.name)) {
-    if (!A.actions) return void (await say(uid, "Doing things for you is switched off in Settings, so I didn't touch anything."));
+    if (!A.actions) return void (await say(uid, "Doing things for you is switched off in Settings, so I didn't touch anything.")), "done";
     const r = await plan(uid, intent);
-    if (r.pending) await writeMemory(uid, { pending: r.pending, comicPending: null });
-    return void (await say(uid, r.pending ? askText(r.pending) : (r.reply ?? "I couldn't work that out.")));
+    if (r.pending) await writeMemory(uid, { pending: r.pending, comicPending: null, sideAsk: null });
+    return void (await say(uid, r.pending ? askText(r.pending) : (r.reply ?? "I couldn't work that out."))), "done";
   }
+  return "unknown";
 }
 
 async function modelIntent(uid: string, settings: Settings, text: string): Promise<AgentIntent> {
