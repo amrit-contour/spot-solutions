@@ -128,7 +128,7 @@ export function AppShell({
 /** The header currently publishing --page-header-h (one page at a time). */
 let headerOwner: HTMLElement | null = null;
 
-export function PageHeader({ title, subtitle, actions, trailing, bar, children }: { title: ReactNode; /** A toolbar pinned as part of the header (e.g. date nav). Same sticky box, so it can never drift from the title bar. */ bar?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, trailing, bar, children, width = "full" }: { title: ReactNode; /** "narrow" keeps the header on the same centred column as a max-w-3xl page body. */ width?: "full" | "narrow"; /** A toolbar pinned as part of the header (e.g. date nav). Same sticky box, so it can never drift from the title bar. */ bar?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
   const { accountMenu, phoneStatus } = useContext(ShellContext);
   const ref = useRef<HTMLElement>(null);
   const [stuck, setStuck] = useState(false);
@@ -186,7 +186,8 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children }
         stuck ? "shadow-[0_1px_0_var(--color-outline-variant),0_6px_12px_-8px_rgb(0_0_0/0.5)]" : "shadow-[0_1px_0_transparent]",
       )}
     >
-      <div className="flex items-center gap-3">
+      <div className={cx(width === "narrow" && "mx-auto w-full max-w-[44rem]")}>
+      <div className="flex min-h-11 items-center gap-3">
         <h1 className="min-w-0 flex-1 truncate type-headline-m sm:type-display-s">{title}</h1>
         {trailing && <div className="flex flex-none items-center">{trailing}</div>}
         {/* Page actions live on the title's line at every width; the title truncates to make room. */}
@@ -196,11 +197,12 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children }
       </div>
       {children}
       {bar && <div className="mt-2 sm:mt-3">{bar}</div>}
+      </div>
     </header>
     {/* Connection status is for glancing at, not pinning: it scrolls away with the page. */}
     {phoneStatus && <div className="px-4 pt-2 sm:hidden">{phoneStatus}</div>}
     {/* The subtitle scrolls away with the page instead of collapsing inside the bar. */}
-    {subtitle && <p className="px-4 pb-2 type-body-l text-on-surface-variant sm:px-8">{subtitle}</p>}
+    {subtitle && <p className={cx("px-4 pt-2 type-body-m text-on-surface-variant sm:px-8", width === "narrow" && "mx-auto w-full max-w-3xl")}>{subtitle}</p>}
     </>
   );
 }

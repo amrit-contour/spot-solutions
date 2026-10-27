@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { DEFAULT_SETTINGS, RosterFormatError, fromCsv, fromRosterJson, groupByArea, localDate, roomMatches, toCsv, toRosterJson, type Room } from "@spot/shared";
-import { Button, CompactButton, Empty, IconAdd, IconBuilding, IconImport, IconMenuDots, IconButton, IconSearch, Menu, MenuItem, PageHeader, Segmented, Spinner, TextInput } from "@spot/ui";
+import { Button, CompactButton, IconAdd, IconBuilding, IconImport, IconMenuDots, IconButton, IconSearch, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { EmptyState, Page, SearchField, Section } from "../components/ui";
 import { useRoster } from "../lib/roster";
 import { blankRoom } from "../lib/rooms";
 import { downloadText } from "../lib/files";
@@ -83,10 +84,11 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
   return (
     <div className="w-full">
       <PageHeader
+        width="narrow"
         title="Rooms"
         actions={
           <>
-            <CompactButton icon={IconAdd} label="Add a room" variant="filled" onClick={startNew} />
+            {tab === "rooms" && <CompactButton icon={IconAdd} label="Add a room" variant="filled" onClick={startNew} />}
             <Menu align="right" trigger={(open) => <IconButton icon={IconMenuDots} label="Import and export" onClick={open} />}>
               {(close) => (
                 <>
@@ -103,61 +105,54 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
             </Menu>
           </>
         }
-      >
-        <div className="relative mt-3">
-          <IconSearch aria-hidden className="icon pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-on-surface-variant" />
-          <TextInput value={q} onChange={(e) => setQ(e.target.value)} className="pl-11" placeholder={tab === "rooms" ? "Search rooms, areas, curators" : "Search curators"} type="search" aria-label="Search" />
-        </div>
-      </PageHeader>
+        bar={
+          <Segmented
+            full
+            size="sm"
+            value={tab}
+            onChange={(t) => nav(t === "rooms" ? base : t === "community" ? "/rosters" : `${base}/curators`)}
+            options={[{ value: "rooms", label: "Rooms" }, { value: "curators", label: "Curators" }, ...(community.allowed ? [{ value: "community" as const, label: "Community" }] : [])]}
+          />
+        }
+      />
       <input ref={file} type="file" accept=".json,.csv,application/json,text/csv" className="hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
 
-      <div className="px-4 pt-3 pb-4 sm:px-8">
-        <Segmented
-          value={tab}
-          onChange={(t) => nav(t === "rooms" ? base : t === "community" ? "/rosters" : `${base}/curators`)}
-          options={[{ value: "rooms", label: "Rooms" }, { value: "curators", label: "Curators" }, ...(community.allowed ? [{ value: "community" as const, label: "Community" }] : [])]}
-        />
-      </div>
-
-      {tab === "curators" ? (
-        <CuratorsPanel q={q} />
-      ) : store.loading ? (
-        <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
-      ) : empty ? (
-        <Empty
-          icon={IconBuilding}
-          title="No rooms yet"
-          action={
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button icon={IconAdd} onClick={startNew}>Add a room</Button>
-              <Button variant="tonal" icon={IconImport} onClick={() => file.current?.click()}>Import</Button>
-              <Button variant="outlined" onClick={() => void starter()}>Load the Bangalore starter</Button>
-            </div>
-          }
-        >
-          Add the mics you go to, or import a roster file. New here in Bangalore? The starter has the city's mics to begin with.
-        </Empty>
-      ) : shown.length === 0 ? (
-        <Empty icon={IconSearch} title="No rooms match">Try a different name, area or curator.</Empty>
-      ) : (
-        <div className="flex min-w-0 flex-col gap-8 px-4 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12">
-          {shown.map((g) => (
-            <section key={g.area || "none"} aria-label={g.area || "No area"} className="min-w-0">
-              <h2 className="mb-3 flex items-baseline gap-2 type-title-m text-on-surface-variant">
-                <span className="min-w-0 truncate">{g.area || "No area"}</span>
-                <span className="type-label-m tabular">{g.rooms.length}</span>
-              </h2>
-              <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
+      <Page>
+        {(tab === "curators" || !empty) && <SearchField value={q} onChange={setQ} placeholder={tab === "rooms" ? "Search rooms, areas, curators" : "Search curators"} />}
+        {tab === "curators" ? (
+          <CuratorsPanel q={q} />
+        ) : store.loading ? (
+          <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
+        ) : empty ? (
+          <EmptyState
+            icon={IconBuilding}
+            title="No rooms yet"
+            action={
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button icon={IconAdd} onClick={startNew}>Add a room</Button>
+                <Button variant="tonal" icon={IconImport} onClick={() => file.current?.click()}>Import</Button>
+                <Button variant="outlined" onClick={() => void starter()}>Load the Bangalore starter</Button>
+              </div>
+            }
+          >
+            Add the mics you go to, or import a roster file. New here in Bangalore? The starter has the city's mics to begin with.
+          </EmptyState>
+        ) : shown.length === 0 ? (
+          <EmptyState icon={IconSearch} title="No rooms match">Try a different name, area or curator.</EmptyState>
+        ) : (
+          shown.map((g) => (
+            <Section key={g.area || "none"} title={g.area || "No area"} count={g.rooms.length}>
+              <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                 {g.rooms.map((r) => (
                   <li key={r.id} className="min-w-0">
                     <RoomCard room={r} curators={store.curators} date={date} onOpen={() => setEditing(r)} />
                   </li>
                 ))}
               </ul>
-            </section>
-          ))}
-        </div>
-      )}
+            </Section>
+          ))
+        )}
+      </Page>
 
       <RoomEditor value={editing} onClose={() => setEditing(null)} />
       <PasteImportSheet open={pasting} onClose={() => setPasting(false)} city={store.rooms[0]?.city ?? "Bengaluru"} onParsed={(p) => setIncoming(p)} />

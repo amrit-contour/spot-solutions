@@ -49,8 +49,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 /** Button classes for things that must be a link but look like a button. */
 export function buttonClass({ variant = "filled", size = "md", icon, className }: { variant?: Variant; size?: "sm" | "md" | "lg"; icon?: boolean; className?: string } = {}) {
-  const h = size === "sm" ? "h-8 px-3 gap-1.5 type-label-m" : size === "lg" ? "h-14 px-6 gap-2.5 type-title-m" : "h-10 px-5 gap-2 type-label-l";
-  return cx("state-layer pressable inline-flex items-center justify-center rounded-full whitespace-nowrap select-none disabled:opacity-40", h, icon && size !== "lg" && "pl-4", VARIANT[variant], className);
+  // Phones get 44px targets for md; sm is 36px with an invisible 44px hit area (the ::after), so dense rows stay compact but tappable.
+  const h = size === "sm" ? "h-9 px-4 gap-1.5 type-label-l after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" : size === "lg" ? "h-14 px-6 gap-2.5 type-title-m" : "h-11 px-5 gap-2 type-label-l sm:h-10";
+  return cx("state-layer pressable touch-manipulation inline-flex items-center justify-center rounded-full whitespace-nowrap select-none disabled:opacity-40", h, icon && size !== "lg" && (size === "sm" ? "pl-3" : "pl-4"), VARIANT[variant], className);
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -78,7 +79,7 @@ export function CompactButton({ icon: I, label, variant = "tonal", size = "sm", 
         title={rest.title ?? label}
         disabled={rest.disabled || loading}
         onClick={rest.onClick}
-        className={buttonClass({ variant, size: "md", className: cx("size-9 flex-none px-0! sm:hidden", className) })}
+        className={buttonClass({ variant, size: "md", className: cx("size-11 flex-none px-0! sm:hidden", className) })}
       >
         {loading ? <Spinner className="size-5" /> : <I className="icon size-5" />}
       </button>
@@ -92,7 +93,7 @@ export function IconButton({ icon: I, label, className, tone = "plain", ...rest 
       aria-label={label}
       title={label}
       className={cx(
-        "state-layer pressable grid size-10 place-items-center rounded-full disabled:opacity-40",
+        "state-layer pressable touch-manipulation grid size-11 place-items-center rounded-full disabled:opacity-40 sm:size-10",
         tone === "plain" && "text-on-surface-variant",
         tone === "tonal" && "bg-secondary-container text-on-secondary-container",
         tone === "filled" && "bg-primary text-on-primary",
@@ -150,7 +151,7 @@ export function Chip({
       title={title}
       aria-pressed={onClick ? Boolean(selected) : undefined}
       className={cx(
-        "inline-flex h-7 items-center gap-1 rounded-sm px-2.5 type-label-m whitespace-nowrap",
+        "inline-flex h-7 min-w-0 items-center gap-1 rounded-sm px-2.5 type-label-m whitespace-nowrap",
         onClick && "state-layer pressable",
         selected ? "bg-secondary-container text-on-secondary-container" : tones[tone],
         className,
@@ -222,10 +223,10 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 export { Select, TimePicker } from "./Pickers";
 
 /** M3 segmented button with a sliding selection pill. */
-export function Segmented<T extends string | number>({ value, onChange, options, size = "md", full, compact }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; icon?: Icon }[]; size?: "sm" | "md"; full?: boolean; compact?: boolean }) {
+export function Segmented<T extends string | number>({ value, onChange, options, size = "md", full, compact }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; icon?: Icon; /** A count (or dot) after the label. */ badge?: ReactNode }[]; size?: "sm" | "md"; full?: boolean; compact?: boolean }) {
   const id = useId();
   return (
-    <div className={cx("rounded-full border border-outline-variant p-0.5", full ? "flex w-full" : "inline-flex", size === "sm" ? "h-9" : "h-10")} role="radiogroup">
+    <div className={cx("rounded-full border border-outline-variant p-0.5", full ? "flex w-full" : "inline-flex", size === "sm" ? "h-10" : "h-11")} role="radiogroup">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -234,11 +235,12 @@ export function Segmented<T extends string | number>({ value, onChange, options,
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className={cx("relative flex flex-1 items-center justify-center gap-1.5 rounded-full type-label-l whitespace-nowrap transition-colors duration-150", compact ? "px-2.5" : "px-3.5", active ? "text-on-secondary-container" : "text-on-surface-variant")}
+            className={cx("touch-manipulation relative flex min-w-0 flex-1 basis-0 items-center justify-center gap-1.5 rounded-full type-label-l whitespace-nowrap transition-colors duration-150", compact ? "px-2.5" : "px-3.5", active ? "text-on-secondary-container" : "text-on-surface-variant")}
           >
             {active && <motion.span layoutId={id} className="absolute inset-0 rounded-full bg-secondary-container" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />}
             {o.icon && <o.icon className="icon relative size-4" />}
-            <span className="relative">{o.label}</span>
+            <span className="relative min-w-0 truncate">{o.label}</span>
+            {o.badge != null && o.badge !== false && <span className={cx("relative flex-none rounded-full px-1.5 type-label-s tabular", active ? "bg-on-secondary-container/12" : "bg-surface-high")}>{o.badge}</span>}
           </button>
         );
       })}

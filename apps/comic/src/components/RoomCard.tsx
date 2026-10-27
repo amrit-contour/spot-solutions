@@ -1,5 +1,6 @@
 import { askHints, roomFullToday, roomPaused, showSummary, todayAt, type Curator, type Room } from "@spot/shared";
-import { Chip, IconBuilding, IconCalendarMark, IconMic, IconPen, IconClock } from "@spot/ui";
+import { Chip, IconBuilding, IconCalendarMark, IconMic, IconClock } from "@spot/ui";
+import { CardButton, Chips, IconTile } from "./ui";
 
 const TAG_LABEL = (t: string) => t.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 
@@ -11,11 +12,9 @@ export function RoomCard({ room, curators, date, onOpen, readOnly }: { room: Roo
   const hints = askHints(room);
   const myRole = room.shows.some((s) => s.myRole === "curator") ? "I curate here" : room.shows.some((s) => s.myRole === "regular") ? "Regular" : null;
   return (
-    <button onClick={onOpen} className={`state-layer pressable flex w-full min-w-0 flex-col gap-3 rounded-lg bg-surface-low p-4 text-left ${paused ? "opacity-70" : ""}`}>
-      <span className="flex min-w-0 items-start gap-3">
-        <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
-          <IconBuilding className="icon size-5" />
-        </span>
+    <CardButton onClick={onOpen} dim={paused} label={readOnly ? undefined : `Edit ${room.name}`} className="flex flex-col gap-3">
+      <span className="flex min-w-0 items-center gap-3">
+        <IconTile icon={IconBuilding} />
         <span className="min-w-0 flex-1">
           <span className="block truncate type-title-m">{room.name}</span>
           <span className="block truncate type-body-s text-on-surface-variant">{[room.area, room.city].filter(Boolean).join(" · ")}</span>
@@ -24,11 +23,10 @@ export function RoomCard({ room, curators, date, onOpen, readOnly }: { room: Roo
           {paused && <Chip tone="reading">Paused</Chip>}
           {full && <Chip tone="error">Full</Chip>}
         </span>
-        {!readOnly && <IconPen aria-hidden className="icon size-4 flex-none text-on-surface-variant" />}
       </span>
 
       {room.shows.length > 0 ? (
-        <span className="flex min-w-0 flex-col gap-1">
+        <span className="flex min-w-0 flex-col gap-1.5">
           {room.shows.slice(0, 3).map((s) => (
             <span key={s.id} className="flex min-w-0 items-center gap-2 type-body-m">
               <IconMic aria-hidden className="icon size-4 flex-none text-on-surface-variant" />
@@ -64,14 +62,14 @@ export function RoomCard({ room, curators, date, onOpen, readOnly }: { room: Roo
       )}
 
       {(room.tags.length > 0 || myRole) && (
-        <span className="flex min-w-0 flex-wrap gap-1.5">
+        <Chips>
           {myRole && <Chip tone="primary">{myRole}</Chip>}
           {room.tags.slice(0, 4).map((t) => (
             <Chip key={t}>{TAG_LABEL(t)}</Chip>
           ))}
           {room.tags.length > 4 && <Chip>+{room.tags.length - 4}</Chip>}
-        </span>
+        </Chips>
       )}
-    </button>
+    </CardButton>
   );
 }

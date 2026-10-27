@@ -4,3 +4,4 @@ export * from "./Card";
 export * from "./ListRow";
 export * from "./EmptyState";
 export * from "./StatTile";
+export * from "./SearchField";

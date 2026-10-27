@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DAY_SHORT, curatorUsage, daysLabel, type Curator } from "@spot/shared";
-import { Button, ConfirmDialog, Empty, IconAdd, IconButton, IconComics, IconPen, IconTrash, Sheet } from "@spot/ui";
+import { Button, ConfirmDialog, IconAdd, IconButton, IconComics, IconPen, IconTrash, Sheet } from "@spot/ui";
 import { useRoster } from "../lib/roster";
 import { CuratorForm } from "./CuratorForm";
+import { Card, EmptyState, Section } from "./ui";
 
 /** Everyone who curates a show, with where and when. */
 export function CuratorsPanel({ q }: { q: string }) {
@@ -40,45 +41,48 @@ export function CuratorsPanel({ q }: { q: string }) {
 
   return (
     <>
-      <div className="flex justify-end px-4 pb-3 sm:px-8">
-        <Button icon={IconAdd} variant="tonal" onClick={() => setEditing("new")}>Add a curator</Button>
-      </div>
-      {list.length === 0 ? (
-        <Empty icon={IconComics} title={store.curators.length ? "No one matches" : "No curators yet"} action={!store.curators.length && <Button icon={IconAdd} onClick={() => setEditing("new")}>Add a curator</Button>}>
-          {store.curators.length ? "Try another name." : "Curators are who you ask for a spot. Add them here, or while adding a show."}
-        </Empty>
-      ) : (
-        <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 px-4 pb-12 sm:grid-cols-2 sm:px-8">
-          {list.map((c) => {
-            const uses = usage.get(c.id) ?? [];
-            return (
-              <li key={c.id} className="min-w-0 rounded-lg bg-surface-low p-4">
-                <div className="flex min-w-0 items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate type-title-m">{c.name}</p>
-                    <p className="truncate type-body-s text-on-surface-variant">
-                      {[c.phone ?? "No number yet", c.instagram ? `@${c.instagram}` : null].filter(Boolean).join(" · ")}
-                    </p>
-                  </div>
-                  <IconButton icon={IconPen} label={`Edit ${c.name}`} onClick={() => setEditing(c)} />
-                  <IconButton icon={IconTrash} label={`Remove ${c.name}`} onClick={() => setRemoving(c)} />
-                </div>
-                {uses.length === 0 ? (
-                  <p className="mt-2 type-body-s text-on-surface-variant">Not on any show yet.</p>
-                ) : (
-                  <ul className="mt-2 flex min-w-0 flex-col gap-0.5">
-                    {uses.map((u) => (
-                      <li key={`${u.roomId}/${u.showId}`} className="min-w-0 truncate type-body-m">
-                        {u.roomName} <span className="text-on-surface-variant">· {u.showName} · {daysLabel(u.weekdays)}{u.primary ? "" : " (co-curator)"}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <Section title="Curators" count={list.length} action={<Button icon={IconAdd} variant="tonal" size="sm" onClick={() => setEditing("new")}>Add a curator</Button>}>
+        {list.length === 0 ? (
+          <EmptyState icon={IconComics} title={store.curators.length ? "No one matches" : "No curators yet"} action={!store.curators.length && <Button icon={IconAdd} onClick={() => setEditing("new")}>Add a curator</Button>}>
+            {store.curators.length ? "Try another name." : "Curators are who you ask for a spot. Add them here, or while adding a show."}
+          </EmptyState>
+        ) : (
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
+            {list.map((c) => {
+              const uses = usage.get(c.id) ?? [];
+              return (
+                <li key={c.id}>
+                  <Card pad={false}>
+                    <div className="flex min-w-0 items-center gap-3 py-2 pr-2 pl-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate type-title-s">{c.name}</p>
+                        <p className="truncate type-body-s text-on-surface-variant">
+                          {[c.phone ?? "No number yet", c.instagram ? `@${c.instagram}` : null].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                      <IconButton icon={IconPen} label={`Edit ${c.name}`} onClick={() => setEditing(c)} />
+                      <IconButton icon={IconTrash} label={`Remove ${c.name}`} onClick={() => setRemoving(c)} />
+                    </div>
+                    <div className="border-t border-outline-variant/50 px-4 py-3">
+                      {uses.length === 0 ? (
+                        <p className="type-body-s text-on-surface-variant">Not on any show yet.</p>
+                      ) : (
+                        <ul className="flex min-w-0 flex-col gap-1">
+                          {uses.map((u) => (
+                            <li key={`${u.roomId}/${u.showId}`} className="min-w-0 truncate type-body-m">
+                              {u.roomName} <span className="text-on-surface-variant">· {u.showName} · {daysLabel(u.weekdays)}{u.primary ? "" : " (co-curator)"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </Card>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Section>
       <Sheet open={editing !== null} onClose={() => setEditing(null)} title={editing === "new" || editing === null ? "Add a curator" : `Edit ${editing.name}`}>
         {editing !== null && <CuratorForm key={editing === "new" ? "new" : editing.id} initial={editing === "new" ? undefined : editing} existingIds={store.curators.map((c) => c.id)} onSave={(c) => void save(c)} onCancel={() => setEditing(null)} saving={saving} />}
       </Sheet>
