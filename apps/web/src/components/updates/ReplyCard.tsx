@@ -7,6 +7,7 @@ import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
 import { Avatar, Bubble, Button, Chip } from "@spot/ui";
+import { WaText } from "@spot/ui";
 import { MessageComposer } from "@spot/ui";
 import { SnippetMenu } from "../SnippetMenu";
 import { IconArrowRight, IconCancel, IconChat, IconChatCheck, IconClock, IconMap, IconMic, IconSkip } from "@spot/ui";
@@ -68,7 +69,7 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
             </Chip>
           </div>
           <div className="mt-3">
-            <Bubble>{a.message}</Bubble>
+            <Bubble><WaText text={a.message} /></Bubble>
           </div>
           <div className="mt-3">
             <div className="-mt-1.5 mb-0.5 flex items-center justify-between gap-2">

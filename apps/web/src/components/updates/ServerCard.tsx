@@ -5,6 +5,7 @@ import { useApp } from "../../lib/app";
 import { timeAgo } from "../../lib/data";
 import { dismissNotice } from "../../lib/updates";
 import { buttonClass, cx, IconButton } from "@spot/ui";
+import { WaText } from "@spot/ui";
 import { IconClose, IconHistory, IconWarn } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
@@ -24,7 +25,7 @@ export function ServerCard({ n }: { n: AppNotice }) {
       <div className="flex items-start gap-3 py-3 pr-2 pl-4">
         {warn ? <IconWarn className="icon mt-0.5 size-5 flex-none" /> : <IconHistory className="icon mt-0.5 size-5 flex-none text-primary" />}
         <div className="min-w-0 flex-1">
-          <p className="type-body-m [overflow-wrap:anywhere]">{n.text}</p>
+          <WaText className="type-body-m [overflow-wrap:anywhere]" text={n.text} />
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span className={cx("type-label-m tabular", warn ? "opacity-80" : "text-on-surface-variant")}>{timeAgo(n.createdAt)}</span>
             {link && (

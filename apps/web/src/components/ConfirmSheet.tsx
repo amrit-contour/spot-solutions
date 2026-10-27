@@ -5,6 +5,7 @@ import { DAY_NAMES, confirmSkipReason, dateInWeek, formatDate, formatTime, greet
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
 import { Bubble, Button, Empty, Sheet } from "@spot/ui";
+import { WaText } from "@spot/ui";
 import { IconChatCross, IconMic, IconSend } from "@spot/ui";
 
 /** Preview and send a show's confirmations. Shared by the Lineup board and the Calendar dashboard. */
@@ -80,7 +81,7 @@ export function ConfirmSheet({ open, onClose, onSending, show, ids, lineup, regr
                 <span className="w-5 text-on-surface-variant tabular">{i + 1}</span>
                 {comicsById.get(cid)?.name ?? cid}
               </span>
-              <Bubble outgoing>{preview(cid)}</Bubble>
+              <Bubble outgoing><WaText text={preview(cid)} /></Bubble>
             </motion.li>
           ))}
         </AnimatePresence>

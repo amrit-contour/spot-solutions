@@ -19,6 +19,7 @@ import { useApp } from "../lib/app";
 import { expireAt, runCommand, userCol } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
 import { Bubble, Button, Chip, Sheet, cx } from "@spot/ui";
+import { WaText } from "@spot/ui";
 import { IconArrowDown, IconChatCheck, IconGroup } from "@spot/ui";
 
 interface CheckResult {
@@ -233,7 +234,7 @@ function Row({ s, show, full, checked, disabled, onToggle }: { s: ReconcileSugge
           )}
           {full && s.action === "place" && <Chip tone="error">Show is full</Chip>}
         </div>
-        {s.evidence && <Bubble>{s.evidence}</Bubble>}
+        {s.evidence && <Bubble><WaText text={s.evidence} /></Bubble>}
         <p className="type-body-s text-on-surface-variant">
           {s.reason}
           {s.action === "place" && s.markTold ? ". Marked as told, so Send updates won't message them" : ""}

@@ -18,6 +18,9 @@ const MARKS: Record<string, "b" | "i" | "s"> = { "*": "b", _: "i", "~": "s" };
 const isWord = (ch: string | undefined) => ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
 const isSpace = (ch: string | undefined) => ch === undefined || /\s/.test(ch);
 
+// Links and emails are never formatted: their underscores, tildes and asterisks belong to the address.
+const LITERAL = /(?:https?:\/\/|www\.)[^\s]+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/y;
+
 /** Inline marks. An opener must start a word and a closer end one, like WhatsApp: snake_case_name stays plain. */
 export function parseInline(s: string): Inline[] {
   const out: Inline[] = [];
@@ -29,6 +32,15 @@ export function parseInline(s: string): Inline[] {
   let i = 0;
   while (i < s.length) {
     const ch = s[i];
+    if (!isWord(s[i - 1])) {
+      LITERAL.lastIndex = i;
+      const lit = LITERAL.exec(s);
+      if (lit) {
+        buf += lit[0];
+        i += lit[0].length;
+        continue;
+      }
+    }
     const isMark = ch in MARKS || ch === "`";
     if (isMark && !isWord(s[i - 1]) && !isSpace(s[i + 1]) && s[i + 1] !== ch) {
       let j = i + 1;

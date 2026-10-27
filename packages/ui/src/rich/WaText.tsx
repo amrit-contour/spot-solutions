@@ -1,52 +1,53 @@
 // WhatsApp-style rendering of a message, built as React nodes from the parsed tree. User text never goes
 // through innerHTML, so nothing typed into a template can inject markup.
 import type { ReactNode } from "react";
-import { parseWhatsApp, type Block, type Inline, type PollSpec } from "@spot/shared";
+import { parseWhatsApp, splitMentions, type Block, type Inline, type MentionRef, type PollSpec } from "@spot/shared";
 import { cx } from "../ui";
 import { IconMap } from "../icons";
 
 /** Someone tagged in the text, as WhatsApp shows it: their name, in colour, where the raw "@digits" were. */
-export interface WaMention {
-  token: string;
-  name: string;
-}
+export type WaMention = MentionRef;
 
-function withMentions(text: string, mentions: WaMention[]): ReactNode {
+/** Tapping a tag (when the page can open that person). */
+export type OnMention = (m: MentionRef) => void;
+
+function withMentions(text: string, mentions: WaMention[], onMention?: OnMention): ReactNode {
   if (!mentions.length) return text;
-  const byToken = new Map(mentions.map((m) => [m.token, m.name]));
-  // Longest tokens first, so a number that is the start of another one isn't cut short.
-  const re = new RegExp(`(${[...byToken.keys()].sort((a, b) => b.length - a.length).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
-  return text.split(re).map((part, i) => {
-    const name = byToken.get(part);
-    return name ? (
-      <span key={i} className="mention rounded-xs bg-on-primary-container/10 px-0.5 font-medium text-primary" data-mention={part}>
-        @{name}
-      </span>
+  return splitMentions(text, mentions).map((s, i) => {
+    if (s.t === "text") return s.v;
+    const ref = mentions.find((m) => m.token === s.v)!;
+    const cls = "mention rounded-xs bg-on-primary-container/10 px-0.5 font-medium text-primary";
+    return onMention ? (
+      <button key={i} type="button" onClick={() => onMention(ref)} className={cx(cls, "inline cursor-pointer align-baseline hover:underline")} data-mention={s.v}>
+        @{s.name}
+      </button>
     ) : (
-      part
+      <span key={i} className={cls} data-mention={s.v}>
+        @{s.name}
+      </span>
     );
   });
 }
 
-function inline(nodes: Inline[], mentions: WaMention[]): ReactNode {
+function inline(nodes: Inline[], mentions: WaMention[], onMention?: OnMention): ReactNode {
   return nodes.map((n, i) => {
-    if (n.t === "text") return mentions.length ? <span key={i} className="contents">{withMentions(n.v, mentions)}</span> : n.v;
+    if (n.t === "text") return mentions.length ? <span key={i} className="contents">{withMentions(n.v, mentions, onMention)}</span> : n.v;
     if (n.t === "code") return <code key={i} className="rounded-xs bg-on-primary-container/10 px-1 font-mono text-[0.9em]">{n.v}</code>;
-    const inner = inline(n.c, mentions);
+    const inner = inline(n.c, mentions, onMention);
     return n.t === "b" ? <strong key={i}>{inner}</strong> : n.t === "i" ? <em key={i}>{inner}</em> : <s key={i}>{inner}</s>;
   });
 }
 
-function block(b: Block, i: number, mentions: WaMention[]): ReactNode {
+function block(b: Block, i: number, mentions: WaMention[], onMention?: OnMention): ReactNode {
   switch (b.t) {
     case "p":
       // An empty line keeps its height, like in WhatsApp.
-      return <div key={i} className="min-h-[1lh]">{b.c.length ? inline(b.c, mentions) : null}</div>;
+      return <div key={i} className="min-h-[1lh]">{b.c.length ? inline(b.c, mentions, onMention) : null}</div>;
     case "quote":
       return (
         <div key={i} className="my-0.5 border-l-[3px] border-on-primary-container/30 pl-2.5 opacity-90">
           {b.lines.map((l, j) => (
-            <div key={j} className="min-h-[1lh]">{inline(l, mentions)}</div>
+            <div key={j} className="min-h-[1lh]">{inline(l, mentions, onMention)}</div>
           ))}
         </div>
       );
@@ -56,7 +57,7 @@ function block(b: Block, i: number, mentions: WaMention[]): ReactNode {
           {b.items.map((it, j) => (
             <li key={j} className="flex gap-2">
               <span aria-hidden>•</span>
-              <span className="min-w-0">{inline(it, mentions)}</span>
+              <span className="min-w-0">{inline(it, mentions, onMention)}</span>
             </li>
           ))}
         </ul>
@@ -67,7 +68,7 @@ function block(b: Block, i: number, mentions: WaMention[]): ReactNode {
           {b.items.map((it, j) => (
             <li key={j} className="flex gap-2">
               <span aria-hidden className="tabular">{b.start + j}.</span>
-              <span className="min-w-0">{inline(it, mentions)}</span>
+              <span className="min-w-0">{inline(it, mentions, onMention)}</span>
             </li>
           ))}
         </ol>
@@ -77,8 +78,8 @@ function block(b: Block, i: number, mentions: WaMention[]): ReactNode {
   }
 }
 
-export function WaText({ text, className, mentions = [] }: { text: string; className?: string; mentions?: WaMention[] }) {
-  return <div className={cx("whitespace-normal break-words", className)}>{parseWhatsApp(text).map((b, i) => block(b, i, mentions))}</div>;
+export function WaText({ text, className, mentions = [], onMention }: { text: string; className?: string; mentions?: WaMention[]; onMention?: OnMention }) {
+  return <div className={cx("whitespace-normal break-words", className)}>{parseWhatsApp(text).map((b, i) => block(b, i, mentions, onMention))}</div>;
 }
 
 /** A poll as WhatsApp shows it: the question, then the options with a circle (one answer) or a box (several). */

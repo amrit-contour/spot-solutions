@@ -18,6 +18,7 @@ import {
   formatTime,
   groupModeOf,
   lineupId,
+  applyTags,
   pendingRejections,
   localNow,
   confirmSkipReason,
@@ -595,19 +596,15 @@ const handlers: Record<Command["type"], Handler> = {
     const to = comicId || groupId ? (await chatFor(uid, { comicId, groupId })).id._serialized : toRaw;
     let text = String(body ?? "");
     if (voice && text.trim() && (r?.kind ?? "text") === "text") text = await inVoice(uid, "reply", text, { name: String(name ?? "there") });
-    // "@Amrit" typed in a group becomes a real tag: WhatsApp needs "@<their id>" in the text and the id in mentions. A tag can be
-    // anyone in the group: `comicId` is a roster id, a member's phone id or their @lid. Longer names go first so "@Ravi Kumar"
-    // isn't eaten by "@Ravi".
-    const mentions: string[] = [];
-    if (String(to).endsWith("@g.us") && Array.isArray(tags)) {
-      const wanted = (tags as { label: string; comicId: string }[]).filter((t) => t?.label && t.comicId).sort((a, b) => b.label.length - a.label.length);
+    // "@Amrit" picked in the box becomes a real tag: WhatsApp needs "@<their id>" in the text and the id in mentions. A tag can be
+    // anyone in the chat or a known comic: `comicId` is a roster id, a member's phone id or their @lid (applyTags is the pure part).
+    let mentions: string[] = [];
+    if (Array.isArray(tags) && tags.length) {
+      const wanted = (tags as { label: string; comicId: string }[]).filter((t) => t?.label && t.comicId);
       const comics = await loadComics(uid, [...new Set(wanted.map((t) => String(t.comicId)))]);
-      for (const t of wanted) {
-        if (!text.includes(t.label)) continue;
-        const id = await deliverableId(client, comics.get(t.comicId)?.chatId ?? t.comicId);
-        text = text.split(t.label).join(`@${id.split("@")[0]}`);
-        if (!mentions.includes(id)) mentions.push(id);
-      }
+      const ids = new Map<string, string>();
+      for (const t of wanted) if (text.includes(t.label) && !ids.has(t.comicId)) ids.set(t.comicId, await deliverableId(client, comics.get(t.comicId)?.chatId ?? t.comicId));
+      ({ text, mentions } = applyTags(text, wanted.map((t) => ({ label: t.label, comicId: String(t.comicId) })), (id) => ids.get(id)));
     }
     await deliverDraft(uid, client, String(to), text, r, mentions);
     return { body: text };

@@ -18,12 +18,14 @@ import {
   type Lineup,
   type Show,
   type SpotRequest,
+  toPlain,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useCollection, useNow, userDoc } from "../lib/data";
 import { placeComic } from "../lib/lineup";
 import { useNeverRead } from "../lib/neverRead";
 import { PageHeader } from "@spot/ui";
+import { WaText } from "@spot/ui";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "@spot/ui";
 import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
@@ -364,8 +366,8 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
               </span>
             )}
           </div>
-          <p className="mt-2 truncate type-body-m text-on-surface-variant" title={r.intent.note || last?.body}>
-            {r.intent.note || `“${last?.body}”`}
+          <p className="mt-2 truncate type-body-m text-on-surface-variant" title={toPlain(r.intent.note || last?.body || "")}>
+            {r.intent.note ? toPlain(r.intent.note) : `“${toPlain(last?.body ?? "")}”`}
           </p>
           {(prev || cancels > 0) && (
             <p className="mt-0.5 type-body-s text-on-surface-variant">
@@ -388,7 +390,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
               <div className="flex flex-col gap-2 px-4 pb-4 sm:px-5">
               {r.messages.map((m) => (
                 <Bubble key={m.id} meta={new Date(m.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}>
-                  {m.body}
+                  <WaText text={m.body} />
                 </Bubble>
               ))}
               <span className="mt-1 type-label-s text-on-surface-variant">

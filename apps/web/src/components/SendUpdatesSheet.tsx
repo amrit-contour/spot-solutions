@@ -5,6 +5,7 @@ import { DAY_NAMES, dateInWeek, diffLineup, formatDate, formatTime, greetName, r
 import { useApp } from "../lib/app";
 import { runCommand } from "../lib/data";
 import { Bubble, Button, Sheet, cx } from "@spot/ui";
+import { WaText } from "@spot/ui";
 import { IconCheck, IconSend, IconUserMinus, IconUserPlus, IconRepeat } from "@spot/ui";
 
 const Tick = ({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) => (
@@ -107,7 +108,7 @@ export function SendUpdatesSheet({ open, onClose, show, lineup, baseline, onSent
               <ul className="flex flex-col gap-4">
                 {changes.added.map((id) => (
                   <Person key={id} name={name(id)} checked={!off.has(`add:${id}`)} onChange={() => setOff(flip(off, `add:${id}`))} label={`Message ${name(id)}`}>
-                    <Bubble outgoing>{confirmText(id)}</Bubble>
+                    <Bubble outgoing><WaText text={confirmText(id)} /></Bubble>
                   </Person>
                 ))}
               </ul>
@@ -122,7 +123,7 @@ export function SendUpdatesSheet({ open, onClose, show, lineup, baseline, onSent
               <ul className="flex flex-col gap-4">
                 {changes.removed.map((id) => (
                   <Person key={id} name={name(id)} checked={!off.has(`remove:${id}`)} onChange={() => setOff(flip(off, `remove:${id}`))} label={`Message ${name(id)}`}>
-                    <Bubble outgoing>{cancelText(id)}</Bubble>
+                    <Bubble outgoing><WaText text={cancelText(id)} /></Bubble>
                   </Person>
                 ))}
               </ul>
@@ -141,7 +142,7 @@ export function SendUpdatesSheet({ open, onClose, show, lineup, baseline, onSent
                     <AnimatePresence initial={false}>
                       {resend.has(id) && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                          <Bubble outgoing>{confirmText(id)}</Bubble>
+                          <Bubble outgoing><WaText text={confirmText(id)} /></Bubble>
                         </motion.div>
                       )}
                     </AnimatePresence>

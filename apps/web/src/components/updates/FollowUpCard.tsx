@@ -8,6 +8,7 @@ import { useApp } from "../../lib/app";
 import { runCommand, timeAgo, useDocument, userDoc } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
 import { Avatar, Bubble, Button, Chip } from "@spot/ui";
+import { WaText } from "@spot/ui";
 import { IconChat, IconCheck, IconGroup, IconSkip, IconUserCheck, IconUserMinus } from "@spot/ui";
 import { UpdateItem } from "./shared";
 
@@ -54,7 +55,7 @@ export function FollowUpCard({ a }: { a: ComicAction }) {
           </div>
           <div className="mt-3 flex flex-col gap-1">
             <span className="type-label-m text-on-surface-variant">You wrote</span>
-            <Bubble outgoing>{f.evidence || a.message}</Bubble>
+            <Bubble outgoing><WaText text={f.evidence || a.message} /></Bubble>
           </div>
           <p className="mt-2 type-body-s text-on-surface-variant">
             {place

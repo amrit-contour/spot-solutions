@@ -27,6 +27,7 @@ export function Bubble({
   reactions,
   onReact,
   onOpenPhoto,
+  onOpenMention,
 }: {
   m: ThreadMessage;
   label?: string;
@@ -37,6 +38,8 @@ export function Bubble({
   /** Omit to switch reacting off. Picking the emoji you already have takes it back (the caller works that out). */
   onReact?: (emoji: string) => void;
   onOpenPhoto: (src: string) => void;
+  /** Tapping a tag in the text. */
+  onOpenMention?: (m: { id?: string; token: string; name: string }) => void;
 }) {
   const out = m.fromMe;
   const sticker = m.kind === "sticker";
@@ -121,7 +124,7 @@ export function Bubble({
           ) : deleted ? (
             <span className="italic opacity-80">{m.text}</span>
           ) : (
-            <WaText text={m.text} mentions={m.mentions ?? []} />
+            <WaText text={m.text} mentions={m.mentions ?? []} onMention={onOpenMention} />
           )}
           <div className={cx("mt-0.5 text-right type-label-s tabular", photo && "px-2.5 pb-0.5", sticker ? "text-on-surface-variant" : "opacity-60")}>{clock(m.at, tz)}</div>
           {chips.length > 0 && (

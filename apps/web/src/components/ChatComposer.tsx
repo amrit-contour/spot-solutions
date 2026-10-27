@@ -3,7 +3,7 @@
 // you attach (a venue pin, a poll, your voice) sits as a removable chip above the box. A pin on its own goes out as a pin; with
 // text, it follows the text. In a group, typing "@" offers the members and the tags become real WhatsApp tags on send.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { hasPin, pollProblem, shortcutOp, type PollSpec, type RichMessage, type ThreadMember, type Venue } from "@spot/shared";
+import { activeMention, hasPin, highlightSegments, insertMention, liveTags, pollProblem, shortcutOp, suggestTaggable, type PollSpec, type RichMessage, type ThreadMember, type Venue } from "@spot/shared";
 import { Button, FormatBar, IconCheck, IconClose, IconMap, IconSend, IconSparkle, IconTemplate, MessageComposer, Popover, Switch, cx, emptyPoll, useTextEditing, type Icon } from "@spot/ui";
 import { toast } from "sonner";
 import { useApp } from "../lib/app";
@@ -77,7 +77,7 @@ export function ChatComposer({
   templates: (pick: (m: RichMessage) => void, trigger: (toggle: () => void, open: boolean) => ReactNode) => ReactNode;
   voiceReady: boolean;
   defaultVenueId?: string;
-  /** A group's members for the "@" picker. Leave out in a one-to-one chat. */
+  /** Who the "@" picker offers: a group's members, or in a one-to-one chat the other person and known comics. */
   members?: ThreadMember[];
   /** Tags the text may already hold (the show's POCs, from a template). */
   baseTags?: MentionTag[];
@@ -104,6 +104,7 @@ export function ChatComposer({
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(0);
   const box = useRef<HTMLTextAreaElement>(null);
+  const back = useRef<HTMLDivElement>(null);
   const { format, insert } = useTextEditing(box, text, setText);
 
   // The box grows with its text, one line to about six.
@@ -159,7 +160,7 @@ export function ChatComposer({
 
   const send = () => {
     if (!canSend) return;
-    const tags = [...baseTags, ...picked].filter((t) => body.includes(t.label));
+    const tags = liveTags(body, [...baseTags, ...picked]);
     const items: Outgoing[] = [];
     if (photo) items.push({ msg: { kind: "text", body: text.trim() }, venueId: null, voice: false, tags: [], photo });
     else if (body) items.push({ msg: { kind: "text", body: text.trimEnd(), ...(pinId && { attachLocation: true }) }, venueId: pinId, voice, tags });
@@ -177,23 +178,22 @@ export function ChatComposer({
     else go();
   };
 
-  // "@" in a group: the word being typed, and who matches it.
-  const query = members?.length && focused ? text.slice(0, caret).match(/(?:^|\s)@([^\s@]{0,30})$/) : null;
-  const suggestions = useMemo(() => {
-    if (!query || !members) return [];
-    const q = query[1].toLowerCase();
-    const starts = members.filter((m) => m.name.toLowerCase().startsWith(q) || m.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)));
-    return starts.slice(0, MAX_SUGGESTIONS);
-  }, [query, members]);
-  useEffect(() => setActive(0), [query?.[1]]);
+  // The tags the box holds, drawn as a soft highlight behind their labels.
+  const tagged = useMemo(() => {
+    const live = liveTags(text, [...baseTags, ...picked]);
+    return live.length ? highlightSegments(text, live) : null;
+  }, [text, baseTags, picked]);
+
+  // "@" in the box: the word being typed, and who matches it.
+  const query = members?.length && focused ? activeMention(text, caret) : null;
+  const suggestions = useMemo(() => (query && members ? suggestTaggable(members, query.query, MAX_SUGGESTIONS) : []), [query?.query, members]);
+  useEffect(() => setActive(0), [query?.query]);
   const pickMember = (m: ThreadMember) => {
-    if (!query) return;
-    const start = caret - query[1].length - 1;
-    const label = `@${m.name}`;
-    const next = `${text.slice(0, start)}${label} ${text.slice(caret)}`;
-    setText(next);
-    setPicked((p) => (p.some((t) => t.label === label && t.comicId === m.id) ? p : [...p, { label, comicId: m.id }]));
-    focusEnd(start + label.length + 1);
+    const edit = insertMention(text, caret, m);
+    if (!edit) return;
+    setText(edit.text);
+    setPicked((p) => (p.some((t) => t.label === edit.tag.label && t.comicId === edit.tag.comicId) ? p : [...p, edit.tag]));
+    focusEnd(edit.caret);
   };
 
   const openSheet = (v: View) => {
@@ -337,6 +337,13 @@ export function ChatComposer({
         </Popover>
 
         <div className="flex min-w-0 flex-1 items-end rounded-[1.4rem] border border-outline-variant bg-surface-container focus-within:border-primary">
+          <div className="relative flex min-w-0 flex-1">
+          {tagged && (
+            <div ref={back} aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words py-2 pr-1 pl-4 text-base leading-6 text-transparent sm:type-body-m sm:leading-6">
+              {tagged.map((seg, i) => (seg.tag ? <mark key={i} className="rounded-xs bg-primary/20 text-transparent">{seg.v}</mark> : seg.v))}
+              {text.endsWith("\n") ? "\u200b" : ""}
+            </div>
+          )}
           <textarea
             ref={box}
             id={`${idPrefix}-box`}
@@ -348,6 +355,7 @@ export function ChatComposer({
             autoCapitalize="sentences"
             onChange={(e) => (setText(e.target.value), setCaret(e.target.selectionStart))}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+            onScroll={(e) => back.current && (back.current.scrollTop = e.currentTarget.scrollTop)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={(e) => {
@@ -373,8 +381,9 @@ export function ChatComposer({
                 send();
               }
             }}
-            className="max-h-[9.5rem] min-h-10 min-w-0 flex-1 resize-none bg-transparent py-2 pr-1 pl-4 text-base leading-6 outline-none placeholder:text-on-surface-variant/70 sm:type-body-m sm:leading-6"
+            className="relative max-h-[9.5rem] min-h-10 min-w-0 flex-1 resize-none bg-transparent py-2 pr-1 pl-4 text-base leading-6 outline-none placeholder:text-on-surface-variant/70 sm:type-body-m sm:leading-6"
           />
+          </div>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}

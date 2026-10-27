@@ -3,6 +3,7 @@
 // Nothing here is ever stored: a chat list or a thread only exists in a short-lived command result.
 import { comicIdForPhone } from "./people.ts";
 import type { Comic } from "./types.ts";
+import { toPlain } from "./waFormat.ts";
 
 export const SNIPPET_MAX = 80;
 export const THREAD_PAGE = 50;
@@ -212,7 +213,7 @@ export function isAwaitingYou(last: WaMessageLike | null | undefined, recent?: W
 export function snippetOf(m: WaMessageLike | null | undefined, names?: Map<string, string>): string {
   const t = m ? toThreadMessage(m, names) : null;
   if (!t) return "";
-  const line = (t.kind === "poll" && t.poll ? `Poll: ${t.poll.question}` : withMentionNames(t.text, t.mentions)).replace(/\s+/g, " ").trim();
+  const line = (t.kind === "poll" && t.poll ? `Poll: ${t.poll.question}` : toPlain(t.text, t.mentions)).replace(/\s+/g, " ").trim();
   return clip(line, SNIPPET_MAX);
 }
 
@@ -226,7 +227,8 @@ export function comicChatKeys(c: Pick<Comic, "id" | "chatId" | "phone">): string
  * The thread list: only chats that belong to someone in the roster (no groups, no personal chats), newest first.
  * A comic who has two chats (phone id and @lid) is listed once, with the newer one.
  */
-export function matchThreads(chats: WaChatLike[], comics: Pick<Comic, "id" | "chatId" | "phone" | "name">[]): ThreadItem[] {
+export function matchThreads(chats: WaChatLike[], comics: Pick<Comic, "id" | "chatId" | "phone" | "name">[], resolved?: Map<string, string>): ThreadItem[] {
+  const names = new Map([...authorNames(comics), ...(resolved ?? [])]);
   const byKey = new Map<string, Pick<Comic, "id" | "chatId" | "phone" | "name">>();
   for (const c of comics) for (const k of comicChatKeys(c)) byKey.set(k, c);
   const best = new Map<string, ThreadItem>();
@@ -245,7 +247,7 @@ export function matchThreads(chats: WaChatLike[], comics: Pick<Comic, "id" | "ch
       chatId: chat.id,
       name: comic.name,
       at,
-      snippet: snippetOf(last),
+      snippet: snippetOf(last, names),
       fromMe,
       unread: Math.max(0, chat.unreadCount || 0),
       awaitingYou: Boolean(lastRow) && !fromMe && isAwaitingYou(last, chat.recent),

@@ -3,7 +3,9 @@
 // requests and lineups, and the page says so. Nothing in this file is ever used for a real account's data.
 import {
   AI_APP_WAIT_MS,
+  applyTags,
   groupReactions,
+  liveTags,
   matchGroupThreads,
   matchThreads,
   type Comic,
@@ -75,7 +77,7 @@ export const sendPayload = (to: ChatTarget, msg: RichMessage, opts: { voice: boo
   body: msg.body,
   name: to.name.split(/\s+/)[0],
   voice: opts.voice && msg.kind === "text",
-  ...(to.tags?.length && msg.kind === "text" && { tags: to.tags.filter((t) => msg.body.includes(t.label)) }),
+  ...(to.tags?.length && msg.kind === "text" && { tags: liveTags(msg.body, to.tags) }),
   rich: { kind: msg.kind, ...(msg.poll && msg.kind === "poll" && { poll: msg.poll }), attachLocation: Boolean(msg.attachLocation), venueId: opts.venueId },
 });
 
@@ -141,7 +143,16 @@ export function demoConversations({ comics, requests, lineups, shows, now }: Dem
   const before = (rows: ThreadMessage[], m: Omit<ThreadMessage, "at">) => [...rows, { ...m, at: (rows[rows.length - 1]?.at ?? 0) - 90_000 }].sort((x, y) => x.at - y.at);
   if (c) out.set(c[0], before(c[1], { id: `${c[0]}-photo`, fromMe: false, kind: "media", media: "image", text: "[photo] Last night's set 🎤" }));
   if (d4) out.set(d4[0], before(d4[1], { id: `${d4[0]}-video`, fromMe: false, kind: "media", media: "video", text: "[video]" }));
-  void now;
+  // A message with formatting and a tag, so the list preview, the bubble and the chip can be seen: "*Quick one*" and "@<number>" for
+  // another comic on the roster.
+  const target = chats[4] ?? chats[0];
+  const other = comics.find((c) => c.phone && c.id !== target?.[0]);
+  if (target && other) {
+    const rows = target[1];
+    const last = rows[rows.length - 1];
+    const token = `@${other.phone!.replace(/\D/g, "")}`;
+    out.set(target[0], [...rows, { id: `${target[0]}-tag`, at: (last?.at ?? now) + 45_000, fromMe: false, kind: "text", text: `*Quick one* _please_: can you ask ${token} to send their ~old~ bio? \`thanks\` https://x.com/a_b_c`, mentions: [{ id: other.id, token, name: other.name }] }]);
+  }
   return out;
 }
 
@@ -212,13 +223,15 @@ export function demoSource(get: () => DemoData): ChatSource {
   const asLike = (m: ThreadMessage): WaMessageLike => ({
     id: m.id,
     type: m.kind === "sticker" ? "sticker" : "chat",
-    body: m.kind === "sticker" ? "" : snippet(m),
+    body: m.kind === "sticker" ? "" : m.kind === "poll" && m.poll ? `Poll: ${m.poll.question}` : m.text,
+    mentionedIds: m.mentions?.map((x) => x.id),
     fromMe: m.fromMe,
     timestamp: Math.floor(m.at / 1000),
     authorName: m.author,
     reactions: m.reactions?.map((r) => ({ emoji: r.emoji, byMe: r.byMe, count: r.count })),
   });
-  const snippet = (m: ThreadMessage) => (m.kind === "poll" && m.poll ? `Poll: ${m.poll.question}` : m.text).replace(/\s+/g, " ").slice(0, 80);
+  /** Names for the tags in the demo's messages, as the worker resolves them for the real list. */
+  const tagNames = () => new Map([...all().values(), ...local.values()].flat().flatMap((m) => (m.mentions ?? []).map((x) => [x.id, x.name] as const)));
   return {
     demo: true,
     list: async () => {
@@ -245,7 +258,7 @@ export function demoSource(get: () => DemoData): ChatSource {
         const last = [...demoGroup(d, show.groupId), ...(local.get(show.groupId) ?? [])].pop();
         if (last) chats.push({ id: show.groupId, isGroup: true, name: `${show.name} comics`, timestamp: Math.floor(last.at / 1000), unreadCount: 0, lastMessage: asLike(last) });
       }
-      return { threads: matchThreads(chats, d.comics), groups: matchGroupThreads(chats, d.shows, d.comics), at: Date.now() };
+      return { threads: matchThreads(chats, d.comics, tagNames()), groups: matchGroupThreads(chats, d.shows, d.comics, tagNames()), at: Date.now() };
     },
     thread: async (comicId, before) => {
       await devLag();
@@ -284,12 +297,17 @@ export function demoSource(get: () => DemoData): ChatSource {
       };
     },
     send: async (to, msg) => {
+      // Picked tags go out as "@<number>" with the person's name kept for display, like a real tag read back.
+      const tags = msg.kind === "text" ? liveTags(msg.body, to.tags ?? []) : [];
+      const tagged = applyTags(msg.body, tags, (id) => id);
+      const mentions = tagged.mentions.map((id) => ({ id, token: `@${id.split("@")[0].replace(/\D/g, "") || id}`, name: tags.find((t) => t.comicId === id)?.label.slice(1) ?? "Someone" }));
       const m: ThreadMessage = {
         id: `local-${Date.now()}`,
         at: Date.now(),
         fromMe: true,
         kind: msg.kind === "poll" ? "poll" : msg.kind === "location" ? "location" : "text",
-        text: msg.kind === "poll" ? `Poll: ${msg.poll?.question ?? ""}` : msg.kind === "location" ? "Location: venue pin" : msg.body,
+        text: msg.kind === "poll" ? `Poll: ${msg.poll?.question ?? ""}` : msg.kind === "location" ? "Location: venue pin" : tagged.text,
+        ...(mentions.length ? { mentions } : {}),
         ...(msg.kind === "poll" && msg.poll ? { poll: { question: msg.poll.question, options: msg.poll.options.filter((o) => o.trim()), multi: msg.poll.multi } } : {}),
         ...(msg.kind === "location" ? { pin: { name: "Venue pin" } } : {}),
       };

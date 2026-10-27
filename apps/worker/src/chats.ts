@@ -139,9 +139,11 @@ export async function listThreads(uid: string): Promise<ListThreadsResult> {
   // Group previews name their writer: resolve the (few) newest writers' @lid ids.
   const linked = new Set(watchUser(uid).shows.map((s) => s.groupId).filter(Boolean));
   const writers = like.filter((c) => c.isGroup && linked.has(c.id) && c.lastMessage && !c.lastMessage.fromMe);
-  const ids = writers.flatMap((c) => [c.lastMessage!.author ?? "", ...(c.lastMessage!.mentionedIds ?? [])]);
+  // Tags in any listed preview ("@Rahul", not "@9198…") need their names too, one-to-one chats included.
+  const tagged = like.flatMap((c) => (c.isGroup && !linked.has(c.id) ? [] : (c.lastMessage?.mentionedIds ?? [])));
+  const ids = [...writers.map((c) => c.lastMessage!.author ?? ""), ...tagged];
   const names = ids.some(Boolean) ? await resolveNames(uid, client, ids, comics, groupCache(uid)).catch(() => new Map<string, string>()) : new Map<string, string>();
-  return { threads: matchThreads(like, comics), groups: matchGroupThreads(like, watchUser(uid).shows, comics, names), ...(hiddenNames.length && { neverRead: hiddenNames }), at: Date.now() };
+  return { threads: matchThreads(like, comics, names), groups: matchGroupThreads(like, watchUser(uid).shows, comics, names), ...(hiddenNames.length && { neverRead: hiddenNames }), at: Date.now() };
 }
 
 /** Who the worker last read in the linked groups (names for people who aren't in Comics). */
@@ -194,7 +196,11 @@ export async function getThread(uid: string, payload: Record<string, unknown>): 
   }
   const { comic, chat } = await chatOf(uid, payload.comicId);
   const raw = await chat.fetchMessages({ limit });
-  const { messages, hasMore } = pageMessages(await withReactions(raw), before, THREAD_PAGE, limit);
+  const all = await withReactions(raw);
+  // Tags in the text ("@919876…") are shown as names: roster, then what WhatsApp knows.
+  const tagIds = all.flatMap((m) => m.mentionedIds ?? []);
+  const names = tagIds.length ? await resolveNames(uid, sessions.require(uid), tagIds, await rosterComics(uid), groupCache(uid)).catch(() => new Map<string, string>()) : undefined;
+  const { messages, hasMore } = pageMessages(all, before, THREAD_PAGE, limit, names);
   return { comicId: comic.id, chatId: chat.id._serialized, messages, hasMore, at: Date.now() };
 }
 

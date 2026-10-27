@@ -8,6 +8,7 @@ import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction, dismissNotice, type Introduction } from "../../lib/updates";
 import { Avatar, Bubble, Button, Chip, buttonClass } from "@spot/ui";
+import { WaText } from "@spot/ui";
 import { MessageComposer } from "@spot/ui";
 import { SnippetMenu } from "../SnippetMenu";
 import { IconChatCheck, IconSkip, IconUserCheck, IconUserPlus } from "@spot/ui";
@@ -44,7 +45,7 @@ export function OnboardCard({ a }: { a: ComicAction }) {
             </Chip>
           </div>
           <div className="mt-3">
-            <Bubble>{a.message}</Bubble>
+            <Bubble><WaText text={a.message} /></Bubble>
           </div>
           <div className="mt-3">
             <div className="-mt-1.5 mb-0.5 flex items-center justify-between gap-2">

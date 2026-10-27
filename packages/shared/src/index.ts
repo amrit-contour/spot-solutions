@@ -23,6 +23,7 @@ export * from "./agentCommands.ts";
 export * from "./displayNames.ts";
 export * from "./tagPeople.ts";
 export * from "./richText.ts";
+export * from "./waFormat.ts";
 export * from "./geo.ts";
 export * from "./threads.ts";
 export * from "./chatState.ts";

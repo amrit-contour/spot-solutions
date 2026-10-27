@@ -519,7 +519,7 @@ function mergeNewest(prev: ThreadMessage[], page: ThreadMessage[]) {
 type ComicOf = NonNullable<ReturnType<typeof useApp>["comicsById"] extends Map<string, infer C> ? C : never>;
 
 function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { source: ChatSource; comic: ComicOf; request?: SpotRequest; lineups: Lineup[]; onBack: () => void; onChanged: () => void }) {
-  const { week, shows, venues, settings } = useApp();
+  const { week, shows, venues, settings, comics } = useApp();
   const first = comic.name.split(/\s+/)[0] || comic.name;
   const placed = lineups.find((l) => l.status !== "cancelled" && l.status !== "canned" && l.slots.some((s) => s.comicId === comic.id));
   const placedShow = shows.find((s) => s.id === placed?.showId);
@@ -540,6 +540,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
       send={(msg, opts) => source.send({ id: comic.id, chatId: comic.chatId, comicId: comic.id, name: comic.name, tags: opts.tags }, msg, opts)}
       sendImage={(p) => source.sendImage({ comicId: comic.id }, p)}
       react={(id, emoji) => source.react({ comicId: comic.id }, id, emoji)}
+      people={[{ id: comic.id, name: comic.name }, ...comics.filter((c) => c.id !== comic.id && (c.phone || c.chatId)).map((c) => ({ id: c.id, name: c.name }))]}
       onBack={onBack}
       onSent={onChanged}
       ariaLabel={`Chat with ${comic.name}`}
@@ -720,6 +721,7 @@ function Conversation({
   react,
   baseTags,
   memberHints,
+  people,
   isGroup,
   onBack,
   onSent,
@@ -746,6 +748,8 @@ function Conversation({
   baseTags?: MentionTag[];
   /** Groups: members known from the show's cache, used when the chat itself didn't list them. */
   memberHints?: ThreadMember[];
+  /** One-to-one chats: who the "@" picker offers (the other person first, then known comics). */
+  people?: ThreadMember[];
   isGroup?: boolean;
   onBack: () => void;
   onSent: () => void;
@@ -763,9 +767,17 @@ function Conversation({
   draft?: RichMessage | null;
   onDraftUsed?: () => void;
 }) {
-  const { uid, settings } = useApp();
+  const { uid, settings, comics } = useApp();
+  const [, setParams] = useSearchParams();
   const now = useNow(15_000);
   const tz = settings.timezone;
+  // Tapping a tag opens that person's chat when they're in Comics.
+  const openMention = (m: { id?: string; token: string; name: string }) => {
+    const digits = (m.id ?? m.token).split("@")[0].replace(/\D/g, "");
+    const c = comics.find((x) => x.id === m.id || x.chatId === m.id || (digits && ((x.phone ?? "").replace(/\D/g, "") === digits || x.id.split("@")[0] === digits)));
+    if (c) setParams({ c: c.id });
+    else toast(`${m.name} isn't in your Comics`);
+  };
   const wide = useMediaQuery("(min-width: 1024px)");
   const frame = useRef<HTMLDivElement>(null);
   const { keyboard } = useVisualViewportFrame(frame, !wide);
@@ -861,7 +873,7 @@ function Conversation({
     );
 
   // Who the "@" picker offers: the chat's own list, else what the show remembers.
-  const members = isGroup ? (newest.data?.members?.length ? newest.data.members : memberHints) : undefined;
+  const members = isGroup ? (newest.data?.members?.length ? newest.data.members : memberHints) : people;
 
   // Scrolling: open at the newest message; stay at the bottom as messages, pictures or the keyboard change the height, but only if you were already there.
   const scroller = useRef<HTMLDivElement>(null);
@@ -953,6 +965,7 @@ function Conversation({
                       reactions={mineNow[r.m.id]?.chips}
                       onReact={r.m.kind === "deleted" ? undefined : (e) => reactTo(r.m, e)}
                       onOpenPhoto={setPhoto}
+                      onOpenMention={openMention}
                     />
                   </li>
                 );
