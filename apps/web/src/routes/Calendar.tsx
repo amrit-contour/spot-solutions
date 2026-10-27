@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { where } from "firebase/firestore";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { DAY_SHORT, formatDate, localNow, pendingRejections, shiftWeek, type Lineup, type Show, type SpotRequest, type Weekday } from "@spot/shared";
+import { DAY_SHORT, formatDate, isClearedRequest, localNow, pendingRejections, shiftWeek, type Lineup, type Show, type SpotRequest, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { useCollection, useNow } from "../lib/data";
 import { useUpdates } from "../lib/updates";
@@ -311,7 +311,7 @@ function Legend() {
 
 function groupByLane(list: SpotRequest[]) {
   const g: Record<Lane, SpotRequest[]> = { asked: [], maybe: [], held: [], placed: [], closed: [] };
-  for (const r of list) g[laneOf(r)].push(r);
+  for (const r of list) if (!isClearedRequest(r)) g[laneOf(r)].push(r);
   for (const k of Object.keys(g) as Lane[]) g[k].sort((a, b) => a.createdAt - b.createdAt);
   return g;
 }

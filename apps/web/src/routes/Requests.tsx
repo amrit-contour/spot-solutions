@@ -11,6 +11,8 @@ import {
   INTENT_THRESHOLD,
   cancellations,
   daysBetween,
+  isClearedRequest,
+  requestsToClear,
   formatTime,
   lastSpot,
   localNow,
@@ -23,6 +25,7 @@ import {
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useCollection, useNow, userDoc } from "../lib/data";
 import { placeComic } from "../lib/lineup";
+import { setRequestsCleared } from "../lib/cleanup";
 import { useNeverRead } from "../lib/neverRead";
 import { PageHeader } from "@spot/ui";
 import { WaText } from "@spot/ui";
@@ -30,6 +33,7 @@ import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "@spot/ui";
 import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
+import { ConfirmDialog } from "@spot/ui";
 import { ClearOldRequests } from "../components/ClearOldRequests";
 import { ScanHistorySheet } from "../components/ScanHistorySheet";
 import { isDemoUser } from "../lib/demo";
@@ -94,6 +98,8 @@ export function Requests() {
     }
   };
   const [clearOpen, setClearOpen] = useState(false);
+  const [clearClosedOpen, setClearClosedOpen] = useState(false);
+  const [showCleared, setShowCleared] = useState(false);
   const [rereading, setRereading] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const lastWeek = shiftWeek(week, -1);
@@ -109,7 +115,7 @@ export function Requests() {
     const hit = (r: SpotRequest) =>
       !needle ||
       [r.comicName, comicsById.get(r.comicId)?.name ?? "", r.comicId.split("@")[0], r.intent.note ?? "", ...r.messages.map((m) => m.body)].some((t) => t.toLowerCase().includes(needle));
-    for (const r of requests.data) if (hit(r)) g[laneOf(r)].push(r);
+    for (const r of requests.data) if (hit(r) && (showCleared || !isClearedRequest(r))) g[laneOf(r)].push(r);
     // Fairness first: people who didn't perform last week float up, then first-come.
     for (const k of Object.keys(g) as Lane[])
       g[k].sort((a, b) => {
@@ -124,12 +130,23 @@ export function Requests() {
         return pa - pb || a.createdAt - b.createdAt;
       });
     return g;
-  }, [requests.data, comicsById, lastWeek, q, sort]);
+  }, [requests.data, comicsById, lastWeek, q, sort, showCleared]);
+
+  const toClear = useMemo(() => requestsToClear(requests.data), [requests.data]);
+  const clearedCount = useMemo(() => requests.data.filter(isClearedRequest).length, [requests.data]);
 
   const activeShows = shows.filter((s) => s.active);
   const linked = session?.status === "ready";
   // With one venue it's implied, so the card hides the venue pill.
   const manyVenues = new Set(activeShows.map((s) => s.venueId)).size > 1;
+
+  const clearClosed = async () => {
+    const ids = toClear.map((r) => r.id);
+    await setRequestsCleared(uid, ids, Date.now());
+    toast.success(`Cleared ${ids.length} closed request${ids.length === 1 ? "" : "s"}`, {
+      action: { label: "Undo", onClick: () => void setRequestsCleared(uid, ids, null).catch((e) => toast.error((e as Error).message)) },
+    });
+  };
 
   const reread = async () => {
     setRereading(true);
@@ -163,6 +180,10 @@ export function Requests() {
                     Scan past messages…
                     <span className="block type-body-s text-on-surface-variant">{isDemoUser() ? "Needs a linked WhatsApp, so it's off in the demo" : linked ? "Find spot requests in your recent DMs" : "Link WhatsApp first"}</span>
                   </MenuItem>
+                  <MenuItem disabled={!toClear.length} onClick={() => (close(), setClearClosedOpen(true))}>
+                    Clear closed ({toClear.length})
+                    <span className="block type-body-s text-on-surface-variant">Hides dismissed and regretted requests; you can show them again</span>
+                  </MenuItem>
                   <MenuItem onClick={() => (close(), setClearOpen(true))}>Clear requests…</MenuItem>
                 </>
               )}
@@ -191,6 +212,17 @@ export function Requests() {
         </div>
       </PageHeader>
 
+      <ConfirmDialog
+        open={clearClosedOpen}
+        onClose={() => setClearClosedOpen(false)}
+        tone="primary"
+        title="Clear closed requests?"
+        confirmLabel={`Clear ${toClear.length}`}
+        disabled={!toClear.length}
+        onConfirm={clearClosed}
+      >
+        Clear {toClear.length} closed request{toClear.length === 1 ? "" : "s"}? They stay in each comic's history.
+      </ConfirmDialog>
       <ClearOldRequests open={clearOpen} onClose={() => setClearOpen(false)} />
       <ScanHistorySheet open={scanOpen} onClose={() => setScanOpen(false)} />
       <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -228,6 +260,11 @@ export function Requests() {
                   ))
                 }
               </Menu>
+              {toClear.length > 0 && (
+                <Button size="sm" variant="text" onClick={() => setClearClosedOpen(true)} className="flex-none whitespace-nowrap max-sm:hidden">
+                  Clear closed ({toClear.length})
+                </Button>
+              )}
               </div>
               <div className="min-w-0 flex-1">
             <div className="flex overflow-x-auto [scrollbar-width:none] sm:gap-1" role="tablist">
@@ -242,6 +279,14 @@ export function Requests() {
               </div>
             </div>
           </div>
+          {lane === "closed" && (clearedCount > 0 || showCleared) && (
+            <div className="mb-3 flex items-center justify-between gap-3 px-1 type-body-s text-on-surface-variant">
+              <span>{clearedCount} cleared request{clearedCount === 1 ? "" : "s"} hidden</span>
+              <Button size="sm" variant="text" onClick={() => setShowCleared((v) => !v)} aria-pressed={showCleared}>
+                {showCleared ? "Hide cleared" : "Show cleared"}
+              </Button>
+            </div>
+          )}
           {!linked && !requests.data.length ? (
             <ConnectCard compact />
           ) : grouped[lane].length === 0 ? (
@@ -313,11 +358,11 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
     await deleteDoc(userDoc(uid, "requests", r.id)).catch(() => undefined);
     toast.success(`${r.comicName} won't be read again`);
   };
-  const setStatus = (status: SpotRequest["status"]) => updateDoc(userDoc(uid, "requests", r.id), { status, updatedAt: Date.now() });
+  const setStatus = (status: SpotRequest["status"]) => updateDoc(userDoc(uid, "requests", r.id), { status, clearedAt: null, updatedAt: Date.now() });
   /** Closed by mistake: back to waiting (Held if a rule still holds it). A regret that went out isn't unsent. */
   const reopen = async () => {
     const before = r.status;
-    await updateDoc(userDoc(uid, "requests", r.id), { status: r.ackedAt ? "acked" : "new", rejectedAt: null, updatedAt: Date.now() });
+    await updateDoc(userDoc(uid, "requests", r.id), { status: r.ackedAt ? "acked" : "new", rejectedAt: null, clearedAt: null, updatedAt: Date.now() });
     toast.success(`${r.comicName.split(" ")[0]} is back in ${r.hold && !r.holdOverridden ? "Held" : r.intent.confidence >= INTENT_THRESHOLD ? "Asked" : "Maybe"}`, {
       description: before === "rejected" ? "They already got your regret message, so tell them if things changed." : undefined,
       action: { label: "Undo", onClick: () => void setStatus(before) },
@@ -359,6 +404,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
                 {tier}
               </Chip>
             )}
+            {isClearedRequest(r) && <Chip>Cleared</Chip>}
             <RequestPills pills={pills} />
             {r.ackedAt && (
               <span className="inline-flex items-center gap-1 px-1 type-label-m text-on-surface-variant">

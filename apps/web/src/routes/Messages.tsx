@@ -1121,7 +1121,7 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
   };
   const closeRequest = async () => {
     if (!r) return;
-    await updateDoc(userDoc(uid, "requests", r.id), { status: "dismissed", updatedAt: Date.now() });
+    await updateDoc(userDoc(uid, "requests", r.id), { status: "dismissed", clearedAt: null, updatedAt: Date.now() });
     toast.success(`${comic.name.split(/\s+/)[0]}'s request is closed`, { action: { label: "Undo", onClick: () => void updateDoc(userDoc(uid, "requests", r.id), { status: r.status, updatedAt: Date.now() }) } });
   };
 

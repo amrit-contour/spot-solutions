@@ -343,6 +343,8 @@ export interface SpotRequest {
   status: RequestStatus;
   ackedAt?: number | null;
   rejectedAt?: number | null;
+  /** Set by "Clear closed": a closed request hidden from the list (kept for history, cooldowns and stats). Only counts while the request is closed. */
+  clearedAt?: number | null;
   hold?: HoldReason | null;
   /** Settled by a recorded past spot (backfill); set so removing that spot can reopen it. */
   backfilledAt?: number;

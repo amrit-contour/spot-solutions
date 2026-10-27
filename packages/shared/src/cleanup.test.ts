@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DAY_MS, DEMO_SOURCE_UID, closedRequestsWeeks, collectionsForScope, expiredSandboxIds, requestsToExpire, ttlMs, demoSandboxIds, isDataScope, oldRequests, planLineupReset, planWeekReset } from "./cleanup.ts";
+import { DAY_MS, DEMO_SOURCE_UID, closedRequestsWeeks, collectionsForScope, expiredSandboxIds, requestsToExpire, ttlMs, isClearedRequest, requestsToClear, demoSandboxIds, isDataScope, oldRequests, planLineupReset, planWeekReset } from "./cleanup.ts";
 import type { Lineup } from "./types.ts";
 
 const lineup = (over: Partial<Lineup> = {}): Lineup => ({ id: "2026-10-26_a", weekOf: "2026-10-26", showId: "a", date: "2026-10-27", slots: [{ comicId: "c1" }, { comicId: "c2" }], status: "draft", ...over });
@@ -145,5 +145,20 @@ describe("expiredSandboxIds", () => {
   });
   it("ttlMs adds whole days", () => {
     expect(ttlMs(7, 1000)).toBe(1000 + 7 * DAY_MS);
+  });
+});
+
+describe("requestsToClear", () => {
+  const all = (["new", "acked", "assigned", "confirmed", "rejected", "dismissed"] as const).map((s) => req(s, s));
+  it("picks only dismissed and rejected requests", () => {
+    expect(requestsToClear(all).map((r) => r.status)).toEqual(["rejected", "dismissed"]);
+  });
+  it("skips ones already cleared", () => {
+    expect(requestsToClear([req("a", "dismissed", { clearedAt: 5 }), req("b", "rejected")]).map((r) => r.comicId)).toEqual(["b"]);
+  });
+  it("a cleared request that is reopened is no longer hidden", () => {
+    expect(isClearedRequest(req("a", "dismissed", { clearedAt: 5 }))).toBe(true);
+    expect(isClearedRequest(req("a", "acked", { clearedAt: 5 }))).toBe(false);
+    expect(isClearedRequest(req("a", "dismissed"))).toBe(false);
   });
 });

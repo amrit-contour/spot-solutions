@@ -50,3 +50,9 @@ export async function deleteClosedRequests(uid: string) {
   await commit(refs.map((r) => (b) => b.delete(r)));
   return refs.length;
 }
+
+/** Hide (or, with null, restore) requests from the Requests list. Nothing is deleted: history, cooldowns and stats still use them. */
+export function setRequestsCleared(uid: string, ids: string[], clearedAt: number | null) {
+  const now = Date.now();
+  return commit(ids.map((id) => (b) => b.update(userDoc(uid, "requests", id), { clearedAt, updatedAt: now })));
+}

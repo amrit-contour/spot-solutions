@@ -71,6 +71,12 @@ export const RETENTION_STATUSES: readonly RequestStatus[] = [...CLOSED_STATUSES,
 
 export const isClosedRequest = (r: Pick<SpotRequest, "status">) => CLOSED_STATUSES.includes(r.status);
 
+/** Hidden by "Clear closed". Reopening a request brings it back whatever clearedAt says. */
+export const isClearedRequest = (r: Pick<SpotRequest, "status" | "clearedAt">) => Boolean(r.clearedAt) && isClosedRequest(r);
+
+/** The requests "Clear closed" hides: closed and not already cleared. Open, held, asked and placed ones are never touched. */
+export const requestsToClear = <T extends Pick<SpotRequest, "status" | "clearedAt">>(list: T[]): T[] => list.filter((r) => isClosedRequest(r) && !isClearedRequest(r));
+
 export const DEFAULT_CLOSED_REQUESTS_WEEKS = 8;
 export const MAX_CLOSED_REQUESTS_WEEKS = 520;
 
