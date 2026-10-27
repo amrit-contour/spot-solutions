@@ -252,7 +252,7 @@ export async function approveSuggestion(rosterId: string, suggestionId: string, 
     if (!applied.ok) throw new Error(applied.reason);
     const version = roster.version + 1;
     const d = describeSuggestion(s, toSharedRoster(roster));
-    const entry = { version, at: Date.now(), text: `${d.what}${d.where ? ` at ${d.where}` : ""}${s.byName ? `, suggested by ${s.byName}` : ""}`, by: user.displayName ?? "A maintainer" };
+    const entry = { version, at: Date.now(), text: `${d.where}: ${d.what}${s.byName ? ` (suggested by ${s.byName})` : ""}`, by: user.displayName ?? "A maintainer" };
     tx.update(rRef, plain({ rooms: applied.roster.rooms, curators: applied.roster.curators, version, updatedAt: Date.now(), changelog: [entry, ...(roster.changelog ?? [])].slice(0, CHANGELOG_KEEP) }));
     tx.update(sRef, { status: "approved", decidedBy: user.uid, decidedAt: Date.now() });
     return version;
