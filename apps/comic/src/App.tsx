@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { Toaster } from "sonner";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { ComicLogo } from "./components/ComicLogo";
-import { AccountMenu, AppShell, Spinner, IconAdd, IconBell, IconCalendarMark, IconMic, IconBuilding, IconSettings, type NavEntry } from "@spot/ui";
+import { AccountMenu, AppShell, Spinner, IconSend, IconBell, IconCalendarMark, IconMic, IconBuilding, IconSettings, type NavEntry } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { Landing } from "./routes/Landing";
 import { SignIn } from "./routes/SignIn";
@@ -52,7 +52,7 @@ const NAV: NavEntry[] = [
   { to: "/", label: "Today", short: "Home", icon: IconCalendarMark },
   { to: "/rooms", label: "Rooms", icon: IconBuilding },
   { to: "/alerts", label: "Alerts", icon: IconBell },
-  { to: "/asks", label: "Asks", icon: IconAdd },
+  { to: "/asks", label: "Asks", icon: IconSend },
   { to: "/spots", label: "My spots", short: "Spots", icon: IconMic },
   // Settings lives in the account menu on phones.
   { to: "/settings", label: "Settings", icon: IconSettings, phoneHidden: true },
@@ -88,10 +88,10 @@ export default function App() {
               <Route path="/asks" element={<Asks />} />
               <Route path="/spots" element={<MySpots />} />
               <Route path="/spots/regulars" element={<Regulars />} />
+              <Route path="/settings" element={<Settings uid={user.uid} />} />
             </Route>
             <Route path="/alerts" element={<Alerts uid={user.uid} />} />
             <Route path="/groups" element={<Groups uid={user.uid} />} />
-            <Route path="/settings" element={<Settings uid={user.uid} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppShell>
