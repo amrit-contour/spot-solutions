@@ -9,7 +9,7 @@ import { useAgentScope } from "@spot/ui/agentScope";
 import { useApp } from "../lib/app";
 import { runCommand, useDocument } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
-import { Button, ConfirmDialog, Info, SettingRow, Switch, TimePicker, cx } from "@spot/ui";
+import { Button, Collapsible, ConfirmDialog, Info, SettingRow, Switch, TimePicker, cx } from "@spot/ui";
 import { IconChatCheck, IconLogout, IconQr, IconSend, IconShield } from "@spot/ui";
 import { LinkStatusPill, type LinkView } from "./LinkStatusPill";
 
@@ -141,7 +141,8 @@ export function AgentCard() {
         )}
       </div>
       {agent?.phone && (
-        <div className="mt-6 grid gap-x-8 gap-y-2 rounded-lg bg-surface-container px-4 py-2 md:grid-cols-2">
+        <Collapsible id="agent:settings" title="Agent settings" summary={`${[A.enabled, A.notify, A.answer, A.actions, A.digest, A.agentTagPeople !== false, A.agentPolls !== false, A.politeNote].filter(Boolean).length} on`} tone="container" className="mt-6 rounded-lg">
+        <div className="grid gap-x-8 gap-y-2 md:grid-cols-2">
           <SettingRow label="Agent is on" info="Off: it stays linked but says nothing and ignores your messages.">
             <Switch checked={A.enabled} onChange={(v) => set({ enabled: v })} label="Agent is on" />
           </SettingRow>
@@ -172,11 +173,11 @@ export function AgentCard() {
             <Switch checked={A.politeNote} onChange={(v) => set({ politeNote: v })} label="Reply to strangers" disabled={!A.enabled} />
           </SettingRow>
         </div>
+        </Collapsible>
       )}
       {agent?.phone && (
-        <div className="mt-4 min-w-0 rounded-lg bg-surface-container p-4">
-          <h3 className="type-title-m">What you can say</h3>
-          <div className="mt-2 grid min-w-0 gap-x-8 gap-y-3 md:grid-cols-2">
+        <Collapsible id="agent:say" title="What you can say" defaultOpen={false} tone="container" className="mt-4 min-w-0 rounded-lg">
+          <div className="grid min-w-0 gap-x-8 gap-y-3 md:grid-cols-2">
             {[
               { title: "Ask me", lines: ["Monday lineup?", "Who's waiting?", "What's left to confirm?", "Who asked for Tuesday?", "When did Rohan last perform?"] },
               { title: "Tell me (I repeat it back and wait for your yes)", lines: ["Add Rohan to Tuesday", "Remove Rohan from Monday", "Confirm Monday", "Mark Monday happened (or didn't happen)", "Bloom moved Thursday to 9 PM"] },
@@ -192,7 +193,7 @@ export function AgentCard() {
             ))}
           </div>
           {alsoComedy && <p className="mt-3 type-body-s text-on-surface-variant">{OTHER_APP_NOTE.curate}</p>}
-        </div>
+        </Collapsible>
       )}
       <p className="mt-5 flex items-start gap-2 type-body-s text-on-surface-variant">
         <IconShield className="icon mt-px size-4 flex-none" />
