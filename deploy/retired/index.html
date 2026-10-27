@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Nothing BOT Curating has moved</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: #fff; color: #111; text-align: center; }
+  @media (prefers-color-scheme: dark) { body { background: #0a0a0a; color: #f2f2f2; } }
+  main { max-width: 26rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
+  p { margin: 0 0 1rem; opacity: .75; }
+  a { color: inherit; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nothing BOT Curating has moved</h1>
+  <p>Taking you to the new address. If nothing happens, use the link below.</p>
+  <p><a id="go" href="https://nothingbotcurating.web.app/">nothingbotcurating.web.app</a></p>
+</main>
+<script>
+// spot-solutions.web.app is retired. Clear everything this origin cached (an old installed copy of the app can live
+// here for months), then hand over to the new address with the same path.
+(function () {
+  var target = "https://nothingbotcurating.web.app" + location.pathname + location.search + location.hash;
+  document.getElementById("go").href = target;
+  var clear = [];
+  try {
+    if (navigator.serviceWorker) clear.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+    if (window.caches) clear.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+  } catch (e) {}
+  var done = false;
+  function go() { if (done) return; done = true; location.replace(target); }
+  Promise.all(clear.map(function (p) { return p.catch(function () {}); })).then(go, go);
+  setTimeout(go, 3000);
+})();
+</script>
+<noscript><meta http-equiv="refresh" content="0;url=https://nothingbotcurating.web.app/" /></noscript>
+</body>
+</html>

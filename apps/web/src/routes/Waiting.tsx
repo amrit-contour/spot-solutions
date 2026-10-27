@@ -3,7 +3,6 @@ import { motion } from "motion/react";
 import type { AccessEntry } from "@spot/shared";
 import { auth } from "@spot/ui/firebase";
 import { isAdmin, useAccessConfig } from "../lib/access";
-import { CuratingLogo } from "../components/CuratingLogo";
 import { Button } from "@spot/ui";
 import { IconClock, IconLogout, IconShield } from "@spot/ui";
 
@@ -19,8 +18,7 @@ export function Waiting({ user, entry }: { user: User; entry: AccessEntry | null
         transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1] }}
         className="w-full max-w-md text-center"
       >
-        <CuratingLogo className="mx-auto size-14" />
-        <span className={`mx-auto mt-8 grid size-16 place-items-center rounded-xl-plus ${removed ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary"}`}>
+        <span className={`mx-auto grid size-16 place-items-center rounded-xl-plus ${removed ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary"}`}>
           {removed ? <IconShield className="icon size-8" /> : <IconClock className="icon size-8" />}
         </span>
         <h1 className="mt-5 type-headline-m text-balance">{removed ? "Your access was removed" : "Waiting for approval"}</h1>
@@ -33,11 +31,11 @@ export function Waiting({ user, entry }: { user: User; entry: AccessEntry | null
         </p>
         <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-surface-container px-4 py-2 type-label-l text-on-surface-variant">
           {user.photoURL && <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-6 rounded-full" />}
-          {user.email}
+          <span className="text-on-surface-variant/80">Signed in as</span> <span className="text-on-surface">{user.email}</span>
         </p>
         <div className="mt-8">
           <Button variant="text" icon={IconLogout} onClick={() => void signOut(auth)}>
-            Use a different account
+            Switch account
           </Button>
         </div>
       </motion.div>

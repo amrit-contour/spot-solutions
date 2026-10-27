@@ -28,8 +28,8 @@
   "hosting": [
     {
       "target": "curating",
-      "public": "apps/web/dist",
-      "cleanUrls": true,
+      "public": "apps/web/dist-retired",
+      "cleanUrls": false,
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -42,15 +42,6 @@
         }
       ],
       "headers": [
-        {
-          "source": "/assets/**",
-          "headers": [
-            {
-              "key": "Cache-Control",
-              "value": "public,max-age=31536000,immutable"
-            }
-          ]
-        },
         {
           "source": "/dl/**",
           "headers": [
@@ -101,16 +92,16 @@
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache"
+              "value": "no-cache, no-store, must-revalidate"
             }
           ]
         },
         {
-          "source": "/fcm-sw.js",
+          "source": "/index.html",
           "headers": [
             {
               "key": "Cache-Control",
-              "value": "no-cache"
+              "value": "no-cache, no-store, must-revalidate"
             }
           ]
         }
@@ -197,6 +188,42 @@
         },
         {
           "source": "/fcm-sw.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/favicon*",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/manifest.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/manifest-classic.webmanifest",
           "headers": [
             {
               "key": "Cache-Control",
@@ -293,6 +320,42 @@
               "value": "no-cache"
             }
           ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/favicon*",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/manifest.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/manifest-classic.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
         }
       ]
     },
@@ -338,6 +401,33 @@
               "value": "no-cache"
             }
           ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/favicon*",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/manifest-classic.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
         }
       ]
     },
@@ -377,6 +467,33 @@
         },
         {
           "source": "/manifest.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/favicon*",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/manifest-classic.webmanifest",
           "headers": [
             {
               "key": "Cache-Control",
@@ -473,6 +590,42 @@
               "value": "no-cache"
             }
           ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/favicon*",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/manifest.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/manifest-classic.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
         }
       ]
     },
@@ -563,6 +716,42 @@
               "value": "no-cache"
             }
           ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/favicon*",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/manifest.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/manifest-classic.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
         }
       ]
     },
@@ -608,6 +797,33 @@
               "value": "no-cache"
             }
           ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/favicon*",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/manifest-classic.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
         }
       ]
     },
@@ -647,6 +863,33 @@
         },
         {
           "source": "/manifest.webmanifest",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/favicon*",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=3600,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/manifest-classic.webmanifest",
           "headers": [
             {
               "key": "Cache-Control",

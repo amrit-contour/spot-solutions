@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import { auth, google } from "@spot/ui/firebase";
 import { useNow } from "../lib/data";
 import { approveDeviceLink, getDeviceLink, joinError, type DeviceLink } from "../lib/joinServer";
-import { CuratingLogo } from "../components/CuratingLogo";
 import { Button, Card, Chip, Spinner, buttonClass } from "@spot/ui";
 import { IconCheck, IconLogout, IconServer, IconShield } from "@spot/ui";
 
@@ -153,13 +152,12 @@ export function ConnectServer({ user }: { user: User | null | undefined }) {
         transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1] }}
         className="w-full max-w-md text-center"
       >
-        <CuratingLogo className="mx-auto mb-8 size-14" />
         <Card className="p-6 sm:p-8">{body}</Card>
         {user && !user.isAnonymous && (
           <p className="mt-6 inline-flex items-center gap-2 type-label-l text-on-surface-variant">
-            {user.email}
+            Signed in as {user.email}
             <Button variant="text" size="sm" icon={IconLogout} onClick={() => void signOut(auth)}>
-              Use a different account
+              Switch account
             </Button>
           </p>
         )}

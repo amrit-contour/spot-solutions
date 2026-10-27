@@ -9,7 +9,7 @@
 #                               copied unchanged from deploy/legacy-dl/ (gitignored). Servers installed before the rename
 #                               poll /dl/version.json and download /dl/spot-solutions.tar.gz; they must never be offered the
 #                               renamed release (it would run against their old folders and services). See docs/migrate-to-nothing-bot-server.md.
-# Every hosting site serves apps/web/dist, so both sets are served from all of them.
+# Every hosting site but spot-solutions.web.app (retired, see apps/web/dist-retired below) serves apps/web/dist, so both sets are served from all of them.
 set -euo pipefail
 # Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
 for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}" ]] || export "$_n=${!_v}"; done
@@ -78,6 +78,17 @@ rm -rf "$TMP"
 
 # The frozen legacy files, byte for byte, every build.
 for f in "${LEGACY_FILES[@]}"; do cp "$LEGACY_DIR/$f" "$DIST/dl/$f"; done
+
+# spot-solutions.web.app is retired (hosting target `curating`): its own public dir, apps/web/dist-retired. It serves the
+# same dl/ and installer files as the new site (old install commands and servers on the frozen release keep working,
+# byte for byte) and, for everything else, a page that clears the old PWA and forwards to nothingbotcurating.web.app.
+RETIRED="${NBS_RETIRED_DIR:-apps/web/dist-retired}"
+rm -rf "$RETIRED"
+mkdir -p "$RETIRED"
+cp -R "$DIST/dl" "$RETIRED/dl"
+for f in install.sh install.ps1 install-mac.sh uninstall.sh uninstall.ps1 migrate-mac.sh restore-backup.sh; do cp "$DIST/$f" "$RETIRED/$f"; done
+cp deploy/retired/index.html deploy/retired/sw.js "$RETIRED/"
+for f in "${LEGACY_FILES[@]}"; do cmp -s "$LEGACY_DIR/$f" "$RETIRED/dl/$f" || { echo "ERROR: $RETIRED/dl/$f differs from $LEGACY_DIR/$f" >&2; exit 1; }; done
 
 echo "dist (new):    dl/nothing-bot-server.json ($SHA), dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip, dl/NothingBotServer-mac.zip, install.sh, install.ps1, install-mac.sh, uninstall.sh, uninstall.ps1, migrate-mac.sh, restore-backup.sh"
 echo "dist (legacy): dl/version.json, dl/spot-solutions.tar.gz, dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip (frozen at $(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version)' "$LEGACY_DIR/version.json"))"

@@ -3,10 +3,16 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import Icons from "unplugin-icons/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { fileURLToPath } from "node:url";
+import { iconVersion } from "../../packages/ui/icon-version.ts";
+
+// ?v=<hash of the icon files> on every icon/manifest-icon URL, so a changed icon is never served from a stale browser cache.
+const icons = iconVersion(fileURLToPath(new URL("./public", import.meta.url)));
 
 export default defineConfig({
   plugins: [
     react(),
+    icons.plugin,
     tailwindcss(),
     Icons({ compiler: "jsx", jsx: "react", scale: 1 }),
     VitePWA({
@@ -26,19 +32,19 @@ export default defineConfig({
         theme_color: "#000000",
         categories: ["productivity", "entertainment"],
         icons: [
-          { src: "/icons/nbc/icon-48.png", sizes: "48x48", type: "image/png", purpose: "any" },
-          { src: "/icons/nbc/icon-64.png", sizes: "64x64", type: "image/png", purpose: "any" },
-          { src: "/icons/nbc/icon-96.png", sizes: "96x96", type: "image/png", purpose: "any" },
-          { src: "/icons/nbc/icon-128.png", sizes: "128x128", type: "image/png", purpose: "any" },
-          { src: "/icons/nbc/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-          { src: "/icons/nbc/icon-256.png", sizes: "256x256", type: "image/png", purpose: "any" },
-          { src: "/icons/nbc/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-          { src: "/icons/nbc/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: icons.versioned("/icons/nbc/icon-48.png"), sizes: "48x48", type: "image/png", purpose: "any" },
+          { src: icons.versioned("/icons/nbc/icon-64.png"), sizes: "64x64", type: "image/png", purpose: "any" },
+          { src: icons.versioned("/icons/nbc/icon-96.png"), sizes: "96x96", type: "image/png", purpose: "any" },
+          { src: icons.versioned("/icons/nbc/icon-128.png"), sizes: "128x128", type: "image/png", purpose: "any" },
+          { src: icons.versioned("/icons/nbc/icon-192.png"), sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: icons.versioned("/icons/nbc/icon-256.png"), sizes: "256x256", type: "image/png", purpose: "any" },
+          { src: icons.versioned("/icons/nbc/icon-512.png"), sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: icons.versioned("/icons/nbc/maskable-512.png"), sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
         shortcuts: [
-          { name: "Calendar", url: "/", icons: [{ src: "/icons/nbc/icon-192.png", sizes: "192x192" }] },
-          { name: "Requests", url: "/requests", icons: [{ src: "/icons/nbc/icon-192.png", sizes: "192x192" }] },
-          { name: "Lineup", url: "/lineup", icons: [{ src: "/icons/nbc/icon-192.png", sizes: "192x192" }] },
+          { name: "Calendar", url: "/", icons: [{ src: icons.versioned("/icons/nbc/icon-192.png"), sizes: "192x192" }] },
+          { name: "Requests", url: "/requests", icons: [{ src: icons.versioned("/icons/nbc/icon-192.png"), sizes: "192x192" }] },
+          { name: "Lineup", url: "/lineup", icons: [{ src: icons.versioned("/icons/nbc/icon-192.png"), sizes: "192x192" }] },
         ],
       },
       workbox: {

@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-retired
 .env
 .env.*
 !.env.example
