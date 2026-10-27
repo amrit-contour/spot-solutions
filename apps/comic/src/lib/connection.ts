@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
-import { isServerUp, linkView, serverLastSeen, type FleetServerSummary, type Lease, type LinkView, type SessionState } from "@spot/shared";
+import type { AccountStatus } from "@spot/ui";
+import { isServerUp, linkView, maskPhoneTail, serverLastSeen, type FleetServerSummary, type Lease, type LinkView, type SessionState } from "@spot/shared";
 import { useClock } from "./alerts";
 
 /** Where linking, relinking, choosing a server and installing one happen. */
@@ -72,4 +73,21 @@ export function useConnection(uid: string): Connection {
     problem,
     healthNote: session.data?.health && session.data.health !== "ok" ? session.data.error ?? null : null,
   };
+}
+
+/** The account button's dot and menu row: the same states ConnectionCard words out. Not responding and needs-a-scan are amber, server off is red. */
+export function connectionStatus(c: Connection): AccountStatus | undefined {
+  if (c.loading) return undefined;
+  const to = "/settings";
+  const linkLabel = "Connection";
+  const phone = c.phone ? maskPhoneTail(c.phone) : undefined;
+  if (!c.serverUp && c.whatsapp !== "connected") return { tone: "error", label: "Server offline", to, linkLabel };
+  if (!c.serverUp) return { tone: "error", label: "Server offline", detail: phone, to, linkLabel };
+  switch (c.whatsapp) {
+    case "connected": return { tone: "ok", label: "WhatsApp connected", detail: phone, to, linkLabel };
+    case "unresponsive": return { tone: "wait", label: "WhatsApp not responding", to, linkLabel };
+    case "qr": return { tone: "wait", label: "WhatsApp needs a scan", to, linkLabel };
+    case "starting": return { tone: "wait", label: "Starting WhatsApp…", to, linkLabel };
+    default: return { tone: "idle", label: "WhatsApp not linked", to, linkLabel };
+  }
 }

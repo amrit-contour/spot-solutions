@@ -1,12 +1,13 @@
 import { signOut } from "firebase/auth";
-import { AccountMenu as BaseAccountMenu, AccountMenuItem, IconLightbulb, IconServer, IconShield, cx } from "@spot/ui";
+import { AccountMenu as BaseAccountMenu, type AccountStatus, AccountMenuItem, IconLightbulb, IconServer, IconShield, cx } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
 import { useServers } from "../routes/Server";
 import { isAdmin, useAccessConfig } from "../lib/access";
+import { clearChatCache } from "../lib/chatCache";
 
 /** The shared account menu plus the curator-only rows: Server and the admin Server guide. */
-export function AccountMenu({ align = "right" }: { align?: "left" | "right" }) {
+export function AccountMenu({ align = "right", status }: { align?: "left" | "right"; status?: AccountStatus }) {
   const { user } = useApp();
   const servers = useServers();
   const anyDown = servers?.some((s) => Date.now() - s.lastSeen > 90_000);
@@ -15,7 +16,8 @@ export function AccountMenu({ align = "right" }: { align?: "left" | "right" }) {
     <BaseAccountMenu
       user={user}
       align={align}
-      onSignOut={() => void signOut(auth)}
+      status={status}
+      onSignOut={() => void clearChatCache().finally(() => signOut(auth))}
       extra={(close, nav) => (
         <>
           {(admin || (servers && servers.length > 0)) && (

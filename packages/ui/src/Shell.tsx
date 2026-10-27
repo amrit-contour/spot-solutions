@@ -19,7 +19,7 @@ export type NavEntry = {
 };
 
 /** What PageHeader needs from the app around it, supplied by AppShell. */
-type ShellCtx = { accountMenu: (align?: "left" | "right") => ReactNode; phoneStatus?: ReactNode };
+type ShellCtx = { accountMenu: (align?: "left" | "right") => ReactNode };
 const ShellContext = createContext<ShellCtx>({ accountMenu: () => null });
 
 /**
@@ -32,12 +32,15 @@ export function appScroller(): HTMLElement | null {
   return typeof document === "undefined" ? null : document.getElementById(APP_SCROLL_ID);
 }
 
-export function StatusDot({ tone }: { tone: "ok" | "wait" | "error" | "idle" }) {
-  const c = { ok: "bg-ok", wait: "bg-primary", error: "bg-error", idle: "bg-outline" }[tone];
+/** ok = connected (green, gently pulsing), wait = connecting / needs a scan / not responding (amber), error = server offline, idle = not linked (grey). */
+export type StatusTone = "ok" | "wait" | "error" | "idle";
+export const STATUS_BG: Record<StatusTone, string> = { ok: "bg-ok", wait: "bg-warn", error: "bg-error", idle: "bg-outline" };
+export function StatusDot({ tone, size = 10, ring }: { tone: StatusTone; size?: number; /** A ring in the surface colour, for sitting on top of something (the avatar). */ ring?: boolean }) {
+  const c = STATUS_BG[tone];
   return (
-    <span className="relative inline-flex size-2.5">
-      {tone !== "idle" && tone !== "error" && <span className={cx("pulse-ring absolute inset-0 rounded-full", c)} />}
-      <span className={cx("relative size-2.5 rounded-full", c)} />
+    <span className="relative inline-flex flex-none" style={{ width: size, height: size }} aria-hidden>
+      {tone === "ok" && <span className={cx("status-pulse absolute inset-0 rounded-full", c)} />}
+      <span className={cx("relative size-full rounded-full", c, ring && "ring-2 ring-surface")} />
     </span>
   );
 }
@@ -72,7 +75,6 @@ export function AppShell({
   nav,
   appName,
   accountMenu,
-  phoneStatus,
   railFooter,
   banner,
   logo,
@@ -83,8 +85,6 @@ export function AppShell({
   appName: string;
   /** The account button (and menu). Rendered in the rail on desktop and in each page header on phones. */
   accountMenu: (align?: "left" | "right") => ReactNode;
-  /** Shown at the left of each page header on phones (e.g. connection status). */
-  phoneStatus?: ReactNode;
   /** Pinned under the account button in the desktop rail. */
   railFooter?: ReactNode;
   /** Full-width strip above the page (e.g. demo banner). */
@@ -121,7 +121,7 @@ export function AppShell({
     };
   }, []);
   return (
-    <ShellContext.Provider value={{ accountMenu, phoneStatus }}>
+    <ShellContext.Provider value={{ accountMenu }}>
       {/* One viewport tall, and padded below the status bar: the scroller (main) starts under it, so nothing ever scrolls beneath the notch. */}
       <div ref={frame} className="flex h-dvh overflow-clip bg-surface pt-[env(safe-area-inset-top)]">
         {/* Rail >= 600px */}
@@ -164,13 +164,12 @@ export function AppShell({
 let headerOwner: HTMLElement | null = null;
 
 export function PageHeader({ title, subtitle, actions, trailing, bar, children, width = "full" }: { title: ReactNode; /** "narrow" keeps the header on the same centred column as a max-w-3xl page body. */ width?: "full" | "narrow"; /** A toolbar pinned as part of the header (e.g. date nav). Same sticky box, so it can never drift from the title bar. */ bar?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
-  const { accountMenu, phoneStatus } = useContext(ShellContext);
+  const { accountMenu } = useContext(ShellContext);
   const ref = useRef<HTMLElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
-  const statusRef = useRef<HTMLDivElement>(null);
   const subRef = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(false);
-  const collapsible = !!(phoneStatus || subtitle);
+  const collapsible = !!subtitle;
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -193,7 +192,7 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
   }, []);
   // Phone collapse. Layout is measured, never animated: the header's box is its COLLAPSED height (so --page-header-h is what
   // sticky sub-bars need) plus a bottom margin of the collapsible height D, so the page always flows at the expanded height and
-  // scrolling never jumps. The status line and subtitle are overlay: scroll progress p (0..1 over the first D pixels of scroll)
+  // scrolling never jumps. The subtitle is an overlay: scroll progress p (0..1 over the first D pixels of scroll)
   // drives only transforms and opacity, so the pinned bar lands exactly on the content edge at every frame.
   useEffect(() => {
     const el = ref.current;
@@ -212,10 +211,7 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       setStuck(y > Math.max(2, d - 1));
     };
     const measure = () => {
-      const h1 = statusRef.current?.offsetHeight ?? 0;
-      const s = subRef.current?.offsetHeight ?? 0;
-      d = h1 + s;
-      el.style.setProperty("--h1", `${h1}px`);
+      d = subRef.current?.offsetHeight ?? 0;
       el.style.setProperty("--d", `${d}px`);
       el.style.setProperty("--hh", `${Math.max(0, inner.offsetHeight - d)}px`);
       apply();
@@ -224,7 +220,6 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(inner);
-    if (statusRef.current) ro.observe(statusRef.current);
     if (subRef.current) ro.observe(subRef.current);
     sc.addEventListener("scroll", onScroll, { passive: true });
     return () => {
@@ -258,17 +253,11 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       />
       <div ref={innerRef} className="relative px-4 pt-3 pb-2 sm:px-8 sm:pt-4 sm:pb-3">
       <div className={cx(width === "narrow" && "mx-auto w-full max-w-[44rem]")}>
-      {/* Phones: the account button owns the top-right corner (desktop keeps it in the nav rail). It never moves, because the
-          status line (expanded) and the compact title line (collapsed) are the same line. */}
+      {/* Phones: the title row is the first row. The account button sits at its right edge, centred on the title's line (desktop keeps it in the nav rail). */}
       <div className="absolute top-3 right-4 z-10 flex h-11 items-center sm:hidden">{accountMenu()}</div>
-      {phoneStatus && (
-        <div ref={statusRef} style={{ opacity: "clamp(0, calc(1 - var(--p, 0) * 2.5), 1)" }} className="flex h-11 min-w-0 items-center pr-[3.25rem] will-change-[opacity] group-data-[collapsed=1]/hdr:pointer-events-none sm:hidden">
-          <div className="flex min-w-0 max-w-full flex-none">{phoneStatus}</div>
-        </div>
-      )}
       {/* Wraps instead of squeezing: the title keeps its natural width, so a wide action (week switcher) drops to a second line
           rather than turning "Requests" into "Re…". */}
-      <div style={phoneStatus ? lift("var(--h1, 0px)") : undefined} className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 will-change-transform max-sm:pr-[3.25rem] sm:transform-none!">
+      <div className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 max-sm:pr-[3.25rem]">
         <h1
           style={collapsible ? { transform: "scale(calc(1 - var(--p, 0) * 0.2))", transformOrigin: "left center" } : undefined}
           className="min-w-0 max-w-full flex-auto truncate type-headline-m will-change-transform motion-reduce:transform-none! sm:type-display-s sm:transform-none!"
@@ -279,7 +268,7 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
         {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
       </div>
       {subtitle && (
-        <div ref={subRef} style={{ ...lift("var(--h1, 0px)"), opacity: "clamp(0, calc(1 - var(--p, 0) * 2), 1)" }} className="pt-0.5 pb-1.5 will-change-[transform,opacity] group-data-[collapsed=1]/hdr:pointer-events-none sm:hidden">
+        <div ref={subRef} style={{ ...lift("var(--d, 0px)"), opacity: "clamp(0, calc(1 - var(--p, 0) * 2), 1)" }} className="pt-0.5 pb-1.5 will-change-[transform,opacity] group-data-[collapsed=1]/hdr:pointer-events-none sm:hidden">
           <p className="min-w-0 max-w-full type-body-m text-on-surface-variant">{subtitle}</p>
         </div>
       )}

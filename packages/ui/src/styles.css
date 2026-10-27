@@ -45,6 +45,7 @@
   --color-inverse-primary: var(--md-sys-color-inverse-primary);
   --color-scrim: var(--md-sys-color-scrim);
   --color-ok: var(--md-sys-color-ok);
+  --color-warn: #f0a30a;
   --color-nav-active: var(--md-sys-color-nav-active);
   --color-on-nav-active: var(--md-sys-color-on-nav-active);
 
@@ -165,6 +166,11 @@
 
 @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.6; } 100% { transform: scale(2.2); opacity: 0; } }
 .pulse-ring { animation: pulse-ring 1.8s var(--ease-out-strong) infinite; }
+
+/* The WhatsApp status dot on the account avatar: a slow, faint ring that breathes out from the dot. Still under reduced motion. */
+@keyframes status-pulse { 0% { transform: scale(1); opacity: 0.5; } 70%, 100% { transform: scale(2.3); opacity: 0; } }
+.status-pulse { animation: status-pulse 3.2s var(--ease-out-strong) infinite; }
+@media (prefers-reduced-motion: reduce) { .status-pulse { animation: none; opacity: 0; } }
 
 /* Scanning line over the QR while we wait for the phone */
 @keyframes scan { 0% { transform: translateY(0); } 50% { transform: translateY(calc(var(--qr) - 2px)); } 100% { transform: translateY(0); } }

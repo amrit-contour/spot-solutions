@@ -33,7 +33,7 @@ export function useConnection(): { tone: "ok" | "wait" | "error" | "idle"; label
   const { session, workerOnline } = useApp();
   if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode", detail: "your own sandbox", short: "Demo" };
   if (!workerOnline) return { tone: "error" as const, label: "Server offline", short: "Offline" };
-  if (session?.status === "ready" && session.health && session.health !== "ok") return { tone: "error" as const, label: "WhatsApp not responding", detail: "the server is restarting it", short: "Stuck" };
+  if (session?.status === "ready" && session.health && session.health !== "ok") return { tone: "wait" as const, label: "WhatsApp not responding", detail: "the server is restarting it", short: "Stuck" };
   if (session?.status === "ready") return { tone: "ok" as const, label: "WhatsApp connected", detail: maskPhone(session.phone), short: "Live" };
   if (session?.status === "qr" || session?.status === "starting" || session?.status === "authenticated") return { tone: "wait" as const, label: "Linking WhatsApp…", short: "Linking" };
   return { tone: "idle" as const, label: "WhatsApp not linked", short: "Unlinked" };
@@ -56,12 +56,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
       nav={nav}
       appName="Nothing BOT Curate"
       logo={<CuratingLogo className="size-11" />}
-      accountMenu={(align) => <AccountMenu align={align} />}
-      phoneStatus={
-        <NavLink to="/settings#whatsapp" title={conn.detail ? `${conn.label} · ${conn.detail}` : conn.label} className="state-layer inline-flex h-7 max-w-full min-w-0 items-center gap-2 rounded-full bg-surface-container px-3 type-label-m text-on-surface-variant">
-          <StatusDot tone={conn.tone} /> <span className="truncate">{conn.label}</span>
-        </NavLink>
-      }
+      accountMenu={(align) => <AccountMenu align={align} status={{ tone: conn.tone, label: conn.label, detail: conn.detail, to: "/settings#whatsapp", linkLabel: "Settings" }} />}
       railFooter={
         <NavLink to="/settings#whatsapp" title={conn.detail ? `${conn.label} · ${conn.detail}` : conn.label} className="state-layer flex flex-col items-center gap-1.5 rounded-lg px-2 py-2 text-on-surface-variant">
           <span className="relative">

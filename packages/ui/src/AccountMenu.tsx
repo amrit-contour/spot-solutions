@@ -3,9 +3,13 @@ import { useNavigate, type NavigateFunction } from "react-router-dom";
 import { Menu } from "./Menu";
 import { Avatar, Segmented, sharpPhoto, cx, type Icon } from "./ui";
 import { IconLogout, IconMoon, IconSettings, IconSun } from "./icons";
+import { StatusDot, type StatusTone } from "./Shell";
 import { savedMode, setMode, type ThemeMode } from "./theme";
 
 export type AccountUser = { displayName?: string | null; email?: string | null; photoURL?: string | null };
+
+/** The WhatsApp link as the account button shows it: a dot on the avatar, and a row at the top of the menu. */
+export type AccountStatus = { tone: StatusTone; label: string; detail?: string; /** Where the row links (e.g. Settings, WhatsApp). */ to?: string; linkLabel?: string };
 
 /** One row of the account menu, styled to match the built-in ones. */
 export function AccountMenuItem({ icon: I, onClick, danger, children }: { icon: Icon; onClick: () => void; danger?: boolean; children: ReactNode }) {
@@ -24,6 +28,7 @@ export function AccountMenu({
   settingsTo = "/settings",
   extra,
   align = "right",
+  status,
 }: {
   user: AccountUser;
   onSignOut: () => void;
@@ -32,6 +37,8 @@ export function AccountMenu({
   /** App-specific rows, placed between Settings and Sign out. */
   extra?: (close: () => void, nav: NavigateFunction) => ReactNode;
   align?: "left" | "right";
+  /** WhatsApp link state, drawn as a dot on the avatar's bottom-right corner. */
+  status?: AccountStatus;
 }) {
   const [mode, setModeState] = useState<ThemeMode>(savedMode());
   const name = user.displayName ?? user.email ?? "You";
@@ -40,8 +47,13 @@ export function AccountMenu({
     <Menu
       align={align}
       trigger={(toggle, open) => (
-        <button onClick={toggle} aria-label="Account" aria-expanded={open} className={cx("pressable rounded-full p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary", open && "ring-2 ring-primary")}>
+        <button onClick={toggle} aria-label={status ? `Account · ${status.label}` : "Account"} aria-expanded={open} className={cx("pressable relative rounded-full p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary", open && "ring-2 ring-primary")}>
           {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
+          {status && (
+            <span data-status={status.tone} className="absolute right-0 bottom-0">
+              <StatusDot tone={status.tone} size={12} ring />
+            </span>
+          )}
         </button>
       )}
     >
@@ -54,6 +66,26 @@ export function AccountMenu({
               {user.email && <div className="truncate type-body-s text-on-surface-variant">{user.email}</div>}
             </div>
           </div>
+          {status && (
+            <div className="flex items-center gap-3 border-t border-outline-variant/60 px-4 py-3">
+              <StatusDot tone={status.tone} size={10} />
+              <div className="min-w-0 flex-1 type-body-m">
+                {status.label}
+                {status.detail && <span className="text-on-surface-variant"> · {status.detail}</span>}
+              </div>
+              {status.to && (
+                <button
+                  onClick={() => {
+                    close();
+                    nav(status.to!);
+                  }}
+                  className="state-layer -my-1 -mr-2 flex-none rounded-full px-3 py-1.5 type-label-l text-primary"
+                >
+                  {status.linkLabel ?? "Settings"}
+                </button>
+              )}
+            </div>
+          )}
           <div className="border-t border-outline-variant/60 px-4 py-3">
             <Segmented
               size="sm"

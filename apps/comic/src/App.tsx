@@ -1,10 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { ComicLogo } from "./components/ComicLogo";
-import { AccountMenu, AppShell, Spinner, IconSend, IconBell, IconCalendarMark, IconMic, IconBuilding, IconSettings, type NavEntry } from "@spot/ui";
+import { AccountMenu, AppShell, ErrorBoundary, Spinner, IconSend, IconBell, IconCalendarMark, IconMic, IconRoom, IconSettings, type NavEntry } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
+import { useConnection, connectionStatus } from "./lib/connection";
 import { Landing } from "./routes/Landing";
 import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/install";
@@ -51,13 +52,24 @@ function useAuthUser() {
 
 const NAV: NavEntry[] = [
   { to: "/", label: "Today", short: "Home", icon: IconCalendarMark },
-  { to: "/rooms", label: "Rooms", icon: IconBuilding },
+  { to: "/rooms", label: "Rooms", icon: IconRoom },
   { to: "/alerts", label: "Alerts", icon: IconBell },
   { to: "/asks", label: "Asks", icon: IconSend },
   { to: "/spots", label: "My spots", short: "Spots", icon: IconMic },
   // Settings lives in the account menu on phones.
   { to: "/settings", label: "Settings", icon: IconSettings, phoneHidden: true },
 ];
+
+/** The shell with the account button's WhatsApp dot: one connection subscription for the whole signed-in app. */
+function SignedInShell({ user, children }: { user: User; children: ReactNode }) {
+  const c = useConnection(user.uid);
+  const status = connectionStatus(c);
+  return (
+    <AppShell nav={NAV} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={(align) => <AccountMenu user={user} align={align} status={status} onSignOut={() => void signOut(auth)} />}>
+      {children}
+    </AppShell>
+  );
+}
 
 export default function App() {
   const user = useAuthUser();
@@ -79,8 +91,9 @@ export default function App() {
         // The installed app is already "the product": skip the marketing page and go straight to signing in.
         isStandalone() ? <SignIn /> : <Landing />
       ) : (
-        <AppShell nav={NAV} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={(align) => <AccountMenu user={user} align={align} onSignOut={() => void signOut(auth)} />}>
+        <SignedInShell user={user}>
           <PushBridge />
+          <ErrorBoundary resetKey={pathname}>
           <Routes>
             <Route path="/rooms/*" element={<RosterRoutes uid={user.uid} />} />
             <Route path="/rosters/*" element={<RostersApp user={user} />} />
@@ -96,7 +109,8 @@ export default function App() {
             <Route path="/admin" element={<Admin user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </AppShell>
+          </ErrorBoundary>
+        </SignedInShell>
       )}
     </>
   );
