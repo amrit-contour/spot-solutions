@@ -70,7 +70,7 @@ import { listNames } from "../components/calendar/EventCard";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
-import { ActivitySection, Chevron, CollapsedSummary, Reveal, StatePill, useRemembered } from "../components/ShowCardParts";
+import { ActivitySection, Chevron, CollapsedSummary, RepeatNextToggle, Reveal, StatePill, useRemembered } from "../components/ShowCardParts";
 import { Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "@spot/ui";
 import { IconAdd, IconCalendarMark, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "@spot/ui";
 
@@ -889,6 +889,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
             </>
           )}
         </footer>
+        {lineup && <RepeatNextToggle lineup={lineup} />}
         <ActivitySection lineup={lineup} show={show} offers={offers.filter((o) => o.showId === show.id)} nameOf={nameOf} over={state.over} />
       </Reveal>
 

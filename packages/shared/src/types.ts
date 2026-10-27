@@ -1,5 +1,6 @@
 // Firestore document shapes. Everything lives under users/{uid}/...
 import type { GroupPost } from "./groupPosts.ts";
+import type { GroupPostStatus } from "./groupPostCriteria.ts";
 import type { GroupCleanup, LineupCleanup } from "./groupCleanup.ts";
 import type { ActivityEntry } from "./lineupActivity.ts";
 
@@ -297,6 +298,8 @@ export interface Show {
   groupPosts?: GroupPost[];
   /** Post id → the show date it last went out for, so each goes once per show. Written by the worker. */
   groupPostsSent?: Record<string, string> | null;
+  /** Post id → what happened to the latest run: skipped (and why), or held waiting for an answer. Written by the worker. */
+  groupPostStatus?: Record<string, GroupPostStatus> | null;
   /** Points of contact who run the mic. They always stay in the group and can be tagged with {{pocs}}. Comic ids. */
   pocs?: string[];
   /** The day-after cleanup of the group. See groupCleanup.ts. */
@@ -484,6 +487,8 @@ export interface Lineup {
   showDaySyncedOn?: string | null;
   /** Answer to the morning-after check. */
   outcome?: "happened" | "canned" | null;
+  /** The same lineup runs again next week (set when the show didn't happen and the curator keeps the group, or on the card). Drives "repeats next week" post criteria. */
+  repeatNext?: boolean | null;
   /** The day-after group cleanup for this show date. */
   cleanup?: LineupCleanup | null;
   /** POCs, regulars, co-hosts and group admins were put on this lineup when it was first opened. Not redone after you remove someone. */

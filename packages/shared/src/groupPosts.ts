@@ -3,10 +3,11 @@
 // that previews them.
 import { DAY_NAMES, formatDate, formatTime } from "./week.ts";
 import { messageRich, normalizeMessage, renderRich, type MessageKey, type MessageOverride, type RichMessage } from "./messages.ts";
+import { TEMPLATE_CRITERIA, type PostAfter, type PostCriteria } from "./groupPostCriteria.ts";
 import type { Settings, Show, Venue } from "./types.ts";
 
 /** The message types written for a show's group. */
-export const GROUP_POST_KEYS = ["groupLineup", "groupVenue", "groupReminder", "groupPocs", "groupReachEarly", "groupPoster", "groupBusking", "groupCleanup"] as const satisfies readonly MessageKey[];
+export const GROUP_POST_KEYS = ["groupLineup", "groupVenue", "groupReminder", "groupPocs", "groupReachEarly", "groupPoster", "groupBusking", "groupCleanup", "groupThanks", "groupDidntHappen", "groupCancelled", "groupRepeat", "groupSignups", "groupLatecomers"] as const satisfies readonly MessageKey[];
 export type GroupPostKey = (typeof GROUP_POST_KEYS)[number];
 
 export interface GroupPost {
@@ -22,6 +23,10 @@ export interface GroupPost {
   message?: MessageOverride | null;
   /** Reword the text in the curator's voice when it goes out (facts are checked; the written text goes if one changes). */
   voice?: boolean;
+  /** "Send only if…": the post goes out only when these hold at send time. Missing: always (unless the show is off). See groupPostCriteria.ts. */
+  criteria?: PostCriteria | null;
+  /** Something to do after it goes out. Missing: nothing. */
+  after?: PostAfter | null;
 }
 
 export const GROUP_POST_MAX_DAYS = 6;
@@ -42,6 +47,13 @@ export function newGroupPost(template: GroupPost["template"], show: Pick<Show, "
   if (template === "groupPoster") return { id, template, daysBefore: 2, time: "12:00", enabled: true };
   if (template === "groupBusking") return { id, template, daysBefore: 0, time: shiftTime(show.startTime, -300), enabled: true };
   if (template === "groupCleanup") return { id, template, daysBefore: 0, time: "23:00", enabled: true };
+  const criteria = TEMPLATE_CRITERIA[template];
+  if (template === "groupThanks") return { id, template, daysBefore: -1, time: "10:00", enabled: true, criteria };
+  if (template === "groupDidntHappen") return { id, template, daysBefore: -1, time: "10:00", enabled: true, criteria };
+  if (template === "groupCancelled") return { id, template, daysBefore: 1, time: "12:00", enabled: true, criteria };
+  if (template === "groupRepeat") return { id, template, daysBefore: -1, time: "10:30", enabled: true, criteria };
+  if (template === "groupSignups") return { id, template, daysBefore: -1, time: "12:00", enabled: true, criteria };
+  if (template === "groupLatecomers") return { id, template, daysBefore: 0, time: twoHoursBefore, enabled: true, criteria };
   return { id, template, daysBefore: 0, time: twoHoursBefore, enabled: true, message: "" };
 }
 
@@ -93,6 +105,8 @@ export function groupPostVars(show: Pick<Show, "name" | "startTime">, venue: Pic
     mapsLink: venue?.mapsLink,
     day: DAY_NAMES[weekdayOf(showDate)],
     date: formatDate(showDate),
+    /** The same weekday a week on, for "same lineup next week" and "sign-ups open". */
+    nextDate: formatDate(addDays(showDate, 7)),
     time: formatTime(show.startTime),
     lineup: names?.length ? names.map((n, i) => `${i + 1}. ${n}`).join("\n") : null,
     count: names?.length ? names.length : null,

@@ -3,11 +3,12 @@ import { useId, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { formatDate, lineupActivity, type ActivityRow, type Lineup, type Show, type ShowState, type SpotOffer } from "@spot/shared";
-import { Button, Chip, cx, type Icon } from "@spot/ui";
+import { updateDoc } from "firebase/firestore";
+import { Button, Chip, Switch, cx, type Icon } from "@spot/ui";
 import { IconArrowDown, IconCancel, IconCheck, IconChat, IconClock, IconGroup, IconHistory, IconLogout, IconMic, IconSend, IconUserMinus, IconUserPlus, IconWarn } from "@spot/ui";
 import { useApp } from "../lib/app";
 import { ComicAvatar } from "../lib/photos";
-import { runCommand, timeAgo } from "../lib/data";
+import { runCommand, timeAgo, userDoc } from "../lib/data";
 
 /* ---------- State pill ---------- */
 
@@ -141,6 +142,26 @@ function zonedNow(timeZone: string, at: number) {
   let f = nowFormats.get(timeZone);
   if (!f) nowFormats.set(timeZone, (f = [new Intl.DateTimeFormat("en-CA", { timeZone }), new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" })]));
   return { date: f[0].format(at), time: f[1].format(at) };
+}
+
+/**
+ * On a show that didn't happen: do the same comics run again next week? Group posts with "lineup repeats next week" read this
+ * (the "Same lineup next week" post goes only when it's on, "We'll find you another night" only when it's off). Answering "keep
+ * everyone" to the group-cleanup question sets it too.
+ */
+export function RepeatNextToggle({ lineup }: { lineup: Lineup }) {
+  const { uid } = useApp();
+  if (lineup.status !== "canned" && lineup.outcome !== "canned") return null;
+  const on = lineup.repeatNext === true;
+  return (
+    <label className="mt-3 flex items-center gap-3 border-t border-outline-variant/60 pt-3">
+      <span className="min-w-0 flex-1">
+        <span className="block type-title-s">Same lineup repeats next week</span>
+        <span className="block type-body-s text-on-surface-variant">{lineup.repeatNext == null ? "Not answered yet. Posts that depend on it wait for you." : on ? "Your repeat-next-week post can go out." : "Your \"we'll find you another night\" post can go out."}</span>
+      </span>
+      <Switch checked={on} onChange={(v) => void updateDoc(userDoc(uid, "lineups", lineup.id), { repeatNext: v }).catch((e) => toast.error((e as Error).message))} label="Same lineup repeats next week" />
+    </label>
+  );
 }
 
 export function ActivitySection({ lineup, show, offers, nameOf }: { lineup?: Lineup; show: Show; offers: SpotOffer[]; nameOf: (id: string) => string; over?: boolean }) {

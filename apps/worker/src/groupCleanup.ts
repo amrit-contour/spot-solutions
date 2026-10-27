@@ -84,9 +84,33 @@ export async function ask(uid: string, show: Show, lineup: Lineup & { id: string
   await askCurator(uid, `🧹 ${question}\nReply *yes* to clear it (POCs, regulars, co-hosts and admins stay), or *no* to keep everyone.`, pending);
 }
 
-/** Keep everyone: nothing changes in the group; the scheduled posts carry on for next week as usual. */
+/**
+ * "After sending: remove this week's comics" on a scheduled post. Never silent: with the show's cleanup on automatic it clears the
+ * group (no second thank-you, the post was one); otherwise, or when WhatsApp isn't steady, it asks the curator first (the Updates
+ * card and the agent number's yes/no), the same review as the day-after cleanup. Once a cleanup exists for the show, nothing more.
+ */
+export async function startRemoval(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }, what: string) {
+  const fresh = ((await col(uid, "lineups").doc(lineup.id).get()).data() as Lineup | undefined) ?? lineup;
+  if (fresh.cleanup || fresh.backfilled || !show.groupId) return;
+  const auto = show.cleanup?.enabled && show.cleanup.mode === "auto" && canClearNow({ healthy: sessions.healthy(uid), stableMs: sessions.stableMs(uid) });
+  try {
+    if (auto) await clearGroup(uid, client, show, { ...fresh, id: lineup.id }, { noThanks: true });
+    else await ask(uid, show, { ...fresh, id: lineup.id });
+  } catch (e) {
+    console.error(`[group-post] ${uid} ${show.name}: removal after the ${what} failed`, e);
+    await notice(uid, "warn", `${show.name}: the ${what} went out, but clearing this week's comics from the group didn't start (${(e as Error).message}). Do it from the show's group.`);
+  }
+}
+
+/**
+ * Keep everyone: nothing changes in the group; the scheduled posts carry on for next week as usual. When the show didn't happen,
+ * "keep" is the answer to "are the same comics repeating next week?", so the lineup is marked as repeating (post criteria read it).
+ */
 export async function keepGroup(uid: string, lineupId: string) {
-  await col(uid, "lineups").doc(lineupId).update({ cleanup: { status: "kept", at: Date.now() } satisfies LineupCleanup });
+  const ref = col(uid, "lineups").doc(lineupId);
+  const lineup = (await ref.get()).data() as Lineup | undefined;
+  const didntHappen = lineup?.cleanup?.reason === "canned" || lineup?.status === "canned" || lineup?.outcome === "canned";
+  await ref.update({ cleanup: { status: "kept", at: Date.now() } satisfies LineupCleanup, ...(didntHappen ? { repeatNext: true } : {}) });
 }
 
 const digitsOf = (id: string) => id.split("@")[0].split(":")[0].replace(/\D/g, "");
@@ -122,7 +146,7 @@ export async function readCleanupMembers(client: WAWebJS.Client, groupId: string
  * People it couldn't remove are kept on the lineup's cleanup (`pending`, with why) and retried (2 min, 10 min, hourly, the rest of
  * the day); `retry` is that later pass: no thank-you, a fresh read of the group.
  */
-export async function clearGroup(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }, opts: { retry?: boolean } = {}): Promise<{ removed: number; failed: number }> {
+export async function clearGroup(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }, opts: { retry?: boolean; noThanks?: boolean } = {}): Promise<{ removed: number; failed: number }> {
   const { settings, venues } = watchUser(uid);
   const ref = col(uid, "lineups").doc(lineup.id);
   const prior = lineup.cleanup;
@@ -135,7 +159,7 @@ export async function clearGroup(uid: string, client: WAWebJS.Client, show: Show
   else await ref.set({ cleanup: { status: "partial", at: t0, attempts: 0, until, retryAt: t0 + 10 * 60_000, pending: [], removed: 0, failed: 0 } satisfies LineupCleanup }, { merge: true });
   const venue = venues.find((v) => v.id === show.venueId);
 
-  if (!retry) {
+  if (!retry && !opts.noThanks) {
     const msg = show.cleanup?.message === "" ? null : normalizeMessage(show.cleanup?.message, messageRich(settings, "groupCleanup"));
     if (msg) await sendRich(client, show.groupId!, renderRich(msg, groupPostVars(show, venue, lineup.date)), {}, venue, { prerendered: true, uid });
   }

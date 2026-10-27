@@ -6,6 +6,13 @@ import {
   DAY_SHORT,
   GROUP_POST_KEYS,
   GROUP_POST_MAX_DAYS, GROUP_POST_MAX_AFTER,
+  DEFAULT_WAIT_HOURS,
+  SHOW_STATUS_OPTIONS,
+  TEMPLATE_CRITERIA,
+  cleanCriteria,
+  criteriaSummary,
+  hasCriteria,
+  postStatusToShow,
   usesVar,
   formatDate,
   formatTime,
@@ -22,6 +29,7 @@ import {
   storeMessage,
   whenLabel,
   type GroupPost,
+  type PostCriteria,
   type PostSource,
   type PostSuggestion,
   type RichMessage,
@@ -45,8 +53,16 @@ const TEMPLATE_OPTIONS: { value: GroupPost["template"]; label: string }[] = [
   { value: "groupPoster", label: messageType("groupPoster").label },
   { value: "groupPocs", label: messageType("groupPocs").label },
   { value: "groupCleanup", label: messageType("groupCleanup").label },
+  { value: "groupThanks", label: messageType("groupThanks").label },
+  { value: "groupDidntHappen", label: messageType("groupDidntHappen").label },
+  { value: "groupCancelled", label: messageType("groupCancelled").label },
+  { value: "groupRepeat", label: messageType("groupRepeat").label },
+  { value: "groupSignups", label: messageType("groupSignups").label },
+  { value: "groupLatecomers", label: messageType("groupLatecomers").label },
   { value: "custom", label: "My own message" },
 ];
+/** Ready-made posts that come with "Send only if…" already set: offered next to the suggestions. */
+const CONDITIONAL_TEMPLATES = Object.keys(TEMPLATE_CRITERIA) as GroupPost["template"][];
 const labelOf = (t: GroupPost["template"]) => TEMPLATE_OPTIONS.find((o) => o.value === t)?.label ?? "Post";
 
 const VARIABLES = [
@@ -58,13 +74,14 @@ const VARIABLES = [
   { key: "mapsLink", label: "Maps link" },
   { key: "lineup", label: "Running order" },
   { key: "count", label: "Number of comics" },
+  { key: "nextDate", label: "Date next week" },
   { key: "pocs", label: "POCs (tagged)" },
 ];
 
 // Furthest before first, then the show day, then after it (for after-show posts, e.g. once the group is cleared).
 const DAY_OPTIONS = Array.from({ length: GROUP_POST_MAX_DAYS + GROUP_POST_MAX_AFTER + 1 }, (_, i) => GROUP_POST_MAX_DAYS - i).map((d) => ({ value: String(d), label: whenLabel(d) }));
 
-type PostShow = Pick<Show, "name" | "weekday" | "startTime" | "venueId" | "groupPostsSent" | "pocs"> & { id?: string };
+type PostShow = Pick<Show, "name" | "weekday" | "startTime" | "venueId" | "groupPostsSent" | "groupPostStatus" | "pocs"> & { id?: string };
 
 export function GroupPostsEditor({ show, posts, onChange, compact }: { show: PostShow; posts: GroupPost[]; onChange: (posts: GroupPost[]) => void; compact?: boolean }) {
   const { settings } = useApp();
@@ -79,7 +96,12 @@ export function GroupPostsEditor({ show, posts, onChange, compact }: { show: Pos
   const sorted = [...posts].sort((a, b) => b.daysBefore - a.daysBefore || a.time.localeCompare(b.time));
 
   const addMany = (added: GroupPost[]) => onChange([...posts, ...added]);
-  const suggestions = <PostSuggestions show={show} posts={posts} onAdd={addMany} />;
+  const suggestions = (
+    <>
+      <PostSuggestions show={show} posts={posts} onAdd={addMany} />
+      <ReadyMade show={show} posts={posts} onAdd={add} />
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -106,7 +128,10 @@ export function GroupPostsEditor({ show, posts, onChange, compact }: { show: Pos
             TEMPLATE_OPTIONS.map((o) => (
               <MenuItem key={o.value} onClick={() => (close(), add(o.value))}>
                 {o.label}
-                <span className="block type-body-s text-on-surface-variant">{o.value === "custom" ? "Write it, or start from a saved template" : messageSummary(groupPostMessage(settings, { ...newGroupPost(o.value, show) }))}</span>
+                <span className="block type-body-s text-on-surface-variant">
+                  {o.value === "custom" ? "Write it, or start from a saved template" : messageSummary(groupPostMessage(settings, { ...newGroupPost(o.value, show) }))}
+                </span>
+                {TEMPLATE_CRITERIA[o.value] && <span className="block type-label-m text-primary">{criteriaSummary(TEMPLATE_CRITERIA[o.value])}</span>}
               </MenuItem>
             ))
           }
@@ -117,6 +142,40 @@ export function GroupPostsEditor({ show, posts, onChange, compact }: { show: Pos
       </div>
       {posts.length > 0 && suggestions}
     </div>
+  );
+}
+
+/** After-show and call-time posts that come with their "Send only if…" set (thank-you only if it happened, and so on). One tap adds one. */
+function ReadyMade({ show, posts, onAdd }: { show: PostShow; posts: GroupPost[]; onAdd: (t: GroupPost["template"]) => void }) {
+  const have = new Set(posts.map((p) => p.template));
+  const list = CONDITIONAL_TEMPLATES.filter((t) => !have.has(t));
+  if (!list.length) return null;
+  return (
+    <section aria-label="Ready-made posts" className="rounded-lg border border-outline-variant">
+      <div className="flex items-center gap-2 px-3 pt-3">
+        <IconSparkle className="icon size-5 flex-none text-primary" />
+        <h4 className="min-w-0 flex-1 type-title-s">Ready-made posts</h4>
+      </div>
+      <p className="px-3 pt-1 type-body-s text-on-surface-variant">Each one only goes out when its condition holds, so a thank-you never follows a show that didn't happen.</p>
+      <ul className="flex flex-col gap-2 p-3">
+        {list.map((t) => {
+          const p = newGroupPost(t, show);
+          return (
+            <li key={t} className="flex items-center gap-2 rounded-md bg-surface-container py-2 pr-2 pl-3">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate type-title-s">{labelOf(t)}</span>
+                <span className="block type-body-s text-on-surface-variant">
+                  {whenLabel(p.daysBefore)}, {formatTime(p.time)} · {criteriaSummary(p.criteria)}
+                </span>
+              </span>
+              <Button size="sm" variant="tonal" icon={IconAdd} onClick={() => onAdd(t)} aria-label={`Add ${labelOf(t)}`}>
+                Add
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -236,6 +295,7 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pos
   const showDate = next.date;
   const voiceReady = Boolean(settings.voice?.enabled && settings.voice.profile?.summary);
   const setMessage = (m: RichMessage | null) => onChange({ message: m ? storeMessage(m) : null });
+  const status = postStatusToShow(show.groupPostStatus?.[post.id], show.groupPostsSent?.[post.id]);
   const nextLabel = `${DAY_SHORT[new Date(`${next.date}T00:00:00Z`).getUTCDay()]} ${formatDate(next.date)}, ${formatTime(next.time)}`;
 
   return (
@@ -247,8 +307,10 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pos
             <span className="block truncate type-title-s">{labelOf(post.template)}</span>
             <span className="block truncate type-body-s text-on-surface-variant">
               {whenLabel(post.daysBefore)}, {formatTime(post.time)}
+              {hasCriteria(post.criteria) && ` · ${criteriaSummary(post.criteria)}`}
               {post.enabled ? ` · next ${nextLabel}` : " · paused"}
             </span>
+            {status && <span className={cx("block truncate type-label-m", status.state === "waiting" ? "text-primary" : "text-on-surface-variant")}>{status.text} · for {formatDate(status.showDate)}</span>}
           </span>
           <IconArrowDown className={cx("icon size-4 flex-none text-on-surface-variant transition-transform duration-200", open && "rotate-180")} />
         </button>
@@ -296,6 +358,8 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pos
           {usesVar(msg, "pocs") && !show.pocs?.length && <p className="type-body-s text-error">This tags the POCs, but none are set for this show yet. Add them in the show's settings.</p>}
           {needsLineup(msg) && <p className="type-body-s text-on-surface-variant">Uses the running order, so it waits for a confirmed lineup. If the lineup isn't confirmed by then, you get a notice instead.</p>}
 
+          <SendOnlyIf post={post} onChange={onChange} />
+
           {msg.kind === "text" && (
             <label className="flex items-center gap-3">
               <span className="min-w-0 flex-1">
@@ -318,5 +382,58 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pos
         </div>
       )}
     </li>
+  );
+}
+
+const MIN_OPTIONS = [{ value: "0", label: "Any number" }, ...Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: `At least ${i + 1}` }))];
+const REPEAT_OPTIONS = [
+  { value: "", label: "Doesn't matter" },
+  { value: "yes", label: "Repeats next week" },
+  { value: "no", label: "Doesn't repeat" },
+];
+const WAIT_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 20].map((h) => ({ value: String(h), label: `${h} ${h === 1 ? "hour" : "hours"}` }));
+
+/** "Send only if…": the post goes out only when these all hold at send time; if one isn't known yet it waits, then skips (and says so). */
+function SendOnlyIf({ post, onChange }: { post: GroupPost; onChange: (p: Partial<GroupPost>) => void }) {
+  const c = post.criteria ?? {};
+  const set = (patch: Partial<PostCriteria>) => onChange({ criteria: cleanCriteria({ ...c, ...patch }) });
+  const summary = criteriaSummary(c);
+  const needsAnswer = c.show === "happened" || c.show === "didnt_happen" || c.show === "confirmed" || c.repeats !== undefined;
+  return (
+    <fieldset className="flex flex-col gap-3 rounded-md border border-outline-variant/60 p-3">
+      <legend className="px-1 type-title-s">Send only if…</legend>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show status">
+        <Chip selected={!c.show} onClick={() => set({ show: undefined })}>
+          Any show that's on
+        </Chip>
+        {SHOW_STATUS_OPTIONS.map((o) => (
+          <Chip key={o.value} selected={c.show === o.value} onClick={() => set({ show: c.show === o.value ? undefined : o.value })}>
+            {o.label}
+          </Chip>
+        ))}
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
+        <Select label="Comics on the lineup" value={String(c.minComics ?? 0)} onChange={(v) => set({ minComics: Number(v) || undefined })} options={MIN_OPTIONS} />
+        <Select label="Lineup repeats next week" value={c.repeats === undefined ? "" : c.repeats ? "yes" : "no"} onChange={(v) => set({ repeats: v === "" ? undefined : v === "yes" })} options={REPEAT_OPTIONS} />
+      </div>
+      <label className="flex items-center gap-3">
+        <span className="min-w-0 flex-1 type-body-m">The lineup is full</span>
+        <Switch checked={Boolean(c.full)} onChange={(v) => set({ full: v || undefined })} label="Only if the lineup is full" />
+      </label>
+      {needsAnswer && (
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-1 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end sm:gap-3">
+          <p className="type-body-s text-on-surface-variant">If an answer isn't in yet ("did it happen?", "repeating?"), the post waits, then skips and says why. It never waits past the end of its day.</p>
+          <Select label="Wait up to" value={String(c.waitHours ?? DEFAULT_WAIT_HOURS)} onChange={(v) => set({ waitHours: Number(v) })} options={WAIT_OPTIONS} />
+        </div>
+      )}
+      <p className="type-body-s text-on-surface-variant">{summary ? `Goes out ${summary}. Skipped posts show why on the show's Activity.` : "Always goes out, unless the show is called off or didn't happen."}</p>
+      <label className="flex items-center gap-3 border-t border-outline-variant/60 pt-3">
+        <span className="min-w-0 flex-1">
+          <span className="block type-title-s">After sending: remove this week's comics</span>
+          <span className="block type-body-s text-on-surface-variant">Regulars, POCs, co-hosts and admins stay. It opens the usual group review for you to confirm, and only clears by itself if this show's group cleanup is set to automatic.</span>
+        </span>
+        <Switch checked={Boolean(post.after?.removeComics)} onChange={(v) => onChange({ after: v ? { removeComics: true } : null })} label="After sending, remove this week's comics from the group" />
+      </label>
+    </fieldset>
   );
 }

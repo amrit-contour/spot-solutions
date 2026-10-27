@@ -3,6 +3,7 @@
 // What nothing recorded (confirmations, updates, group posts, the group update, with their failures) the worker appends to the
 // lineup's capped `activity` array. Pure rules; the web renders them and the worker writes the entries.
 import { clampDays, addDays } from "./groupPosts.ts";
+import { criteriaSummary, hasCriteria } from "./groupPostCriteria.ts";
 import type { GroupPost } from "./groupPosts.ts";
 import { formatDate, formatTime } from "./week.ts";
 import type { Lineup, Show, SpotOffer } from "./types.ts";
@@ -10,7 +11,7 @@ import type { Lineup, Show, SpotOffer } from "./types.ts";
 export const ACTIVITY_CAP = 50;
 
 /** What a scheduled group post is called in a sentence. */
-export const POST_LABEL: Record<GroupPost["template"], string> = { groupLineup: "lineup post", groupVenue: "venue post", groupReminder: "reminder", groupPocs: "POC post", groupReachEarly: "reach-on-time post", groupPoster: "poster post", groupBusking: "busking notice", groupCleanup: "after-show message", custom: "scheduled post" };
+export const POST_LABEL: Record<GroupPost["template"], string> = { groupLineup: "lineup post", groupVenue: "venue post", groupReminder: "reminder", groupPocs: "POC post", groupReachEarly: "reach-on-time post", groupPoster: "poster post", groupBusking: "busking notice", groupCleanup: "after-show message", groupThanks: "thank-you", groupDidntHappen: "mic-didn't-happen note", groupCancelled: "cancellation note", groupRepeat: "repeat-next-week note", groupSignups: "sign-ups post", groupLatecomers: "call-time reminder", custom: "scheduled post" };
 
 /** One thing the worker did for a lineup. Stored on the lineup doc, newest last, capped. */
 export interface ActivityEntry {
@@ -119,17 +120,21 @@ export function lineupActivity({ lineup, show, offers = [], now, nameOf }: Activ
   // Scheduled group posts: still to come, or posted before the app recorded each one.
   const off = lineup?.status === "cancelled" || lineup?.status === "canned" || lineup?.backfilled;
   const showDate = lineup?.date;
-  if (showDate && show.groupId && !off) {
+  if (showDate && show.groupId && !lineup?.backfilled) {
     for (const post of show.groupPosts ?? []) {
       if (!post.enabled) continue;
+      // A show that is off gets no posts, except the ones written for that ("only if it didn't happen").
+      if (off && !post.criteria?.show) continue;
       const day = addDays(showDate, -clampDays(post.daysBefore));
       const label = POST_LABEL[post.template];
       const recorded = stored.some((e) => (e.kind === "post" || e.kind === "lineup_post") && e.ref === post.id);
       if (show.groupPostsSent?.[post.id] === showDate) {
         if (!recorded) dated.push({ key: `post-${post.id}`, at: dayMs(day), day, icon: "post", tone: "done", text: `Posted the ${label} in the group` });
+      } else if (show.groupPostStatus?.[post.id]?.state === "waiting" && show.groupPostStatus[post.id].showDate === showDate) {
+        ahead.push({ key: `post-${post.id}`, at: null, when: "Waiting", sort: `${day} ${post.time}`, icon: "post", tone: "scheduled", text: `The ${label}: ${show.groupPostStatus[post.id].text}` });
       } else if (`${day} ${post.time}` > `${now.date} ${now.time}`) {
         const when = `${day === now.date ? "Today" : formatDate(day)} ${formatTime(post.time)}`;
-        ahead.push({ key: `post-${post.id}`, at: null, when, sort: `${day} ${post.time}`, icon: "post", tone: "scheduled", text: `The ${label} goes out` });
+        ahead.push({ key: `post-${post.id}`, at: null, when, sort: `${day} ${post.time}`, icon: "post", tone: "scheduled", text: `The ${label} goes out${hasCriteria(post.criteria) ? `, ${criteriaSummary(post.criteria)}` : ""}` });
       }
     }
   }

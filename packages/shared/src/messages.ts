@@ -26,7 +26,13 @@ export type MessageKey =
   | "groupReachEarly"
   | "groupPoster"
   | "groupBusking"
-  | "groupCleanup";
+  | "groupCleanup"
+  | "groupThanks"
+  | "groupDidntHappen"
+  | "groupCancelled"
+  | "groupRepeat"
+  | "groupSignups"
+  | "groupLatecomers";
 
 export type MessageGroup = "replies" | "offers" | "held" | "group";
 
@@ -241,6 +247,60 @@ export const MESSAGE_TYPES: readonly MessageType[] = [
     label: "After the show",
     when: "Sent in the group the day after the show, right before the group is cleared for next week (if cleanup is on).",
     default: "Thank you all for *{{show}}* yesterday! 🙏 Clearing the group for next week's lineup. See you at the next one.",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
+  {
+    key: "groupThanks",
+    group: "group",
+    label: "Thank-you after the show",
+    when: "Posted in the show's group the day after, only if the show happened (it waits for your answer to \"did it happen?\"). Change when and whether in the show's group posts.",
+    default: "Thank you all for *{{show}}* on {{day}}! 🙏 Great energy from everyone. Keep an eye on this group for the next one.",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
+  {
+    key: "groupDidntHappen",
+    group: "group",
+    label: "Mic didn't happen",
+    when: "Posted in the show's group the day after, only if the show didn't happen and the lineup isn't repeating.",
+    default: "Hey everyone, *{{show}}* on {{day}} {{date}} didn't happen, sorry about that. We'll put you on another night soon 🙏",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
+  {
+    key: "groupCancelled",
+    group: "group",
+    label: "Show cancelled in advance",
+    when: "Posted in the show's group, only if the show was called off before it started.",
+    default: "Update: *{{show}}* on {{day}} {{date}} is cancelled. Sorry for the change. We'll share the next date here 🙏",
+    vars: GROUP_VARS,
+    toGroup: true,
+  },
+  {
+    key: "groupRepeat",
+    group: "group",
+    label: "Lineup repeats next week",
+    when: "Posted in the show's group the day after, only if the show didn't happen and the same lineup repeats next week.",
+    default: "*{{show}}* didn't happen on {{day}}, so the same lineup runs next week: {{day}} {{nextDate}}, same spots, same time ({{time}}) at {{venue}}. No need to do anything. See you then 🙌",
+    vars: [...GROUP_VARS, "nextDate"],
+    toGroup: true,
+  },
+  {
+    key: "groupSignups",
+    group: "group",
+    label: "Next week's sign-ups open",
+    when: "Posted in the show's group the day after, only if the show happened.",
+    default: "Sign-ups for *{{show}}* on {{day}} {{nextDate}} are open! 🎤 Message me if you want a spot.",
+    vars: [...GROUP_VARS, "nextDate"],
+    toGroup: true,
+  },
+  {
+    key: "groupLatecomers",
+    group: "group",
+    label: "Call time for latecomers",
+    when: "Posted in the show's group on the show day before it starts, only if the lineup is confirmed.",
+    default: "Reminder: *{{show}}* starts at {{time}} at {{venue}}. Please be there on time for your set. If you're running late, tell us in the group so we can move you around 🙏",
     vars: GROUP_VARS,
     toGroup: true,
   },
