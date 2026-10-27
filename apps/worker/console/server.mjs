@@ -25,6 +25,8 @@ import { createWorkerControl, isStopped, modelStopped } from "./control.mjs";
 import { createMachine, readMemory } from "./doctor-run.mjs";
 import { runDoctor, summarize } from "./doctor.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
+import { contextFor } from "./move.mjs";
+import { freshModelsDir, ollamaEnv, winRestartOllamaScript, createOllamaGuard } from "./ollamaenv.mjs";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
@@ -118,6 +120,8 @@ async function isActive(unit) {
   return Boolean(await ps(`(${WIN_WORKER} | Measure-Object).Count -gt 0 | % { if ($_) { 'yes' } }`));
 }
 const DRY = process.env.NBS_CONSOLE_DRY_RUN === "1";
+/** Where the models live, read from the persisted pointer every time (this process's own environment may predate a move). */
+const modelsDir = () => freshModelsDir(contextFor(process.platform, process.env));
 async function restart(unit) {
   if (DRY) return null;
   // A stopped server stays stopped: saving a key or a setting restarts the worker only when it is meant to be running.
@@ -125,7 +129,8 @@ async function restart(unit) {
   if (MAC) return sh("launchctl", ["kickstart", "-k", `${gui()}/${macLabel(unit)}`], 30000);
   if (!WIN) return sh("sudo", ["-n", "/usr/bin/systemctl", "restart", unit], 30000);
   if (unit === "ollama") {
-    return ps(`Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process -FilePath '${OLLAMA_EXE}' -ArgumentList serve -WindowStyle Hidden`, 30000);
+    // Stops the tray app too (it would hold the port with its own models folder) and sets OLLAMA_MODELS from the pointer, read now.
+    return ps(winRestartOllamaScript({ exe: OLLAMA_EXE, dir: modelsDir() }), 30000);
   }
   // The launcher loop starts the worker again within ~10 s.
   return ps(`${WIN_WORKER} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`, 30000);
@@ -145,6 +150,7 @@ const workerCtl = createWorkerControl({
   ollamaExe: OLLAMA_EXE,
   // On a Mac the user may run their own Ollama (Ollama.app): then there is no agent of ours to stop or start.
   modelManaged: () => !MAC || (existsSync(path.join(os.homedir(), "Library", "LaunchAgents", "app.nothingbot.server.ollama.plist")) && !existsSync(path.join(MAC_ROOT, ".external-ollama"))),
+  modelsDir,
   run: runCmd, active: (svc) => isActive(svc === "ollama" ? "ollama" : "nothing-bot-server-worker"), readEnv, writeEnv, dry: DRY,
 });
 // Doctor (doctor.mjs): the same checks the installer and updater run, here for the "Check and repair" button.
@@ -236,12 +242,26 @@ async function autostart() {
   return autostartCache.v;
 }
 
+// Ollama up but listing no models while the models folder has them: it is reading a different folder (a stale environment, or Ollama's
+// own tray app holding the port). The guard restarts it with OLLAMA_MODELS set from the pointer, and status says what happened.
+const ollamaGuard = createOllamaGuard({
+  info: ollama, dir: modelsDir, restart: () => restart("ollama"),
+  enabled: () => !noLocalModel() && !modelStopped(readEnv()) && !DRY,
+});
+/** Ollama's answer plus, when it matters, { problem: "wrong-folder", fixing, fixedAt, modelsDir }. */
+async function ollamaView() {
+  const o = await ollama();
+  const g = await ollamaGuard.check().catch(() => null);
+  return g && (g.problem || g.fixedAt) ? { ...o, problem: g.problem, fixing: g.fixing, fixedAt: g.fixedAt, modelsDir: g.dir } : o;
+}
+setInterval(() => { ollamaGuard.check().catch(() => {}); }, 60_000).unref();
+
 async function status() {
   const env = readEnv();
   const [worker, ollamaSvc, o, d, logs] = await Promise.all([
     isActive("nothing-bot-server-worker"),
     noLocalModel() ? false : isActive("ollama"),
-    ollama(),
+    ollamaView(),
     disk(),
     workerLogs(),
   ]);
@@ -337,7 +357,7 @@ const ai = createAi({
   writeEnv,
   restartWorker: () => restart("nothing-bot-server-worker"),
   ollamaUrl: OLLAMA,
-  ollamaInfo: ollama,
+  ollamaInfo: ollamaView,
   noLocalModel,
   diskFree: () => { try { return freeBytes(DATA).free; } catch { return null; } },
 });

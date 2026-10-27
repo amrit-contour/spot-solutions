@@ -69,7 +69,8 @@ export function commands(platform, { uid = 0, home = "" } = {}) {
       disableTask: () => ps(`Disable-ScheduledTask -TaskName ${WIN_TASK} -ErrorAction SilentlyContinue | Out-Null`),
       stopModel: () => ps(WIN_MODEL_STOP_SCRIPT),
       // The launcher loop only starts Ollama when the worker (re)starts, so a model-only Start launches it here.
-      startModel: (exe) => ps(`$ErrorActionPreference='SilentlyContinue'; if (-not (Get-Process -Name ollama)) { Start-Process -FilePath '${String(exe || "ollama").replace(/'/g, "''")}' -ArgumentList serve -WindowStyle Hidden }; Write-Output 'DONE'`),
+      // OLLAMA_MODELS is set here from the pointer (dir), never inherited from the console's own environment.
+      startModel: (exe, dir) => ps(`$ErrorActionPreference='SilentlyContinue'; if (-not (Get-Process -Name ollama)) { ${dir ? `$env:OLLAMA_MODELS='${String(dir).replace(/'/g, "''")}'; $env:OLLAMA_KEEP_ALIVE='24h'; ` : ""}Start-Process -FilePath '${String(exe || "ollama").replace(/'/g, "''")}' -ArgumentList serve -WindowStyle Hidden }; Write-Output 'DONE'`),
       enableAndStart: () => ps(`$ErrorActionPreference='SilentlyContinue'; Enable-ScheduledTask -TaskName ${WIN_TASK} | Out-Null; if ((Get-ScheduledTask -TaskName ${WIN_TASK}).State -ne 'Running') { Start-ScheduledTask -TaskName ${WIN_TASK} }; Write-Output 'DONE'`),
     };
   }
@@ -86,7 +87,7 @@ export function commands(platform, { uid = 0, home = "" } = {}) {
  * run(cmd, args, { timeout, env }) -> { ok, out } (never throws); active("worker") -> is it running right now;
  * readEnv() / writeEnv(patch) work on the worker's .env; killPid(pid) removes macOS browser leftovers.
  */
-export function createWorkerControl({ platform, uid = 0, home = "", dataDir = "", chromeDir = "", ollamaExe = "", modelManaged = () => true, run, active, readEnv, writeEnv, killPid = (pid) => process.kill(pid, "SIGKILL"), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, graceMs = GRACE_MS, dry = false }) {
+export function createWorkerControl({ platform, uid = 0, home = "", dataDir = "", chromeDir = "", ollamaExe = "", modelsDir = () => null, modelManaged = () => true, run, active, readEnv, writeEnv, killPid = (pid) => process.kill(pid, "SIGKILL"), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, graceMs = GRACE_MS, dry = false }) {
   const win = platform === "win32", mac = platform === "darwin";
   const cmd = commands(platform, { uid, home });
   const go = (c, o) => run(c[0], c[1], o);
@@ -207,7 +208,7 @@ export function createWorkerControl({ platform, uid = 0, home = "", dataDir = ""
     writeEnv({ NBS_MODEL_STOPPED: "0" });
     modelStartedAt = now();
     if (dry) return;
-    if (win) { await go(cmd.startModel(ollamaExe), { timeout: 30_000 }); return; }
+    if (win) { await go(cmd.startModel(ollamaExe, modelsDir()), { timeout: 30_000 }); return; }
     if (mac) {
       await go(cmd.enable("ollama"));
       if (!(await go(cmd.loaded("ollama"))).ok && !(await go(cmd.bootstrap("ollama"))).ok) throw new Error("Couldn't start Ollama. Open Nothing BOT Server, choose More, Update Nothing BOT Server, then try again.");

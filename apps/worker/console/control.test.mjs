@@ -89,7 +89,16 @@ describe("platform command builders", () => {
     expect(text("deploy", "windows", "update-core.ps1").match(/Start-ScheduledTask -TaskName \$WorkerTask/g)).toHaveLength(1); // only inside Start-Worker
     expect(text("deploy", "mac", "nbsctl")).toContain("worker_stopped");
     expect(text("deploy", "windows", "install.ps1")).toContain("NBS_MODEL_STOPPED");
-    expect(text("deploy", "windows", "install.ps1")).toContain("-not (Model-Stopped) -and -not (Ollama-Up)");
+    expect(text("deploy", "windows", "install.ps1")).toContain("-not (No-Local) -and -not (Model-Stopped)) {");
+    // OLLAMA_MODELS is read from the models-dir pointer each time Ollama starts, never baked in; a wrong-folder Ollama is restarted.
+    for (const f of ["install.ps1", "update-core.ps1"]) {
+      const s = text("deploy", "windows", f);
+      expect(s).toContain("function Models-Dir");
+      expect(s).toContain("Ollama-Wrong");
+      expect(s).toContain("'ollama app'");
+    }
+    expect(text("deploy", "windows", "install.ps1")).not.toMatch(/^\$env:OLLAMA_MODELS = '__MODELS__'/m);
+    expect(text("deploy", "windows", "update-core.ps1")).toContain("function Test-OllamaWrongFolder");
     expect(text("deploy", "windows", "update-core.ps1")).toContain("NBS_MODEL_STOPPED"); // Update-Launcher patches old launchers
     expect(text("deploy", "windows", "update-core.ps1")).toContain("function Test-ModelStopped");
     expect(text("deploy", "mac", "nbsctl")).toContain("model_stopped");

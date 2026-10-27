@@ -39,6 +39,11 @@ $ModelsDir = "$Root\ollama"   # shared by the tray app and the boot task, so Gem
 # The console's "Move data" writes data-dir / models-dir (no extension); older notes used .txt. Either works.
 foreach ($f in @("$Root\data-dir", "$Root\data-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $DataDir = $p; break } } }
 foreach ($f in @("$Root\models-dir", "$Root\models-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $ModelsDir = $p; break } } }
+# No pointer but the machine already has OLLAMA_MODELS pointing at a real folder (set by an earlier move): keep it, and write the pointer so nothing falls back to the default.
+if (-not ((Test-Path "$Root\models-dir") -or (Test-Path "$Root\models-dir.txt"))) {
+  $mm = [Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "Machine")
+  if ($mm -and $mm -ne $ModelsDir -and (Test-Path (Join-Path $mm "manifests"))) { $ModelsDir = $mm; New-Item -ItemType Directory -Force -Path $Root | Out-Null; [IO.File]::WriteAllText("$Root\models-dir", "$mm`n") }
+}
 if ($DataDir -ne "$Root\data") {
   if (-not (Test-Path (Split-Path $DataDir -Qualifier))) { throw "Your data lives on $(Split-Path $DataDir -Qualifier) ($DataDir), but that drive isn't connected. Plug it in and run this again." }
   Write-Host "Keeping the data in $DataDir (chosen in the Server Console)." -ForegroundColor Cyan
@@ -364,7 +369,9 @@ Start-Sleep -Seconds 2
 # model is wanted, and where Ollama is, are looked up each time round, so turning it on later in the console just works.
 $Launcher = "$Root\run-worker.ps1"
 @'
-$env:OLLAMA_MODELS = '__MODELS__'
+# Where the models live: the models-dir pointer (written by the console's Move data), read every time Ollama is started, never baked in.
+function Models-Dir { $d = '__MODELS__'; foreach ($f in @('__ROOT__\models-dir.txt', '__ROOT__\models-dir')) { try { $v = (Get-Content $f -Raw).Trim(); if ($v) { $d = $v } } catch {} }; $d }
+$env:OLLAMA_MODELS = Models-Dir
 $env:OLLAMA_KEEP_ALIVE = '24h'
 $env:PUPPETEER_CACHE_DIR = '__CHROME__'
 $env:Path = '__NODEDIR__;' + $env:Path
@@ -372,6 +379,8 @@ function Ollama-Up { try { Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -
 function Stopped { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_WORKER_STOPPED=(1|true|yes)\s*$' } catch { $false } }
 function Model-Stopped { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_MODEL_STOPPED=(1|true|yes)\s*$' } catch { $false } }
 function No-Local { try { (Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_NO_LOCAL_MODEL=(1|true|yes)\s*$' } catch { $false } }
+# Ollama is up but lists no models while the models folder has them: it is reading a different folder (Ollama's tray app, or an old environment).
+function Ollama-Wrong { try { $m = @((Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2).models); if ($m.Count -gt 0) { return $false }; return [bool](Get-ChildItem (Join-Path (Models-Dir) 'manifests') -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1) } catch { $false } }
 function Find-Ollama {
   foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { return $c } }
   $g = Get-Command ollama -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -384,7 +393,11 @@ while ($true) {
   if (Stopped) { Start-Sleep 10; continue }
   if (-not (Test-Path '__KEYFILE__')) { Start-Sleep 10; continue }
   # Ollama is started only when a local model is wanted and the owner hasn't stopped it (console: Ollama, Stop).
-  if (-not (No-Local) -and -not (Model-Stopped) -and -not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 } }
+  if (-not (No-Local) -and -not (Model-Stopped)) {
+    $env:OLLAMA_MODELS = Models-Dir   # fresh: a move may have changed it since this script started
+    if ((Ollama-Up) -and (Ollama-Wrong)) { Get-Process -Name 'ollama', 'ollama app' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep 2 }
+    if (-not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList 'serve' -WindowStyle Hidden; Start-Sleep 5 } }
+  }
   "$(Get-Date -Format s) starting worker" | Out-File -Append -Encoding utf8 '__DATADIR__\worker.log'
   & '__NODE__' '__APPDIR__\apps\worker\node_modules\tsx\dist\cli.mjs' --env-file-if-exists=.env src\index.ts *>> '__DATADIR__\worker.log'
   Start-Sleep 10
@@ -409,7 +422,7 @@ $cEnvScript = "$Root\run-console.ps1"
 @'
 $env:NBS_DATA_DIR = '__DATADIR__'
 $env:NBS_ENV_FILE = '__ENVFILE__'
-$env:OLLAMA_MODELS = '__MODELS__'
+$env:OLLAMA_MODELS = & { $d = '__MODELS__'; foreach ($f in @('__ROOT__\models-dir.txt', '__ROOT__\models-dir')) { try { $v = (Get-Content $f -Raw).Trim(); if ($v) { $d = $v } } catch {} }; $d }
 # Looked up on every start (the console is restarted after the local model is turned on).
 foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { $env:NBS_OLLAMA_EXE = $c; break } }
 while ($true) { & '__NODE__' '__APPDIR__\apps\worker\console\server.mjs' *>> '__DATADIR__\console.log'; Start-Sleep 5 }
