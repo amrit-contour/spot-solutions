@@ -205,3 +205,16 @@ describe("legacy SPOT_* settings", () => {
     expect(env.NBS_CONSOLE_PORT).toBe("2");
   });
 });
+
+import { planAdmins } from "./admins.mjs";
+describe("admin emails", () => {
+  it("lowercases, dedupes and flags what isn't an email", () => {
+    expect(planAdmins("", ["A@x.com", " a@x.com ", "b@y.org"])).toEqual({ emails: ["a@x.com", "b@y.org"], rejected: [], changed: true });
+    expect(planAdmins("", ["nope", "a@x.com"]).rejected).toEqual(["nope"]);
+  });
+  it("reports no change for the same list, so the worker isn't restarted for nothing", () => {
+    expect(planAdmins("a@x.com, b@y.org", ["a@x.com", "B@y.org"]).changed).toBe(false);
+    expect(planAdmins("a@x.com", ["a@x.com", "c@z.io"]).changed).toBe(true);
+    expect(planAdmins(undefined, []).changed).toBe(false);
+  });
+});

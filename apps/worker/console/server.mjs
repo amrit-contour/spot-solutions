@@ -20,6 +20,7 @@ import { createAi } from "./ai.mjs";
 import { createLive } from "./live.mjs";
 import { createStorage } from "./storageview.mjs";
 import { createBrowser } from "./fsbrowse.mjs";
+import { planAdmins } from "./admins.mjs";
 import { createWorkerControl, isStopped, modelStopped } from "./control.mjs";
 import { createMachine } from "./doctor-run.mjs";
 import { runDoctor, summarize } from "./doctor.mjs";
@@ -504,15 +505,19 @@ createServer(async (req, res) => {
     if (url.pathname === "/api/config" && req.method === "POST") {
       const b = await body(req);
       const patch = {};
+      let plan = null, restartNeeded = false;
       if (Array.isArray(b.admins)) {
-        const emails = b.admins.map((e) => String(e).trim().toLowerCase()).filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-        patch.NBS_ADMIN_EMAILS = emails.join(",");
+        plan = planAdmins(readEnv().NBS_ADMIN_EMAILS, b.admins);
+        if (plan.rejected.length) return json(res, 400, { error: `That doesn't look like an email: ${plan.rejected.join(", ")}` });
+        if (plan.changed) { patch.NBS_ADMIN_EMAILS = plan.emails.join(","); restartNeeded = true; }
       }
-      if (typeof b.geminiKey === "string") patch.GEMINI_API_KEY = b.geminiKey.trim();
-      if (!Object.keys(patch).length) return json(res, 400, { error: "Nothing to change" });
-      writeEnv(patch);
-      await restart("nothing-bot-server-worker");
-      return json(res, 200, { ok: true });
+      if (typeof b.geminiKey === "string") { patch.GEMINI_API_KEY = b.geminiKey.trim(); restartNeeded = true; }
+      if (!plan && !Object.keys(patch).length) return json(res, 400, { error: "Nothing to change" });
+      if (Object.keys(patch).length) writeEnv(patch);
+      // "restarted" is what the page tells the owner: false when nothing changed, or the server is stopped (it stays stopped).
+      const restarted = restartNeeded && !DRY && !isStopped(readEnv());
+      if (restartNeeded) await restart("nothing-bot-server-worker");
+      return json(res, 200, { ok: true, changed: restartNeeded, restarted, admins: plan ? plan.emails : undefined });
     }
 
     // Stop or start the WhatsApp worker; {models: true} takes the local model with it (the header's "Stop server"/"Start server").
