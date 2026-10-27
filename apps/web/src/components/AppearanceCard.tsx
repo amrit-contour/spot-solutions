@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { motion } from "motion/react";
 import { useApp } from "../lib/app";
 import { NBC_GREEN, useBrand, type Brand } from "@spot/ui";
-import { Logo } from "@spot/ui";
+import { CuratingLogo } from "./CuratingLogo";
 import { IconCheck, IconPalette } from "@spot/ui";
 import { cx } from "@spot/ui";
 
@@ -44,7 +44,7 @@ export function AppearanceCard() {
               className={cx("state-layer pressable relative flex flex-col gap-3 rounded-lg border-2 bg-surface p-3 text-left transition-colors", on ? "border-primary" : "border-outline-variant")}
             >
               <div className="flex items-center gap-3 rounded-md p-3" style={{ background: o.bg, color: o.fg }}>
-                <Logo brand={o.id} className="size-11 flex-none" />
+                <CuratingLogo brand={o.id} className="size-11 flex-none" />
                 <div className="flex gap-1.5" aria-hidden>
                   {o.swatches.map((c) => (
                     <span key={c} className="size-5 rounded-full ring-1 ring-black/15" style={{ background: c }} />

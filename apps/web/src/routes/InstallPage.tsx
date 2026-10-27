@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Logo } from "@spot/ui";
+import { CuratingLogo } from "../components/CuratingLogo";
 import { Card, Segmented, buttonClass } from "@spot/ui";
 
 type Os = "mac" | "windows" | "linux";
@@ -46,7 +46,7 @@ export function InstallPage() {
   return (
     <div className="min-h-dvh bg-surface px-4 py-10">
       <div className="mx-auto w-full max-w-xl">
-        <Logo className="size-14" />
+        <CuratingLogo className="size-14" />
         <h1 className="mt-6 type-display-s text-balance">Install Nothing BOT Server</h1>
         <p className="mt-3 type-body-l text-on-surface-variant">
           Turn a computer that stays on into your Nothing BOT Server. It keeps WhatsApp linked and reads DMs with a model on that computer or Gemini. Same steps and same console on every system.

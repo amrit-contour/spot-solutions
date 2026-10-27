@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { signInWithPopup } from "firebase/auth";
 import { toast } from "sonner";
 import { AppShell, StatusDot, IconCalendar, IconCalendarMark, IconChat, IconComics, IconInbox, IconMic, IconPhone, IconSettings, type NavEntry } from "@spot/ui";
+import { CuratingLogo } from "./CuratingLogo";
 import { auth, google } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
@@ -47,6 +48,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
     <AppShell
       nav={nav}
       appName="Nothing BOT Curating"
+      logo={<CuratingLogo className="size-11" />}
       accountMenu={(align) => <AccountMenu align={align} />}
       phoneStatus={
         <NavLink to="/settings#whatsapp" className="state-layer inline-flex min-w-0 items-center gap-2 rounded-full px-2 py-1 type-label-m text-on-surface-variant">

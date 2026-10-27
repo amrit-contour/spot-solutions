@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useInView, useScroll, useTransform } from "mot
 import { toast } from "sonner";
 import { auth, google } from "@spot/ui/firebase";
 import { startDemo } from "../lib/demo";
-import { Logo } from "@spot/ui";
+import { CuratingLogo } from "../components/CuratingLogo";
 import { Button, cx } from "@spot/ui";
 import {
   IconCalendarMark,
@@ -219,7 +219,7 @@ export function Landing() {
       <header className="sticky top-0 z-30 border-b border-outline-variant/40 bg-surface/80 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-5 sm:px-8">
           <a href="#top" aria-label="Nothing BOT Curating, back to top" className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:outline-2 focus-visible:outline-primary">
-            <Logo className="size-10 flex-none" />
+            <CuratingLogo className="size-10 flex-none" />
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="truncate type-title-m">Nothing BOT Curating</span>
             </span>
@@ -400,7 +400,7 @@ export function Landing() {
       {/* Final CTA */}
       <section className="relative z-10 mx-auto max-w-6xl px-5 pb-24 sm:px-8">
         <Reveal className="relative overflow-hidden rounded-[32px] bg-primary-container px-6 py-16 text-center text-on-primary-container sm:px-12">
-          <Logo className="mx-auto size-14" />
+          <CuratingLogo className="mx-auto size-14" />
           <h2 className="mx-auto mt-6 max-w-2xl type-display-s text-balance">Spend Monday on your set, not your spreadsheet.</h2>
           <div className="mt-8">{ctas(true)}</div>
         </Reveal>

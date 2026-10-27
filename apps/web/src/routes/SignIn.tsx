@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useSignIn } from "./Landing";
-import { Logo } from "@spot/ui";
+import { CuratingLogo } from "../components/CuratingLogo";
 import { Bubble, Button, Chip } from "@spot/ui";
 import { IconCpu, IconMic, IconShield, IconSofa } from "@spot/ui";
 
@@ -66,7 +66,7 @@ export function SignIn() {
     <div className="grid min-h-dvh bg-surface pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] lg:grid-cols-[1.1fr_1fr]">
       <section className="flex flex-col justify-between px-6 pt-[max(2rem,calc(env(safe-area-inset-top)+1rem))] pb-[max(2rem,calc(env(safe-area-inset-bottom)+1rem))] sm:px-12 sm:pt-[max(3rem,calc(env(safe-area-inset-top)+1rem))] sm:pb-[max(3rem,calc(env(safe-area-inset-bottom)+1rem))]">
         <div className="flex items-center gap-3">
-          <Logo className="size-10" />
+          <CuratingLogo className="size-10" />
           <span className="flex flex-col leading-tight">
             <span className="type-title-m">Nothing BOT Curating</span>
           </span>
