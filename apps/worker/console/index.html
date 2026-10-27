@@ -126,6 +126,7 @@
   .locked { text-align: center; padding: 80px 16px; }
   a { color: var(--primary); }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .health .pbar > i { animation: none !important; width: 100% !important; margin-left: 0 !important; } }
   pre.qr { margin: 0; padding: 14px; background: #000; color: #fff; font: 10px/1 ui-monospace, Menlo, Consolas, monospace; border-radius: 12px; letter-spacing: 0; }
   .theme { display: inline-flex; background: var(--s-high); border-radius: 999px; padding: 3px; gap: 2px; }
   .theme button { background: none; color: var(--on-surface-v); border: 0; border-radius: 999px; padding: 6px 12px; font: 500 13px/1 inherit; cursor: pointer; min-height: 0; }
@@ -198,12 +199,28 @@
   .err-text { color: var(--error); }
   .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; display: inline-block; vertical-align: -2px; flex: none; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes hlslide { from { margin-left: 0; } to { margin-left: 65%; } }
   @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }
   .banner { display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 16px; background: var(--primary-c); color: var(--on-primary-c); }
   .banner.bad { background: var(--error-c); color: var(--on-error-c); }
   .banner .small { margin-top: 2px; opacity: .85; }
   .banner button { background: var(--primary); color: var(--on-primary); flex: none; }
   .banner.bad button { background: var(--error); color: var(--surface); }
+  /* Health card (Check and repair) */
+  .health { margin-top: 12px; }
+  .health > .hh { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 4px; }
+  .health h3 { margin: 0; font-size: 14px; font-weight: 600; flex: 1 1 160px; }
+  .health h3:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 4px; }
+  .health .okline { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-weight: 600; }
+  .health .okline svg { width: 22px; height: 22px; flex: none; color: var(--ok); }
+  .health .hrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 0; }
+  .health .hrow + .hrow { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
+  .health .hrow .grow { flex: 1 1 220px; }
+  .health .hrow { align-items: flex-start; } .health .hrow .dot { margin-top: 6px; } .health .hrow > button { align-self: center; }
+  .health .hnote { margin-top: 8px; }
+  .health .busyline { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; }
+  .health .busyline .spin { margin-top: 3px; }
+  .health button:focus-visible, .banner button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
   .panel { border: 1px solid var(--outline-v); border-radius: 12px; padding: 16px; }
   .panel + details.alt, details.alt + details.alt { margin-top: 10px; }
   .panel + details.alt { margin-top: 14px; }
@@ -382,6 +399,8 @@ const meter = (label, used, total, detail) => {
 const classicTile = `<svg class="logo lg-c" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="14" fill="var(--primary)"/><path d="M19 0h10l9 42H10z" fill="var(--on-primary)" opacity=".13"/><ellipse cx="24" cy="40.5" rx="12" ry="2.6" fill="var(--on-primary)" opacity=".25"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="var(--on-primary)"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="var(--primary)"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="var(--primary)"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="var(--on-primary)" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="var(--on-primary)"/></svg>`;
 const logo = classicTile + `<svg class="logo lg-d" viewBox="0 0 512 512" aria-hidden="true"><clipPath id="lgd"><rect width="512" height="512" rx="112"/></clipPath><g clip-path="url(#lgd)"><rect width="512" height="512" fill="#000000"/><g transform="translate(0 15)"><g fill="none" stroke="#FFFFFF" stroke-width="26"><rect x="112" y="110" width="288" height="110" rx="26"/><rect x="112" y="262" width="288" height="110" rx="26"/></g><circle cx="340" cy="165" r="18" fill="#7ED957"/><circle cx="340" cy="317" r="18" fill="#FFFFFF"/></g></g></svg><svg class="logo lg-l" viewBox="0 0 512 512" aria-hidden="true"><clipPath id="lgl"><rect width="512" height="512" rx="112"/></clipPath><g clip-path="url(#lgl)"><rect width="512" height="512" fill="#FFFFFF"/><g transform="translate(0 15)"><g fill="none" stroke="#000000" stroke-width="26"><rect x="112" y="110" width="288" height="110" rx="26"/><rect x="112" y="262" width="288" height="110" rx="26"/></g><circle cx="340" cy="165" r="18" fill="#7ED957"/><circle cx="340" cy="317" r="18" fill="#000000"/></g><rect x="2" y="2" width="508" height="508" fill="none" stroke="#000" stroke-opacity=".14" stroke-width="4"/></g></svg>`;
 
+// Health card: the server doctor's checks (GET /api/doctor) and repairs (POST /api/doctor/repair).
+let hl = { data: null, loading: false, busy: null, t0: 0, err: null, note: null };
 let state = null, aiv = null, conn = null, editing = false, phone = null, bootId = null, restarting = false, stopModel = false, ctlBusy = null;
 // Collapsible sections: open state per section, remembered on this machine.
 let secs = {};
@@ -489,11 +508,79 @@ function updateBanner(s) {
 // Things the owner must not be able to hide: they always show above the sections.
 // Stop server / Start server: "running" | "stopping" | "stopped" | "starting" | "down" (see workerControl in /api/status).
 const wstate = (s) => ctlBusy === "stop" ? "stopping" : ctlBusy === "start" ? "starting" : (s.workerControl?.state ?? (s.services.worker ? "running" : "down"));
+// ---------- Health: check and repair ----------
+// The banner shows when the doctor says the browser is missing; before the first check, when the worker log says so.
+function browserMissing(s) {
+  const b = hl.data?.results?.find((r) => r.id === "browser");
+  if (b) return !b.ok;
+  return /WhatsApp's browser isn't installed/.test(s?.logs || "");
+}
+const okSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M7.8 12.4l3 3 5.4-6"/></svg>`;
+function healthCard() {
+  const d = hl.data, busy = hl.busy;
+  const bad = d ? d.results.filter((r) => !r.ok) : [];
+  const fixable = bad.filter((r) => r.repairable);
+  let body;
+  if (busy) {
+    const what = busy === "all" ? "everything that can be repaired" : esc(d?.results.find((r) => r.id === busy)?.title || "this");
+    body = `<div class="busyline" role="status">${spin}<div class="grow"><b>Repairing ${what}…</b><div class="muted small">Working… this can take a few minutes (the browser download is the slowest part). Keep this page open. <span id="hl-elapsed">${hlElapsed()}</span></div><div class="pbar" aria-hidden="true"><i style="width:35%;animation:hlslide 1.6s ease-in-out infinite alternate"></i></div></div></div>`;
+  } else if (!d) {
+    body = hl.err ? `<div class="small err-text" role="alert">${esc(hl.err)}</div>` : `<div class="busyline" role="status">${spin}<span class="muted small">Checking this server…</span></div>`;
+  } else if (!bad.length) {
+    body = `<div class="okline" role="status">${okSvg}<span>All checks passed</span></div><div class="muted small">Checked ${esc(when(d.at))}.</div>`;
+  } else {
+    body = `<div role="status" class="small muted" style="margin-bottom:4px">${esc(d.summary || "")}</div>` + bad.map((r) => `<div class="hrow"><span class="dot bad" aria-hidden="true"></span><div class="grow"><b>${esc(r.title)}</b><div class="small">${esc(r.detail || "")}</div>${r.fix ? `<div class="small muted" style="margin-top:2px">${esc(r.fix)}</div>` : ""}</div>${r.repairable ? `<button type="button" class="tonal sm" data-heal="${esc(r.id)}" aria-label="Repair ${esc(r.title)}">Repair</button>` : ""}</div>`).join("");
+  }
+  const fixedNow = !busy && hl.note ? `<div class="small hnote" role="status">${esc(hl.note)}</div>` : "";
+  const err = !busy && d && hl.err ? `<div class="small err-text hnote" role="alert">${esc(hl.err)}</div>` : "";
+  return `<div class="panel health" id="health"><div class="hh"><h3 id="health-title" tabindex="-1">Health</h3>
+    ${fixable.length && !busy ? `<button type="button" class="sm" data-heal="all">Repair all</button>` : ""}
+    <button type="button" class="tonal sm" data-health-check ${busy || hl.loading ? "disabled" : ""}>${hl.loading ? "Checking…" : "Check again"}</button></div>${body}${fixedNow}${err}</div>`;
+}
+const hlElapsed = () => { const t = Math.round((Date.now() - hl.t0) / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")} so far.`; };
+async function loadDoctor() {
+  if (hl.loading || hl.busy) return;
+  hl.loading = true; if (state) render();
+  try { hl.data = await api("/api/doctor"); hl.err = null; }
+  catch (e) { if (e.status !== 401) hl.err = `Couldn't run the checks: ${e.message}`; }
+  hl.loading = false; if (state) render();
+}
+async function heal(id) {
+  if (hl.busy) return;
+  hl.busy = id; hl.t0 = Date.now(); hl.err = null; hl.note = null; render();
+  const target = id === "all" ? null : id;
+  try {
+    const r = await post("/api/doctor/repair", target ? { id: target } : {});
+    const fixed = (r.results || []).filter((x) => x.fixed).map((x) => x.title);
+    hl.note = fixed.length ? `Repaired: ${fixed.join(", ")}.` : null;
+  } catch (e) {
+    if (e.status) hl.err = `The repair didn't finish: ${e.message}`;
+    else { // the link dropped (the console can restart itself); keep checking until it's done or 6 minutes pass
+      const end = Date.now() + 6 * 60_000;
+      while (Date.now() < end) {
+        await new Promise((r) => setTimeout(r, 4000));
+        try { const d = await api("/api/doctor"); if (target ? d.results.find((x) => x.id === target)?.ok : d.ok) break; } catch { /* still restarting */ }
+      }
+    }
+  }
+  hl.busy = null; hl.loading = false;
+  try { hl.data = await api("/api/doctor"); } catch (e) { hl.err = hl.err || `Couldn't re-run the checks: ${e.message}`; }
+  render();
+  focusAfter(`[data-health-check]`);
+}
+setInterval(() => { const el = $("#hl-elapsed"); if (el && hl.busy) el.textContent = hlElapsed(); }, 1000);
+function wireHealth() {
+  document.querySelectorAll("[data-heal]").forEach((b) => b.onclick = () => heal(b.dataset.heal));
+  document.querySelectorAll("[data-health-check]").forEach((b) => b.onclick = () => { hl.note = null; loadDoctor(); });
+  document.querySelectorAll("[data-goto-health]").forEach((b) => b.onclick = () => revealSection("server", "#health-title"));
+}
+
 function alerts(s) {
   const out = [];
   const ws = wstate(s);
   const ub = updateBanner(s);
   if (ub) out.push(ub);
+  if (browserMissing(s)) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>WhatsApp's browser isn't installed on this server</b><div class="small">WhatsApp can't start without it. Open the Health check below and press Repair; it downloads the browser, which can take a few minutes.</div></div><button type="button" data-goto-health>Open Health check</button></div>`);
   const moving = s.update.running && ["move-data", "move-cleanup"].includes(s.update.progress?.task);
   const st = s.storage;
   if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Nothing BOT Server keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
@@ -865,7 +952,7 @@ function render() {
         ${meter("Memory", s.memory.total - s.memory.free, s.memory.total, `${fmt(s.memory.total - s.memory.free)} of ${fmt(s.memory.total)}`)}
         ${s.disk ? meter(/^[A-Za-z]:/.test(s.disk.dir || "") ? `Disk (${s.disk.dir.slice(0, 2)})` : "Disk", s.disk.total - s.disk.free, s.disk.total, `${fmt(s.disk.free)} free of ${fmt(s.disk.total)}`) : ""}
         <div class="muted small mfoot">${esc(s.cpu.model)}</div>
-      </div></div>`;
+      </div></div>${healthCard()}`;
   const blocks = {
     stats: liveBlock("stats", "Live"),
     detail: liveBlock("detail", "Activity and AI"),
@@ -1191,6 +1278,7 @@ async function run(label, fn) {
 
 function wire() {
   const s = state;
+  wireHealth();
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.onclick = () => {
     theme = b.dataset.themeSet; applyTheme();
     try { localStorage.setItem("nbs-console-theme", theme); } catch {}
@@ -1397,6 +1485,7 @@ async function refresh(force = false) {
 setInterval(() => { const cd = $("#cd"); if (cd && conn?.expiresAt) cd.textContent = left(conn.expiresAt); }, 1000);
 refresh();
 pollLive();
+loadDoctor();
 </script>
 </body>
 </html>
