@@ -9,6 +9,8 @@ import {
   aiFromLegacy,
   rolloverDayFor,
   weekOf,
+  restartingNow,
+  type RestartMarker,
   type Comic,
   type SessionState,
   closedRequestsWeeks,
@@ -35,6 +37,8 @@ interface AppState {
   settings: Settings;
   session: SessionState | null;
   workerOnline: boolean;
+  /** The server announced a planned restart or update and hasn't been silent past its grace period: say "back in a minute", not "offline". */
+  serverRestarting: RestartMarker | null;
   shows: Show[];
   venues: Venue[];
   comics: Comic[];
@@ -138,6 +142,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
   );
   const comicsById = useMemo(() => new Map(comics.data.map((c) => [c.id, c])), [comics.data]);
   const workerOnline = Boolean(session.data?.lastSeen && now - session.data.lastSeen < WORKER_STALE_MS);
+  const serverRestarting = workerOnline ? null : restartingNow(session.data?.restarting, session.data?.lastSeen, now);
 
   const value = useMemo<AppState>(
     () => ({
@@ -146,6 +151,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       settings,
       session: session.data,
       workerOnline,
+      serverRestarting,
       shows: sortedShows,
       venues: venues.data,
       comics: comics.data,
@@ -156,7 +162,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       currentWeek,
       saveSettings: (patch) => setDoc(doc(db, "users", uid), { settings: { ...settings, ...patch } }, { merge: true }),
     }),
-    [user, uid, settings, session.data, workerOnline, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, currentWeek],
+    [user, uid, settings, session.data, workerOnline, serverRestarting, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, currentWeek],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -8,12 +8,22 @@ export type Tier = "open" | "regular" | "featured";
 
 export type SessionStatus = "idle" | "starting" | "qr" | "authenticated" | "ready" | "disconnected" | "error";
 
+/** Written on a planned shutdown (update or restart) so the apps say "back in a minute" instead of "offline". See connection.ts restartingNow. */
+export interface RestartMarker {
+  at: number;
+  reason: "update" | "restart";
+  /** After this with no heartbeat the apps fall back to offline. */
+  until: number;
+}
+
 export interface SessionState {
   status: SessionStatus;
   qr?: string | null;
   phone?: string | null;
   pushName?: string | null;
   lastSeen?: number; // epoch ms, worker heartbeat (0 after a clean shutdown)
+  /** A planned restart or update is under way; cleared when the session is ready again. */
+  restarting?: RestartMarker | null;
   aliveAt?: number; // last time the worker was processing messages; survives shutdown
   error?: string | null;
   /** The WhatsApp page answers ("ok", or missing), stopped answering and is being restarted, or kept failing and was given up. `error` says why. */
@@ -573,6 +583,8 @@ export interface ServerStatus {
   logsWanted?: number;
   /** Fleet capacity (docs/fleet.md). Missing on servers older than the fleet release. */
   fleet?: import("./fleet.ts").FleetCapacity;
+  /** A planned restart or update is under way (cleared by the next heartbeat). */
+  restarting?: RestartMarker | null;
   /** An update the server is running or just ran (written by the worker; see apps/worker/console/update.mjs). */
   update?: { state: "updating" | "error"; target: string | null; from: string; startedAt: number; error?: string };
 }

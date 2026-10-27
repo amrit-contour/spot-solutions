@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isServerUp, linkView, maskPhoneTail, serverLastSeen } from "./connection.ts";
+import { RESTART_GRACE_MS, isServerUp, linkView, maskPhoneTail, restartLabel, restartMarker, restartingNow, serverLastSeen, serverState } from "./connection.ts";
 
 describe("linkView", () => {
   it("ready is connected, even if the heartbeat is old (the card says so separately)", () => {
@@ -48,5 +48,42 @@ describe("maskPhoneTail", () => {
     expect(maskPhoneTail("")).toBe("");
     expect(maskPhoneTail(null)).toBe("");
     expect(maskPhoneTail("12345")).toBe("+••••• 12345");
+  });
+});
+
+describe("planned restarts", () => {
+  const T = 10_000_000;
+  const down = { status: "ready" as const, lastSeen: 0, restarting: restartMarker(T, "update") };
+  it("the marker lasts 3 minutes", () => {
+    expect(restartMarker(T, "restart")).toEqual({ at: T, reason: "restart", until: T + RESTART_GRACE_MS });
+    expect(RESTART_GRACE_MS).toBe(180_000);
+  });
+  it("silent server with a live marker is restarting, not offline", () => {
+    expect(serverState(down, T + 30_000)).toBe("restarting");
+    expect(linkView(down, false, T + 30_000)).toBe("restarting");
+    expect(linkView({ ...down, status: "qr" }, false, T + 30_000)).toBe("restarting");
+  });
+  it("falls back to offline once `until` passes with no heartbeat", () => {
+    expect(serverState(down, T + RESTART_GRACE_MS)).toBe("offline");
+    expect(linkView(down, false, T + RESTART_GRACE_MS + 1)).toBe("connected"); // ready keeps its old rule
+    expect(linkView({ ...down, status: "qr" }, false, T + RESTART_GRACE_MS + 1)).toBe("offline");
+  });
+  it("no marker is plain offline", () => {
+    expect(serverState({ status: "ready", lastSeen: 0 }, T)).toBe("offline");
+    expect(serverState(null, T)).toBe("offline");
+    expect(linkView({ status: "qr" }, false, T)).toBe("offline");
+  });
+  it("a heartbeat wins over the marker, and a heartbeat after it ends the restart", () => {
+    expect(serverState({ ...down, lastSeen: T + 20_000 }, T + 30_000)).toBe("up");
+    expect(restartingNow(down.restarting, T + 20_000, T + 140_000)).toBeNull(); // stale beat after the marker: back, then silent
+    expect(restartingNow(down.restarting, T - 5, T + 30_000)).toEqual(down.restarting); // a beat from before the marker doesn't cancel it
+  });
+  it("ignores a malformed marker and one with a far-future until", () => {
+    expect(restartingNow({ at: T, reason: "update" } as never, 0, T + 1)).toBeNull();
+    expect(restartingNow({ at: T, reason: "update", until: T + 99 * 60_000 }, 0, T + 10 * 60_000)).toBeNull();
+  });
+  it("words", () => {
+    expect(restartLabel("update")).toBe("Updating server… back in a minute");
+    expect(restartLabel("restart")).toBe("Restarting server… back in a minute");
   });
 });

@@ -102,7 +102,8 @@ const startRetryMs = (fails: number) => Math.min(5 * 60_000, 15_000 * 2 ** Math.
 // lastSeen drives the app's online dot (zeroed on shutdown); aliveAt is when we last processed messages (never zeroed).
 const setState = (uid: string, s: Partial<SessionState>) => {
   live.recordSession(uid, s); // the server console's live view
-  return sessionRef(uid).set({ ...s, lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true });
+  // Ready again: the planned-restart marker (index.ts shutdown) has done its job.
+  return sessionRef(uid).set({ ...s, lastSeen: Date.now(), aliveAt: Date.now(), ...(s.status === "ready" ? { restarting: FieldValue.delete() } : {}) }, { merge: true });
 };
 
 /** Set by fleet.ts: sessions only run while this server holds the account's lease. */

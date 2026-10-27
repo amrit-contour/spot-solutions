@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { maskPhoneTail } from "@spot/shared";
+import { maskPhoneTail, restartLabel } from "@spot/shared";
 import { Chip, IconArrowRight, IconChatCheck, IconCheck, IconPhone, IconQr, IconServer, IconWarn, Spinner, cx } from "@spot/ui";
 import { CURATING_AGENT, CURATING_SERVER, CURATING_WHATSAPP, useConnection, type Connection } from "../lib/connection";
 import { useClock } from "../lib/alerts";
@@ -29,12 +29,15 @@ export function ConnectionCard({ uid }: { uid: string }) {
       </div>
     );
   }
-  const bad = !c.serverUp;
+  const wait = Boolean(c.restarting);
+  const bad = !c.serverUp && !wait;
   const stuck = c.whatsapp === "unresponsive" && !bad;
-  const ok = c.whatsapp === "connected" && !bad;
+  const ok = c.whatsapp === "connected" && !bad && !wait;
   const seen = c.lastSeen ? ago(c.lastSeen, now) : null;
-  const title = ok ? `WhatsApp connected · ${maskPhoneTail(c.phone)}` : stuck ? "WhatsApp stopped responding" : bad ? "Server offline" : c.whatsapp === "qr" ? "WhatsApp needs a scan" : c.whatsapp === "starting" ? "Starting WhatsApp…" : "WhatsApp isn't linked";
-  const detail = ok
+  const title = wait ? (c.restarting?.reason === "update" ? "Updating server…" : "Restarting server…") : ok ? `WhatsApp connected · ${maskPhoneTail(c.phone)}` : stuck ? "WhatsApp stopped responding" : bad ? "Server offline" : c.whatsapp === "qr" ? "WhatsApp needs a scan" : c.whatsapp === "starting" ? "Starting WhatsApp…" : "WhatsApp isn't linked";
+  const detail = wait
+    ? `${restartLabel(c.restarting?.reason)}. ${c.phone ? `Linked as ${maskPhoneTail(c.phone)}. ` : ""}This updates by itself.`
+    : ok
     ? ""
     : stuck
       ? `${c.healthNote ?? "The server is restarting WhatsApp."} Asks wait until it answers again.`
@@ -49,13 +52,13 @@ export function ConnectionCard({ uid }: { uid: string }) {
     <div className="flex min-w-0 flex-col gap-3">
       <Card>
         <div className="flex min-w-0 items-start gap-3">
-          <span className={cx("grid size-10 flex-none place-items-center rounded-md", ok ? "bg-secondary-container text-on-secondary-container" : bad || stuck ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary")}>
-            {ok ? <IconCheck aria-hidden className="icon size-5" /> : bad ? <IconServer aria-hidden className="icon size-5" /> : c.whatsapp === "qr" ? <IconQr aria-hidden className="icon size-5" /> : <IconPhone aria-hidden className="icon size-5" />}
+          <span className={cx("grid size-10 flex-none place-items-center rounded-md", ok ? "bg-secondary-container text-on-secondary-container" : wait ? "bg-tertiary-container text-on-tertiary-container" : bad || stuck ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary")}>
+            {ok ? <IconCheck aria-hidden className="icon size-5" /> : bad || wait ? <IconServer aria-hidden className="icon size-5" /> : c.whatsapp === "qr" ? <IconQr aria-hidden className="icon size-5" /> : <IconPhone aria-hidden className="icon size-5" />}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="type-title-m">{title}</h3>
-              {!ok && <Chip tone={bad || stuck ? "error" : "neutral"} className="flex-none">{stuck ? "Not responding" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>}
+              {!ok && <Chip tone={wait ? "tertiary" : bad || stuck ? "error" : "neutral"} className="flex-none">{wait ? "Restarting" : stuck ? "Not responding" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>}
             </div>
             {detail && <p className="mt-1 break-words type-body-m text-on-surface-variant">{detail}</p>}
             {c.serverName && (
@@ -69,7 +72,7 @@ export function ConnectionCard({ uid }: { uid: string }) {
             )}
           </div>
         </div>
-        {!ok && !bad && !stuck && (
+        {!ok && !bad && !stuck && !wait && (
           <div className="mt-1 -mb-2 flex flex-wrap">
             <Out href={CURATING_WHATSAPP}>{c.whatsapp === "qr" ? "Scan in" : "Link in"} {CURATING}</Out>
           </div>
@@ -89,14 +92,14 @@ export function ConnectionCard({ uid }: { uid: string }) {
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="type-title-m">Agent number</h3>
-              <Chip tone={c.agent === "connected" && !bad ? "success" : "neutral"} className="flex-none">{c.agent === "connected" ? (bad ? "Paused" : "Linked") : c.agent === "offline" ? "Paused" : c.agent === "qr" ? "Needs QR" : "Not linked"}</Chip>
+              <Chip tone={c.agent === "connected" && !bad ? "success" : "neutral"} className="flex-none">{c.agent === "restarting" ? "Paused" : c.agent === "connected" ? (bad ? "Paused" : "Linked") : c.agent === "offline" ? "Paused" : c.agent === "qr" ? "Needs QR" : "Not linked"}</Chip>
             </div>
             <p className="mt-1 break-words type-body-m text-on-surface-variant">
-              {c.agent === "connected" ? `${bad ? "Paused while the server is offline. Linked as" : "Talks to you from"} ${maskPhoneTail(c.agentPhone)}.` : c.agent === "offline" ? "Paused while the server is offline." : "The optional second number that messages you. Set it up in " + CURATING + "."}
+              {c.agent === "restarting" ? "Paused for a minute while the server restarts. It comes back by itself." : c.agent === "connected" ? `${bad ? "Paused while the server is offline. Linked as" : "Talks to you from"} ${maskPhoneTail(c.agentPhone)}.` : c.agent === "offline" ? "Paused while the server is offline." : "The optional second number that messages you. Set it up in " + CURATING + "."}
             </p>
           </div>
         </div>
-        {c.agent !== "connected" && c.agent !== "offline" && (
+        {c.agent !== "connected" && c.agent !== "offline" && c.agent !== "restarting" && (
           <div className="mt-1 -mb-2 flex flex-wrap">
             <Out href={CURATING_AGENT}>Set up in {CURATING}</Out>
           </div>
@@ -114,9 +117,9 @@ export function ConnectionCard({ uid }: { uid: string }) {
 export function ConnectionBanner({ uid }: { uid: string }) {
   const c: Connection = useConnection(uid);
   if (!c.problem) return null;
-  const text = c.problem === "offline" ? "Server offline. Asks can't be sent until it's back." : c.problem === "qr" ? "WhatsApp needs a QR scan." : c.problem === "unresponsive" ? "WhatsApp stopped responding; the server is restarting it." : "WhatsApp isn't linked.";
+  const text = c.problem === "restarting" ? restartLabel(c.restarting?.reason) + "." : c.problem === "offline" ? "Server offline. Asks can't be sent until it's back." : c.problem === "qr" ? "WhatsApp needs a QR scan." : c.problem === "unresponsive" ? "WhatsApp stopped responding; the server is restarting it." : "WhatsApp isn't linked.";
   return (
-    <Link to="/settings" className="state-layer pressable flex min-w-0 items-center gap-3 rounded-lg bg-error-container p-3 text-on-error-container">
+    <Link to="/settings" className={cx("state-layer pressable flex min-w-0 items-center gap-3 rounded-lg p-3", c.problem === "restarting" ? "bg-tertiary-container text-on-tertiary-container" : "bg-error-container text-on-error-container")}>
       <IconWarn aria-hidden className="icon size-5 flex-none" />
       <span className="min-w-0 flex-1 type-body-m">{text}</span>
       <span className="flex-none type-label-l">Details</span>

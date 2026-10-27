@@ -1,3 +1,4 @@
+import { restartLabel } from "@spot/shared";
 import { type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { signInWithPopup } from "firebase/auth";
@@ -30,8 +31,9 @@ function maskPhone(p?: string | null) {
 }
 
 export function useConnection(): { tone: "ok" | "wait" | "error" | "idle"; label: string; detail?: string; short: string } {
-  const { session, workerOnline } = useApp();
+  const { session, workerOnline, serverRestarting } = useApp();
   if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode", detail: "your own sandbox", short: "Demo" };
+  if (!workerOnline && serverRestarting) return { tone: "wait" as const, label: restartLabel(serverRestarting.reason), detail: "WhatsApp reconnects by itself", short: "Updating" };
   if (!workerOnline) return { tone: "error" as const, label: "Server offline", short: "Offline" };
   if (session?.status === "ready" && session.health && session.health !== "ok") return { tone: "wait" as const, label: "WhatsApp not responding", detail: "the server is restarting it", short: "Stuck" };
   if (session?.status === "ready") return { tone: "ok" as const, label: "WhatsApp connected", detail: maskPhone(session.phone), short: "Live" };

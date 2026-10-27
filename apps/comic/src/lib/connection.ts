@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
 import type { AccountStatus } from "@spot/ui";
-import { isServerUp, linkView, maskPhoneTail, serverLastSeen, type FleetServerSummary, type Lease, type LinkView, type SessionState } from "@spot/shared";
+import { isServerUp, linkView, maskPhoneTail, restartLabel, restartingNow, serverLastSeen, type FleetServerSummary, type Lease, type LinkView, type RestartMarker, type SessionState } from "@spot/shared";
 import { useClock } from "./alerts";
 
 /** Where linking, relinking, choosing a server and installing one happen. */
@@ -34,12 +34,14 @@ export interface Connection {
   /** Server holding the account: its hostname when readable, else the id, else null. */
   serverName: string | null;
   serverUp: boolean;
+  /** A planned restart or update is under way (the server said so before going quiet): "back in a minute", not offline. */
+  restarting: RestartMarker | null;
   lastSeen: number | null;
   phone: string | null;
   pushName: string | null;
   agentPhone: string | null;
   /** Something the comic should know about up front: the server is off, WhatsApp isn't linked, or it needs a QR scan. */
-  problem: "offline" | "unlinked" | "qr" | "unresponsive" | null;
+  problem: "offline" | "restarting" | "unlinked" | "qr" | "unresponsive" | null;
   /** Why WhatsApp stopped answering (from the server), when it did. */
   healthNote: string | null;
 }
@@ -55,17 +57,19 @@ export function useConnection(uid: string): Connection {
   useEffect(() => onSnapshot(collection(db, "fleetServers"), (q) => setServers(q.docs.map((d) => ({ ...(d.data() as FleetServerSummary), id: d.id }))), () => setServers([])), []);
 
   const serverUp = isServerUp(session.data, now);
-  const whatsapp = linkView(session.data, serverUp);
+  const restarting = serverUp ? null : restartingNow(session.data?.restarting, session.data?.lastSeen, now);
+  const whatsapp = restarting ? "restarting" : linkView(session.data, serverUp);
   const id = lease.data?.server ?? null;
   const serverName = id ? servers.find((s) => s.id === id)?.hostname ?? id : null;
   const loading = session.loading || lease.loading;
-  const problem = loading ? null : !serverUp ? "offline" : whatsapp === "qr" ? "qr" : whatsapp === "unresponsive" ? "unresponsive" : whatsapp === "unlinked" ? "unlinked" : null;
+  const problem = loading ? null : restarting ? "restarting" : !serverUp ? "offline" : whatsapp === "qr" ? "qr" : whatsapp === "unresponsive" ? "unresponsive" : whatsapp === "unlinked" ? "unlinked" : null;
   return {
     loading,
     whatsapp,
-    agent: linkView(agent.data, serverUp),
+    agent: restarting ? "restarting" : linkView(agent.data, serverUp),
     serverName,
     serverUp,
+    restarting,
     lastSeen: serverLastSeen(session.data),
     phone: session.data?.phone ?? null,
     pushName: session.data?.pushName ?? null,
@@ -81,6 +85,7 @@ export function connectionStatus(c: Connection): AccountStatus | undefined {
   const to = "/settings";
   const linkLabel = "Connection";
   const phone = c.phone ? maskPhoneTail(c.phone) : undefined;
+  if (c.restarting) return { tone: "wait", label: restartLabel(c.restarting.reason), detail: "WhatsApp reconnects by itself", to, linkLabel };
   if (!c.serverUp && c.whatsapp !== "connected") return { tone: "error", label: "Server offline", to, linkLabel };
   if (!c.serverUp) return { tone: "error", label: "Server offline", detail: phone, to, linkLabel };
   switch (c.whatsapp) {

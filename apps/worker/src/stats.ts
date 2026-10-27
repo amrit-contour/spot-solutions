@@ -201,7 +201,8 @@ export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "se
     lastLogs = "";
   }
   // merge: fleet.ts also updates servers/{id}.fleet between heartbeats, and the app owns logsWanted; never wipe them.
-  await db.collection("servers").doc(SERVER_ID).set({ ...status, ...logsPart }, { merge: true });
+  // A heartbeat means any planned-restart marker (index.ts shutdown) is over.
+  await db.collection("servers").doc(SERVER_ID).set({ ...status, ...logsPart, restarting: FieldValue.delete() }, { merge: true });
   if (status.fleet) {
     const summary: FleetServerSummary = { id: SERVER_ID, hostname: status.hostname, platform: status.platform, lastSeen: status.lastSeen, ...status.fleet };
     await db.collection("fleetServers").doc(SERVER_ID).set(summary, { merge: true });

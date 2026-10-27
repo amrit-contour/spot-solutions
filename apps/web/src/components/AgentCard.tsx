@@ -4,12 +4,12 @@ import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { DEFAULT_SETTINGS, OTHER_APP_NOTE, type AgentSettings, type SessionState } from "@spot/shared";
+import { DEFAULT_SETTINGS, OTHER_APP_NOTE, restartLabel, type AgentSettings, type SessionState } from "@spot/shared";
 import { useAgentScope } from "@spot/ui/agentScope";
 import { useApp } from "../lib/app";
 import { runCommand, useDocument } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
-import { Button, Info, SettingRow, Switch, TimePicker, cx } from "@spot/ui";
+import { Button, ConfirmDialog, Info, SettingRow, Switch, TimePicker, cx } from "@spot/ui";
 import { IconChatCheck, IconLogout, IconQr, IconSend, IconShield } from "@spot/ui";
 import { LinkStatusPill, type LinkView } from "./LinkStatusPill";
 
@@ -17,9 +17,10 @@ const QR_SIZE = 216;
 const DEFAULTS = DEFAULT_SETTINGS.agent as AgentSettings;
 
 export function AgentCard() {
-  const { uid, session, workerOnline, settings, saveSettings } = useApp();
+  const { uid, session, workerOnline, serverRestarting, settings, saveSettings } = useApp();
   const agent = useDocument<SessionState>(["users", uid, "session", "agent"]).data;
   const [busy, setBusy] = useState<"link" | "unlink" | "test" | null>(null);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
   const demo = isDemoUser();
   const alsoComedy = useAgentScope(uid).comedy;
   const A: AgentSettings = { ...DEFAULTS, ...settings.agent };
@@ -27,10 +28,10 @@ export function AgentCard() {
 
   const mainReady = session?.status === "ready";
   const status = agent?.status ?? "idle";
-  const view: LinkView = !workerOnline && status !== "ready" ? "offline" : status === "ready" ? "ready" : status === "qr" ? "qr" : status === "starting" || status === "authenticated" || busy === "link" ? "starting" : "idle";
+  const view: LinkView = !workerOnline ? (serverRestarting ? "restarting" : "offline") : status === "ready" ? "ready" : status === "qr" ? "qr" : status === "starting" || status === "authenticated" || busy === "link" ? "starting" : "idle";
 
   const showQr = view === "qr" && Boolean(agent?.qr);
-  const pillLabel = view === "ready" ? "Connected" : view === "offline" ? "Server offline" : view === "starting" ? "Starting the agent…" : view === "qr" ? "Waiting for scan" : "Not linked";
+  const pillLabel = view === "ready" ? "Connected" : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "starting" ? "Starting the agent…" : view === "qr" ? "Waiting for scan" : "Not linked";
 
   const run = async (kind: "link" | "unlink" | "test", type: "connect_agent" | "logout_agent" | "test_agent", done?: string) => {
     setBusy(kind);
@@ -39,6 +40,16 @@ export function AgentCard() {
       if (done) toast(done);
     } catch (e) {
       toast.error((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  // Throws so the ConfirmDialog shows the error; it closes itself on success.
+  const unlink = async () => {
+    setBusy("unlink");
+    try {
+      await runCommand(uid, "logout_agent", {}, 60_000);
+      toast("Agent number unlinked");
     } finally {
       setBusy(null);
     }
@@ -95,10 +106,19 @@ export function AgentCard() {
                 <Button variant="tonal" icon={IconSend} onClick={() => run("test", "test_agent", "Hello sent. Check your WhatsApp.")} loading={busy === "test"}>
                   Send me a hello
                 </Button>
-                <Button variant="outlined" icon={IconLogout} onClick={() => run("unlink", "logout_agent", "Agent number unlinked")} loading={busy === "unlink"}>
+                <Button variant="outlined" icon={IconLogout} onClick={() => setConfirmUnlink(true)} loading={busy === "unlink"}>
                   Unlink
                 </Button>
               </>
+            ) : (view === "offline" || view === "restarting") && status === "ready" ? (
+              <div className="flex flex-col gap-1.5">
+                <Button variant="outlined" icon={IconLogout} disabled>
+                  Unlink
+                </Button>
+                <p className="type-body-s text-on-surface-variant">
+                  {view === "restarting" ? `${restartLabel(serverRestarting?.reason)}. Unlink is off meanwhile; the agent comes back by itself.` : "Unlink is off while the server is offline."}
+                </p>
+              </div>
             ) : view === "idle" ? (
               <Button icon={IconQr} onClick={() => run("link", "connect_agent")} loading={busy === "link"} disabled={demo || !mainReady || !workerOnline}>
                 Link agent number
@@ -178,6 +198,9 @@ export function AgentCard() {
         <IconShield className="icon mt-px size-4 flex-none" />
         Obeys only messages from your own number, in a one-to-one chat. Groups and everyone else are ignored.
       </p>
+      <ConfirmDialog open={confirmUnlink} onClose={() => setConfirmUnlink(false)} title="Unlink the agent number?" confirmLabel="Unlink" onConfirm={unlink} disabled={!workerOnline}>
+        <p>This signs the agent number out of Nothing BOT. You'll have to scan a QR code again to link it.</p>
+      </ConfirmDialog>
     </section>
   );
 }

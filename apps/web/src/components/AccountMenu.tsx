@@ -1,4 +1,5 @@
 import { signOut } from "firebase/auth";
+import { restartingNow } from "@spot/shared";
 import { AccountMenu as BaseAccountMenu, type AccountStatus, AccountMenuItem, IconLightbulb, IconServer, IconShield, cx } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
@@ -10,7 +11,7 @@ import { clearChatCache } from "../lib/chatCache";
 export function AccountMenu({ align = "right", status }: { align?: "left" | "right"; status?: AccountStatus }) {
   const { user } = useApp();
   const servers = useServers();
-  const anyDown = servers?.some((s) => Date.now() - s.lastSeen > 90_000);
+  const anyDown = servers?.some((s) => Date.now() - s.lastSeen > 90_000 && !restartingNow(s.restarting, s.lastSeen, Date.now()));
   const admin = isAdmin(useAccessConfig(), user.email);
   return (
     <BaseAccountMenu

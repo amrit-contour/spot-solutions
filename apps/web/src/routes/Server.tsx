@@ -3,7 +3,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from "firebase/firesto
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { TTL_DAYS, type ServerStatus } from "@spot/shared";
+import { TTL_DAYS, restartLabel, restartingNow, type ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "@spot/ui/firebase";
 import { expireAt, timeAgo, useNow } from "../lib/data";
@@ -89,6 +89,8 @@ function RestartButton({ serverId, type, label, disabled }: { serverId: string; 
 function ServerCard({ s }: { s: ServerStatus }) {
   const now = useNow(5_000);
   const online = now - s.lastSeen < ONLINE_MS;
+  // A planned restart or update (marker written at shutdown) reads as amber "back in a minute" until its grace passes, not red offline.
+  const restarting = !online ? restartingNow(s.restarting, s.lastSeen, now) : null;
   const linked = s.sessions.filter((x) => x.status === "ready").length;
 
   // The worker sends its log only while someone is watching: say so while the log section is open, and keep saying it.
@@ -108,8 +110,8 @@ function ServerCard({ s }: { s: ServerStatus }) {
       icon={IconServer}
       title={s.hostname}
       subtitle={`${s.osRelease} · ${s.arch} · v${s.version}`}
-      summary={online ? `Online · up ${fmtUptime(now - s.startedAt)}` : `Offline · last seen ${timeAgo(s.lastSeen, now)}`}
-      summaryTone={online ? "success" : "error"}
+      summary={online ? `Online · up ${fmtUptime(now - s.startedAt)}` : restarting ? restartLabel(restarting.reason) : `Offline · last seen ${timeAgo(s.lastSeen, now)}`}
+      summaryTone={online ? "success" : restarting ? "tertiary" : "error"}
     >
       <div className="flex flex-col gap-4 pb-1">
       <div className="flex flex-wrap items-center justify-end gap-2 empty:hidden">
@@ -118,7 +120,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
         <RemoveServerButton server={s} />
       </div>
 
-      <Collapsible id={`server:${s.id}:health`} title="Health and services" icon={IconCpu} summary={online ? `${Math.round(s.cpu.usage * 100)}% CPU` : "Offline"} summaryTone={online ? "neutral" : "error"}>
+      <Collapsible id={`server:${s.id}:health`} title="Health and services" icon={IconCpu} summary={online ? `${Math.round(s.cpu.usage * 100)}% CPU` : restarting ? "Restarting" : "Offline"} summaryTone={online ? "neutral" : restarting ? "tertiary" : "error"}>
       <div className="grid gap-4 md:grid-cols-2">
         <Card tone="container" className="flex flex-col gap-4 p-5">
           <Meter label="CPU" used={s.cpu.usage} total={1} detail={`${Math.round(s.cpu.usage * 100)}% · ${s.cpu.cores} cores · load ${s.cpu.load1.toFixed(2)}`} />

@@ -13,7 +13,7 @@ import {
   type AlertRule,
   type ResolvedAlertRules,
 } from "@spot/shared";
-import { Button, Chip, Collapsible, IconPlus, IconClose, IconRefresh, IconTrash, Switch, TextInput } from "@spot/ui";
+import { Button, Chip, Collapsible, ConfirmDialog, IconPlus, IconClose, IconRefresh, IconTrash, Switch, TextInput } from "@spot/ui";
 import { Card, Section } from "./ui";
 import { saveAlertRules, useComicSettings } from "../lib/alerts";
 
@@ -53,6 +53,8 @@ export function AlertRulesPanel({ uid }: { uid: string }) {
     const d = defaultOf(id);
     if (d) update({ ...cfg, rules: cfg.rules.map((r) => (r.id === id ? { ...d, patterns: d.patterns ? [...d.patterns] : undefined } : r)) });
   };
+  // Both wipe saved rules at once (the save is automatic), so they ask first.
+  const [confirm, setConfirm] = useState<"reset" | { deleteId: string } | null>(null);
   const resetAll = () => {
     update(resolveAlertRules(undefined));
     toast("Alert rules are back to the defaults");
@@ -109,17 +111,29 @@ export function AlertRulesPanel({ uid }: { uid: string }) {
               <p className="type-title-s">{kind === "offer" ? "Is it a spot offer?" : "Is it a closure?"}</p>
               <ul className="mt-2 flex flex-col gap-3">
                 {cfg.rules.filter((r) => r.appliesTo === kind).map((r) => (
-                  <RuleRow key={r.id} rule={r} problem={cfg.problems[r.id]} onChange={(p) => setRule(r.id, p)} onReset={() => resetRule(r.id)} onDelete={() => update({ ...cfg, rules: cfg.rules.filter((x) => x.id !== r.id) })} />
+                  <RuleRow key={r.id} rule={r} problem={cfg.problems[r.id]} onChange={(p) => setRule(r.id, p)} onReset={() => resetRule(r.id)} onDelete={() => setConfirm({ deleteId: r.id })} />
                 ))}
               </ul>
             </div>
           ))}
           <AddRule disabled={customCount >= MAX_ALERT_RULES} onAdd={(r) => update({ ...cfg, rules: [...cfg.rules, r] })} />
           <div>
-            <Button variant="tonal" icon={IconRefresh} onClick={resetAll}>Reset all to defaults</Button>
+            <Button variant="tonal" icon={IconRefresh} onClick={() => setConfirm("reset")}>Reset all to defaults</Button>
           </div>
         </div>
       </Collapsible>
+      <ConfirmDialog
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        title={confirm === "reset" ? "Reset all alert rules?" : "Delete this rule?"}
+        confirmLabel={confirm === "reset" ? "Reset all" : "Delete"}
+        onConfirm={async () => {
+          if (confirm === "reset") resetAll();
+          else if (confirm) update({ ...cfg, rules: cfg.rules.filter((x) => x.id !== confirm.deleteId) });
+        }}
+      >
+        <p>{confirm === "reset" ? "Every rule you changed or added goes, and the defaults come back." : "This rule stops being checked and is removed from your alert rules."}</p>
+      </ConfirmDialog>
     </Section>
   );
 }

@@ -11,12 +11,23 @@ import { checkBrowserAtStart } from "./browserHeal.ts";
 import { agentSessions } from "./agentSession.ts";
 import { onAgentMessage, onAgentVote } from "./agent.ts";
 import { fleet } from "./fleet.ts";
-import { DEFAULT_AI_POLICY, type AiPolicy } from "@spot/shared";
+import { DEFAULT_AI_POLICY, restartMarker, type AiPolicy } from "@spot/shared";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
 import { SERVER_ID, adminConfigured, watchServerCommands, writeServerStatus } from "./stats.ts";
 import { startScheduler } from "./scheduler.ts";
 import { startRetention } from "./retention.ts";
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { DATA_DIR } from "./serverIdentity.ts";
+
+/** "update" while the console's updater is mid-run (DATA/update.json), else a plain restart. */
+const plannedReason = (): "update" | "restart" => {
+  try {
+    return (JSON.parse(readFileSync(path.join(DATA_DIR, "update.json"), "utf8")) as { state?: string }).state === "running" ? "update" : "restart";
+  } catch {
+    return "restart";
+  }
+};
 
 const commandListeners = new Map<string, () => void>();
 const HEARTBEAT_MS = 30_000;
@@ -55,6 +66,7 @@ async function main() {
   // Heartbeat for the app's Server page.
   const users = new Map<string, { email?: string | null; name?: string | null }>();
   const pushStatus = async () => {
+    if (shuttingDown) return; // a heartbeat now would wipe the restart marker the shutdown just wrote
     const ollama = await ollamaState();
     fleet.setLocalModel(ollama.up && ollama.models.length > 0);
     const states = await Promise.all(
@@ -160,7 +172,11 @@ async function main() {
     // Upload and release every account first so a peer takes over at once, then mark them offline.
     const mine = fleet.heldUids();
     await fleet.drain();
-    await Promise.all(mine.map((uid) => sessionRef(uid).set({ lastSeen: 0 }, { merge: true }).catch(() => undefined)));
+    // A planned restart (exit 75: update, restart, supervisor reload) leaves a marker so the apps say "back in a minute" instead of
+    // "offline". lastSeen stays 0 either way, so nothing that reads it as "not alive" changes (fleet leases use fleetServers, not this).
+    const planned = code === 75 ? restartMarker(Date.now(), plannedReason()) : null;
+    await Promise.all(mine.map((uid) => sessionRef(uid).set({ lastSeen: 0, ...(planned ? { restarting: planned } : {}) }, { merge: true }).catch(() => undefined)));
+    if (planned) await db.collection("servers").doc(SERVER_ID).set({ restarting: planned }, { merge: true }).catch(() => undefined);
     await Promise.all([sessions.stopAll(), agentSessions.stopAll()]);
     process.exit(code);
   };
