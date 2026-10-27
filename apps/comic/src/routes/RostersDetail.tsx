@@ -4,8 +4,9 @@ import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import { DEFAULT_SETTINGS, canMaintain, diffRosters, groupByArea, localDate, roomMatches, toSharedRoster, type Curator, type Room, type RoomShared, type Roster } from "@spot/shared";
 import {
-  Button, ConfirmDialog, Empty, IconAdd, IconArrowLeft, IconBuilding, IconButton, IconImport, IconMenuDots, IconPen, IconSearch, IconUserCheck, Menu, MenuItem, PageHeader, Spinner, TextInput,
+  Button, ConfirmDialog, IconPlus, IconArrowLeft, IconBuilding, IconButton, IconImport, IconMenuDots, IconPen, IconSearch, IconUserCheck, Menu, MenuItem, PageHeader, Spinner,
 } from "@spot/ui";
+import { Card, EmptyState, Page, SearchField, Section } from "../components/ui";
 import { ImportSheet } from "../components/ImportSheet";
 import { RoomCard } from "../components/RoomCard";
 import { MaintainersSheet } from "../components/rosters/MaintainersSheet";
@@ -53,9 +54,9 @@ export function RostersDetail({ user }: { user: User }) {
   if (loading) return <div className="grid min-h-[50dvh] place-items-center text-primary"><Spinner className="size-8" /></div>;
   if (!roster) {
     return (
-      <Empty icon={IconBuilding} title="That roster isn't here" action={<Button onClick={() => nav("/rosters")}>Back to Community</Button>}>
+      <EmptyState icon={IconBuilding} title="That roster isn't here" action={<Button onClick={() => nav("/rosters")}>Back to Community</Button>}>
         It may have been unpublished, or the link is wrong.
-      </Empty>
+      </EmptyState>
     );
   }
 
@@ -79,7 +80,9 @@ export function RostersDetail({ user }: { user: User }) {
   return (
     <div className="w-full">
       <PageHeader
+        width="narrow"
         title={roster.title}
+        trailing={<IconButton icon={IconArrowLeft} label="Back to Community" onClick={() => nav("/rosters")} />}
         actions={
           <Menu align="right" trigger={(open) => <IconButton icon={IconMenuDots} label="More" onClick={open} />}>
             {(close) => (
@@ -92,16 +95,11 @@ export function RostersDetail({ user }: { user: User }) {
             )}
           </Menu>
         }
-      >
-        <div className="relative mt-3">
-          <IconSearch aria-hidden className="icon pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-on-surface-variant" />
-          <TextInput value={q} onChange={(e) => setQ(e.target.value)} className="pl-11" placeholder="Search rooms, areas, curators" type="search" aria-label="Search rooms" />
-        </div>
-      </PageHeader>
+      />
 
-      <div className="flex min-w-0 flex-col gap-6 px-4 pt-3 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12">
-        <div className="-ml-2"><Button variant="text" icon={IconArrowLeft} onClick={() => nav("/rosters")}>Community</Button></div>
-        <div className="flex min-w-0 flex-col gap-4 rounded-lg bg-surface-low p-4">
+      <Page>
+        <SearchField value={q} onChange={setQ} placeholder="Search rooms, areas, curators" label="Search rooms" />
+        <Card className="flex flex-col gap-4">
           <p className="min-w-0 break-words type-body-m">
             <span className="type-title-s">{roster.city}</span> · {roster.rooms.length} room{roster.rooms.length === 1 ? "" : "s"} · {followers} follower{followers === 1 ? "" : "s"}
           </p>
@@ -110,9 +108,9 @@ export function RostersDetail({ user }: { user: User }) {
           </p>
           <div className="flex flex-wrap gap-2">
             <Button icon={IconImport} onClick={() => setImporting(true)}>Import</Button>
-            <Button icon={follow ? IconUserCheck : IconAdd} variant={follow ? "tonal" : "outlined"} onClick={() => void toggleFollow()} loading={busy}>{follow ? "Following" : "Follow"}</Button>
+            <Button icon={follow ? IconUserCheck : IconPlus} variant={follow ? "tonal" : "outlined"} onClick={() => void toggleFollow()} loading={busy}>{follow ? "Following" : "Follow"}</Button>
           </div>
-        </div>
+        </Card>
 
         {update && follow && (
           <section aria-label="Update available" className="flex min-w-0 flex-col gap-3 rounded-lg bg-primary-container p-4 text-on-primary-container">
@@ -149,26 +147,22 @@ export function RostersDetail({ user }: { user: User }) {
         )}
 
         {shown.length === 0 ? (
-          <Empty icon={IconSearch} title={roster.rooms.length ? "No rooms match" : "No rooms yet"}>{roster.rooms.length ? "Try a different name, area or curator." : "This roster has no rooms."}</Empty>
+          <EmptyState icon={IconSearch} title={roster.rooms.length ? "No rooms match" : "No rooms yet"}>{roster.rooms.length ? "Try a different name, area or curator." : "This roster has no rooms."}</EmptyState>
         ) : (
           shown.map((g) => (
-            <section key={g.area || "none"} aria-label={g.area || "No area"} className="min-w-0">
-              <h2 className="mb-3 flex items-baseline gap-2 type-title-m text-on-surface-variant">
-                <span className="min-w-0 truncate">{g.area || "No area"}</span>
-                <span className="type-label-m tabular">{g.rooms.length}</span>
-              </h2>
-              <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
+            <Section key={g.area || "none"} title={g.area || "No area"} count={g.rooms.length}>
+              <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                 {g.rooms.map((r) => (
                   <li key={r.id} className="min-w-0"><RoomCard room={r} curators={curators} date={date} readOnly onOpen={() => setViewing(r as unknown as RoomShared)} /></li>
                 ))}
               </ul>
-            </section>
+            </Section>
           ))
         )}
         <div>
           <Button variant="tonal" icon={IconPen} onClick={() => setSuggesting({ room: null })}>Suggest a room that's missing</Button>
         </div>
-      </div>
+      </Page>
 
       <RoomView room={viewing} curators={roster.curators} onClose={() => setViewing(null)} onSuggest={(r) => { setViewing(null); setSuggesting({ room: r }); }} />
       <SuggestSheet roster={roster} room={suggesting?.room ?? null} open={suggesting !== null} onClose={() => setSuggesting(null)} user={user} />

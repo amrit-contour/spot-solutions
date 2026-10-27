@@ -1,7 +1,7 @@
-import { Link } from "react-router-dom";
 import { canMaintain, type PublishedRosterDoc, type RosterFollow } from "@spot/shared";
 import { Chip, IconBuilding, IconGroup } from "@spot/ui";
 import { hasUpdate } from "../../lib/rosters";
+import { CardButton, Chips, IconTile } from "../ui";
 
 export function ago(at: number, now = Date.now()) {
   const days = Math.floor((now - at) / 86_400_000);
@@ -22,29 +22,31 @@ export function RosterCard({ roster, follow, followers, uid }: { roster: Publish
   const update = hasUpdate(follow, roster);
   const mine = canMaintain(roster, uid);
   return (
-    <Link to={`/rosters/${roster.id}`} className="state-layer pressable flex w-full min-w-0 flex-col gap-3 rounded-lg bg-surface-low p-4 text-left">
-      <span className="flex min-w-0 items-start gap-3">
-        <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container"><IconBuilding className="icon size-5" /></span>
+    <CardButton to={`/rosters/${roster.id}`} className="flex flex-col gap-3">
+      <span className="flex min-w-0 items-center gap-3">
+        <IconTile icon={IconBuilding} />
         <span className="min-w-0 flex-1">
           <span className="block truncate type-title-m">{roster.title}</span>
           <span className="block truncate type-body-s text-on-surface-variant">{roster.city} · by {roster.ownerName ?? "a member"}</span>
         </span>
-        <span className="flex flex-none flex-wrap justify-end gap-1">
+      </span>
+      {(update || follow || mine) && (
+        <Chips>
           {update && <Chip tone="primary">Update available</Chip>}
           {!update && follow && <Chip tone="success">Following</Chip>}
           {mine && <Chip tone="tertiary">{roster.ownerUid === uid ? "Yours" : "You maintain"}</Chip>}
-        </span>
-      </span>
-      <span className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 type-body-m sm:grid-cols-2">
-        <span className="min-w-0 truncate">{roster.rooms.length} room{roster.rooms.length === 1 ? "" : "s"}</span>
+        </Chips>
+      )}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 type-body-m">
+        <span className="tabular">{roster.rooms.length} room{roster.rooms.length === 1 ? "" : "s"}</span>
         <span className="flex min-w-0 items-center gap-1.5 text-on-surface-variant">
           <IconGroup aria-hidden className="icon size-4 flex-none" />
-          <span className="min-w-0 truncate tabular">{followers ?? 0} follower{followers === 1 ? "" : "s"}</span>
+          <span className="tabular">{followers ?? 0} follower{followers === 1 ? "" : "s"}</span>
         </span>
       </span>
       <span className="min-w-0 break-words type-body-s text-on-surface-variant">
         Maintained by {maintainerNames(roster)}. Updated {ago(roster.updatedAt)}, version {roster.version}.
       </span>
-    </Link>
+    </CardButton>
   );
 }

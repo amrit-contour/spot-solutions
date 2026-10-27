@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import type { Roster } from "@spot/shared";
-import { Button, CompactButton, Empty, IconBuilding, IconInbox, IconSearch, IconSend, IconShield, IconUserPlus, PageHeader, Segmented, Spinner, TextInput } from "@spot/ui";
+import { Button, CompactButton, IconBuilding, IconSearch, IconSend, IconShield, IconUserPlus, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { EmptyState, ListGroup, ListRow, IconTile, Page, SearchField, Section } from "../components/ui";
 import { ImportSheet, type Incoming } from "../components/ImportSheet";
 import { PublishSheet } from "../components/rosters/PublishSheet";
 import { RosterCard } from "../components/rosters/RosterCard";
@@ -17,6 +18,8 @@ export function RoomsTabs({ active }: { active: "rooms" | "curators" | "communit
   const nav = useNavigate();
   return (
     <Segmented
+      full
+      size="sm"
       value={active}
       onChange={(t) => nav(t === "rooms" ? "/rooms" : t === "curators" ? "/rooms/curators" : "/rosters")}
       options={[{ value: "rooms", label: "Rooms" }, { value: "curators", label: "Curators" }, { value: "community", label: "Community" }]}
@@ -27,22 +30,23 @@ export function RoomsTabs({ active }: { active: "rooms" | "curators" | "communit
 function Inbox({ uid, shares, onOpen }: { uid: string; shares: RosterShare[]; onOpen: (s: RosterShare) => void }) {
   if (!shares.length) return null;
   return (
-    <section aria-label="Shared with you" className="flex min-w-0 flex-col gap-3">
-      <h2 className="flex items-baseline gap-2 type-title-m text-on-surface-variant"><IconInbox aria-hidden className="icon size-5 self-center" />Shared with you <span className="type-label-m tabular">{shares.length}</span></h2>
-      <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
+    <Section title="Shared with you" count={shares.length}>
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
         {shares.map((s) => (
-          <li key={s.id} className="flex min-w-0 flex-col gap-2 rounded-lg bg-secondary-container p-4 text-on-secondary-container">
-            <p className="break-words type-title-s">{s.title}</p>
-            <p className="break-words type-body-s">From {s.fromName ?? "a member"}, {s.rooms.length} room{s.rooms.length === 1 ? "" : "s"}</p>
+          <li key={s.id} className="flex min-w-0 flex-col gap-3 rounded-lg bg-secondary-container p-4 text-on-secondary-container">
+            <div className="min-w-0">
+              <p className="break-words type-title-s">{s.title}</p>
+              <p className="break-words type-body-s">From {s.fromName ?? "a member"}, {s.rooms.length} room{s.rooms.length === 1 ? "" : "s"}</p>
+            </div>
             {s.note && <p className="break-words type-body-m italic">"{s.note}"</p>}
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Button size="sm" variant="text" className="-ml-2" onClick={() => void deleteShare(uid, s.id).then(() => toast("Dismissed"))}>Dismiss</Button>
               <Button size="sm" onClick={() => onOpen(s)}>Review</Button>
-              <Button size="sm" variant="text" onClick={() => void deleteShare(uid, s.id).then(() => toast("Dismissed"))}>Dismiss</Button>
             </div>
           </li>
         ))}
       </ul>
-    </section>
+    </Section>
   );
 }
 
@@ -70,57 +74,47 @@ export function Rosters({ user, canPublish, admin }: { user: User; canPublish: b
   return (
     <div className="w-full">
       <PageHeader
+        width="narrow"
         title="Community"
-        subtitle="Rosters other comics keep up to date."
         actions={
           <>
             <CompactButton icon={IconUserPlus} label="Share" onClick={() => setSharing(true)} />
             {canPublish && <CompactButton icon={IconSend} label="Publish" variant="filled" onClick={() => setPublishing(true)} />}
           </>
         }
-      >
-        <div className="relative mt-3">
-          <IconSearch aria-hidden className="icon pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-on-surface-variant" />
-          <TextInput value={q} onChange={(e) => setQ(e.target.value)} className="pl-11" placeholder="Search by city or title" type="search" aria-label="Search rosters" />
-        </div>
-      </PageHeader>
-      <div className="px-4 pt-3 pb-4 sm:px-8"><RoomsTabs active="community" /></div>
+        bar={<RoomsTabs active="community" />}
+      />
 
-      <div className="flex min-w-0 flex-col gap-8 px-4 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12">
+      <Page>
+        <SearchField value={q} onChange={setQ} placeholder="Search by city or title" label="Search rosters" />
         <Inbox uid={user.uid} shares={shares.data} onOpen={(s) => setIncoming({ share: s, incoming: { roster: { rooms: s.rooms, curators: s.curators } as Roster, source: `${s.title} from ${s.fromName ?? "a member"}` } })} />
 
         {admin && (
-          <Link to="/rosters/publishers" className="state-layer pressable flex min-h-12 min-w-0 items-center gap-3 rounded-lg bg-surface-low px-4 py-3">
-            <IconShield aria-hidden className="icon size-5 flex-none text-primary" />
-            <span className="min-w-0 flex-1 truncate type-title-s">Who can publish</span>
-            <span className="type-label-m text-on-surface-variant">Admin</span>
-          </Link>
+          <ListGroup>
+            <ListRow to="/rosters/publishers" leading={<IconTile tone="neutral" icon={IconShield} />} title="Who can publish" trailing={<span className="type-label-m">Admin</span>} />
+          </ListGroup>
         )}
 
         {all.loading ? (
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : empty ? (
-          <Empty icon={IconBuilding} title="No community rosters yet" action={canPublish ? <Button onClick={() => setPublishing(true)}>Publish your rooms</Button> : undefined}>
+          <EmptyState icon={IconBuilding} title="No community rosters yet" action={canPublish ? <Button onClick={() => setPublishing(true)}>Publish your rooms</Button> : undefined}>
             {canPublish ? "Be the first. Publish your rooms and other comics can follow them." : "When someone publishes their rooms for a city, you will find it here. You can also ask an admin if you can publish."}
-          </Empty>
+          </EmptyState>
         ) : cities.length === 0 ? (
-          <Empty icon={IconSearch} title="No rosters match">Try a different city or title.</Empty>
+          <EmptyState icon={IconSearch} title="No rosters match">Try a different city or title.</EmptyState>
         ) : (
           cities.map((g) => (
-            <section key={g.city} aria-label={g.city} className="min-w-0">
-              <h2 className="mb-3 flex items-baseline gap-2 type-title-m text-on-surface-variant">
-                <span className="min-w-0 truncate">{g.city}</span>
-                <span className="type-label-m tabular">{g.rosters.length}</span>
-              </h2>
-              <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
+            <Section key={g.city} title={g.city} count={g.rosters.length}>
+              <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
                 {g.rosters.map((r) => (
                   <li key={r.id} className="min-w-0"><RosterCard roster={r} follow={follows.get(r.id)} followers={counts[r.id]} uid={user.uid} /></li>
                 ))}
               </ul>
-            </section>
+            </Section>
           ))
         )}
-      </div>
+      </Page>
 
       <PublishSheet open={publishing} onClose={() => setPublishing(false)} user={user} />
       <ShareSheet open={sharing} onClose={() => setSharing(false)} user={user} />

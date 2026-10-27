@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import { Button, IconArrowLeft, IconButton, IconShield, IconTrash, PageHeader } from "@spot/ui";
+import { IconTile, ListGroup, ListRow, Page } from "../components/ui";
 import { MemberPicker } from "../components/MemberPicker";
 import type { MemberEntry } from "../lib/members";
 import { addPublisher, removePublisher, usePublishers } from "../lib/rosters";
@@ -35,32 +36,27 @@ export function RostersPublishers({ user, admin }: { user: User; admin: boolean 
 
   return (
     <div className="w-full">
-      <PageHeader title="Who can publish" subtitle="Admin" trailing={<IconButton icon={IconArrowLeft} label="Back to Community" onClick={() => nav("/rosters")} />} />
-      <div className="mx-auto flex max-w-2xl min-w-0 flex-col gap-6 px-4 pt-4 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12">
-        <p className="type-body-l text-on-surface-variant">Anyone approved can follow, import and suggest changes. Only the people below, and admins, can publish a roster.</p>
-        <ul className="flex min-w-0 flex-col overflow-hidden rounded-md bg-surface-low">
-          <li className="flex min-h-12 min-w-0 items-center gap-3 border-b border-outline-variant/40 px-3 py-2">
-            <IconShield aria-hidden className="icon size-5 flex-none text-primary" />
-            <span className="min-w-0 flex-1 truncate type-body-l">All admins</span>
-            <span className="type-label-m text-on-surface-variant">Always</span>
-          </li>
+      <PageHeader width="narrow" title="Who can publish" subtitle="Admin" trailing={<IconButton icon={IconArrowLeft} label="Back to Community" onClick={() => nav("/rosters")} />} />
+      <Page>
+        <p className="px-1 type-body-m text-on-surface-variant">Anyone approved can follow, import and suggest changes. Only the people below, and admins, can publish a roster.</p>
+        <ListGroup>
+          <ListRow leading={<IconTile tone="neutral" icon={IconShield} />} title="All admins" trailing={<span className="type-label-m">Always</span>} />
           {list.data.map((p) => (
-            <li key={p.uid} className="flex min-h-14 min-w-0 items-center gap-3 border-b border-outline-variant/40 px-3 py-1 last:border-b-0">
-              <span className="min-w-0 flex-1">
-                <span className="block truncate type-body-l">{p.name ?? p.email ?? "Member"}</span>
-                {p.email && p.name && <span className="block truncate type-body-s text-on-surface-variant">{p.email}</span>}
-              </span>
-              <IconButton icon={IconTrash} label={`Remove ${p.name ?? p.email ?? "this person"}`} onClick={() => void removePublisher(p.uid).then(() => toast("Removed"))} />
-            </li>
+            <ListRow
+              key={p.uid}
+              title={p.name ?? p.email ?? "Member"}
+              subtitle={p.email && p.name ? p.email : undefined}
+              trailing={<IconButton icon={IconTrash} label={`Remove ${p.name ?? p.email ?? "this person"}`} onClick={() => void removePublisher(p.uid).then(() => toast("Removed"))} />}
+            />
           ))}
-          {!list.loading && list.data.length === 0 && <li className="px-3 py-4 type-body-m text-on-surface-variant">No one else yet.</li>}
-        </ul>
+          {!list.loading && list.data.length === 0 && <p className="px-4 py-4 type-body-m text-on-surface-variant">No one else yet.</p>}
+        </ListGroup>
         <div className="flex min-w-0 flex-col gap-3">
           <MemberPicker label="Add a publisher" hint="Anyone approved in the app. Type a name or email." value={picked} onChange={setPicked} exclude={[user.uid, ...list.data.map((p) => p.uid)]} />
-          {picked && <Button onClick={() => void add()} loading={busy} className="h-12 self-start">Add {picked.name}</Button>}
+          {picked && <Button onClick={() => void add()} loading={busy} className="self-start">Add {picked.name}</Button>}
         </div>
         {error && <p role="alert" className="rounded-md bg-error-container p-4 type-body-m text-on-error-container">{error}</p>}
-      </div>
+      </Page>
     </div>
   );
 }
