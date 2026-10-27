@@ -118,7 +118,7 @@ export function Comics() {
             )}
           </Menu>
           {!selecting && comics.length > 0 && <CompactButton size="md" variant="outlined" icon={IconCheck} label="Select" onClick={() => setSelecting(true)} />}
-          <Button icon={IconUserPlus} onClick={() => setEditing({ tier: "open" })}>Add comic</Button>
+          <CompactButton icon={IconUserPlus} label="Add comic" variant="filled" size="md" onClick={() => setEditing({ tier: "open" })} />
         </>
       }
     />
@@ -184,7 +184,7 @@ export function Comics() {
           </>
         )}
         {selecting && (
-          <div className="sticky bottom-[calc(var(--nav-h)+1rem)] z-30 mt-4 flex items-center gap-2 rounded-full bg-inverse-surface py-2 pr-2 pl-5 text-inverse-on-surface shadow-lg sm:bottom-6">
+          <div className="fixed inset-x-4 bottom-[calc(var(--nav-h)+0.5rem)] z-30 flex items-center gap-2 rounded-full bg-inverse-surface py-2 pr-2 pl-5 text-inverse-on-surface shadow-lg sm:sticky sm:inset-x-auto sm:bottom-6 sm:mt-4">
             <span className="min-w-0 flex-1 truncate type-label-l tabular">{chosen.length} selected</span>
             <Button variant="text" onClick={exitSelect} className="text-inverse-on-surface!">Cancel</Button>
             <Button variant="danger" icon={IconTrash} disabled={!chosen.length} onClick={() => setConfirming(true)}>Remove</Button>
