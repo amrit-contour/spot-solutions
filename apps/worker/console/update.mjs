@@ -22,7 +22,7 @@ export const RETRY_CHECK_MS = 5 * 60_000;
 /** Is it time to ask the update site again? Every 30 minutes, or every 5 after a failed check. */
 export const checkIsDue = ({ now, checkedAt, checkError }) => now - checkedAt >= (checkError ? RETRY_CHECK_MS : CHECK_EVERY_MS) - 1000;
 /** After a failed update, automatic updates wait this long (a manual Update now still works). */
-const FAILURE_BACKOFF_MS = 6 * 3_600_000;
+const FAILURE_BACKOFF_MS = 3_600_000;
 const STALE_RUNNING_MS = 60 * 60_000;
 /** A task still at "Starting" this long was never picked up by the platform's task runner. */
 const STALE_START_MS = 5 * 60_000;
