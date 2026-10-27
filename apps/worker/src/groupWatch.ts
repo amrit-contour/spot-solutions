@@ -8,6 +8,11 @@ import type WAWebJS from "whatsapp-web.js";
 import { mergeRegulars, type RegularSpot } from "@spot/shared";
 import {
   alertAsk,
+  applyOpeningToRoom,
+  openingsDue,
+  openingsExpired,
+  planOpening,
+  reconcileOpening,
   alertExpiry,
   alertIdFor,
   alertPatchForReply,
@@ -129,6 +134,7 @@ export function startGroupWatch(uids: () => Iterable<string>) {
     for (const uid of uids()) {
       if (!watches.has(uid)) continue;
       void expireAlerts(uid).catch((e) => console.error("[groups] sweep", e));
+      void firePushes(uid).catch((e) => console.error("[groups] opening pushes", e));
       if (Date.now() - lastTidy > 30 * 60_000) void tidy(uid).catch((e) => console.error("[groups] tidy", e));
     }
     if (Date.now() - lastTidy > 30 * 60_000) lastTidy = Date.now();
@@ -328,8 +334,56 @@ async function closure(uid: string, msg: GroupMsg, cl: Extract<Reading, { kind: 
 
 async function opening(uid: string, msg: GroupMsg, o: Extract<Reading, { kind: "opening_notice" }>["opening"], c: ApplyCtx) {
   if (!o.roomId && !o.roomName) return;
-  // Nothing in the roster to change: it is a heads-up, shown until cleared.
-  await saveUpdate(uid, baseUpdate(msg, "opening", { roomId: o.roomId, roomName: o.roomName, summary: o.summary, opening: { openAt: o.openAt, website: o.website }, now: c.now, status: "info" }));
+  const room = c.rooms.find((r) => r.id === o.roomId);
+  const plan = planOpening(o, room, c.tz, c.now);
+  if (!plan) return; // the day it was for is over
+  const base = baseUpdate(msg, "opening", { roomId: o.roomId, roomName: o.roomName, summary: o.summary, opening: { openAt: o.openAt, website: o.website, date: o.date, showId: o.showId }, now: c.now, status: "info" });
+  // A room the comic doesn't have, or only curates: nothing to push or change, a heads-up until the day is over.
+  if (!plan.asks || !room) return saveUpdate(uid, { ...base, expiresAt: plan.expiresAt });
+
+  // The same notice twice (two curators say it) is one; a new time for the same room and day replaces the old one, push and all.
+  const existing = (await col(uid, "groupUpdates").where("kind", "==", "opening").get()).docs.map((d) => ({ ...(d.data() as GroupUpdate), id: d.id }));
+  const { duplicate, supersede } = reconcileOpening(base, existing);
+  if (duplicate) return;
+  for (const id of supersede) {
+    const old = existing.find((e) => e.id === id)!;
+    await col(uid, "groupUpdates").doc(id).update({ pushAt: FieldValue.delete(), ...(old.status === "info" || old.status === "pending" ? { status: "dismissed" } : {}) });
+  }
+
+  const update: GroupUpdate = { ...base, pushAt: plan.pushAt, push: plan.push, expiresAt: plan.expiresAt };
+  // The ask window of that date starts when booking opens: applied by itself or left to review, like closures and schedules.
+  if (c.auto) {
+    const next = applyOpeningToRoom(room, { date: o.date, openAt: plan.openAt, showIds: plan.showIds, groupId: msg.groupId, messageId: msg.id }, c.now, c.tz);
+    await col(uid, "rooms").doc(room.id).set(stripUndefined(next as unknown as object) as object);
+    await saveUpdate(uid, { ...update, status: "applied", auto: true, appliedAt: c.now });
+  } else await saveUpdate(uid, { ...update, status: "pending" });
+  if (plan.pushAt! <= c.now) await firePushes(uid); // already open: tell them now
+}
+
+/** "Opening soon" pushes whose time has come go out (once each); ones that were due long ago are dropped; finished days clear themselves. */
+const firing = new Set<string>();
+async function firePushes(uid: string) {
+  if (firing.has(uid)) return;
+  firing.add(uid);
+  try {
+    await firePushesNow(uid);
+  } finally {
+    firing.delete(uid);
+  }
+}
+async function firePushesNow(uid: string) {
+  const now = Date.now();
+  const all = (await col(uid, "groupUpdates").where("kind", "==", "opening").get()).docs.map((d) => ({ ...(d.data() as GroupUpdate), id: d.id }));
+  const { fire, missed } = openingsDue(all, now);
+  for (const u of missed) await col(uid, "groupUpdates").doc(u.id).update({ pushedAt: now, pushMissed: true });
+  for (const u of fire) {
+    // Marked before sending: a push is at most once.
+    await col(uid, "groupUpdates").doc(u.id).update({ pushedAt: now });
+    const text = u.push ?? { title: `${u.roomName ?? "A room"} spots are open now`, body: "Ask now." };
+    const sent = await notifyComic(uid, { kind: "spot_opening", ...text, path: "/alerts", ttlSec: Math.max(60, ((u.expiresAt ?? now + 3600_000) - now) / 1000) });
+    console.log(`[groups] ${uid} opening push for ${u.roomName} sent to ${sent} device(s)`);
+  }
+  for (const u of openingsExpired(all, now)) await col(uid, "groupUpdates").doc(u.id).update({ status: "dismissed" });
 }
 
 async function schedule(uid: string, msg: GroupMsg, s: Extract<Reading, { kind: "schedule_update" }>["schedule"], c: ApplyCtx) {

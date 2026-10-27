@@ -10,6 +10,9 @@ import {
   type StoredAlertRules,
   alertState,
   applyClosureToRoom,
+  applyOpeningToRoom,
+  askedShows,
+  localParts,
   applyScheduleToRoom,
   type Curator,
   type GroupInfo,
@@ -117,6 +120,11 @@ export async function applyUpdate(
   if (!room) throw new Error("That room isn't in your list any more.");
   if (u.kind === "closure" && u.closure) {
     await roster.saveRoom(applyClosureToRoom(room, u.closure.ranges, { groupId: u.groupId, messageId: u.messageId, at: Date.now(), showId: u.closure.showId }));
+  } else if (u.kind === "opening" && u.opening?.date) {
+    // The ask window of that date starts when booking opens (the push already went, or will, whatever you pick here).
+    const showIds = askedShows(room, u.opening.date, u.opening.showId).map((s) => s.id);
+    const openAt = u.opening.openAt ?? localParts(Date.now(), TZ).time;
+    await roster.saveRoom(applyOpeningToRoom(room, { date: u.opening.date, openAt, showIds, groupId: u.groupId, messageId: u.messageId }, Date.now(), TZ));
   } else if (u.kind === "schedule" && u.schedule) {
     const out = applyScheduleToRoom(room, roster.curators, u.schedule.entries);
     const known = new Set(roster.curators.map((c) => c.id));

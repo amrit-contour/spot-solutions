@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BLR_ROSTER } from "@spot/shared/fixtures/blrRooms";
-import { interpret, zonedToMs, type GroupMsg } from "@spot/shared";
+import { interpret, planOpening, zonedToMs, type GroupMsg } from "@spot/shared";
 import { buildGroupPrompt, parseAiRead, readGroupMessage, readWithFallback, roomLines } from "./groupRead.ts";
 
 const TZ = "Asia/Kolkata";
@@ -122,5 +122,19 @@ describe("a chain with two locations (Comedy Theatre)", () => {
     const ask = async () => '{"kind":"spot_offer","room":"comedy theatre","show":"","contact":"sender","contact_name":""}';
     const r = await readGroupMessage(ask, msg("anyone free for a thing at comedy theatre? spot, DM"), { ...ctx, history }, 1000);
     expect(r.reading.kind === "spot_offer" && r.reading.offer.roomId).toBe(indi.id);
+  });
+});
+
+describe("an opening notice end to end (stubbed model)", () => {
+  it("is read as an opening for the room, with the time and the day, and planned as a push", async () => {
+    const ask = async () => '{"kind":"opening_notice","room":"ministry","show":"","contact":"sender","contact_name":""}';
+    const r = await readGroupMessage(ask, msg("ministry spots will open by 3:15pm"), ctx, 1000);
+    const rd = r.reading;
+    expect(rd.kind).toBe("opening_notice");
+    if (rd.kind !== "opening_notice") return;
+    const room = BLR_ROSTER.rooms.find((x) => x.id === rd.opening.roomId);
+    const plan = planOpening(rd.opening, room, TZ, NOW - 6 * 3600_000);
+    expect(plan).toMatchObject({ asks: true, openAt: "15:15", push: { title: "Ministry of Comedy spots are open now" } });
+    expect(plan?.push?.body).toContain("Book on the website");
   });
 });

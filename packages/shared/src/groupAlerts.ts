@@ -124,6 +124,9 @@ export interface ParsedOpening {
   openAt?: string;
   /** "website is open now". */
   website: boolean;
+  /** The show date these spots are for (today unless the text says another day). */
+  date: string;
+  showId?: string;
   summary: string;
 }
 
@@ -161,7 +164,16 @@ export interface GroupUpdate {
   text?: string;
   closure?: { ranges: DateRange[]; showId?: string };
   schedule?: { entries: ScheduleEntry[] };
-  opening?: { openAt?: string; website: boolean };
+  opening?: { openAt?: string; website: boolean; date?: string; showId?: string };
+  /** opening: push the comic at this time (ms), when the room is one they ask. Only once: `pushedAt` is set when it went out. */
+  pushAt?: number;
+  pushedAt?: number;
+  /** The moment had long gone when the server got to it: no push was sent. */
+  pushMissed?: boolean;
+  /** What the push says (made when the notice was read, from the room's how-to-ask notes). */
+  push?: { title: string; body: string };
+  /** opening: the end of the day it is for; after it the item clears itself. */
+  expiresAt?: number;
   /** pending: waiting for the comic. applied: done (see `auto`). dismissed: cleared. info: nothing to apply, just a heads-up. */
   status: "pending" | "applied" | "dismissed" | "info";
   auto?: boolean;
@@ -1273,11 +1285,12 @@ export function interpret(ai: AiRead, msg: GroupMsg, ctx: ReadCtx): Reading {
     }
     case "opening_notice": {
       if (!/\bopen/i.test(text)) return { kind: "other" };
-      roomFields = fieldsOf(settle().room);
+      room = settle().room;
+      roomFields = fieldsOf(room);
       const openAt = parseTimes(text.replace(/\bwill open\b/gi, "open"))[0];
       const website = /\bwebsite|registration|\.(in|com|co)\b/i.test(text);
       const where = roomFields.roomName ?? "A room";
-      return { kind: "opening_notice", opening: { ...roomFields, openAt, website, summary: openAt ? `${where}: spots open by ${formatTime(openAt)}` : website ? `${where}: the website is open for spots` : `${where}: spots are opening` } };
+      return { kind: "opening_notice", opening: { ...roomFields, openAt, website, date: parseDayHint(text, today), showId: showFor(room.room, ai.show), summary: openAt ? `${where}: spots open by ${formatTime(openAt)}` : website ? `${where}: the website is open for spots` : `${where}: spots are opening` } };
     }
     case "schedule_update": {
       const entries = parseSchedule(text);

@@ -224,7 +224,7 @@ function UpdateCard({ u, now, onApply, onDismiss }: { u: GroupUpdate; now: numbe
               void Promise.resolve(onApply()).finally(() => setBusy(false));
             }}
           >
-            {u.kind === "closure" ? "Mark full" : "Update curators"}
+            {u.kind === "closure" ? "Mark full" : u.kind === "opening" ? "Set opening time" : "Update curators"}
           </Button>
         )}
       </div>

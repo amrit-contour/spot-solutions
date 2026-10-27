@@ -111,9 +111,24 @@ export interface ShowShared {
   note?: string;
 }
 
+/** "Spots open at 3:15 PM today": read from a group notice. Private; it moves the ask window of that one date, then is dropped. */
+export interface ShowOpening {
+  /** The show date the spots are for. */
+  date: string;
+  /** HH:MM: when booking opens. */
+  at: string;
+  source: "group_message";
+  groupId?: string;
+  messageId?: string;
+  /** When it was applied (ms). */
+  appliedAt?: number;
+}
+
 export interface RoomShow extends ShowShared {
   myRole?: MyRole;
   closures?: Closure[];
+  /** Per-date opening times read from groups (private, short-lived). */
+  openings?: ShowOpening[];
   /** Seasonal break. */
   pausedUntil?: string;
   myNotes?: string;
@@ -669,6 +684,16 @@ export const isFull = (show: Pick<RoomShow, "closures">, date: string) => fullCl
 /** A seasonal break on the room or the show. */
 export const isPaused = (room: Pick<Room, "pausedUntil">, show: Pick<RoomShow, "pausedUntil">, date: string) =>
   Boolean((room.pausedUntil && date <= room.pausedUntil) || (show.pausedUntil && date <= show.pausedUntil));
+
+/** The opening time noted for this show date, if any. */
+export const openingFor = (show: Pick<RoomShow, "openings">, date: string): ShowOpening | null => (show.openings ?? []).find((o) => o.date === date) ?? null;
+
+/** Drop openings whose day has gone. */
+export const pruneOpenings = (show: RoomShow, today: string): RoomShow => {
+  const openings = (show.openings ?? []).filter((o) => o.date >= today);
+  const { openings: _old, ...rest } = show;
+  return openings.length ? { ...rest, openings } : rest;
+};
 
 /** Drop closures that are over. */
 export const pruneClosures = (show: RoomShow, today: string): RoomShow => {

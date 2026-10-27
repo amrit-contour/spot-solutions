@@ -10,6 +10,7 @@ import {
   limitsBlock,
   localDate,
   nextAskWindow,
+  openingFor,
   showDates,
   weekdayOf,
   type Ask,
@@ -191,7 +192,10 @@ export function planAsks(rooms: Room[], curators: Curator[], range: { from: stri
         const time = times.length === 1 ? times[0] : undefined;
         const closesAt = zonedMs(showDate, [...times].sort().at(-1) ?? "23:59", tz);
         const dayStart = zonedMs(window.date, "00:00", tz);
-        const sendFrom = Math.max(dayStart, Math.min(zonedMs(window.date, ASK_SEND_FROM, tz), closesAt - 3 * HOUR_MS));
+        // "Spots open by 3:15" said in a group moves the start of this one date's window to that time.
+        const opening = openingFor(show, showDate);
+        const openMs = opening ? zonedMs(showDate, opening.at, tz) : 0;
+        const sendFrom = opening && openMs < closesAt ? openMs : Math.max(dayStart, Math.min(zonedMs(window.date, ASK_SEND_FROM, tz), closesAt - 3 * HOUR_MS));
         const limit = limitsBlock(room, ctx.mySpots ?? [], { date: showDate, showId: show.id, source: "ask" });
         const phone = c.primary?.phone?.trim();
         out.push({
