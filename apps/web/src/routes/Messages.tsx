@@ -47,7 +47,7 @@ import {
   type ThreadMessage,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
-import { useCollection, useNow, userDoc } from "../lib/data";
+import { timeAgo, useCollection, useNow, userDoc } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
 import { demoSource, liveSource, type ChatSource, type MentionTag, type OutPhoto } from "../lib/messages";
 import { placeAsTold, placeComic } from "../lib/lineup";
@@ -69,7 +69,7 @@ import { messageSummary } from "@spot/ui";
 import { ChatComposer, type Outgoing } from "../components/ChatComposer";
 import { PinCard, PollCard, WaText } from "@spot/ui";
 import { Button, Chip, ConfirmDialog, Empty, IconButton, Segmented, Select, Sheet, Spinner, cx } from "@spot/ui";
-import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconEye, IconGroup, IconMic, IconRefresh, IconMenuDots, IconSearch, IconServer, IconSkip, IconSparkle } from "@spot/ui";
+import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconEye, IconGroup, IconMic, IconRefresh, IconMenuDots, IconSearch, IconServer, IconShield, IconSkip, IconSparkle } from "@spot/ui";
 import { ComicAvatar, GroupAvatar } from "../lib/photos";
 
 const OPEN = ["new", "acked"];
@@ -698,8 +698,13 @@ const groupCardKey = (id: string) => `spot.groupCard.${id}`;
 
 /** A group's scheduled posts, pinned under the header: one line when folded ("3 scheduled posts · next Mon 5:00 PM"), the list and actions when open. Remembered per chat. */
 function GroupContext({ group, show, groupShows, onShow, posts, draftPosts, onDraft, open, onEdit, onClose }: { group: GroupThreadItem; show: Show; groupShows: Show[]; onShow: (id: string) => void; posts: GroupPost[]; draftPosts: GroupPost[] | null; onDraft: (p: GroupPost[]) => void; open: boolean; onEdit: () => void; onClose: () => void }) {
-  const { settings } = useApp();
+  const { settings, session } = useApp();
   const now = useNow(60_000);
+  const cache = show.groupMembers?.groupId === group.groupId ? show.groupMembers : null;
+  const members = cache ? cache.members.length : null;
+  // Your admin status, when the member list is read and you're in it (the phone matches by number).
+  const me = session?.phone ? cache?.members.find((m) => m.id.split("@")[0] === session.phone) : undefined;
+  const admin = me ? me.isAdmin : null;
   const [expanded, setExpanded] = useState(() => {
     try {
       return localStorage.getItem(groupCardKey(group.groupId)) === "1";
@@ -731,17 +736,24 @@ function GroupContext({ group, show, groupShows, onShow, posts, draftPosts, onDr
       </button>
       <div id={id} inert={!expanded} className={cx("grid transition-[grid-template-rows] duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none", expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
         <div className="min-h-0 overflow-hidden">
-          <div className="flex max-h-[46dvh] flex-col gap-2 overflow-y-auto overscroll-contain px-4 pt-0.5 pb-3">
-            <div className="flex flex-wrap items-center gap-2">
-              {groupShows.length > 1 && <Select value={show.id} onChange={onShow} options={groupShows.map((s) => ({ value: s.id, label: s.name }))} />}
+          <div className="flex max-h-[46dvh] flex-col gap-2 overflow-y-auto overscroll-contain px-3.5 pb-2.5">
+            {/* Facts and the action share one wrapping row: nothing stacks unless it has to. */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Chip tone="fact" icon={IconMic}>
+                {show.name} · {DAY_SHORT[show.weekday]} {formatTime(show.startTime)}
+              </Chip>
+              {members !== null && <Chip icon={IconGroup}>{members} members</Chip>}
+              {admin !== null && <Chip tone={admin ? "primary" : "neutral"} icon={IconShield}>{admin ? "Admin" : "Not admin"}</Chip>}
+              {cache && <span title="When the member list was last read from WhatsApp" className="type-label-m text-on-surface-variant">Synced {timeAgo(cache.at, now)}</span>}
               <Button size="sm" variant="tonal" className="ml-auto" onClick={onEdit}>
-                {posts.length ? "Edit" : "Schedule"}
+                {posts.length ? "Edit schedule" : "Schedule"}
               </Button>
             </div>
+            {groupShows.length > 1 && <Select value={show.id} onChange={onShow} options={groupShows.map((s) => ({ value: s.id, label: s.name }))} />}
             {on.length > 0 && (
-              <ul className="flex flex-col gap-0.5 type-body-s text-on-surface-variant">
+              <ul className="flex flex-col type-body-s text-on-surface-variant">
                 {[...on].sort((a, b) => b.daysBefore - a.daysBefore || a.time.localeCompare(b.time)).map((p) => (
-                  <li key={p.id} className="truncate">
+                  <li key={p.id} className="truncate py-0.5">
                     {whenLabel(p.daysBefore)}, {formatTime(p.time)} · {p.template === "custom" ? messageSummary(groupPostMessage(settings, p)) : messageType(p.template).label}
                   </li>
                 ))}
@@ -1191,9 +1203,9 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
       </button>
       <div id={`card-${comic.id}`} inert={!expanded} className={cx("grid transition-[grid-template-rows] duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none", expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
         <div className="min-h-0 overflow-hidden">
-          <div className="flex max-h-[46dvh] flex-col gap-2.5 overflow-y-auto overscroll-contain px-4 pt-0.5 pb-3">
+          <div className="flex max-h-[46dvh] flex-col gap-2 overflow-y-auto overscroll-contain px-3.5 pb-2.5">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 type-label-m text-on-surface-variant">{week === currentWeek ? "This week" : `Week of ${formatDate(week)}`}</span>
+              <span className="mr-0.5 type-label-m text-on-surface-variant">{week === currentWeek ? "This week" : `Week of ${formatDate(week)}`}</span>
               {r ? (
                 <>
                   <Chip tone={open ? "primary" : "neutral"}>{STATUS_LABEL[r.status]}</Chip>
@@ -1207,15 +1219,11 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
                   {placedShow.name} · {DAY_SHORT[placedShow.weekday]} {formatTime(placedShow.startTime)}
                 </Chip>
               )}
+              {pills.length > 0 && <RequestPills pills={pills} />}
             </div>
-            {r && (r.intent.note || r.messages.length > 0) && <p className="type-body-m text-on-surface-variant">{r.intent.note || `“${r.messages[r.messages.length - 1].body}”`}</p>}
-            {pills.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                <RequestPills pills={pills} />
-              </div>
-            )}
+            {r && (r.intent.note || r.messages.length > 0) && <p className="line-clamp-2 type-body-s text-on-surface-variant">{r.intent.note || `“${r.messages[r.messages.length - 1].body}”`}</p>}
             <p className="type-body-s text-on-surface-variant">{prev ? `Last spot ${daysBetween(prev.date, today)} days ago (${prev.showName}).` : "No spots on record yet."}</p>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               {!placedShow && (
                 <Menu
                   trigger={(toggleMenu) => (
@@ -1242,12 +1250,13 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
                 </Menu>
               )}
               {open && (
-                <Button size="sm" variant="text" icon={IconSkip} onClick={() => void closeRequest()}>
-                  Close request
+                <Button size="sm" variant="text" icon={IconSkip} onClick={() => void closeRequest()} aria-label="Close request" title="Close request">
+                  Close<span className="hidden sm:inline"> request</span>
                 </Button>
               )}
-              <Link to={`/requests?q=${encodeURIComponent(comic.name)}`} className="state-layer ml-auto inline-flex h-9 items-center gap-1 rounded-full px-3 type-label-l text-primary">
-                Open in Requests <IconArrowRight className="icon size-4" />
+              <Link to={`/requests?q=${encodeURIComponent(comic.name)}`} aria-label="Open in Requests" title="Open in Requests" className="state-layer ml-auto inline-flex h-9 min-w-9 items-center justify-center gap-1 rounded-full text-primary sm:px-3 sm:type-label-l">
+                <span className="hidden sm:inline">Open in Requests</span>
+                <IconArrowRight className="icon size-5 sm:size-4" />
               </Link>
             </div>
           </div>
