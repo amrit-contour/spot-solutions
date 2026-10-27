@@ -1,5 +1,6 @@
 import { closesLabel, limitsText, opensLabel, type Ask, type PlannedAsk } from "@spot/shared";
-import { Bubble, Button, Chip, IconBuilding, IconClock, IconPen, IconPhone, IconSkip, IconSend, IconWarn, IconUserCheck } from "@spot/ui";
+import { Bubble, Button, Chip, IconBuilding, IconClock, IconPen, IconPhone, IconSend, IconWarn, IconUserCheck } from "@spot/ui";
+import { Card, CardActions, Chips, IconTile } from "./ui";
 import { ago, dateTime } from "../lib/time";
 import { TZ } from "../lib/asks";
 import { messageFor } from "./askMessage";
@@ -13,21 +14,19 @@ export function AskOpenCard({ a, template, now, busy, onSend, onSkip, onEdit }: 
   const message = messageFor(a, template);
   const waitingForNine = a.mode === "auto" && now < a.sendFrom;
   return (
-    <div className="flex min-w-0 flex-col gap-3 rounded-lg bg-surface-low p-4">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
-          <IconBuilding className="icon size-5" />
-        </span>
+    <Card className="flex flex-col gap-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <IconTile icon={IconBuilding} />
         <div className="min-w-0 flex-1">
           <p className="truncate type-title-m">{a.label}</p>
-          <p className="truncate type-body-m text-on-surface-variant">{dateTime(a.showDate, a.time)}</p>
+          <p className="truncate type-body-s text-on-surface-variant">{dateTime(a.showDate, a.time)}</p>
         </div>
         <Chip tone={urgent ? "error" : "neutral"} icon={IconClock} className="flex-none">
           {closesLabel(a.closesAt, now)}
         </Chip>
       </div>
 
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <Chips>
         {a.canSend ? (
           <Chip tone="fact" icon={IconUserCheck}>
             Ask {firstName(a.curatorName)}
@@ -45,16 +44,11 @@ export function AskOpenCard({ a, template, now, busy, onSend, onSkip, onEdit }: 
             {limitsText(a.hits)}
           </Chip>
         )}
-      </div>
+      </Chips>
 
-      <button onClick={onEdit} className="state-layer pressable group flex min-w-0 flex-col gap-1 rounded-md text-left" aria-label="Edit the message">
-        <Bubble outgoing>
-          <span className="line-clamp-3">{message}</span>
-        </Bubble>
-        <span className="ml-auto flex items-center gap-1 type-label-m text-on-surface-variant">
-          <IconPen aria-hidden className="icon size-3.5" /> Edit
-        </span>
-      </button>
+      <Bubble outgoing>
+        <span className="line-clamp-3">{message}</span>
+      </Bubble>
 
       {a.doc?.error && (
         <p role="alert" className="rounded-md bg-error-container px-3 py-2 type-body-s text-on-error-container">
@@ -62,22 +56,27 @@ export function AskOpenCard({ a, template, now, busy, onSend, onSkip, onEdit }: 
         </p>
       )}
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button variant="text" size="sm" icon={IconSkip} onClick={onSkip} disabled={busy}>
+      <CardActions spread>
+        <Button variant="text" size="sm" onClick={onSkip} disabled={busy} className="-ml-2">
           Skip
         </Button>
-        <Button size="sm" icon={IconSend} loading={busy} disabled={!a.canSend} onClick={onSend}>
-          {a.blocked ? "Send anyway" : "Send"}
-        </Button>
-      </div>
-    </div>
+        <span className="flex items-center gap-2">
+          <Button variant="tonal" size="sm" icon={IconPen} onClick={onEdit} disabled={busy}>
+            Edit
+          </Button>
+          <Button size="sm" icon={IconSend} loading={busy} disabled={!a.canSend} onClick={onSend}>
+            {a.blocked ? "Send anyway" : "Send"}
+          </Button>
+        </span>
+      </CardActions>
+    </Card>
   );
 }
 
 /** A coming-up ask: compact, with when it opens. */
 export function AskUpcomingRow({ a, today, onSkip }: { a: PlannedAsk; today: string; onSkip: () => void }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-surface-low p-3 pl-4">
+    <Card pad={false} className="flex min-w-0 items-center gap-3 py-2 pr-2 pl-4">
       <div className="min-w-0 flex-1">
         <p className="truncate type-title-s">{a.label}</p>
         <p className="truncate type-body-s text-on-surface-variant">
@@ -90,7 +89,7 @@ export function AskUpcomingRow({ a, today, onSkip }: { a: PlannedAsk; today: str
       <Button variant="text" size="sm" onClick={onSkip} aria-label={`Skip ${a.label} ${a.showDate}`}>
         Skip
       </Button>
-    </div>
+    </Card>
   );
 }
 
@@ -112,7 +111,7 @@ export function AskSentCard({ ask, now, onAnswer }: { ask: Ask; now: number; onA
   const who = firstName(ask.curatorName) || "the curator";
   return (
     <div className={`flex min-w-0 flex-col gap-3 rounded-lg p-4 ${unclear || check ? "bg-secondary-container text-on-secondary-container" : "bg-surface-low"}`}>
-      <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate type-title-m">{ask.roomName ?? "Room"}</p>
           <p className="truncate type-body-m opacity-80">{dateTime(ask.showDate, ask.time)}</p>
@@ -138,7 +137,7 @@ export function AskSentCard({ ask, now, onAnswer }: { ask: Ask; now: number; onA
       {unclear && (
         <>
           <p className="type-body-m">Not sure what {who} meant. What do you think?</p>
-          <div className="flex flex-wrap justify-end gap-2">
+          <CardActions>
             <Button size="sm" variant="text" onClick={() => onAnswer("waiting")}>
               Keep waiting
             </Button>
@@ -148,7 +147,7 @@ export function AskSentCard({ ask, now, onAnswer }: { ask: Ask; now: number; onA
             <Button size="sm" onClick={() => onAnswer("got_it")}>
               It's a yes
             </Button>
-          </div>
+          </CardActions>
         </>
       )}
       {check && (
@@ -160,7 +159,7 @@ export function AskSentCard({ ask, now, onAnswer }: { ask: Ask; now: number; onA
         </div>
       )}
       {ask.status === "sent" && !unclear && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <CardActions>
           <span className="mr-auto type-label-m opacity-70">Heard some other way?</span>
           <Button size="sm" variant="text" onClick={() => onAnswer("declined")}>
             They said no
@@ -168,7 +167,7 @@ export function AskSentCard({ ask, now, onAnswer }: { ask: Ask; now: number; onA
           <Button size="sm" variant="tonal" onClick={() => onAnswer("got_it")}>
             They said yes
           </Button>
-        </div>
+        </CardActions>
       )}
     </div>
   );

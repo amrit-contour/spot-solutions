@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { askDayLabel, openNow, upcomingGroups, type Ask, type PlannedAsk } from "@spot/shared";
-import { Button, Empty, IconAdd, IconBuilding, IconChat, IconClock, IconMenuDots, IconButton, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { Button, IconPlus, IconBuilding, IconChat, IconClock, IconMenuDots, IconButton, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { EmptyState, Page, Section } from "../components/ui";
 import { draftFor, useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { shortDate } from "../lib/time";
@@ -75,8 +76,8 @@ export function Asks() {
   return (
     <div className="w-full">
       <PageHeader
+        width="narrow"
         title="Asks"
-        subtitle="Ask the rooms for spots, and see how they replied."
         actions={
           <Menu align="right" trigger={(openMenu) => <IconButton icon={IconMenuDots} label="Ask settings" onClick={openMenu} />}>
             {(close) => (
@@ -94,36 +95,36 @@ export function Asks() {
             value={tab}
             onChange={setTab}
             options={[
-              { value: "open", label: `Open now${open.length ? ` ${open.length}` : ""}` },
-              { value: "coming", label: `Coming up${comingCount ? ` ${comingCount}` : ""}` },
-              { value: "sent", label: `Sent${waiting ? ` ${waiting}` : ""}${attention ? " •" : ""}` },
+              { value: "open", label: "Open", badge: open.length || undefined },
+              { value: "coming", label: "Coming", badge: comingCount || undefined },
+              { value: "sent", label: "Sent", badge: attention ? "!" : waiting || undefined },
             ]}
           />
         }
       />
 
-      <div className="min-w-0 px-4 pt-3 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12">
+      <Page gap={4}>
         {store.loading || roster.loading ? (
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : noRooms ? (
-          <Empty icon={IconBuilding} title="Add your rooms first" action={<Link to="/rooms"><Button icon={IconAdd}>Go to Rooms</Button></Link>}>
+          <EmptyState icon={IconBuilding} title="Add your rooms first" action={<Link to="/rooms"><Button icon={IconPlus}>Go to Rooms</Button></Link>}>
             Asks come from your rooms: which shows, who curates them and when to ask. Add them, or load the Bangalore starter.
-          </Empty>
+          </EmptyState>
         ) : tab === "open" ? (
-          <div className="flex min-w-0 flex-col gap-3">
+          <>
             {attention > 0 && (
-              <button onClick={() => setTab("sent")} className="state-layer pressable flex min-w-0 items-center gap-3 rounded-lg bg-secondary-container p-4 text-left text-on-secondary-container">
+              <button onClick={() => setTab("sent")} className="state-layer pressable flex min-h-14 min-w-0 items-center gap-3 rounded-lg bg-secondary-container px-4 py-3 text-left text-on-secondary-container">
                 <IconChat aria-hidden className="icon size-6 flex-none" />
                 <span className="min-w-0 flex-1 type-title-s">{attention === 1 ? "A reply needs a look" : `${attention} replies need a look`}</span>
                 <span className="type-label-l">See</span>
               </button>
             )}
             {open.length === 0 ? (
-              <Empty icon={IconClock} title="Nothing to ask right now">
+              <EmptyState icon={IconClock} title="Nothing to ask right now">
                 {groups[0] ? `The next ask opens ${askDayLabel(groups[0].date, today).toLowerCase()}: ${groups[0].asks[0]!.label}.` : "When a room's ask window opens, it shows up here."}
-              </Empty>
+              </EmptyState>
             ) : (
-              <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
+              <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
                 {open.slice(0, showAll ? undefined : 12).map((a) => (
                   <li key={a.id} className="min-w-0">
                     <AskOpenCard a={a} template={store.template} now={now} busy={busy.has(a.id)} onSend={() => void send(a)} onSkip={() => void skip(a)} onEdit={() => setEditing(a)} />
@@ -136,33 +137,27 @@ export function Asks() {
                 Show {open.length - 12} more
               </Button>
             )}
-          </div>
+          </>
         ) : tab === "coming" ? (
           groups.length === 0 ? (
-            <Empty icon={IconClock} title="Nothing coming up this week">Asks that open in the next 7 days will be listed here, by the day they open.</Empty>
+            <EmptyState icon={IconClock} title="Nothing coming up this week">Asks that open in the next 7 days will be listed here, by the day they open.</EmptyState>
           ) : (
-            <div className="flex min-w-0 flex-col gap-6">
-              {groups.map((g) => (
-                <section key={g.date} aria-label={askDayLabel(g.date, today)} className="min-w-0">
-                  <h2 className="mb-2 flex items-baseline gap-2 type-title-m text-on-surface-variant">
-                    <span className="min-w-0 truncate">Opens {askDayLabel(g.date, today).toLowerCase()}</span>
-                    <span className="type-label-m tabular">{g.asks.length}</span>
-                  </h2>
-                  <ul className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2">
-                    {g.asks.map((a) => (
-                      <li key={a.id} className="min-w-0">
-                        <AskUpcomingRow a={a} today={today} onSkip={() => void skip(a)} />
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
+            groups.map((g) => (
+              <Section key={g.date} title={`Opens ${askDayLabel(g.date, today).toLowerCase()}`} count={g.asks.length}>
+                <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
+                  {g.asks.map((a) => (
+                    <li key={a.id} className="min-w-0">
+                      <AskUpcomingRow a={a} today={today} onSkip={() => void skip(a)} />
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            ))
           )
         ) : sent.length === 0 ? (
-          <Empty icon={IconChat} title="No asks sent yet">When you send an ask, it waits here for the curator's reply. Replies are read for you.</Empty>
+          <EmptyState icon={IconChat} title="No asks sent yet">When you send an ask, it waits here for the curator's reply. Replies are read for you.</EmptyState>
         ) : (
-          <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
             {sent.map((a) => (
               <li key={a.id} className="min-w-0">
                 <AskSentCard ask={a} now={now} onAnswer={(d) => answer(a, d)} />
@@ -170,7 +165,7 @@ export function Asks() {
             ))}
           </ul>
         )}
-      </div>
+      </Page>
 
       <AskEditSheet ask={editing} message={editing ? messageFor(editing, store.template) : ""} onClose={() => setEditing(null)} onSend={(text, voice) => editing && void send(editing, text, voice)} />
       <TemplateSheet open={templateOpen} onClose={() => setTemplateOpen(false)} />
