@@ -223,7 +223,7 @@ describe("suggestions", () => {
   it("describes a suggestion in plain words", () => {
     const pub = published();
     const rm = bloom();
-    expect(describeSuggestion(suggestShowField(pub, rm.id, "mic", "times", ["21:00"]), pub)).toEqual({ where: "Bloom Indiranagar · Mic", what: "Change start times", from: "8:00 PM", to: "9:00 PM" });
+    expect(describeSuggestion(suggestShowField(pub, rm.id, "mic", "times", ["21:00"]), pub)).toEqual({ where: "Bloom Indiranagar · Mic", what: "Change start times", from: "8 PM", to: "9 PM" });
     const day = describeSuggestion(suggestDay(pub, rm.id, "mic", 3, { curators: [{ name: "Priya" }], theyReachOut: false }), pub);
     expect(day).toEqual({ where: "Bloom Indiranagar · Mic", what: "Change Wednesday", from: "Sharan", to: "Priya" });
     expect(describeSuggestion(suggestRemoveRoom(pub, rm.id), pub)).toEqual({ where: "Bloom Indiranagar", what: "Remove this room" });

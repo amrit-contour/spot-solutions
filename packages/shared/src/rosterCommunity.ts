@@ -3,12 +3,12 @@
 // A suggestion is field-level: `target` says which room / show / field, `before` is what the suggester saw, `after` what they
 // propose. Approving applies `after` to the published roster (applySuggestion) and the caller bumps the version.
 import {
-  askRuleLabel, curatorKey, roomKey, shareableCurator, shareableDay, shareableRoster, showKey, slug,
-  type AskRule, type CuratorShared, type DayPlan, type Limit, type PublishedRoster, type RoomNote, type RoomShared, type Roster, type RosterFollow,
+  curatorKey, roomKey, shareableCurator, shareableDay, shareableRoster, showKey, slug,
+  type AskRule, type CuratorShared, type DayPlan, type PublishedRoster, type RoomShared, type Roster, type RosterFollow,
   type RosterSuggestion, type ShowShared, type SharedRoster,
 } from "./rooms.ts";
 import { applyMerge, diffRosters, type RosterChange } from "./rosterMerge.ts";
-import { timesLabel } from "./roomView.ts";
+import { formatValue, timesText } from "./rosterDescribe.ts";
 import { DAY_NAMES } from "./week.ts";
 import type { Weekday } from "./types.ts";
 
@@ -370,37 +370,6 @@ export function suggestionConflict(roster: SharedRoster, s: Pick<RosterSuggestio
 
 const FIELD_NAME: Record<string, string> = { ...ROOM_FIELD_LABEL, ...SHOW_FIELD_LABEL };
 
-function noteText(n: RoomNote) {
-  const label = { instagram: "Instagram", website: "Website", walk_in: "Walk in", check_bms: "Check BookMyShow", fcfs: "First come, first served", other: "Note" }[n.kind];
-  const detail = n.kind === "instagram" ? (n.handle ? `@${n.handle}` : "") : n.kind === "website" ? (n.url ?? "") : "";
-  return [label, detail, n.text].filter(Boolean).join(" ");
-}
-function limitText(l: Limit, show?: string) {
-  if (l.unlimited) return `${show ?? "Room"}: no limit`;
-  const parts = [l.perDay && `${l.perDay} a day`, l.perWeek && `${l.perWeek} a week`, l.perMonth && `${l.perMonth} a month`].filter(Boolean);
-  return `${show ?? (l.scope === "room" ? "Room" : "Show")}: ${parts.join(", ") || "no limit"}`;
-}
-function dayText(p: DayProposal) {
-  const who = p.theyReachOut ? "they'll reach out" : p.curators.map((c) => c.name).join(" and ") || "no curator";
-  const bits = [who, p.times?.length ? timesLabel(p.times) : "", p.askRule ? askRuleLabel(p.askRule) : "", p.note ?? ""].filter(Boolean);
-  return bits.join(", ");
-}
-
-/** A value as a sentence fragment a comic can read ("none" for empty). */
-export function formatValue(field: string | undefined, v: unknown): string {
-  if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) return "nothing";
-  if (field?.startsWith("days.")) return dayText(v as DayProposal);
-  if (field === "times") return timesLabel(v as string[]);
-  if (field === "askRule") return askRuleLabel(v as AskRule);
-  if (field === "tags" || field === "aliases") return (v as string[]).join(", ");
-  if (field === "notes") return (v as RoomNote[]).map(noteText).join("; ");
-  if (field === "limits") return (v as Limit[]).map((l) => limitText(l)).join("; ");
-  if (field === "monthlyWeeks") return (v as number[]).map((w) => (w === -1 ? "last" : String(w))).join(", ");
-  if (field === "type") return { mic: "Mic", show: "Show", both: "Mic and show" }[String(v)] ?? String(v);
-  if (typeof v === "string" || typeof v === "number") return String(v);
-  return JSON.stringify(v);
-}
-
 export interface SuggestionText {
   /** "Bloom Indiranagar · Mic". */
   where: string;
@@ -437,7 +406,7 @@ export function describeSuggestion(s: Pick<RosterSuggestion, "target" | "kind" |
 function formatShowProposal(p: NewShowProposal | undefined) {
   if (!p) return undefined;
   const days = p.show.days.map((d) => DAY_NAMES[d.weekday]!.slice(0, 3)).join(", ");
-  return [p.show.name, days, p.show.times.length ? timesLabel(p.show.times) : ""].filter(Boolean).join(", ");
+  return [p.show.name, days, p.show.times.length ? timesText(p.show.times) : ""].filter(Boolean).join(", ");
 }
 function formatRoomProposal(p: NewRoomProposal | undefined) {
   if (!p) return undefined;

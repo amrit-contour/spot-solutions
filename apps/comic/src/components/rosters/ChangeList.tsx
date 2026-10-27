@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { RosterChange } from "@spot/shared";
+import { changeTitle, describeChange, type RosterChange } from "@spot/shared";
 import { Button, Chip } from "@spot/ui";
 
 const OP: Record<RosterChange["op"], { label: string; tone: "success" | "primary" | "error" }> = {
@@ -8,12 +8,14 @@ const OP: Record<RosterChange["op"], { label: string; tone: "success" | "primary
   removed: { label: "Removed", tone: "error" },
 };
 
-const show = (v: unknown): string => {
-  if (v === undefined || v === null || v === "") return "nothing";
-  if (typeof v === "string" || typeof v === "number") return String(v);
-  const s = JSON.stringify(v);
-  return s.length > 140 ? `${s.slice(0, 137)}...` : s;
-};
+/** The words under a change: "9 PM → 8:30 PM", "+ new-comics", or what a new show or room holds. Never raw values. */
+export function ChangeDetail({ change }: { change: RosterChange }) {
+  const t = describeChange(change);
+  const line = t.diff ? <>{t.diff}</> : t.from !== undefined || t.to !== undefined ? (
+    <>{t.from !== undefined && t.from}{t.from !== undefined && t.to !== undefined && <span aria-label="becomes"> → </span>}{t.to !== undefined && t.to}</>
+  ) : t.summary ? <>{t.summary}</> : null;
+  return line ? <span className="mt-1 block break-words type-body-s text-on-surface-variant">{line}</span> : null;
+}
 
 const groupOf = (c: RosterChange) => (c.level === "curator" ? "Curators" : c.label.split(" · ")[0]!);
 
@@ -57,13 +59,9 @@ export function ChangeList({ changes, picked, onPick, verb = "Added" }: { change
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-2">
                       <Chip tone={OP[c.op].tone} className="flex-none">{c.op === "added" ? verb : OP[c.op].label}</Chip>
-                      <span className="min-w-0 truncate type-body-l">{c.label.split(" · ").slice(1).join(" · ") || (c.level === "room" ? "The whole room" : c.label)}</span>
+                      <span className="min-w-0 truncate type-body-l">{changeTitle(c)}</span>
                     </span>
-                    {c.op === "changed" && (
-                      <span className="mt-1 block break-words type-body-s text-on-surface-variant">
-                        {show(c.before)} <span aria-label="becomes">→</span> {show(c.after)}
-                      </span>
-                    )}
+                    <ChangeDetail change={c} />
                   </span>
                 </label>
               </li>

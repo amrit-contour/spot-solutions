@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { applyMerge, diffRosters, type RosterChange, type Roster } from "@spot/shared";
-import { Button, Chip, IconWarn, Sheet, cx } from "@spot/ui";
+import { applyMerge, changeTitle, diffRosters, type RosterChange, type Roster } from "@spot/shared";
+import { Button, Chip, IconWarn, Sheet } from "@spot/ui";
 import { useRoster } from "../lib/roster";
+import { ChangeDetail } from "./rosters/ChangeList";
 
 export interface Incoming {
   roster: Roster;
@@ -16,13 +17,6 @@ const OP: Record<RosterChange["op"], { label: string; tone: "success" | "primary
   added: { label: "Added", tone: "success" },
   changed: { label: "Changed", tone: "primary" },
   removed: { label: "Removed", tone: "error" },
-};
-
-const show = (v: unknown): string => {
-  if (v === undefined || v === null || v === "") return "nothing";
-  if (typeof v === "string" || typeof v === "number") return String(v);
-  const s = JSON.stringify(v);
-  return s.length > 140 ? `${s.slice(0, 137)}...` : s;
 };
 
 /** Where a change belongs, for grouping: the room (or "Curators"). */
@@ -120,13 +114,9 @@ export function ImportSheet({ incoming, onClose, onApplied }: { incoming: Incomi
                           <span className="min-w-0 flex-1">
                             <span className="flex min-w-0 items-center gap-2">
                               <Chip tone={OP[c.op].tone} className="flex-none">{OP[c.op].label}</Chip>
-                              <span className="min-w-0 truncate type-body-l">{c.label.split(" · ").slice(1).join(" · ") || (c.level === "room" ? "The whole room" : c.label)}</span>
+                              <span className="min-w-0 truncate type-body-l">{changeTitle(c)}</span>
                             </span>
-                            {c.op === "changed" && (
-                              <span className={cx("mt-1 block break-words type-body-s text-on-surface-variant")}>
-                                {show(c.before)} <span aria-label="becomes">→</span> {show(c.after)}
-                              </span>
-                            )}
+                            <ChangeDetail change={c} />
                           </span>
                         </label>
                       </li>
