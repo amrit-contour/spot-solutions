@@ -11,7 +11,9 @@ export function LinkStatusPill({ view, label, warn }: { view: LinkView; label: s
   const tone = warn || view === "offline" ? "bg-error-container text-on-error-container" : view === "restarting" ? "bg-tertiary-container text-on-tertiary-container" : view === "ready" ? "bg-secondary-container text-on-secondary-container" : view === "idle" || view === "unknown" ? "border border-outline-variant text-on-surface-variant" : "bg-surface-high text-primary";
   return (
     <span className={cx("relative inline-flex h-7 max-w-full min-w-0 flex-none items-center gap-1.5 rounded-full px-2.5 type-label-m", tone)}>
-      {(view === "starting" || view === "restarting") && <span className="pulse-ring absolute inset-0 rounded-full bg-primary/20" />}
+      {/* Box-shadow halo (status-pulse), never a scale/opacity ring: those get composited and rasterised blurry on iPhone, and
+          a scaled ring spilled wider than the pill. */}
+      {(view === "starting" || view === "restarting") && <span aria-hidden className="status-pulse pointer-events-none absolute inset-0 rounded-full text-primary" style={{ ["--pulse" as string]: "4px" }} />}
       <Ico className="icon relative size-4 flex-none" />
       <span className="relative truncate">{label}</span>
     </span>
