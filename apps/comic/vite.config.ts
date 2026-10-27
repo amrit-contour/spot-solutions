@@ -4,14 +4,37 @@ import tailwindcss from "@tailwindcss/vite";
 import Icons from "unplugin-icons/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
+import { copyFileSync, readFileSync } from "node:fs";
+import type { Plugin } from "vite";
 import { iconVersion } from "../../packages/ui/icon-version.ts";
 
 // ?v=<hash of the icon files> on every icon/manifest-icon URL, so a changed icon is never served from a stale browser cache.
 const icons = iconVersion(fileURLToPath(new URL("./public", import.meta.url)));
 
+// The privacy policy and terms have one source (apps/web/public); Comedy serves the same files, at build and in dev, never a copy in git.
+const LEGAL = ["privacy.html", "terms.html", "legal.css"];
+const legalSrc = (f: string) => fileURLToPath(new URL(`../web/public/${f}`, import.meta.url));
+const legalFiles = (): Plugin => ({
+  name: "shared-legal-pages",
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const path = (req.url ?? "").split("?")[0];
+      const f = LEGAL.find((n) => path === `/${n}` || path === `/${n.replace(/\.html$/, "")}`);
+      if (!f) return next();
+      res.setHeader("Content-Type", f.endsWith(".css") ? "text/css" : "text/html; charset=utf-8");
+      res.end(readFileSync(legalSrc(f)));
+    });
+  },
+  closeBundle() {
+    const out = fileURLToPath(new URL("./dist/", import.meta.url));
+    for (const f of LEGAL) copyFileSync(legalSrc(f), out + f);
+  },
+});
+
 export default defineConfig({
   plugins: [
     react(),
+    legalFiles(),
     icons.plugin,
     tailwindcss(),
     Icons({ compiler: "jsx", jsx: "react", scale: 1 }),

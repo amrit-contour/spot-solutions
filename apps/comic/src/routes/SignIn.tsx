@@ -26,6 +26,9 @@ export function SignIn() {
         <Button size="lg" onClick={go}>
           Continue with Google
         </Button>
+        <p className="type-body-s text-on-surface-variant">
+          <a className="underline underline-offset-4" href="/privacy">Privacy</a> · <a className="underline underline-offset-4" href="/terms">Terms</a>
+        </p>
         {import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "1" && (
           <Button variant="outlined" onClick={emulatorUser}>
             Sign in as the emulator test user

@@ -24,3 +24,4 @@ th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-botto
 th { color: var(--muted); font-weight: 600; white-space: nowrap; }
 footer { padding: 40px 20px 48px; color: var(--muted); font-size: 14px; }
 footer a { color: var(--muted); }
+h3 { font-size: 16px; margin: 22px 0 4px; }

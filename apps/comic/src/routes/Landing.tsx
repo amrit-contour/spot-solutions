@@ -254,8 +254,8 @@ export function Landing() {
             <span>Nothing BOT Comedy · Made by Amrit Dash · open source (MIT)</span>
             <div className="flex-1" />
             <a className="hover:text-on-surface" href={CURATING}>Nothing BOT Curating</a>
-            <a className="hover:text-on-surface" href={`${CURATING}/privacy`}>Privacy</a>
-            <a className="hover:text-on-surface" href={`${CURATING}/terms`}>Terms</a>
+            <a className="hover:text-on-surface" href="/privacy">Privacy</a>
+            <a className="hover:text-on-surface" href="/terms">Terms</a>
             <a className="hover:text-on-surface" href="https://github.com/amrit-contour/spot-solutions" target="_blank" rel="noreferrer">GitHub</a>
           </div>
         </footer>

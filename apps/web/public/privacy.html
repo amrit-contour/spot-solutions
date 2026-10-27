@@ -3,59 +3,73 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Privacy Policy · Nothing BOT Curating</title>
-<meta name="description" content="How Nothing BOT Curating handles your data: what it stores, where, and what it never does." />
-<link rel="canonical" href="https://nothingbotcurating.web.app/privacy" />
-<meta property="og:site_name" content="Nothing BOT Curating" />
-<meta property="og:image" content="https://nothingbotcurating.web.app/brand/og.jpg" />
+<title>Nothing BOT · Privacy</title>
+<meta name="description" content="How Nothing BOT Curating, Comedy and Server handle your data: what they store, where, and what they never do." />
+<meta property="og:site_name" content="Nothing BOT" />
+<meta name="theme-color" content="#17120d" />
 <link rel="icon" href="/favicon.svg" />
 <link rel="stylesheet" href="/legal.css" />
 </head>
 <body>
-<header><a class="brand" href="/"><img src="/brand/logo-120.png" alt="" width="36" height="36" /><span>Nothing BOT Curating</span></a></header>
+<header><a class="brand" href="/"><img src="/brand/logo-512.png" alt="" width="36" height="36" /><span>Nothing BOT</span></a></header>
 <main>
 <h1>Privacy Policy</h1>
-<p class="meta">Effective 26 October 2026 · Updated 26 October 2026 (agent number)</p>
+<p class="meta">Effective 26 October 2026 · Updated 27 October 2026</p>
 
-<p>Nothing BOT Curating is an open-source tool that helps open-mic comedy curators manage spot requests that arrive on WhatsApp. Nothing BOT Curating is made by Amrit Dash. This policy explains what the hosted app at <b>nothingbotcurating.web.app</b> stores, where it is stored, and what it never does. The source code is public at <a href="https://github.com/amrit-contour/spot-solutions">github.com/amrit-contour/spot-solutions</a>, so every statement here can be checked.</p>
+<p>Nothing BOT is a small family of open-source tools for open-mic comedy, made by Amrit Dash. This one policy covers all three:</p>
+<ul>
+  <li><b>Nothing BOT Curating</b>: for curators. It sorts spot requests that arrive on WhatsApp, builds lineups and sends replies.</li>
+  <li><b>Nothing BOT Comedy</b>: for comics. It keeps a roster of rooms, watches the WhatsApp groups you choose for spot alerts, sends your spot asks and tracks your spots.</li>
+  <li><b>Nothing BOT Server</b>: the program that runs on your own computer, holds your WhatsApp connection and does the reading. Both apps use it.</li>
+</ul>
+<p>They share one sign-in (your Google account), one database project and the same self-hosted server, so what we store about you is described together. The apps are hosted at nothingbotcurating.web.app, nothingbotcomedy.web.app and their matching nothing-bot-, nothingbut- and nothing-but- addresses. The source code is public at <a href="https://github.com/amrit-contour/spot-solutions">github.com/amrit-contour/spot-solutions</a>, so every statement here can be checked.</p>
 
 <h2>Who this applies to</h2>
 <ul>
-  <li><b>Curators</b>: people who sign in to the app and link their WhatsApp.</li>
-  <li><b>People who message a curator</b> (for example comics asking for a spot). They never use the app, but some of their messages are processed on the curator's behalf, as described below.</li>
-  <li><b>Demo visitors</b>: people who try the demo without signing in.</li>
+  <li><b>Curators</b>: people who sign in to Curating and link their WhatsApp.</li>
+  <li><b>Comics</b>: people who sign in to Comedy and link their WhatsApp.</li>
+  <li><b>People who message them</b> (for example comics asking a curator for a spot, curators replying to a comic's ask, or anyone who posts in a WhatsApp group a comic watches). They never use the app, but some of their messages are processed on the app user's behalf, as described below.</li>
+  <li><b>Demo visitors</b>: people who try the Curating demo without signing in.</li>
 </ul>
 
 <h2>What we collect and why</h2>
 <table>
   <tr><th>Data</th><th>Why</th><th>Where it lives</th></tr>
   <tr><td>Your Google account name, email address and profile photo</td><td>To sign you in and decide who may use the app (access is invite-only)</td><td>Firebase Authentication and Cloud Firestore</td></tr>
-  <tr><td>Your WhatsApp phone number and display name</td><td>To show which WhatsApp account is linked</td><td>Cloud Firestore</td></tr>
-  <tr><td>Messages that are spot requests, cancellations or questions about your shows, plus the sender's name and phone number. This includes spot requests found when you run "Scan past messages" over your recent DMs</td><td>So you can review requests, build lineups and reply</td><td>Cloud Firestore</td></tr>
-  <tr><td>Your roster of comics, shows, venues, lineups, message templates and settings</td><td>The core function of the app</td><td>Cloud Firestore</td></tr>
+  <tr><td>Your WhatsApp phone number and display name (both apps)</td><td>To show which WhatsApp account is linked</td><td>Cloud Firestore</td></tr>
+  <tr><td>Nothing BOT Curating: messages that are spot requests, cancellations or questions about your shows, plus the sender's name and phone number. This includes spot requests found when you run "Scan past messages" over your recent DMs</td><td>So you can review requests, build lineups and reply</td><td>Cloud Firestore</td></tr>
+  <tr><td>Nothing BOT Curating: your roster of comics, shows, venues, lineups, message templates and settings</td><td>The core function of the app</td><td>Cloud Firestore</td></tr>
   <tr><td>Your WhatsApp Web login session, encrypted</td><td>So another of your servers can take over without a new QR scan</td><td>On the server computer(s) you run, and an encrypted copy (AES-256-GCM, a separate key per account) in Google Cloud Storage</td></tr>
-  <tr><td>Contacts you choose to import (from WhatsApp, a file, or a group)</td><td>To add comics to your roster</td><td>Cloud Firestore</td></tr>
-  <tr><td>Push notification tokens for your devices</td><td>To send you alerts you turned on</td><td>Cloud Firestore</td></tr>
+  <tr><td>Nothing BOT Comedy: the WhatsApp groups you choose to watch (name and group id)</td><td>So only those groups are read for spot alerts</td><td>Cloud Firestore</td></tr>
+  <tr><td>Nothing BOT Comedy: spot alerts made from watched groups (the offer, closure, schedule or opening notice parsed into fields such as room, date, time and who posted, plus a short quote of the message)</td><td>To show you alerts, send a push notification and keep your rooms up to date</td><td>Cloud Firestore. Alerts expire and are cleaned up; the chat itself is never stored</td></tr>
+  <tr><td>Nothing BOT Comedy: your rooms and their shows, times, ask rules and limits, and the curators you list for each room (name, phone number, Instagram handle if you enter one)</td><td>The core function of Comedy: knowing where and who to ask</td><td>Cloud Firestore</td></tr>
+  <tr><td>Nothing BOT Comedy: asks (the drafted and sent message, which room and date, its status) and the curator's reply that was read, as a short quote plus what it meant (got it, declined, unclear)</td><td>To send your asks and tell you what the curator answered</td><td>Cloud Firestore</td></tr>
+  <tr><td>Nothing BOT Comedy: My spots, regular spots, notes, ratings and set lists</td><td>To keep your own calendar and history of spots</td><td>Cloud Firestore, readable only by you</td></tr>
+  <tr><td>Nothing BOT Comedy: community rosters you publish or follow, suggestions, co-maintainers, rosters shared with you</td><td>To share a room roster with other comics (see "Community rosters" below)</td><td>Cloud Firestore</td></tr>
+  <tr><td>Nothing BOT Server: the server's name, status and last-seen time, which account it runs and the connection state of your WhatsApp</td><td>To show whether your WhatsApp is connected and which server runs it</td><td>Cloud Firestore</td></tr>
+  <tr><td>Nothing BOT Curating: contacts you choose to import (from WhatsApp, a file, or a group)</td><td>To add comics to your roster</td><td>Cloud Firestore</td></tr>
+  <tr><td>Push notification tokens for your devices, marked with which app (Curating or Comedy) registered them</td><td>To send you alerts you turned on</td><td>Cloud Firestore</td></tr>
   <tr><td>If you turn on "Your voice": a short description of how you write and up to 15 messages you sent, picked as examples</td><td>So messages to comics are written the way you write</td><td>Cloud Firestore. You can read, edit or remove them in Settings → Messages</td></tr>
   <tr><td>If you press "Keep connected" for Google Contacts: a long-lived Google access token (a "refresh token"), stored encrypted, and the email address of the Google account you connected with, plus the date</td><td>So names can be saved to your Google Contacts when you add or rename a comic, even when the app is closed</td><td>Cloud Firestore (asia-south1), in documents no app user can read or write. The token is encrypted (AES-256-GCM) with a key held in Google Cloud Secret Manager. Only the email and date are shown back to you</td></tr>
   <tr><td>An optional Gemini API key you add</td><td>To use Google's Gemini models if you allow them</td><td>Cloud Firestore, readable only by the server</td></tr>
 </table>
-<p>Messages that are not spot requests or related to your shows (personal chats, bank alerts, OTPs and so on) are read only to decide that they are not relevant, and are <b>not stored</b>. Chats from before you linked WhatsApp are only read when you run "Scan past messages" yourself. That scan runs on your own server, sends nothing to anyone, and messages that are not spot requests are not stored.</p>
+<p>In Curating, messages that are not spot requests or related to your shows (personal chats, bank alerts, OTPs and so on) are read only to decide that they are not relevant, and are <b>not stored</b>. Chats from before you linked WhatsApp are only read when you run "Scan past messages" yourself. That scan runs on your own server, sends nothing to anyone, and messages that are not spot requests are not stored.</p>
 <p>Firestore and Cloud Storage data is hosted by Google Cloud in the asia-south1 (Mumbai) region.</p>
 
 <h2>How messages are processed by AI</h2>
-<p>By default, messages are read by an open-weight Gemma model running on the curator's own computer, through Ollama. No cloud AI service sees them.</p>
-<p>If a curator adds a Gemini API key and chooses "Local first, Gemini as backup", messages may be sent to Google's Gemini API when the local model is unavailable. That processing is covered by <a href="https://ai.google.dev/gemini-api/terms">Google's Gemini API terms</a>. Curators who choose "Local only" never have messages sent to a cloud model.</p>
+<p>Where there is a choice, the app first tries plain rules, and uses a model only when the rules are unsure. By default the model is an open-weight Gemma model running on your own computer through Ollama. No cloud AI service sees your messages.</p>
+<p>If you add a Gemini API key and choose "Local first, Gemini as backup", then when the local model is unavailable, the text being read may be sent to Google's Gemini API. That is only the text of the one message being read (a group message in Comedy, a request in Curating), a curator's reply to your ask together with the ask's room, date and time, or, for "Your voice", the sample messages being summarised. Whole chats are not sent. Google handles it under <a href="https://ai.google.dev/gemini-api/terms">its Gemini API terms</a>. If you choose "Local only", nothing is ever sent to a cloud model.</p>
+<p>Your messages are not used to train AI models by us.</p>
 
-<h2>Your voice</h2>
+<h2>Your voice (both apps)</h2>
 <p>"Your voice" is off until you choose "Learn my voice". It then reads only messages <b>you</b> sent. You choose which chats: by default your recent WhatsApp DMs and the groups linked to your shows, or only the chats you pick (the list of your chats is fetched by name from your own server when you open the picker and is not stored; only the ones you tick are saved). Messages from other people are never read for this. Phone numbers and links are removed, and the model writes a short description of your style and picks up to 15 of your messages as examples. Only that description and those examples are stored; the chats themselves are not. The AI model that does this follows your AI models setting: on "Local only" nothing leaves your server.</p>
 <p>When it's on, each message to a comic is drafted from the show details, your description and examples, and your own template. A draft that changes or drops a date, time, venue or link is discarded and your template is sent instead. You can switch it off, edit the description, or remove examples at any time.</p>
 
-<h2>Messages page</h2>
+<h2>Messages page (Curating)</h2>
 <p>The Messages page lets you read and answer your comics' WhatsApp chats inside the app. Chats are <b>fetched on demand</b> from your own server, which reads them from your own WhatsApp when you open the page or a chat, and are <b>never written to our database</b>. The only trace is the short-lived result of that request, which is readable only by you, is deleted by the app as soon as it has been shown, and carries an expiry so Firestore removes it within about a day even if the app is closed first. Only people on your Comics list are listed; personal chats and groups are never opened. A message you send from here is sent the same way as any other reply, from your own WhatsApp.</p>
 <p>"Summarise this chat" asks the AI model you chose in AI models (local by default; on "Local only" nothing leaves your server) to read the latest messages of that one chat. It only suggests: nothing is sent or changed until you click, and each suggested change must quote your chat. The summary is shown to you and is not saved.</p>
 
-<h2>Google Contacts</h2>
+<h2>Google Contacts (Curating)</h2>
 <p>If you turn on "Save names to Google Contacts", the app asks Google for permission to manage your contacts (<code>https://www.googleapis.com/auth/contacts</code>). It uses that permission only to:</p>
 <ul>
   <li>read the names and phone numbers in your contacts, to find a contact with the same phone number as a comic;</li>
@@ -64,15 +78,36 @@
 <p>It never deletes contacts and never changes anything other than names and phone numbers. Bulk changes (for example "Sync all comics now") are shown to you for confirmation first, and an import of many comics at once is never saved automatically.</p>
 <p>There are two ways to connect:</p>
 <ul>
-  <li><b>Keep connected</b> (recommended). You approve once in Google's own popup. Nothing BOT Curating then stores a long-lived access token for your Google account, so your comic names are saved to Google Contacts even when the app is closed. We store: (1) that token, <b>encrypted</b> with AES-256-GCM, with the key held in Google Cloud Secret Manager and not in the database; and (2) the email address of the Google account you connected, and the date. They live in Cloud Firestore in the asia-south1 (Mumbai) region, in documents that no signed-in user, including you, can read or write through the app: the token is never sent back to your browser. Only the app's Cloud Functions, acting for you, can decrypt it, and only to exchange it with Google for a short-lived access token. We check that the Google account you pick has the same verified email as the one you signed in with, and refuse it otherwise.</li>
+  <li><b>Keep connected</b> (recommended). You approve once in Google's own popup. Nothing BOT then stores a long-lived access token for your Google account, so your comic names are saved to Google Contacts even when the app is closed. We store: (1) that token, <b>encrypted</b> with AES-256-GCM, with the key held in Google Cloud Secret Manager and not in the database; and (2) the email address of the Google account you connected, and the date. They live in Cloud Firestore in the asia-south1 (Mumbai) region, in documents that no signed-in user, including you, can read or write through the app: the token is never sent back to your browser. Only the app's Cloud Functions, acting for you, can decrypt it, and only to exchange it with Google for a short-lived access token. We check that the Google account you pick has the same verified email as the one you signed in with, and refuse it otherwise.</li>
   <li><b>For this visit only.</b> The access token is kept in your browser's memory for about an hour and is never stored on our servers.</li>
 </ul>
 <p>In both cases your Google contact list is not copied to our database. When names are saved from the server, the list of your contacts' phone numbers and names is read into the function's memory for the few seconds it takes to match numbers and write names, and is then discarded.</p>
 <p><b>Disconnecting.</b> Press <b>Disconnect</b> under Settings, Google Contacts. The app revokes the token with Google and deletes the stored copy straight away. You can also remove access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>; the app notices the next time it tries to save a name, marks Google Contacts as disconnected and leaves a note in Updates.</p>
-<p><b>Nothing BOT Curating's use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</b> We do not use Google user data for advertising, do not sell it, do not transfer it to third parties except as needed to provide the feature you asked for, and do not allow humans to read it except with your consent, for security purposes, or as required by law.</p>
+<p><b>Nothing BOT's use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</b> We do not use Google user data for advertising, do not sell it, do not transfer it to third parties except as needed to provide the feature you asked for, and do not allow humans to read it except with your consent, for security purposes, or as required by law.</p>
+
+<h2>Nothing BOT Comedy in detail</h2>
+<h3>Watched groups and spot alerts</h3>
+<p>Comedy reads a WhatsApp group only if you added it to your watched groups. That check comes first, before the text or the author is looked at: groups you did not pick are never read. In a watched group it looks for four kinds of message: a spot offer, a room being full or closed, a curator schedule update, and an opening notice. Anything else is dropped without being stored. What is kept is the parsed fields (room, date, time, who posted) and a short quote, never the chat. Simple rules read the message first; the AI model is used only when the rules are unsure. A new offer can send you a push notification, and group updates change your rooms only if you turned on automatic updates (otherwise each waits for your tap). You can stop watching a group at any time.</p>
+<h3>Push notifications</h3>
+<p>If you allow notifications, your browser or phone gives the app a device token through Firebase Cloud Messaging. We store the token, the platform and when it was last used, tagged with the app that asked for it. It is used only to send you the alerts you turned on. You can turn them off in your browser or device settings at any time.</p>
+<h3>Asks to curators</h3>
+<p>When you ask a room for a spot, the message is sent from <b>your own WhatsApp</b>, as a direct message to the curator, in your name. It goes out when you send it, or automatically only for rooms you set to send on their own. If you turned on "Your voice" the wording may be rewritten to sound like you, but a rewrite that changes a date, time or link is discarded. After an ask goes out, Comedy reads that curator's replies in that one chat, to work out whether you got the spot, were declined or it is unclear. It reads only the curator's messages after the ask, not the rest of the conversation. Voice notes, stickers and images are not read; an emoji-only reply is understood without a model and flagged for you to confirm. A reply is stored as a short quote and the result. The model never decides alone: its answer has to quote the reply.</p>
+<h3>My spots, regular spots, notes, ratings and set lists</h3>
+<p>These are yours. They are stored in your account and only you can read them, apart from the exceptions below that you choose.</p>
+<h3>Rooms and curators</h3>
+<p>Your roster of rooms includes the curators you list, with the names and phone numbers (and Instagram handles) that you type or import yourself. Please only enter details you are allowed to keep, and see the Terms.</p>
+<h3>Community rosters</h3>
+<p>You can publish a roster of rooms so other comics can follow it. A published roster contains the rooms, their shows and times, and the curators of each room including their names, phone numbers and Instagram handles, and it is <b>visible to every signed-in, approved member of Nothing BOT</b>, not just your followers. Only people the administrators approved to publish can publish. Other things people can do with a roster: suggest a change (the suggestion, its author's name and a note are visible to that roster's maintainers and the author), become a co-maintainer you add, follow it (we store only the follower's name and a date, and the app shows a count), or receive a copy you share with one person. Adding a co-maintainer, or sharing rooms with one person, uses a <b>directory of approved members</b>: it shows each member's name, email address and profile photo so you can pick who you mean. The directory is only shown to signed-in, approved members and is never public. You can unpublish a roster, which deletes it; copies already shared with someone stay in their account.</p>
+<h3>The agent number</h3>
+<p>Comics can talk to the agent number about their rooms, spots, asks and alerts. See "The agent number" below: it reads only what you send it, repeats what it understood before changing anything that matters, and any ask still goes out from your own WhatsApp.</p>
+<h3>Connection status</h3>
+<p>Comedy shows whether your WhatsApp is connected and which server is running it, using the status your server reports.</p>
+
+<h2>Nothing BOT Server</h2>
+<p>The server is a program you (or an administrator on your behalf) run on a computer you control. It holds the WhatsApp Web connection, reads messages, runs the local AI model and writes the results to the database. Your chats stay on that computer: the apps and our database only ever receive the parsed results described above. Whoever holds the server's credentials can technically read what the server can read, as with any self-hosted software. Running a server records its name, version, status and last-seen time in the database. Your WhatsApp login session is stored on the server and, encrypted, in Cloud Storage so another of your servers can take over (see the table).</p>
 
 <h2>The agent number</h2>
-<p>The agent number is optional and off until you link it. It is a second WhatsApp number, linked the same way as yours, that Nothing BOT Curating uses to message <b>you</b>: mic checks, new-request summaries, a morning summary, and answers to what you ask it. You can also ask it to make changes (for example "add Rohan to Tuesday"); it repeats what it understood and does nothing until you reply yes.</p>
+<p>The agent number is optional and off until you link it. It works for both apps: curators use it for their lineups, and comics can use it to ask about and change their rooms, spots and asks (for example "ask the Tuesday room"). It acts on your Comedy data only, never reads your chats, and the rules below apply to both. It is a second WhatsApp number, linked the same way as yours, that Nothing BOT uses to message <b>you</b>: mic checks, new-request summaries, a morning summary, and answers to what you ask it. You can also ask it to make changes (for example "add Rohan to Tuesday"); it repeats what it understood and does nothing until you reply yes.</p>
 <ul>
   <li><b>What it reads:</b> only messages sent to it from <b>your own number</b>, in a one-to-one chat. Messages from anyone else, and everything in groups, are ignored: they are not read, not logged and not stored. Optionally it can answer a stranger with one fixed polite line; that setting is off by default, and it keeps only a one-way hash of who it told, never the message.</li>
   <li><b>What it stores:</b> its own WhatsApp login (encrypted, backed up like yours so another server can take over), what it is waiting for you to answer (for up to 10 minutes), and when it last sent your morning summary. Your messages to it are not kept.</li>
@@ -84,15 +119,17 @@
 <h2>What we never do</h2>
 <ul>
   <li>Sell or rent your data, or use it for advertising.</li>
-  <li>Send WhatsApp messages without your action. Replies, confirmations and regrets go out when you press send. The optional auto-acknowledgement is off by default.</li>
+  <li>Send WhatsApp messages without your action. Replies, confirmations and asks go out when you press send, or for the optional automatic features (Curating auto-acknowledgement, Comedy rooms set to send their own asks) only when you turned them on.</li>
   <li>Use your data to train AI models.</li>
+  <li>Read a WhatsApp group you did not choose to watch, or a chat other than the one you asked about.</li>
 </ul>
 
 <h2>Who can access your data</h2>
 <ul>
   <li><b>You</b>, through the app.</li>
+  <li><b>Other signed-in members</b>, but only for what you choose to publish or share, such as a community roster and its curator details.</li>
   <li><b>The people who run the servers</b> your account uses. Servers are ordinary computers run by the project's administrators; whoever holds a server's credentials can technically read the project's data, as with any self-hosted software.</li>
-  <li><b>Cloud Functions acting for you</b>, for Google Contacts: if you pressed Keep connected, the app's own server code uses your stored token, and only for your account, to save the names you add or rename. No person reads it. The people who run the project's Google Cloud could technically reach the encrypted token and its key, as with any hosted service.</li>
+  <li><b>Cloud Functions acting for you</b>, for Google Contacts (Curating): if you pressed Keep connected, the app's own server code uses your stored token, and only for your account, to save the names you add or rename. No person reads it. The people who run the project's Google Cloud could technically reach the encrypted token and its key, as with any hosted service.</li>
   <li><b>Google</b>, as the provider of Firebase, Google Cloud and (only if you allow it) the Gemini API, under its own terms.</li>
 </ul>
 
@@ -100,13 +137,13 @@
 <p>The demo signs you in anonymously and gives you a private copy of sample data. Nothing you do there touches real WhatsApp accounts, and demo sandboxes may be deleted at any time.</p>
 
 <h2>Keeping and deleting data</h2>
-<p>Your data is kept while you use the app. You can unlink WhatsApp at any time in Settings, which deletes the login session and its encrypted backup. To have your account and all of its data deleted, ask an administrator or open a request on <a href="https://github.com/amrit-contour/spot-solutions/issues">GitHub</a>; the app has tools to delete everything for an account. You can also revoke the app's Google access, and so stop it saving names to your contacts, at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+<p>Your data is kept while you use the apps. You can unlink WhatsApp at any time in Settings, which deletes the login session and its encrypted backup. To have your account and all of its data deleted, ask an administrator or open a request on <a href="https://github.com/amrit-contour/spot-solutions/issues">GitHub</a>; the app has tools to delete everything for an account. You can also revoke the app's Google access, and so stop it saving names to your contacts, at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
 
 <h2>Security</h2>
 <p>Access to data is enforced by Firestore security rules: each curator can read only their own data, and server-only data (such as encryption keys, login backups and the encrypted Google Contacts token) is not readable by any app user. WhatsApp login backups are encrypted before upload. See <a href="https://github.com/amrit-contour/spot-solutions/blob/main/SECURITY.md">SECURITY.md</a> for details and how to report a problem.</p>
 
 <h2>Children</h2>
-<p>Nothing BOT Curating is not intended for anyone under 18.</p>
+<p>Nothing BOT is not intended for anyone under 18.</p>
 
 <h2>Changes</h2>
 <p>If this policy changes, the new version will be posted here with a new effective date.</p>

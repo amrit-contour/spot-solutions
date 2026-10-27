@@ -91,6 +91,9 @@ export function SignIn() {
             </Button>
           </div>
           <p className="mt-4 type-body-s text-on-surface-variant">The demo is your own sandbox of a curator's week. No sign-up.</p>
+          <p className="mt-2 type-body-s text-on-surface-variant">
+            <a className="underline underline-offset-4" href="/privacy">Privacy</a> · <a className="underline underline-offset-4" href="/terms">Terms</a>
+          </p>
         </div>
         <ul className="grid gap-4 type-body-m text-on-surface-variant sm:grid-cols-2">
           <li className="flex gap-3">
