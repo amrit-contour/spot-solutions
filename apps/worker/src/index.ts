@@ -163,7 +163,13 @@ async function main() {
     process.exit(code);
   };
   // SIGHUP too (terminal closed, ssh dropped): puppeteer's own handlers are off, so this drain is the only thing that closes Chromium cleanly.
-  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => void shutdown());
+  // A signal is a stop only when the owner pressed Stop server (NBS_WORKER_STOPPED in .env). Any other signal (an update, a restart,
+  // a supervisor reload) exits 75 so launchd's KeepAlive {SuccessfulExit: false} and the other supervisors start us again;
+  // exiting 0 there left the worker down after an update.
+  const ownerStopped = () => {
+    try { return /^NBS_WORKER_STOPPED=(1|true|yes)\s*$/im.test(readFileSync(process.env.NBS_ENV_FILE ?? ".env", "utf8")); } catch { return false; }
+  };
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => void shutdown(ownerStopped() ? 0 : 75));
   // Node prints MaxListenersExceededWarning without saying who added the listeners; log the stack once per kind so the
   // source shows up in worker.log instead of a bare "possible memory leak" line.
   const warned = new Set<string>();
