@@ -49,8 +49,9 @@ export function AccountMenu({
       trigger={(toggle, open) => (
         <button onClick={toggle} aria-label={status ? `Account · ${status.label}` : "Account"} aria-expanded={open} className={cx("pressable relative rounded-full p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary", open && "ring-2 ring-primary")}>
           {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
+          {/* The dot sits inside the avatar's square, flush with its bottom-right corner (the button's 2px padding = the avatar's edge). */}
           {status && (
-            <span data-status={status.tone} className="absolute right-0.5 -bottom-0.5">
+            <span data-status={status.tone} className="absolute right-0.5 bottom-0.5">
               <StatusDot tone={status.tone} size={12} ring />
             </span>
           )}
