@@ -26,7 +26,7 @@ import { createMachine, readMemory } from "./doctor-run.mjs";
 import { runDoctor, summarize } from "./doctor.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 import { contextFor } from "./move.mjs";
-import { freshModelsDir, ollamaEnv, winRestartOllamaScript, createOllamaGuard } from "./ollamaenv.mjs";
+import { resolveModelsDir, ollamaEnv, winRestartOllamaScript, createOllamaGuard } from "./ollamaenv.mjs";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
@@ -120,8 +120,9 @@ async function isActive(unit) {
   return Boolean(await ps(`(${WIN_WORKER} | Measure-Object).Count -gt 0 | % { if ($_) { 'yes' } }`));
 }
 const DRY = process.env.NBS_CONSOLE_DRY_RUN === "1";
-/** Where the models live, read from the persisted pointer every time (this process's own environment may predate a move). */
-const modelsDir = () => freshModelsDir(contextFor(process.platform, process.env));
+/** Where the models live: { dir, source, models }, discovered every time (this process's own environment may predate a move) and written back to the pointer. */
+const modelsInfo = () => resolveModelsDir(contextFor(process.platform, process.env));
+const modelsDir = () => modelsInfo().dir;
 async function restart(unit) {
   if (DRY) return null;
   // A stopped server stays stopped: saving a key or a setting restarts the worker only when it is meant to be running.
@@ -130,7 +131,7 @@ async function restart(unit) {
   if (!WIN) return sh("sudo", ["-n", "/usr/bin/systemctl", "restart", unit], 30000);
   if (unit === "ollama") {
     // Stops the tray app too (it would hold the port with its own models folder) and sets OLLAMA_MODELS from the pointer, read now.
-    return ps(winRestartOllamaScript({ exe: OLLAMA_EXE, dir: modelsDir() }), 30000);
+    return ps(winRestartOllamaScript({ exe: OLLAMA_EXE, dir: modelsDir(), env: { ...process.env, ...readEnv() } }), 30000);
   }
   // The launcher loop starts the worker again within ~10 s.
   return ps(`${WIN_WORKER} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`, 30000);
@@ -248,11 +249,13 @@ const ollamaGuard = createOllamaGuard({
   info: ollama, dir: modelsDir, restart: () => restart("ollama"),
   enabled: () => !noLocalModel() && !modelStopped(readEnv()) && !DRY,
 });
-/** Ollama's answer plus, when it matters, { problem: "wrong-folder", fixing, fixedAt, modelsDir }. */
+/** Ollama's answer plus where the models are (modelsDir, modelsSource, modelsFound) and, when it matters, { problem: "wrong-folder", fixing, fixedAt }. */
 async function ollamaView() {
   const o = await ollama();
   const g = await ollamaGuard.check().catch(() => null);
-  return g && (g.problem || g.fixedAt) ? { ...o, problem: g.problem, fixing: g.fixing, fixedAt: g.fixedAt, modelsDir: g.dir } : o;
+  const m = modelsInfo();
+  const where = { modelsDir: m.dir, modelsSource: m.source, modelsFound: m.models };
+  return g && (g.problem || g.fixedAt) ? { ...o, ...where, problem: g.problem, fixing: g.fixing, fixedAt: g.fixedAt } : { ...o, ...where };
 }
 setInterval(() => { ollamaGuard.check().catch(() => {}); }, 60_000).unref();
 

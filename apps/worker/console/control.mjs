@@ -9,6 +9,7 @@
 // SIGTERM, or on seeing the flag on Windows), wait up to GRACE_MS, then force. The Windows force is move.mjs's WIN_STOP_SCRIPT.
 // Everything outside this file is injected (run, active, env access, sleep), so tests drive it with fakes.
 import { WIN_STOP_SCRIPT, winStopped, browserPidsOn } from "./move.mjs";
+import { keepAlive } from "./ollamaenv.mjs";
 
 export const GRACE_MS = 30_000;
 const POLL_MS = 1000;
@@ -70,7 +71,7 @@ export function commands(platform, { uid = 0, home = "" } = {}) {
       stopModel: () => ps(WIN_MODEL_STOP_SCRIPT),
       // The launcher loop only starts Ollama when the worker (re)starts, so a model-only Start launches it here.
       // OLLAMA_MODELS is set here from the pointer (dir), never inherited from the console's own environment.
-      startModel: (exe, dir) => ps(`$ErrorActionPreference='SilentlyContinue'; if (-not (Get-Process -Name ollama)) { ${dir ? `$env:OLLAMA_MODELS='${String(dir).replace(/'/g, "''")}'; $env:OLLAMA_KEEP_ALIVE='24h'; ` : ""}Start-Process -FilePath '${String(exe || "ollama").replace(/'/g, "''")}' -ArgumentList serve -WindowStyle Hidden }; Write-Output 'DONE'`),
+      startModel: (exe, dir, keep) => ps(`$ErrorActionPreference='SilentlyContinue'; if (-not (Get-Process -Name ollama)) { ${dir ? `$env:OLLAMA_MODELS='${String(dir).replace(/'/g, "''")}'; $env:OLLAMA_KEEP_ALIVE='${keepAlive(keep)}'; ` : ""}Start-Process -FilePath '${String(exe || "ollama").replace(/'/g, "''")}' -ArgumentList serve -WindowStyle Hidden }; Write-Output 'DONE'`),
       enableAndStart: () => ps(`$ErrorActionPreference='SilentlyContinue'; Enable-ScheduledTask -TaskName ${WIN_TASK} | Out-Null; if ((Get-ScheduledTask -TaskName ${WIN_TASK}).State -ne 'Running') { Start-ScheduledTask -TaskName ${WIN_TASK} }; Write-Output 'DONE'`),
     };
   }
@@ -208,7 +209,7 @@ export function createWorkerControl({ platform, uid = 0, home = "", dataDir = ""
     writeEnv({ NBS_MODEL_STOPPED: "0" });
     modelStartedAt = now();
     if (dry) return;
-    if (win) { await go(cmd.startModel(ollamaExe, modelsDir()), { timeout: 30_000 }); return; }
+    if (win) { await go(cmd.startModel(ollamaExe, modelsDir(), readEnv().NBS_OLLAMA_KEEP_ALIVE), { timeout: 30_000 }); return; }
     if (mac) {
       await go(cmd.enable("ollama"));
       if (!(await go(cmd.loaded("ollama"))).ok && !(await go(cmd.bootstrap("ollama"))).ok) throw new Error("Couldn't start Ollama. Open Nothing BOT Server, choose More, Update Nothing BOT Server, then try again.");

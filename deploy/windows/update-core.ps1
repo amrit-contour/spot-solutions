@@ -20,17 +20,28 @@ $NodeDir   = "$Root\node"
 # Where the data and the AI models live: the Server Console's "Move data" writes these two files when they are moved to
 # another drive. The installer reads them too, so neither an update nor a re-install puts them back on C:.
 $DataDir   = "$Root\data"
-$ModelsDir = "$Root\ollama"
-# move.mjs writes data-dir / models-dir (no extension); older notes used .txt. The extension-less file is read last, so it wins.
-foreach ($p in @(@{ File = "$Root\data-dir.txt"; Name = "DataDir" }, @{ File = "$Root\data-dir"; Name = "DataDir" }, @{ File = "$Root\models-dir.txt"; Name = "ModelsDir" }, @{ File = "$Root\models-dir"; Name = "ModelsDir" })) {
+$DefaultModels = "$Root\ollama"
+# move.mjs writes data-dir (no extension); older notes used .txt. The extension-less file is read last, so it wins.
+foreach ($p in @(@{ File = "$Root\data-dir.txt"; Name = "DataDir" }, @{ File = "$Root\data-dir"; Name = "DataDir" })) {
   if (Test-Path $p.File) { $v = (Get-Content $p.File -Raw).Trim(); if ($v) { Set-Variable -Name $p.Name -Value $v } }
 }
-# No pointer, but the machine already has OLLAMA_MODELS set to a real models folder (an earlier move): keep it and write the pointer,
-# so an update never falls back to the default folder.
-if (-not ((Test-Path "$Root\models-dir") -or (Test-Path "$Root\models-dir.txt"))) {
-  $mm = [Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "Machine")
-  if ($mm -and $mm -ne $ModelsDir -and (Test-Path (Join-Path $mm "manifests"))) { $ModelsDir = $mm; try { [IO.File]::WriteAllText("$Root\models-dir", "$mm`n") } catch {} }
+# The models folder is looked up (see Models-Dir), not assumed: wherever models really are wins, and the pointer is updated to it, so an update never falls back to a default.
+$ModelsFn = @'
+function Has-Models($d) { try { [bool]$d -and (Test-Path (Join-Path $d 'blobs')) -and [bool](Get-ChildItem (Join-Path $d 'manifests\registry.ollama.ai') -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1) } catch { $false } }
+# Where the models are is looked up, never assumed: the first of these that really holds models wins (the models-dir pointer, OLLAMA_MODELS at machine then
+# user level, the install's own folder, Ollama's own default in each profile). With none, the pointer, else the install's folder. A winner that is not
+# the pointer is written to it, so every launcher and the updater use that exact folder from then on.
+function Models-Dir {
+  $ptr = $null; foreach ($f in @('__ROOT__\models-dir.txt', '__ROOT__\models-dir')) { try { $v = (Get-Content $f -Raw).Trim(); if ($v) { $ptr = $v } } catch {} }
+  $profiles = @(Get-ChildItem "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName '.ollama\models' })
+  $found = @($ptr, [Environment]::GetEnvironmentVariable('OLLAMA_MODELS', 'Machine'), [Environment]::GetEnvironmentVariable('OLLAMA_MODELS', 'User'), '__MODELS__', (Join-Path $env:USERPROFILE '.ollama\models')) + $profiles | Where-Object { $_ -and (Has-Models $_) } | Select-Object -First 1
+  if (-not $found) { if ($ptr) { return $ptr } else { return '__MODELS__' } }
+  if ($found -ne $ptr) { try { New-Item -ItemType Directory -Force -Path '__ROOT__' | Out-Null; [IO.File]::WriteAllText('__ROOT__\models-dir', "$found`n") } catch {} }
+  $found
 }
+'@
+Invoke-Expression ($ModelsFn.Replace('__ROOT__', $Root).Replace('__MODELS__', $DefaultModels))
+$ModelsDir = Models-Dir
 $ChromeDir = "$Root\chrome"
 $EnvFile   = "$AppDir\apps\worker\.env"
 $WorkerTask  = "NothingBotServerWorker"
@@ -88,28 +99,33 @@ function Update-Launcher {
     $t = $t.Replace("function No-Local {", "$fn`r`nfunction No-Local {")
     $t = $t.Replace('if (-not (No-Local) -and -not (Ollama-Up))', 'if (-not (No-Local) -and -not (Model-Stopped) -and -not (Ollama-Up))')
   }
-  # Launchers that baked the models folder in: read the models-dir pointer every time instead, and restart an Ollama that is reading another folder.
-  if ($t -notmatch 'function Models-Dir') {
-    $mdBlock = @'
-function Models-Dir { $d = '${1}'; foreach ($f in @('@@ROOT@@\models-dir.txt', '@@ROOT@@\models-dir')) { try { $v = (Get-Content $f -Raw).Trim(); if ($v) { $d = $v } } catch {} }; $d }
-$env:OLLAMA_MODELS = Models-Dir
-'@
-    $mdBlock = $mdBlock.Replace('@@ROOT@@', $Root).TrimEnd()
-    $t = $t -replace "(?m)^\`$env:OLLAMA_MODELS = '([^']*)'[ \t]*\r?$", $mdBlock
-    $wrongFn = 'function Ollama-Wrong { try { $m = @((Invoke-RestMethod ''http://127.0.0.1:11434/api/tags'' -TimeoutSec 2).models); if ($m.Count -gt 0) { return $false }; return [bool](Get-ChildItem (Join-Path (Models-Dir) ''manifests'') -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1) } catch { $false } }'
-    $t = $t.Replace("function Find-Ollama {", "$wrongFn`r`nfunction Find-Ollama {")
-    $old = 'if (-not (No-Local) -and -not (Model-Stopped) -and -not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList ''serve'' -WindowStyle Hidden; Start-Sleep 5 } }'
-    $new = 'if (-not (No-Local) -and -not (Model-Stopped)) { $env:OLLAMA_MODELS = Models-Dir; if ((Ollama-Up) -and (Ollama-Wrong)) { Get-Process -Name ''ollama'', ''ollama app'' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep 2 }; if (-not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList ''serve'' -WindowStyle Hidden; Start-Sleep 5 } } }'
-    $t = $t.Replace($old, $new)
+  # Launchers that baked the models folder in, or only read the pointer: look the models up every time (Models-Dir), and restart an Ollama that is reading another folder.
+  if ($t -notmatch 'function Has-Models') {
+    $fn = $ModelsFn.Replace('__ROOT__', $Root).Replace('__MODELS__', $DefaultModels)
+    if ($t -match '(?m)^function Models-Dir .*$') {
+      $t = [regex]::Replace($t, '(?m)^function Models-Dir .*$', { $fn })   # the pointer-only version
+    } else {
+      $t = [regex]::Replace($t, "(?m)^\`$env:OLLAMA_MODELS = '([^']*)'[ \t]*\r?$", { "$fn`r`n`$env:OLLAMA_MODELS = Models-Dir" })
+      $wrongFn = 'function Ollama-Wrong { try { $m = @((Invoke-RestMethod ''http://127.0.0.1:11434/api/tags'' -TimeoutSec 2).models); if ($m.Count -gt 0) { return $false }; return [bool](Get-ChildItem (Join-Path (Models-Dir) ''manifests'') -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1) } catch { $false } }'
+      $t = $t.Replace("function Find-Ollama {", "$wrongFn`r`nfunction Find-Ollama {")
+      $old = 'if (-not (No-Local) -and -not (Model-Stopped) -and -not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList ''serve'' -WindowStyle Hidden; Start-Sleep 5 } }'
+      $new = 'if (-not (No-Local) -and -not (Model-Stopped)) { $env:OLLAMA_MODELS = Models-Dir; if ((Ollama-Up) -and (Ollama-Wrong)) { Get-Process -Name ''ollama'', ''ollama app'' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep 2 }; if (-not (Ollama-Up)) { $o = Find-Ollama; if ($o) { Start-Process -FilePath $o -ArgumentList ''serve'' -WindowStyle Hidden; Start-Sleep 5 } } }'
+      $t = $t.Replace($old, $new)
+    }
+  }
+  # Ollama's keep-alive follows NBS_OLLAMA_KEEP_ALIVE (default 5m, like the worker); older launchers pinned 24h.
+  if ($t -match "OLLAMA_KEEP_ALIVE = '24h'") {
+    $ka = 'function Keep-Alive { try { if ((Get-Content ''__ENVFILE__'' -Raw) -match ''(?m)^NBS_OLLAMA_KEEP_ALIVE=(-1|0|\d+(\.\d+)?(ms|s|m|h))\s*$'') { return $Matches[1] } } catch {}; ''5m'' }'.Replace('__ENVFILE__', $EnvFile)
+    $t = $t.Replace("`$env:OLLAMA_KEEP_ALIVE = '24h'", "$ka`r`n`$env:OLLAMA_KEEP_ALIVE = Keep-Alive")
   }
   if ($t -ne $orig) { Set-Content -Encoding UTF8 $f $t }
   # The console's launcher: the folder is only a fallback there (the console reads the pointer itself), but keep it right too.
   $cf = "$Root\run-console.ps1"
   if (Test-Path $cf) {
     $ct = Get-Content $cf -Raw
-    if ($ct -notmatch 'models-dir') {
-      $cBlock = '$env:OLLAMA_MODELS = & { $d = ''${1}''; foreach ($f in @(''@@ROOT@@\models-dir.txt'', ''@@ROOT@@\models-dir'')) { try { $v = (Get-Content $f -Raw).Trim(); if ($v) { $d = $v } } catch {} }; $d }'.Replace('@@ROOT@@', $Root)
-      $ct2 = $ct -replace "(?m)^\`$env:OLLAMA_MODELS = '([^']*)'[ \t]*\r?$", $cBlock
+    if ($ct -notmatch 'function Has-Models') {
+      $fn = $ModelsFn.Replace('__ROOT__', $Root).Replace('__MODELS__', $DefaultModels)
+      $ct2 = [regex]::Replace($ct, '(?m)^\$env:OLLAMA_MODELS = .*$', { "$fn`r`n`$env:OLLAMA_MODELS = Models-Dir" })
       if ($ct2 -ne $ct) { Set-Content -Encoding UTF8 $cf $ct2 }
     }
   }
@@ -358,7 +374,7 @@ try {
     if (-not $ollama) { throw "Couldn't install Ollama. Install it from https://ollama.com/download, then try again." }
     New-Item -ItemType Directory -Force -Path $ModelsDir | Out-Null
     [Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $ModelsDir, "Machine")
-    [Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", "24h", "Machine")
+    [Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", $(if ((Get-EnvValue "NBS_OLLAMA_KEEP_ALIVE") -match '^(-1|0|\d+(\.\d+)?(ms|s|m|h))$') { Get-EnvValue "NBS_OLLAMA_KEEP_ALIVE" } else { "5m" }), "Machine")
     Stop-WorkerProcesses
     Set-EnvValue "NBS_MODEL_STOPPED" "0"   # turning the local model on starts it
     Invoke-Pull (Get-ModelName)

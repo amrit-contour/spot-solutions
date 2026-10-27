@@ -33,17 +33,28 @@ $SrcUrl    = if ($env:NBS_SRC_URL) { $env:NBS_SRC_URL } else { "$BaseUrl/dl/noth
 $Root      = "C:\NothingBotServer"
 $AppDir    = "$Root\app"
 $DataDir   = "$Root\data"
-$ModelsDir = "$Root\ollama"   # shared by the tray app and the boot task, so Gemma downloads once
+$DefaultModels = "$Root\ollama"   # shared by the tray app and the boot task, so Gemma downloads once
 # The data (and the AI models) may have been moved to another drive in the Server Console (Storage, Move data). That choice
 # is kept in these two files: re-running the installer keeps the chosen folders instead of going back to C:.
 # The console's "Move data" writes data-dir / models-dir (no extension); older notes used .txt. Either works.
 foreach ($f in @("$Root\data-dir", "$Root\data-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $DataDir = $p; break } } }
-foreach ($f in @("$Root\models-dir", "$Root\models-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $ModelsDir = $p; break } } }
-# No pointer but the machine already has OLLAMA_MODELS pointing at a real folder (set by an earlier move): keep it, and write the pointer so nothing falls back to the default.
-if (-not ((Test-Path "$Root\models-dir") -or (Test-Path "$Root\models-dir.txt"))) {
-  $mm = [Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "Machine")
-  if ($mm -and $mm -ne $ModelsDir -and (Test-Path (Join-Path $mm "manifests"))) { $ModelsDir = $mm; New-Item -ItemType Directory -Force -Path $Root | Out-Null; [IO.File]::WriteAllText("$Root\models-dir", "$mm`n") }
+# The models folder is looked up (see Models-Dir below), not assumed: wherever models really are wins, and the pointer is updated to it.
+$ModelsFn = @'
+function Has-Models($d) { try { [bool]$d -and (Test-Path (Join-Path $d 'blobs')) -and [bool](Get-ChildItem (Join-Path $d 'manifests\registry.ollama.ai') -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1) } catch { $false } }
+# Where the models are is looked up, never assumed: the first of these that really holds models wins (the models-dir pointer, OLLAMA_MODELS at machine then
+# user level, the install's own folder, Ollama's own default in each profile). With none, the pointer, else the install's folder. A winner that is not
+# the pointer is written to it, so every launcher and the updater use that exact folder from then on.
+function Models-Dir {
+  $ptr = $null; foreach ($f in @('__ROOT__\models-dir.txt', '__ROOT__\models-dir')) { try { $v = (Get-Content $f -Raw).Trim(); if ($v) { $ptr = $v } } catch {} }
+  $profiles = @(Get-ChildItem "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName '.ollama\models' })
+  $found = @($ptr, [Environment]::GetEnvironmentVariable('OLLAMA_MODELS', 'Machine'), [Environment]::GetEnvironmentVariable('OLLAMA_MODELS', 'User'), '__MODELS__', (Join-Path $env:USERPROFILE '.ollama\models')) + $profiles | Where-Object { $_ -and (Has-Models $_) } | Select-Object -First 1
+  if (-not $found) { if ($ptr) { return $ptr } else { return '__MODELS__' } }
+  if ($found -ne $ptr) { try { New-Item -ItemType Directory -Force -Path '__ROOT__' | Out-Null; [IO.File]::WriteAllText('__ROOT__\models-dir', "$found`n") } catch {} }
+  $found
 }
+'@
+Invoke-Expression ($ModelsFn.Replace('__ROOT__', $Root).Replace('__MODELS__', $DefaultModels))
+$ModelsDir = Models-Dir
 if ($DataDir -ne "$Root\data") {
   if (-not (Test-Path (Split-Path $DataDir -Qualifier))) { throw "Your data lives on $(Split-Path $DataDir -Qualifier) ($DataDir), but that drive isn't connected. Plug it in and run this again." }
   Write-Host "Keeping the data in $DataDir (chosen in the Server Console)." -ForegroundColor Cyan
@@ -282,7 +293,7 @@ if (-not $Ollama) { Winget-Install "Ollama.Ollama"; $Ollama = Find-Exe "ollama" 
 if (-not $Ollama) { throw "Couldn't install Ollama. Install it from https://ollama.com/download, then run this again." }
 Ok "Ollama at $Ollama"
 [Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $ModelsDir, "Machine")
-[Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", "24h", "Machine")
+[Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", "5m", "Machine")   # NBS_OLLAMA_KEEP_ALIVE default; the launchers read the override
 $env:OLLAMA_MODELS = $ModelsDir
 # The tray app may already be running with its default model folder; restart the server on ours.
 Get-Process -Name "ollama", "ollama app" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -369,10 +380,10 @@ Start-Sleep -Seconds 2
 # model is wanted, and where Ollama is, are looked up each time round, so turning it on later in the console just works.
 $Launcher = "$Root\run-worker.ps1"
 @'
-# Where the models live: the models-dir pointer (written by the console's Move data), read every time Ollama is started, never baked in.
-function Models-Dir { $d = '__MODELS__'; foreach ($f in @('__ROOT__\models-dir.txt', '__ROOT__\models-dir')) { try { $v = (Get-Content $f -Raw).Trim(); if ($v) { $d = $v } } catch {} }; $d }
+__MODELSFN__
+function Keep-Alive { try { if ((Get-Content '__ENVFILE__' -Raw) -match '(?m)^NBS_OLLAMA_KEEP_ALIVE=(-1|0|\d+(\.\d+)?(ms|s|m|h))\s*$') { return $Matches[1] } } catch {}; '5m' }
 $env:OLLAMA_MODELS = Models-Dir
-$env:OLLAMA_KEEP_ALIVE = '24h'
+$env:OLLAMA_KEEP_ALIVE = Keep-Alive
 $env:PUPPETEER_CACHE_DIR = '__CHROME__'
 $env:Path = '__NODEDIR__;' + $env:Path
 function Ollama-Up { try { Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null; $true } catch { $false } }
@@ -402,7 +413,7 @@ while ($true) {
   & '__NODE__' '__APPDIR__\apps\worker\node_modules\tsx\dist\cli.mjs' --env-file-if-exists=.env src\index.ts *>> '__DATADIR__\worker.log'
   Start-Sleep 10
 }
-'@ -replace '__MODELS__', $ModelsDir -replace '__CHROME__', $ChromeDir -replace '__NODEDIR__', $NodeDir -replace '__ENVFILE__', $EnvFile -replace '__ROOT__', $Root -replace '__APPDIR__', $AppDir -replace '__KEYFILE__', $KeyFile -replace '__DATADIR__', $DataDir -replace '__NODE__', $Node | Set-Content -Encoding UTF8 $Launcher
+'@.Replace('__MODELSFN__', $ModelsFn) -replace '__MODELS__', $DefaultModels -replace '__CHROME__', $ChromeDir -replace '__NODEDIR__', $NodeDir -replace '__ENVFILE__', $EnvFile -replace '__ROOT__', $Root -replace '__APPDIR__', $AppDir -replace '__KEYFILE__', $KeyFile -replace '__DATADIR__', $DataDir -replace '__NODE__', $Node | Set-Content -Encoding UTF8 $Launcher
 
 $action    = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Launcher`""
 $trigger   = New-ScheduledTaskTrigger -AtStartup
@@ -422,11 +433,12 @@ $cEnvScript = "$Root\run-console.ps1"
 @'
 $env:NBS_DATA_DIR = '__DATADIR__'
 $env:NBS_ENV_FILE = '__ENVFILE__'
-$env:OLLAMA_MODELS = & { $d = '__MODELS__'; foreach ($f in @('__ROOT__\models-dir.txt', '__ROOT__\models-dir')) { try { $v = (Get-Content $f -Raw).Trim(); if ($v) { $d = $v } } catch {} }; $d }
+__MODELSFN__
+$env:OLLAMA_MODELS = Models-Dir
 # Looked up on every start (the console is restarted after the local model is turned on).
 foreach ($c in @('__ROOT__\ollama-app\ollama.exe', "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe", "$env:ProgramFiles\Ollama\ollama.exe", 'C:\Windows\System32\config\systemprofile\AppData\Local\Programs\Ollama\ollama.exe')) { if (Test-Path $c) { $env:NBS_OLLAMA_EXE = $c; break } }
 while ($true) { & '__NODE__' '__APPDIR__\apps\worker\console\server.mjs' *>> '__DATADIR__\console.log'; Start-Sleep 5 }
-'@ -replace '__DATADIR__', $DataDir -replace '__ENVFILE__', $EnvFile -replace '__MODELS__', $ModelsDir -replace '__ROOT__', $Root -replace '__NODE__', $Node -replace '__APPDIR__', $AppDir | Set-Content -Encoding UTF8 $cEnvScript
+'@.Replace('__MODELSFN__', $ModelsFn) -replace '__DATADIR__', $DataDir -replace '__ENVFILE__', $EnvFile -replace '__MODELS__', $DefaultModels -replace '__ROOT__', $Root -replace '__NODE__', $Node -replace '__APPDIR__', $AppDir | Set-Content -Encoding UTF8 $cEnvScript
 $cAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$cEnvScript`""
 Unregister-ScheduledTask -TaskName $ConsoleTask -Confirm:$false -ErrorAction SilentlyContinue
 Register-ScheduledTask -TaskName $ConsoleTask -Action $cAction -Trigger $trigger -Principal $principal -Settings $settings | Out-Null

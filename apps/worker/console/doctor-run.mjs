@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runDoctor, summarize, hasCriticalFailure } from "./doctor.mjs";
 import { contextFor } from "./move.mjs";
-import { freshModelsDir, ollamaEnv } from "./ollamaenv.mjs";
+import { resolveModelsDir, ollamaEnv } from "./ollamaenv.mjs";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
@@ -92,7 +92,7 @@ export function createMachine({ env = process.env, paths = machinePaths(env), lo
         if (MAC) await exec("launchctl", ["kickstart", `gui/${process.getuid()}/app.nothingbot.server.ollama`]).catch(() => {});
         else if (!WIN && existsSync("/etc/systemd/system/ollama.service")) await exec("sudo", ["-n", "/usr/bin/systemctl", "start", "ollama"]).catch(() => {});
         // OLLAMA_MODELS comes from the persisted pointer, read now: the environment this process inherited can be stale.
-        else spawn(env.NBS_OLLAMA_EXE ?? "ollama", ["serve"], { detached: true, stdio: "ignore", env: { ...process.env, ...ollamaEnv(freshModelsDir(contextFor(process.platform, process.env))) } }).on("error", () => {}).unref();
+        else spawn(env.NBS_OLLAMA_EXE ?? "ollama", ["serve"], { detached: true, stdio: "ignore", env: { ...process.env, ...ollamaEnv(resolveModelsDir(contextFor(process.platform, process.env)).dir, { ...env, ...parseEnv(readText(paths.envFile) ?? "") }) } }).on("error", () => {}).unref();
         for (let i = 0; i < 20 && !(await up()); i++) await new Promise((r) => setTimeout(r, 1000));
       }
       if (!(await up())) throw new Error("Ollama isn't installed or won't start; run Update or reinstall");

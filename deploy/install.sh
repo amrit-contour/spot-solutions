@@ -112,7 +112,7 @@ command -v ollama >/dev/null || curl -fsSL https://ollama.com/install.sh | sh
 mkdir -p /etc/systemd/system/ollama.service.d
 cat > /etc/systemd/system/ollama.service.d/nothing-bot-server.conf <<EOF
 [Service]
-Environment=OLLAMA_KEEP_ALIVE=24h
+Environment=OLLAMA_KEEP_ALIVE=5m
 Environment=OLLAMA_NUM_PARALLEL=1
 EOF
 systemctl daemon-reload
