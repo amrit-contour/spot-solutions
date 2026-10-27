@@ -38,6 +38,7 @@ import {
   pendingRejections,
   planLineupReset,
   planWeekReset,
+  defaultLineupIds,
   showState,
   sentSnapshot,
   groupPlanNeedsReview,
@@ -498,11 +499,11 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
     if (seeded.current || !lineupsLoaded || lineup?.defaultsSeeded || (lineup && lineup.status !== "draft") || past || week < currentWeek) return;
     const members = show.groupId && show.groupMembers?.groupId === show.groupId ? withSelf(show.groupMembers.members, session) : [];
     const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
-    const ids = [...new Set([...(show.pocs ?? []), ...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
+    const ids = defaultLineupIds(show, members.filter((m) => m.isAdmin).map((m) => m.id));
     if (!ids.length) return;
     seeded.current = true;
     void seedDefaults(uid, week, show, ids.map((id) => ({ id, name: nameOf(id) })))
-      .then((n) => n && toast(`${show.name}: added ${n} POC${n === 1 ? "" : "s"}, regular${n === 1 ? "" : "s"}, co-host${n === 1 ? "" : "s"} and admins`, { description: "Take anyone off who isn't on tonight. They stay in the group." }))
+      .then((n) => n && toast(`${show.name}: added ${n} (POCs, regulars, co-hosts and admins)`, { description: "Take anyone off who isn't on tonight. They stay in the group." }))
       .catch((e: Error) => toast.error(e.message));
   }, [lineupsLoaded, lineup, past, week, currentWeek, show, session?.phone, comicsById, uid]);
 
@@ -519,7 +520,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
       }
       members = show.groupId ? withSelf(members, session) : members;
       const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
-      const people = [...new Set([...(show.pocs ?? []), ...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
+      const people = defaultLineupIds(show, members.filter((m) => m.isAdmin).map((m) => m.id));
       const n = await addDefaults(uid, week, show, people.map((id) => ({ id, name: nameOf(id) })));
       toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on (or you chose not to go over)");
     } catch (e) {

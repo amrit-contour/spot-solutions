@@ -150,7 +150,7 @@ export async function markCanned(uid: string, lineup: Lineup, show: Show, comics
 }
 
 /**
- * The first time a week's lineup is opened, start it with the show's regulars, co-hosts and group admins.
+ * The first time a week's lineup is opened, start it with the show's POCs, regulars, co-hosts and group admins.
  * Runs once per lineup (the doc then exists), so taking someone off for a night sticks.
  */
 export async function seedDefaults(uid: string, week: string, show: Show, people: { id: string; name: string }[]) {
@@ -207,7 +207,7 @@ export async function placeAsTold(uid: string, week: string, show: Show, comicId
   return true;
 }
 
-/** Add the show's regulars, co-hosts and group admins who aren't on yet, up to the slot count. Any time, on request. */
+/** Add the show's POCs, regulars, co-hosts and group admins who aren't on yet, up to the slot count. Any time, on request. */
 export async function addDefaults(uid: string, week: string, show: Show, people: { id: string; name: string }[]) {
   if (!people.length) return 0;
   const ref = lineupRef(uid, week, show.id);

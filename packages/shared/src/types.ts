@@ -431,7 +431,7 @@ export interface Lineup {
   outcome?: "happened" | "canned" | null;
   /** The day-after group cleanup for this show date. */
   cleanup?: LineupCleanup | null;
-  /** Regulars, co-hosts and group admins were put on this lineup when it was first opened. Not redone after you remove someone. */
+  /** POCs, regulars, co-hosts and group admins were put on this lineup when it was first opened. Not redone after you remove someone. */
   defaultsSeeded?: boolean;
   micCheckSentOn?: string | null;
   /** A past show recorded after the fact. History only: the worker never messages, syncs, asks or posts for it. */

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { DAY_NAMES, DAY_SHORT, sentSnapshot, type Show, type SpotRequest } from "@spot/shared";
+import { DAY_NAMES, defaultLineupIds, DAY_SHORT, sentSnapshot, type Show, type SpotRequest } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand } from "../../lib/data";
 import { db } from "@spot/ui/firebase";
@@ -69,7 +69,7 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
       }
       if (show.groupId) members = withSelf(members, session);
       const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
-      const people = [...new Set([...(show.pocs ?? []), ...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
+      const people = defaultLineupIds(show, members.filter((m) => m.isAdmin).map((m) => m.id));
       const n = await addDefaults(uid, week, show, people.map((id) => ({ id, name: nameOf(id) })));
       toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on (or you chose not to go over)");
     } catch (e) {

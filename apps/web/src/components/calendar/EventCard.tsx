@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   DAY_SHORT,
+  defaultLineupIds,
   diffLineup,
   formatTime,
   groupModeOf,
@@ -98,7 +99,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
   });
   const wantsDay = waiting.filter((r) => r.intent.preferredDays.includes(show.weekday));
   const anyDay = waiting.filter((r) => !r.intent.preferredDays.length);
-  const seeds = !lineup && !past && week >= currentWeek ? [...new Set([...(show.regulars ?? []), ...(show.protected ?? [])])].map(name) : [];
+  const seeds = !lineup && !past && week >= currentWeek ? defaultLineupIds(show).map(name) : [];
 
   const statusChip = past && status === "confirmed" && lineup?.outcome === "happened" ? <Chip tone="success" icon={IconCheck}>Happened</Chip>
     : status === "canned" ? <Chip tone="error">Didn't happen</Chip>
@@ -168,7 +169,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
       {seeds.length > 0 && (
         <p className="mt-3 flex items-start gap-1.5 type-body-s text-on-surface-variant">
           <IconSparkle className="icon mt-0.5 size-4 flex-none text-primary" />
-          <span>Starts with {listNames(seeds)} (regulars and co-hosts).</span>
+          <span>Starts with {listNames(seeds)} (POCs, regulars and co-hosts).</span>
         </p>
       )}
       {!past && !off && (wantsDay.length > 0 || anyDay.length > 0) && !confirmed && (

@@ -20,6 +20,8 @@ export interface GroupDiffInput {
   confirmed: string[];
   regulars: string[];
   protected: string[];
+  /** The show's POCs: kept exactly like co-hosts (never removed unless marked to leave). */
+  pocs?: string[];
   self: string;
   /** Marked to leave by the curator: removed even if an admin, regular or co-host. Never someone on the lineup. */
   forceRemove?: string[];
@@ -43,7 +45,7 @@ export function diffGroup(input: GroupDiffInput) {
   const lineupKeys = keySet(input.confirmed);
   const selfKeys = new Set(idKeys(input.self));
   const forcedKeys = new Set((input.forceRemove ?? []).flatMap(idKeys).filter((k) => !lineupKeys.has(k) && !selfKeys.has(k)));
-  const stay = new Set([...keySet([...input.confirmed, ...input.regulars, ...input.protected]), ...selfKeys]);
+  const stay = new Set([...keySet([...input.confirmed, ...input.regulars, ...input.protected, ...(input.pocs ?? [])]), ...selfKeys]);
   for (const k of forcedKeys) stay.delete(k);
   const isKept = (p: GroupParticipant) => {
     const ks = memberKeys(p);
@@ -179,7 +181,8 @@ export function groupPanel(input: GroupPanelInput): GroupPanel {
     participants: input.members.map((m) => ({ id: m.id, isAdmin: m.isAdmin, keys: m.alt })),
     confirmed: input.lineup,
     regulars: input.regulars,
-    protected: [...input.protected, ...(input.pocs ?? [])],
+    protected: input.protected,
+    pocs: input.pocs,
     self: "",
     forceRemove: input.forceRemove,
     aliases,

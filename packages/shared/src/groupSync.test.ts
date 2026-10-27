@@ -83,3 +83,30 @@ describe("groupPlanNeedsReview", () => {
     expect(groupPlanNeedsReview({ toAdd: [], toRemove: ["x"] })).toBe(true);
   });
 });
+
+import { defaultLineupIds } from "./rules.ts";
+
+describe("POCs kept by the group sync plan", () => {
+  it("diffGroup keeps a POC passed as pocs, like a co-host, but still removes them when marked to leave", () => {
+    const participants = [
+      { id: "p@c.us", isAdmin: false },
+      { id: "h@c.us", isAdmin: false },
+      { id: "x@c.us", isAdmin: false },
+    ];
+    const d = diffGroup({ participants, confirmed: [], regulars: [], protected: ["h@c.us"], pocs: ["p@c.us"], self: "me@c.us" });
+    expect(d.toRemove).toEqual(["x@c.us"]);
+    expect(d.kept).toEqual(["p@c.us", "h@c.us"]);
+    expect(diffGroup({ participants, confirmed: [], regulars: [], protected: [], pocs: ["p@c.us"], self: "me@c.us", forceRemove: ["p@c.us"] }).toRemove).toContain("p@c.us");
+  });
+});
+
+describe("defaultLineupIds (who a new lineup starts with)", () => {
+  it("adds POCs, regulars, co-hosts and admins, each once, POCs first", () => {
+    const show = { pocs: ["a", "b"], regulars: ["b", "c"], protected: ["c", "d"] };
+    expect(defaultLineupIds(show, ["d", "e"])).toEqual(["a", "b", "c", "d", "e"]);
+  });
+  it("copes with a show that has none of them", () => {
+    expect(defaultLineupIds({}, [])).toEqual([]);
+    expect(defaultLineupIds(undefined)).toEqual([]);
+  });
+});
