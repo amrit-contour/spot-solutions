@@ -1,8 +1,8 @@
 // Settings → AI models: Gemini key (write-only), fetched model lists, primary + fallback routes with live tests.
 import { useEffect, useState } from "react";
-import { deleteDoc, doc, setDoc } from "firebase/firestore";
+import { deleteDoc, deleteField, doc, setDoc, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
-import type { AiKeyStatus, AiProvider, AiRoute } from "@spot/shared";
+import { pickRoutes, revertAutoSwitch, type AiKeyStatus, type AiPatch, type AiProvider, type AiRoute } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "@spot/ui/firebase";
 import { runCommand, timeAgo, useDocument, userDoc } from "../lib/data";
@@ -53,7 +53,7 @@ async function fetchWithKey(key: string) {
 type Lists = Record<AiProvider, { models: string[]; fetch: () => void; busy: boolean; canFetch: boolean; ready: boolean; why: string }>;
 
 export function AiModels() {
-  const { uid, settings, saveSettings, workerOnline, server } = useApp();
+  const { uid, settings, workerOnline, server } = useApp();
   const me = useDocument<UserAiDoc>(["users", uid]);
   const gemini = me.data?.aiKeys?.gemini;
   const geminiModels = me.data?.aiModels?.gemini ?? [];
@@ -90,7 +90,14 @@ export function AiModels() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerOnline]);
 
-  const setAi = (patch: Partial<typeof settings.ai>) => saveSettings({ ai: { ...settings.ai, ...patch } });
+  // Writes a switch/keep change field by field, so removed fields (autoSwitched, keepMissing) are really deleted.
+  const writeAi = (p: AiPatch) =>
+    updateDoc(doc(db, "users", uid), {
+      ...Object.fromEntries(Object.entries(p.set).map(([k, v]) => [`settings.ai.${k}`, v])),
+      ...Object.fromEntries(p.remove.map((k) => [`settings.ai.${k}`, deleteField()])),
+    }).catch((e: Error) => toast.error(e.message));
+  const installedNames = ollama?.up ? ollama.models.map((m) => m.name) : null;
+  const pick = (next: { primary?: AiRoute; fallback?: AiRoute | null }) => writeAi(pickRoutes(settings.ai, next, installedNames, Date.now()));
   const lists: Lists = {
     ollama: {
       models: (ollama?.models ?? []).map((m) => m.name),
@@ -112,6 +119,12 @@ export function AiModels() {
 
   const sw = settings.ai.autoSwitched;
   const switched = sw && [settings.ai.primary, settings.ai.fallback].some((r) => r?.provider === "ollama" && r.model === sw.to) ? sw : null;
+  const canon = (n: string) => (n.includes(":") ? n : `${n}:latest`);
+  const has = (m: string) => installedNames?.some((n) => canon(n) === canon(m)) ?? false;
+  // The model that was swapped out is installed on this server (the account moved, or it was installed since): offer the way back, never do it by itself.
+  const fromHere = Boolean(switched && installedNames?.length && has(switched.from));
+  const kept = settings.ai.keepMissing;
+  const keptActive = kept && [settings.ai.primary, settings.ai.fallback].some((r) => r?.provider === "ollama" && canon(r.model) === canon(kept.model)) && installedNames?.length && !has(kept.model) ? kept : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -120,24 +133,45 @@ export function AiModels() {
       {switched && (
         <p role="status" className="flex items-start gap-2 rounded-lg bg-surface-container p-3 type-body-s text-on-surface-variant">
           <IconWarn className="icon mt-0.5 size-4 flex-none" />
+          <span className="min-w-0 flex-1">
+            {fromHere ? (
+              <>
+                <span className="font-mono">{switched.from}</span> is installed on {host}. Your model was changed to <span className="font-mono">{switched.to}</span> because it wasn't on {switched.server}.
+              </>
+            ) : (
+              <>
+                {switched.from} isn't installed on {switched.server}, so your model is now <span className="font-mono">{switched.to}</span>. Pick another below if you'd rather.
+              </>
+            )}
+          </span>
+          <Button size="sm" variant="tonal" onClick={() => { const p = revertAutoSwitch(settings.ai, { keepMissing: !fromHere, now: Date.now() }); if (p) void writeAi(p); }}>
+            {fromHere ? `Switch back to ${switched.from}` : "Undo"}
+          </Button>
+        </p>
+      )}
+      {!switched && keptActive && (
+        <p role="status" className="flex items-start gap-2 rounded-lg bg-surface-container p-3 type-body-s text-on-surface-variant">
+          <IconWarn className="icon mt-0.5 size-4 flex-none" />
           <span>
-            {switched.from} isn't installed on {switched.server}, so your model is now <span className="font-mono">{switched.to}</span>. Pick another below if you'd rather.
+            <span className="font-mono">{keptActive.model}</span> isn't installed on {host}; another model answers until you install it. Install it from the server console's AI models.
           </span>
         </p>
       )}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-        <RouteCard title="Primary" host={host} info="Reads every incoming message first." route={settings.ai.primary} lists={lists} onChange={(r) => setAi({ primary: r })} />
+        <RouteCard title="Primary" host={host} info="Reads every incoming message first." route={settings.ai.primary} lists={lists} onChange={(r) => pick({ primary: r })} onKeep={(m) => writeAi({ set: { keepMissing: { model: m, at: Date.now() } }, remove: [] })} kept={keptActive?.model} />
         <RouteCard
           title="Fallback"
           host={host}
           info="Used only if the primary fails or times out. When off, that message is skipped and noted in the server log."
           route={settings.ai.fallback}
           lists={lists}
-          onChange={(r) => setAi({ fallback: r })}
+          onChange={(r) => pick({ fallback: r })}
+          onKeep={(m) => writeAi({ set: { keepMissing: { model: m, at: Date.now() } }, remove: [] })}
+          kept={keptActive?.model}
           toggle={{
             on: Boolean(settings.ai.fallback),
             set: (v) =>
-              setAi({
+              pick({
                 fallback: v
                   ? settings.ai.primary.provider === "ollama"
                     ? { provider: "gemini", model: geminiModels[0] ?? "" }
@@ -232,7 +266,7 @@ function GeminiKey({ status, count, fetchedAt, onFetch, fetching, canFetch }: { 
   );
 }
 
-function RouteCard({ title, host, info, route, lists, onChange, toggle }: { title: string; host: string; info: string; route: AiRoute | null; lists: Lists; onChange: (r: AiRoute) => void; toggle?: { on: boolean; set: (v: boolean) => void } }) {
+function RouteCard({ title, host, info, route, lists, onChange, onKeep, kept, toggle }: { title: string; host: string; info: string; route: AiRoute | null; lists: Lists; onChange: (r: AiRoute) => void; onKeep: (model: string) => void; kept?: string; toggle?: { on: boolean; set: (v: boolean) => void } }) {
   const { uid, workerOnline } = useApp();
   const [test, setTest] = useState<{ state: "idle" | "running" | "ok" | "fail"; msg?: string }>({ state: "idle" });
   useEffect(() => setTest({ state: "idle" }), [route?.provider, route?.model]);
@@ -240,6 +274,7 @@ function RouteCard({ title, host, info, route, lists, onChange, toggle }: { titl
   const provider = route?.provider ?? "ollama";
   const list = lists[provider];
   const valid = Boolean(route && list.models.includes(route.model));
+  const missingLocal = Boolean(route && provider === "ollama" && route.model && list.ready && list.models.length && !valid);
   const problem = !route ? "" : !list.ready ? list.why : !list.models.length ? "No models fetched yet. Tap ↻ to fetch them." : !valid ? (provider === "ollama" && route.model ? `${route.model} isn't installed on ${host}. Install it from the server console's AI models, or pick another.` : "Pick a model from the list") : "";
 
   const runTest = async () => {
@@ -305,6 +340,11 @@ function RouteCard({ title, host, info, route, lists, onChange, toggle }: { titl
           <Button size="sm" variant="tonal" onClick={runTest} disabled={!workerOnline || !valid || test.state === "running"} loading={test.state === "running"}>
             Test
           </Button>
+          {missingLocal && route && kept !== route.model && (
+            <Button size="sm" variant="text" onClick={() => onKeep(route.model)} title="Keep this model even though it isn't installed. Another model answers until you install it; nothing is swapped in your settings.">
+              Keep anyway
+            </Button>
+          )}
           <span className={cx("flex min-w-0 flex-1 items-center gap-1.5 type-body-s", status.tone)} title={status.text}>
             {problem && route && test.state === "idle" && <IconWarn className="icon size-4 flex-none" />}
             <span className="truncate">{status.text}</span>

@@ -62,6 +62,8 @@ export interface LiveStats {
   totals: Totals;
   accounts: AccountStat[];
   queue: { pending: number; lastSendAt: number | null };
+  /** Local models some account here is routed to that aren't installed (seen in the last day), and what answered instead. */
+  missingModels?: { model: string; to: string | null; at: number }[];
 }
 
 const emptyTotals = (): Totals => ({ in: 0, spot: 0, sent: 0, err: 0, ai: 0, aiLocal: 0, aiGemini: 0, aiMs: 0, aiFail: 0, aiFallback: 0 });
@@ -107,6 +109,7 @@ export function createLiveStats(opts: LiveOptions) {
   const totals = emptyTotals();
   const accounts = new Map<string, AccountStat>();
   const directory = new Map<string, { name?: string | null; email?: string | null }>();
+  const missing = new Map<string, { model: string; to: string | null; at: number }>();
   let directorySeen = false;
   const clients = new WeakMap<object, string>();
   let pending = 0;
@@ -193,6 +196,11 @@ export function createLiveStats(opts: LiveOptions) {
       bump("aiMs", Math.max(0, Math.round(ms)));
       if (fellBack) bump("aiFallback");
     },
+    /** A routed local model that isn't installed here (the console shows it under AI models). */
+    noteMissingModel(model: string, to: string | null) {
+      missing.set(model, { model, to, at: now() });
+      dirty = true;
+    },
     /** One failed model attempt (a route that threw). */
     noteAiFail() {
       bump("aiFail");
@@ -216,6 +224,7 @@ export function createLiveStats(opts: LiveOptions) {
           .map((a) => ({ ...a, name: directory.get(a.uid)?.name ?? a.name, email: directory.get(a.uid)?.email ?? a.email }))
           .sort((x, y) => x.key.localeCompare(y.key)),
         queue: { pending, lastSendAt },
+        missingModels: [...missing.values()].filter((m) => m.at > now() - 24 * HOUR),
       };
     },
     /** Compact numbers for the Firestore heartbeat (no extra write: it rides on the existing one). */

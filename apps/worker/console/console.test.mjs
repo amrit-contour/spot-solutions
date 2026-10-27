@@ -115,7 +115,7 @@ describe("AI models helpers", () => {
     await expect(ai.setDefaults({ mode: "nope" })).rejects.toThrow();
     await expect(ai.setDefaults({ localModel: "a b" })).rejects.toThrow();
     await ai.setDefaults({ mode: "gemini_first", localModel: "gemma3:1b", geminiModel: "gemini-2.5-flash" });
-    expect(writes).toEqual([{ NBS_AI_MODE: "gemini_first", NBS_LOCAL_MODEL: "gemma3:1b", NBS_GEMINI_MODEL: "gemini-2.5-flash" }]);
+    expect(writes).toEqual([{ NBS_AI_MODE: "gemini_first", NBS_LOCAL_MODEL: "gemma3:1b", NBS_GEMINI_MODEL: "gemini-2.5-flash", NBS_LOCAL_MODEL_AUTOSWITCHED: "", NBS_LOCAL_MODEL_KEEP: "" }]);
   });
 });
 

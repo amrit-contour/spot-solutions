@@ -40,6 +40,44 @@ export function pickModels(models) {
 /** The model the worker uses for local answers when none is chosen (apps/worker/src/serverAi.ts DEFAULT_LOCAL_MODEL). */
 export const DEFAULT_LOCAL_MODEL = "gemma3:4b";
 
+// ---- a default model that isn't installed ----
+// Mirrors apps/worker/src/aiRouting.ts (pickInstalledModel, canAutoSwitch); aiRouting.test.ts checks the two agree.
+const canon = (name) => (String(name).includes(":") ? String(name) : `${name}:latest`);
+const sameName = (a, b) => canon(a) === canon(b);
+const family = (name) => canon(name).split(":")[0].replace(/n$/, "");
+
+/** The installed model to use for `wanted`: itself, else the same family, else the first of `prefer` that is installed, else any (smallest name first). null when nothing is installed. */
+export function pickInstalledModel(wanted, installed, prefer = []) {
+  const have = new Map(installed.map((n) => [canon(n), n]));
+  const exact = have.get(canon(wanted));
+  if (exact) return exact;
+  const sorted = [...installed].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const kin = sorted.find((n) => family(n) === family(wanted));
+  if (kin) return kin;
+  for (const p of prefer) { const hit = have.get(canon(p)); if (hit) return hit; }
+  return sorted[0] ?? null;
+}
+
+/** The server default may be rewritten only on a fresh, non-empty list that lacks it, with a replacement that is there, and never over a model kept on purpose. */
+export function canAutoSwitch(installed, from, to, keep) {
+  if (!installed || !installed.length || !to) return false;
+  if (keep && sameName(keep.model, from)) return false;
+  const have = new Set(installed.map(canon));
+  return !have.has(canon(from)) && have.has(canon(to));
+}
+
+// Bookkeeping in the worker's .env (ASCII, no quotes): NBS_LOCAL_MODEL_AUTOSWITCHED=from->to@epochMs, NBS_LOCAL_MODEL_KEEP=model@epochMs.
+export const fmtSwitch = (from, to, at) => `${from}->${to}@${at}`;
+export function parseSwitch(v) {
+  const m = /^(.+)->(.+)@(\d+)$/.exec(String(v ?? ""));
+  return m ? { from: m[1], to: m[2], at: Number(m[3]) } : null;
+}
+export const fmtKeep = (model, at) => `${model}@${at}`;
+export function parseKeep(v) {
+  const m = /^(.+)@(\d+)$/.exec(String(v ?? ""));
+  return m ? { model: m[1], at: Number(m[2]) } : null;
+}
+
 /** Installed models for the page: Ollama's /api/tags joined with /api/ps (what is loaded in memory right now). Pure, for tests. */
 export function shapeModels(tags, ps, selected) {
   const loaded = new Map((ps ?? []).map((m) => [m.name ?? m.model, m]));
@@ -58,7 +96,7 @@ export function shapeModels(tags, ps, selected) {
   return { list, totalBytes: list.reduce((n, m) => n + m.size, 0) };
 }
 
-export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaInfo, noLocalModel, diskFree = () => null, fetchImpl = fetch }) {
+export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaInfo, noLocalModel, diskFree = () => null, missingSeen = () => [], now = Date.now, fetchImpl = fetch }) {
   const geminiKey = (override) => (validKey(override) ? override : readEnv().GEMINI_API_KEY || "");
   let pull = null; // { model, status, completed, total, done, error, startedAt }
 
@@ -99,9 +137,63 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `Ollama said ${r.status}`);
   }
 
+  /**
+   * Fixes the server's own default when it names a model that isn't installed: rewrites NBS_LOCAL_MODEL to the installed pick, records
+   * it (NBS_LOCAL_MODEL_AUTOSWITCHED) and restarts the worker so it takes effect. Only on a fresh, non-empty list that lacks the model
+   * (Ollama up; an empty list is an outage or the wrong folder), and never over a model the owner chose to keep (Undo, or picked on purpose).
+   * Also forgets a kept model once it is installed or no longer the default. Runs on the console's tick and when the AI page loads.
+   */
+  let reconciling = null;
+  const reconcileDefault = () => (reconciling ??= doReconcile().finally(() => (reconciling = null)));
+  async function doReconcile() {
+    if (noLocalModel()) return null;
+    const m = await localModels();
+    const names = m?.list.map((x) => x.name) ?? [];
+    if (!names.length) return null;
+    const env = readEnv();
+    const selected = selectedModel();
+    let keep = parseKeep(env.NBS_LOCAL_MODEL_KEEP);
+    if (keep && (names.some((n) => sameName(n, keep.model)) || !sameName(selected, keep.model))) { writeEnv({ NBS_LOCAL_MODEL_KEEP: "" }); keep = null; }
+    if (pull && !pull.done && sameName(pull.model, selected)) return null; // being installed right now
+    const to = pickInstalledModel(selected, names);
+    if (!canAutoSwitch(names, selected, to, keep)) return null;
+    writeEnv({ NBS_LOCAL_MODEL: to, NBS_LOCAL_MODEL_AUTOSWITCHED: fmtSwitch(selected, to, now()) });
+    restartWorker().catch(() => {}); // the worker reads .env at start; don't hold the page for the restart
+    return { from: selected, to };
+  }
+
+  /** Puts the model that was swapped out back. It isn't installed (or may not be): the worker then keeps substituting at run time without saving anything. */
+  async function undoSwitch() {
+    const env = readEnv();
+    const sw = parseSwitch(env.NBS_LOCAL_MODEL_AUTOSWITCHED);
+    if (!sw) throw new Error("Nothing to undo.");
+    const m = await localModels();
+    const stillMissing = !m || !m.list.some((x) => sameName(x.name, sw.from));
+    writeEnv({ NBS_LOCAL_MODEL: sw.from, NBS_LOCAL_MODEL_AUTOSWITCHED: "", NBS_LOCAL_MODEL_KEEP: stillMissing ? fmtKeep(sw.from, now()) : "" });
+    await restartWorker();
+    return { model: sw.from, kept: stillMissing };
+  }
+
+  /** What the AI page flags as "Not installed": the server default, and any model an account here was routed to (from the worker's live stats). */
+  function missingList(names, selected, keep) {
+    if (!names.length) return [];
+    const out = [];
+    const have = (n) => names.some((x) => sameName(x, n));
+    if (!have(selected)) out.push({ model: selected, kind: "default", to: pickInstalledModel(selected, names), kept: Boolean(keep && sameName(keep.model, selected)) });
+    for (const x of missingSeen() ?? []) {
+      if (!x?.model || have(x.model) || out.some((o) => sameName(o.model, x.model))) continue;
+      out.push({ model: String(x.model), kind: "account", to: x.to ?? null, kept: false });
+    }
+    return out;
+  }
+
   async function view() {
+    await reconcileDefault().catch(() => null);
     const env = readEnv();
     const o = await ollamaInfo();
+    const local = await localModels();
+    const keep = parseKeep(env.NBS_LOCAL_MODEL_KEEP);
+    const sw = parseSwitch(env.NBS_LOCAL_MODEL_AUTOSWITCHED);
     return {
       geminiKey: maskKey(env.GEMINI_API_KEY),
       mode: validMode(env.NBS_AI_MODE) ? env.NBS_AI_MODE : null,
@@ -110,7 +202,11 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
       geminiModel: env.NBS_GEMINI_MODEL || null,
       localEnabled: !noLocalModel(),
       ollama: o,
-      local: await localModels(),
+      local,
+      selectedModel: selectedModel(),
+      missing: noLocalModel() || !local ? [] : missingList(local.list.map((x) => x.name), selectedModel(), keep),
+      autoSwitched: sw && sameName(sw.to, selectedModel()) ? sw : null,
+      keepMissing: keep && sameName(keep.model, selectedModel()) ? keep : null,
       pull,
     };
   }
@@ -219,6 +315,13 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     if (localModel !== undefined) {
       if (localModel !== "" && !validModel(localModel)) throw new Error("That isn't a model name.");
       patch.NBS_LOCAL_MODEL = localModel;
+      // A different pick than the current default: the switch note is stale, and a pick that isn't installed is kept on purpose (never swapped back).
+      if (localModel !== (readEnv().NBS_LOCAL_MODEL || "")) {
+        const m = await localModels();
+        const missing = localModel !== "" && m && m.list.length > 0 && !m.list.some((x) => sameName(x.name, localModel));
+        patch.NBS_LOCAL_MODEL_AUTOSWITCHED = "";
+        patch.NBS_LOCAL_MODEL_KEEP = missing ? fmtKeep(localModel, now()) : "";
+      }
     }
     if (geminiModel !== undefined) {
       if (geminiModel !== "" && !validModel(geminiModel)) throw new Error("That isn't a model name.");
@@ -229,5 +332,5 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     await restartWorker();
   }
 
-  return { view, localModels, deleteModel, unloadModel, listModels, test, startPull, setKey, setDefaults, pullState: () => pull };
+  return { view, reconcileDefault, undoSwitch, localModels, deleteModel, unloadModel, listModels, test, startPull, setKey, setDefaults, pullState: () => pull };
 }

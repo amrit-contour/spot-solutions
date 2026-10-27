@@ -587,6 +587,11 @@ export interface AiSettings {
   policy?: import("./fleet.ts").AiPolicy;
   /** Set by the worker when a configured local model wasn't installed and the setting was changed to one that is. */
   autoSwitched?: { from: string; to: string; at: number; server: string };
+  /**
+   * The curator chose to keep `model` although it isn't installed (Undo of an auto-switch, or picked on purpose). The worker never
+   * saves another model over it; it only substitutes at run time. Cleared when the model gets installed or another is picked.
+   */
+  keepMissing?: { model: string; at: number };
 }
 
 /** users/{uid}/secrets/ai. Write-only from the app; only the worker reads it. */

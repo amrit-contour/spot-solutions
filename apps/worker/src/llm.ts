@@ -3,10 +3,10 @@
 // own key (from users/{uid}/secrets/ai), or the server's GEMINI_API_KEY if they have none.
 import { GoogleGenAI } from "@google/genai";
 import { AI_INTERACTIVE_DEADLINE_MS, DEFAULT_AI_POLICY, TTL_DAYS, aiFailureMessage, routeBudgetMs, type AiRoute, type AiSettings } from "@spot/shared";
-import { col, expireAt, userRef } from "./firebase.ts";
+import { FieldValue, col, expireAt, userRef } from "./firebase.ts";
 import { counters, live } from "./stats.ts";
 import os from "node:os";
-import { AiPolicyError, IMPLICIT_GEMINI_MODEL, autoSwitchUpdate, canAutoSwitch, missingModelNoticeId, missingModelText, ollamaKeepAlive, planRoutes, planRoutesDetailed, type Substitution } from "./aiRouting.ts";
+import { AiPolicyError, IMPLICIT_GEMINI_MODEL, canAutoSwitch, isKept, keepMissingSpent, missingModelNoticeId, missingModelText, ollamaKeepAlive, planRoutes, planRoutesDetailed, switchDecision, type Substitution } from "./aiRouting.ts";
 import { DEFAULT_LOCAL_MODEL } from "./serverAi.ts";
 import { SERVER_ID } from "./serverIdentity.ts";
 
@@ -115,23 +115,28 @@ export const resetInstalledCache = () => (installedCache = { names: null, at: 0 
 const LOG_EVERY_MS = 3600_000;
 const loggedAt = new Map<string, number>();
 const told = new Set<string>();
-async function noteSubstitution(uid: string | null, s: Substitution, routes: AiRoute[], localOnly: boolean, installed: string[] | null) {
+async function noteSubstitution(uid: string | null, s: Substitution, routes: AiRoute[], localOnly: boolean, installed: string[] | null, ai: AiSettings) {
   const key = `${s.from}->${s.to ?? "none"}`;
   if (Date.now() - (loggedAt.get(key) ?? 0) >= LOG_EVERY_MS) {
     loggedAt.set(key, Date.now());
     console.warn(`[llm] ollama/${s.from} isn't installed; ${s.to ? `using ollama/${s.to}` : routes.length ? `no local model installed, using ${routes[0].provider}/${routes[0].model}` : "no local model installed and nothing else to try"}`);
   }
-  if (!uid || told.has(`${uid}|${key}`)) return;
-  told.add(`${uid}|${key}`);
+  live.noteMissingModel(s.from, s.to);
+  if (!uid) return;
   const host = os.hostname();
-  // Save the working model as the setting so this never recurs, but only on a fresh, non-empty list that lacks the model.
+  const serverKeep = process.env.NBS_LOCAL_MODEL_KEEP?.replace(/@\d+$/, "") || null;
+  // Save the working model as the setting so this never recurs, but only on a fresh, non-empty list that lacks the model, and never
+  // over a model the curator chose to keep (Undo, or picked on purpose): that is only substituted here, at run time.
   let saved = false;
-  if (s.to && canAutoSwitch(installed, s.from, s.to)) {
+  let kept = isKept(s.from, ai.keepMissing, serverKeep);
+  if (!kept && !told.has(`${uid}|${key}`) && s.to && canAutoSwitch(installed, s.from, s.to)) {
     try {
       const doc = await userRef(uid).get();
-      const upd = autoSwitchUpdate((doc.data()?.settings as { ai?: AiSettings } | undefined)?.ai, s.from, s.to, { server: host, at: Date.now() });
-      if (upd) {
-        await userRef(uid).update(upd);
+      const fresh = (doc.data()?.settings as { ai?: AiSettings } | undefined)?.ai;
+      const d = switchDecision(fresh, installed, s.from, s.to, { server: host, at: Date.now() }, serverKeep);
+      kept = d.kept;
+      if (d.update) {
+        await userRef(uid).update(d.update);
         saved = true;
         console.warn(`[llm] saved ollama/${s.to} as ${uid}'s model (was ollama/${s.from}, not installed on ${host})`);
       }
@@ -139,11 +144,23 @@ async function noteSubstitution(uid: string | null, s: Substitution, routes: AiR
       console.warn("[llm] couldn't save the model switch:", (e as Error).message);
     }
   }
-  const text = missingModelText(host, s.from, s.to, { gemini: routes.some((r) => r.provider === "gemini"), localOnly, saved });
+  const told1 = `${uid}|${key}|${kept ? "kept" : ""}`;
+  if (told.has(told1)) return;
+  told.add(told1);
+  told.add(`${uid}|${key}`);
+  const text = missingModelText(host, s.from, s.to, { gemini: routes.some((r) => r.provider === "gemini"), localOnly, saved, kept });
   await col(uid, "notices")
-    .doc(missingModelNoticeId(SERVER_ID, s.from))
+    .doc(missingModelNoticeId(SERVER_ID, s.from, kept))
     .create({ level: "warn", kind: "server", text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices), link: "/settings", linkLabel: saved ? "Pick another" : "AI models" })
     .catch(() => undefined); // already told (ALREADY_EXISTS), or a write failure: the log line has it
+}
+
+// keepMissing is spent once the model is installed or no route uses it: forget it (once per account until it is set again).
+const keepCleared = new Set<string>();
+function clearSpentKeep(uid: string | null, ai: AiSettings, installed: string[] | null) {
+  if (!uid || !ai.keepMissing || keepCleared.has(`${uid}|${ai.keepMissing.at}`) || !keepMissingSpent(ai, installed)) return;
+  keepCleared.add(`${uid}|${ai.keepMissing.at}`);
+  userRef(uid).update({ "settings.ai.keepMissing": FieldValue.delete() }).catch(() => keepCleared.delete(`${uid}|${ai.keepMissing?.at}`));
 }
 
 // Local models run one generation at a time, so queue everything to avoid timeouts in bursts.
@@ -163,7 +180,8 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
     // The account's AI policy decides which routes exist at all (local_only never reaches Gemini).
     const installed = await installedModels();
     const { routes, substitutions } = planRoutesDetailed(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY), installed, process.env.NBS_LOCAL_MODEL || DEFAULT_LOCAL_MODEL);
-    for (const s of substitutions) void noteSubstitution(uid, s, routes, (ai.policy ?? DEFAULT_AI_POLICY) === "local_only", installed);
+    clearSpentKeep(uid, ai, installed);
+    for (const s of substitutions) void noteSubstitution(uid, s, routes, (ai.policy ?? DEFAULT_AI_POLICY) === "local_only", installed, ai);
     if (!routes.length) {
       counters.errors++;
       live.noteError();

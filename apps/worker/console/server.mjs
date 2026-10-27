@@ -362,8 +362,11 @@ const ai = createAi({
   ollamaUrl: OLLAMA,
   ollamaInfo: ollamaView,
   noLocalModel,
+  missingSeen: () => live.view()?.missingModels ?? [],
   diskFree: () => { try { return freeBytes(DATA).free; } catch { return null; } },
 });
+// A server default that names a model that isn't installed is fixed here, once a minute, and when the AI page loads (ai.mjs).
+if (!DRY) setInterval(() => { ai.reconcileDefault().catch(() => {}); }, 60_000).unref();
 
 const isLocal = (req) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "");
 function authed(req) {
@@ -486,6 +489,7 @@ createServer(async (req, res) => {
         if (act === "delete-model") return json(res, 200, { ok: true, ...(await ai.deleteModel(String(b.model ?? "").trim())) });
         if (act === "unload-model") { await ai.unloadModel(String(b.model ?? "").trim()); return json(res, 200, { ok: true }); }
         if (act === "defaults") { await ai.setDefaults(b); return json(res, 200, { ok: true }); }
+        if (act === "undo-switch") return json(res, 200, { ok: true, ...(await ai.undoSwitch()) });
       } catch (e) {
         return json(res, 400, { error: e.message });
       }

@@ -68,6 +68,7 @@ export function shape(raw, now = Date.now()) {
       fallbackAll: totals.aiFallback,
     },
     queue: { pending: num(raw.queue?.pending), lastSendAt: num(raw.queue?.lastSendAt) || null },
+    missingModels: (Array.isArray(raw.missingModels) ? raw.missingModels : []).slice(0, 20).filter((m) => m && typeof m.model === "string").map((m) => ({ model: str(m.model, 100), to: str(m.to, 100), at: num(m.at) || null })),
   };
 }
 

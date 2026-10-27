@@ -875,6 +875,13 @@ function aiCard(s) {
   const task = s.update.progress;
   const localBusy = s.update.running && (task?.task === "local-on" || task?.task === "local-off");
   const pull = a.pull;
+  // Models flagged "Not installed": the server default (also an unsaved pick below), and models accounts here were routed to.
+  const miss = [...(a.missing || [])];
+  if (local && installed.length && draft.localModel && !installed.includes(draft.localModel) && !miss.some((m) => m.model === draft.localModel)) miss.push({ model: draft.localModel, kind: "default", to: null, kept: false });
+  const missRows = miss.map((m) => `<div class="row2" style="margin-top:10px"><div class="grow"><span class="mono">${esc(m.model)}</span> <span class="chip bad">Not installed</span>
+      <div class="muted small">${m.kind === "default" ? "The server default." : "An account on this server uses it."} ${m.kept ? `Kept on purpose; ${m.to ? `${esc(m.to)} answers` : "something else answers"} until you install it.` : m.to ? `${esc(m.to)} answers instead.` : "Nothing local answers it."}</div></div>
+      <button class="tonal sm" data-install-model="${esc(m.model)}" ${pull && !pull.done ? "disabled" : ""}>Install</button><button class="text sm" data-pick-other>Pick another</button></div>`).join("");
+  const swd = a.autoSwitched ? `<div class="row2" style="margin-top:10px"><div class="grow small">Switched from <b class="mono">${esc(a.autoSwitched.from)}</b> to <b class="mono">${esc(a.autoSwitched.to)}</b> because ${esc(a.autoSwitched.from)} isn't installed (${new Date(a.autoSwitched.at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })}).</div><button class="tonal sm" data-undo-switch>Undo</button></div>` : "";
   const pct = pull && pull.total ? Math.min(100, Math.round((pull.completed / pull.total) * 100)) : 0;
   const modeOpt = (m, desc, off) => `<label class="opt ${draft.mode === m ? "on" : ""} ${off ? "off" : ""}"><input type="radio" name="mode" value="${m}" ${draft.mode === m ? "checked" : ""} ${off ? "disabled" : ""}><span><b>${esc(a.modes[m])}</b><span class="muted small">${desc}</span></span></label>`;
   const summary = `${a.mode ? esc(a.modes[a.mode]) : "Built-in default"} · ${local ? "local model on" : "Gemini only"}${hasKey ? " · Gemini key set" : ""}`;
@@ -904,7 +911,8 @@ function aiCard(s) {
       ${!local && lowMem ? `<div class="muted small" style="margin-top:6px">This computer has ${fmt(s.memory.total)} of memory. A local model wants about 8 GB; Gemini works fine without it.</div>` : ""}
       ${!local ? `<div class="muted small" style="margin-top:6px">Turning it on installs Ollama and downloads the model (about 3.5 GB). It runs in the background; this page shows progress.</div>` : ""}
     
-    ${local ? `<div class="sub"><b class="lbl">Installed models</b>
+    ${local && (swd || missRows) ? `<div class="sub" id="ai-missing">${swd}${missRows}</div>` : ""}
+    ${local ? `<div class="sub" id="ai-installed"><b class="lbl">Installed models</b>
       <div class="muted small">Installed in Ollama on this computer. The default is what the server uses for curators without their own choice.</div>
       ${a.ollama.modelsDir ? `<div class="muted small mono" style="margin-top:8px" title="Found via ${esc(a.ollama.modelsSource)}">${modelsWhere(a.ollama)}</div>` : ""}
       ${installed.length ? modelsList(a, s) : `<div class="muted small" style="margin-top:8px">${a.ollama.up ? (a.ollama.problem ? wrongFolderNote(a.ollama) : "No models yet.") : "Ollama isn't answering."}</div>`}
@@ -1738,6 +1746,16 @@ function wire() {
     try { await post("/api/ai/defaults", { localModel: name }); if (draft) draft.localModel = name; toast(`Using ${name}. Worker restarting.`); } catch (e) { toast(e.message); }
     delete modelBusy[name]; refresh(true);
   });
+  document.querySelectorAll("[data-install-model]").forEach((b) => b.onclick = async () => {
+    try { await post("/api/ai/pull", { model: b.dataset.installModel }); toast("Download started."); } catch (e) { toast(e.message); }
+    refresh(true);
+  });
+  document.querySelectorAll("[data-pick-other]").forEach((b) => b.onclick = () => $("#ai-installed")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  const us = $("[data-undo-switch]"); if (us) us.onclick = async () => {
+    us.disabled = true;
+    try { const r = await post("/api/ai/undo-switch", {}); if (draft) draft.localModel = r.model; toast(r.kept ? `Back to ${r.model}. It isn't installed, so another model answers until you install it. Worker restarting.` : `Back to ${r.model}. Worker restarting.`); } catch (e) { toast(e.message); }
+    refresh(true);
+  };
   document.querySelectorAll("[data-mdl-del]").forEach((b) => b.onclick = async () => {
     const name = b.dataset.mdlDel;
     if (!(await askConfirm(`Delete ${name}?\n\nThis frees ${fmt(Number(b.dataset.size) || 0)} on this computer. You can download it again later.`))) return;
