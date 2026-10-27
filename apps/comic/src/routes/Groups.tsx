@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button, CompactButton, IconGroup, IconRefresh, PageHeader, SettingRow, Spinner, Switch } from "@spot/ui";
-import { EmptyState, IconTile, ListGroup, ListRow, Page, SearchField, Section } from "../components/ui";
+import { EmptyState, ListGroup, ListRow, Page, SearchField, Section } from "../components/ui";
 import { setWatched, useAllGroups, useComicSettings, useWatchedGroups } from "../lib/alerts";
 import { runCommand } from "../lib/commands";
+import { GroupAvatar } from "../lib/photos";
 import { AlertRulesPanel } from "../components/AlertRulesPanel";
 
 /** Pick which WhatsApp groups to watch. Only those are read by your server; nothing else, and switching one off stops it at once. */
@@ -77,7 +78,7 @@ export function Groups({ uid }: { uid: string }) {
               {rows.map((g) => (
                 <ListRow
                   key={g.id}
-                  leading={<IconTile tone="neutral" icon={IconGroup} />}
+                  leading={<GroupAvatar uid={uid} groupId={g.id} name={g.name} size={40} />}
                   title={g.name}
                   subtitle={on.has(g.id) ? "Watching" : g.participants ? `${g.participants} members` : "Not watched"}
                   trailing={<Switch label={`Watch ${g.name}`} checked={on.has(g.id)} onChange={(v) => toggle(g, v)} />}

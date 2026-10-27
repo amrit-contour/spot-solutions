@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DAY_SHORT, curatorUsage, daysLabel, type Curator } from "@spot/shared";
 import { Button, ConfirmDialog, IconPlus, IconButton, IconComics, IconPen, IconTrash, Sheet } from "@spot/ui";
+import { auth } from "@spot/ui/firebase";
+import { CuratorAvatar } from "../lib/photos";
 import { useRoster } from "../lib/roster";
 import { CuratorForm } from "./CuratorForm";
 import { Card, EmptyState, Section } from "./ui";
@@ -54,6 +56,7 @@ export function CuratorsPanel({ q }: { q: string }) {
                 <li key={c.id}>
                   <Card pad={false}>
                     <div className="flex min-w-0 items-center gap-3 py-2 pr-2 pl-4">
+                      <CuratorAvatar uid={auth.currentUser?.uid} curator={c} size={40} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate type-title-s">{c.name}</p>
                         <p className="truncate type-body-s text-on-surface-variant">

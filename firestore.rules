@@ -242,6 +242,10 @@ service cloud.firestore {
         allow read, write: if isOwner(uid) && coll in ['rooms', 'curators', 'asks', 'mySpots', 'regularSpots', 'spotAlerts', 'roomPicks', 'groupUpdates', 'watchedGroups', 'rosterFollows'];
         // What the agent number did for the comic (the worker writes it; the comic reads it).
         allow read: if isOwner(uid) && coll == 'agentLog';
+        // Profile pictures of WhatsApp groups (both apps) and of a Comedy comic's curators, one doc per WhatsApp id (profilePics.ts).
+        // Written only by the worker, and only for what this account's own app asked about, so a comic reads photos of just the
+        // curators and groups they have.
+        allow read: if isOwner(uid) && coll == 'waPhotos';
       }
     }
   }

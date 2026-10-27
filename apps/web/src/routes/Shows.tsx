@@ -9,6 +9,7 @@ import { DAY_SHORT, DEFAULT_CLEANUP, formatTime, groupModeOf, type GroupInfo, ty
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
+import { GroupAvatar } from "../lib/photos";
 import { PageHeader } from "@spot/ui";
 import { ShowPeoplePicker } from "../components/ShowPeoplePicker";
 import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
@@ -280,7 +281,12 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
               Refresh
             </Button>
           </div>
-          <Select value={draft.groupId ?? ""} onChange={(v) => set("groupId", v || null)} placeholder="No group" options={groups.data.map((g) => ({ value: g.id, label: `${g.name} · ${g.participants}` }))} />
+          <div className="flex items-center gap-3">
+            {draft.groupId && <GroupAvatar groupId={draft.groupId} name={group?.name ?? "Group"} size={40} />}
+            <div className="min-w-0 flex-1">
+              <Select value={draft.groupId ?? ""} onChange={(v) => set("groupId", v || null)} placeholder="No group" options={groups.data.map((g) => ({ value: g.id, label: `${g.name} · ${g.participants}` }))} />
+            </div>
+          </div>
           {group && !group.isAdmin && (
             <p className="mt-2 flex items-center gap-1.5 type-body-s text-error"><IconWarn className="icon size-4" /> You're not an admin of this group, so comics can't be added or removed.</p>
           )}

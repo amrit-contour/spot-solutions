@@ -70,7 +70,7 @@ import { ChatComposer, type Outgoing } from "../components/ChatComposer";
 import { PinCard, PollCard, WaText } from "@spot/ui";
 import { Button, Chip, ConfirmDialog, Empty, IconButton, Segmented, Select, Sheet, Spinner, cx } from "@spot/ui";
 import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconEye, IconGroup, IconMic, IconRefresh, IconMenuDots, IconSearch, IconServer, IconSkip, IconSparkle } from "@spot/ui";
-import { ComicAvatar } from "../lib/photos";
+import { ComicAvatar, GroupAvatar } from "../lib/photos";
 
 const OPEN = ["new", "acked"];
 
@@ -406,9 +406,7 @@ function GroupRow({ g, active, now, tz, onOpen }: { g: GroupThreadItem; active: 
   return (
     <li>
       <button onClick={onOpen} aria-current={active ? "true" : undefined} className={cx("state-layer flex min-h-[4.5rem] w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left", active && "bg-secondary-container")}>
-        <span className="grid size-11 flex-none place-items-center rounded-full bg-tertiary-container text-on-tertiary-container">
-          <IconGroup className="icon size-5" />
-        </span>
+        <GroupAvatar groupId={g.groupId} name={g.name} size={44} />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
             <span className="min-w-0 flex-1 truncate type-title-m font-medium">{g.name}</span>
@@ -655,9 +653,7 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
       voiceAllowed
       header={(sync) => (
         <>
-          <span className="grid size-10 flex-none place-items-center rounded-full bg-tertiary-container text-on-tertiary-container">
-            <IconGroup className="icon size-5" />
-          </span>
+          <GroupAvatar groupId={group.groupId} name={group.name} size={40} />
           <div className="min-w-0 flex-1">
             <h2 className="truncate type-title-m">{group.name}</h2>
             <p className="truncate type-body-s text-on-surface-variant" aria-live="polite">

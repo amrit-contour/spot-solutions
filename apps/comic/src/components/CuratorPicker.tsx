@@ -2,6 +2,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button, IconPlus, IconSearch, TextInput } from "@spot/ui";
 import type { Curator } from "@spot/shared";
+import { auth } from "@spot/ui/firebase";
+import { CuratorAvatar } from "../lib/photos";
 import { useRoster } from "../lib/roster";
 import { CuratorForm } from "./CuratorForm";
 
@@ -45,6 +47,7 @@ export function CuratorPicker({ exclude, onPick, onClose }: { exclude: string[];
         {list.map((c) => (
           <li key={c.id}>
             <button onClick={() => { onPick(c.id); onClose(); }} className="state-layer flex min-h-12 w-full min-w-0 items-center gap-2 rounded-sm px-3 text-left type-body-l">
+              <CuratorAvatar uid={auth.currentUser?.uid} curator={c} size={32} />
               <span className="min-w-0 flex-1 truncate">{c.name}</span>
               {c.instagram && <span className="max-w-[40%] truncate type-label-m text-on-surface-variant">@{c.instagram}</span>}
             </button>

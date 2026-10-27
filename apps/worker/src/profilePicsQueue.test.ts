@@ -83,4 +83,45 @@ describe("PicQueue", () => {
     s.q.enqueue(["b"], true);
     expect(s.q.size).toBe(3);
   });
+
+  it("handles WhatsApp ids with no saved doc (groups, curators) and keeps them apart from comics of the same id", async () => {
+    const saved: Record<string, unknown> = {};
+    let t = 1_000_000_000;
+    const q = new PicQueue(
+      {
+        now: () => t,
+        ready: () => true,
+        load: async (id, kind) => (kind === "wa" ? { id, chatId: id } : undefined),
+        blocked: async () => false,
+        fetchUrl: async (c) => `https://x/${c.id}`,
+        save: async (id, patch, kind) => void (saved[`${kind}:${id}`] = patch),
+      },
+      2000,
+    );
+    q.enqueue(["120363@g.us"], false, "wa");
+    q.enqueue(["120363@g.us"], false, "comic"); // same id, other kind: its own entry (no doc, so it is skipped)
+    expect(q.size).toBe(2);
+    expect(await q.step()).toBe("saved");
+    expect(saved["wa:120363@g.us"]).toMatchObject({ photoUrl: "https://x/120363@g.us" });
+    t += 2000;
+    expect(await q.step()).toBe("skipped");
+  });
+  it("adds jitter to the wait between lookups", async () => {
+    let t = 1_000_000_000;
+    const deps: PicDeps = {
+      now: () => t,
+      ready: () => true,
+      load: async (id) => comic(id),
+      blocked: async () => false,
+      fetchUrl: async () => "https://x/y",
+      save: async () => undefined,
+    };
+    const q = new PicQueue(deps, 2000, () => 1); // the longest jitter: interval + half
+    q.enqueue(["a", "b"]);
+    await q.step();
+    t += 2500;
+    expect(await q.step()).toBe("wait");
+    t += 500;
+    expect(await q.step()).toBe("saved");
+  });
 });

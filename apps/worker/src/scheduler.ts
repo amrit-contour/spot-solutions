@@ -15,6 +15,7 @@ import { sendGroupPosts } from "./groupPosts.ts";
 import { runCleanups } from "./groupCleanup.ts";
 import { startGroupWatch } from "./groupWatch.ts";
 import { maybeTickAsks } from "./asks.ts";
+import { maybePhotoSweep } from "./profilePics.ts";
 
 const TICK_MS = 2 * 60_000;
 const running = new Set<string>();
@@ -65,6 +66,7 @@ export function startScheduler(uids: () => Iterable<string>) {
       void maybeCheckFollowUps(uid, client).catch((e) => console.error("[follow-up]", e));
       void sendGroupPosts(uid, client).catch((e) => console.error("[group-post]", e));
       void maybeTickAsks(uid, client).catch((e) => console.error("[asks]", e));
+      void maybePhotoSweep(uid).catch((e) => console.error("[pics-sweep]", e.message));
     }
   }, TICK_MS).unref();
 }

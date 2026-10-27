@@ -26,3 +26,4 @@ export * from "./admin";
 export * from "./useAppUpdate";
 export * from "./AppVersion";
 export * from "./lazyRoute";
+export * from "./photoRequests";
