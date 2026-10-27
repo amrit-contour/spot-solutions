@@ -84,14 +84,15 @@ export async function killOrphanChromium(uid: string) {
   }
 }
 
-const notice = (uid: string, level: "info" | "warn", text: string) => col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
+const notice = (uid: string, level: "info" | "warn", text: string, _kind?: undefined, extra: { quiet?: boolean; link?: string; linkLabel?: string } = {}) =>
+  col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices), ...(extra.quiet ? { quiet: true } : {}), ...(extra.link ? { link: extra.link, linkLabel: extra.linkLabel ?? "Open" } : {}) }).catch(() => undefined);
 
 /** One notice per `key` per window, so a flapping page or a retry loop never floods Updates. */
 const noticed = new Map<string, number>();
 const NOTICE_WINDOW_MS = 30 * 60_000;
-export function noticeOnce(uid: string, key: string, level: "info" | "warn", text: string, windowMs = NOTICE_WINDOW_MS) {
+export function noticeOnce(uid: string, key: string, level: "info" | "warn", text: string, windowMs = NOTICE_WINDOW_MS, extra: { quiet?: boolean; link?: string; linkLabel?: string } = {}) {
   if (!dueOnce(noticed, `${uid}|${key}`, windowMs, Date.now())) return false;
-  void notice(uid, level, text);
+  void notice(uid, level, text, undefined, extra);
   return true;
 }
 /** Start failures in a row before the app is told (one slow start is normal). */
@@ -185,7 +186,8 @@ class SessionManager {
           console.warn(`[health] ${uid} ${health}${note ? `: ${note}` : ""}`);
           void setState(uid, { health, error: note, ...(health === "failing" ? { status: "error" as const } : {}) });
         },
-        notify: (key, level, text) => void noticeOnce(uid, `health-${key}`, level, text, key === "recovered" ? 5 * 60_000 : NOTICE_WINDOW_MS),
+        // Restarting and recovered stay in the app; only "failing" (gave up restarting) reaches the agent, with a link to the details.
+        notify: (key, level, text) => void noticeOnce(uid, `health-${key}`, level, text, key === "recovered" ? 5 * 60_000 : NOTICE_WINDOW_MS, key === "failing" ? { link: "/requests?view=updates", linkLabel: "See what happened" } : { quiet: true }),
         giveUp: this.hooks.onUnhealthy ? () => this.hooks.onUnhealthy?.(uid) : undefined,
         now: Date.now,
         sleep: (ms) => new Promise((r) => setTimeout(r, ms)),

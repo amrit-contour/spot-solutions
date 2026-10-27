@@ -25,6 +25,8 @@ import { sessions } from "./sessions.ts";
 import { sendQueued } from "./sendQueue.ts";
 import { comicFor, scopeFor } from "./comicAgent.ts";
 import { dispatch } from "./agentRoute.ts";
+/** The Curate app, for links in agent messages. */
+const APP_BASE = "https://nothingbotcurate.web.app";
 import { QUESTION_NOT_COMMAND, curateIntent } from "./agentIntent.ts";
 
 // ---------------------------------------------------------------- incoming messages
@@ -376,12 +378,12 @@ async function runPlan(uid: string, p: ActionPlan) {
         const lid = await ensureLineup(uid, w.week, show);
         if (p.direct) {
           // The app's "Already agreed": same handler as send_offer with direct: true (placing, confirmation message, group).
-          const r = (await runHandler("send_offer", uid, { comicIds: [p.comicId], lineupId: lid, direct: true })) as { added: number; already: number };
-          return void (await say(uid, r.added ? `Done: ${p.comicName} is on ${show.name} and got your confirmation.` : r.already ? `${p.comicName} was already on ${show.name}.` : `I couldn't add ${p.comicName} to ${show.name}.`));
+          const r = (await runHandler("send_offer", uid, { comicIds: [p.comicId], lineupId: lid, direct: true, overfill: true, confirm: p.confirm !== false, addToGroup: p.addToGroup !== false })) as { added: number; already: number };
+          return void (await say(uid, r.added ? `Done: ${p.comicName} is on ${show.name}${p.confirm === false ? ", not told yet (Send updates or confirm will tell them)" : " and got your confirmation"}${p.addToGroup === false ? ", not added to the group" : ""}.` : r.already ? `${p.comicName} was already on ${show.name}.` : `I couldn't add ${p.comicName} to ${show.name}.`));
         }
         const venue = w.venues.find((v) => v.id === show.venueId);
         const msg = offerPayload(w.settings, show, w.week, venue?.name, p.comicName);
-        const r = (await runHandler("send_offer", uid, { comicIds: [p.comicId], lineupId: lid, body: msg.body, rich: msg.rich })) as { sent: number };
+        const r = (await runHandler("send_offer", uid, { comicIds: [p.comicId], lineupId: lid, body: msg.body, rich: msg.rich, overfill: true })) as { sent: number };
         return void (await say(uid, r.sent ? `Done: I sent ${first} the offer for ${show.name}. If they say yes they're added and get your confirmation; I'll tell you what they say.` : `I couldn't send ${first} the offer.`));
       }
       case "outcome": {
@@ -475,11 +477,12 @@ async function scan(uid: string, mem: AgentMemory, settings: Settings) {
     next.actions = Math.max(next.actions, a.createdAt);
     queueNotify(uid, { kind: "followup", text: a.comicName, id: a.comicId?.includes("@") ? a.comicId : undefined, detail: `(${a.followUp?.action === "place" ? `on ${a.followUp.showName ?? "a show"}` : "said no"})` }, { actions: next.actions });
   }
-  const notices = (await col(uid, "notices").where("createdAt", ">", from.notices).get()).docs.map((d) => d.data() as { level: string; kind?: string; text: string; agentText?: string; createdAt: number; dismissedAt?: number });
+  const notices = (await col(uid, "notices").where("createdAt", ">", from.notices).get()).docs.map((d) => d.data() as { level: string; kind?: string; text: string; agentText?: string; createdAt: number; dismissedAt?: number; quiet?: boolean; link?: string });
   for (const n of notices.sort((a, b) => a.createdAt - b.createdAt)) {
     next.notices = Math.max(next.notices, n.createdAt);
-    if (n.dismissedAt) continue;
-    if (n.level === "warn") queueNotify(uid, { kind: "warn", text: n.text }, { notices: next.notices });
+    if (n.dismissedAt || n.quiet) continue; // quiet: in-progress retries, shown in the app's Updates only
+    const withLink = (t: string) => (n.link ? `${t}\nDetails: ${APP_BASE}${n.link}` : t);
+    if (n.level === "warn") queueNotify(uid, { kind: "warn", text: withLink(n.text) }, { notices: next.notices });
     else if (n.kind === "offer" || n.kind === "lineup" || n.kind === "server") queueNotify(uid, { kind: "notice", text: n.text }, { notices: next.notices });
     else if (n.kind === "access" && (await adminEmail(uid))) queueNotify(uid, { kind: "notice", text: n.agentText ?? n.text }, { notices: next.notices });
   }

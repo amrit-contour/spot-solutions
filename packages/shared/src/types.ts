@@ -206,6 +206,8 @@ export interface AppNotice {
   text: string;
   /** Kind "access": what the agent number says instead of `text` (it carries the reply commands). */
   agentText?: string;
+  /** In the app's Updates only, never forwarded to the agent number (an in-progress retry). */
+  quiet?: boolean;
   /** Where the card's button goes in the app (e.g. "/admin"), and what it says. */
   link?: string;
   linkLabel?: string;

@@ -141,12 +141,13 @@ async function retryLater(uid: string, client: WAWebJS.Client, key: string, p: P
     const why = /No Gemini API key/.test(e.message)
       ? "The local model on your server is too slow to answer in time and there's no Gemini key to fall back on. Add a Gemini key in Settings → AI models, or move your account to a faster server."
       : `The AI couldn't read them (${e.message}).`;
-    await notice(uid, "warn", `Couldn't read new messages from ${p.contact.name}. ${why} Trying again in a few minutes.`).catch(() => undefined);
+    // Still retrying: the app's Updates only. The agent hears about it once, if it finally fails.
+    await notice(uid, "warn", `Couldn't read new messages from ${p.contact.name}. ${why} Trying again in a few minutes.`, undefined, { quiet: true }).catch(() => undefined);
   }
   if (tries > RETRY_MS.length) {
     if (gaveUp.has(`${key}|${p.messages[0]?.id}`)) return;
     gaveUp.add(`${key}|${p.messages[0]?.id}`);
-    await notice(uid, "warn", `Gave up reading messages from ${p.contact.name} after ${tries} tries. Once the AI works again, run Requests → Scan past messages to pick them up.`).catch(() => undefined);
+    await notice(uid, "warn", `Gave up reading messages from ${p.contact.name} after ${tries} tries. Once the AI works again, run Requests → Scan past messages to pick them up.`, undefined, { link: "/requests?view=updates", linkLabel: "See what happened" }).catch(() => undefined);
     return;
   }
   // A newer burst from the same person may already be waiting: fold these messages into it rather than racing it.

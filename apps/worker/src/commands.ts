@@ -743,8 +743,9 @@ export async function dropFromLineup(uid: string, client: WAWebJS.Client, comicI
 }
 
 /** `kind` marks the notices the agent number also forwards to the curator's WhatsApp (offer outcomes, lineup changes, server moves); warnings always go. */
-export async function notice(uid: string, level: "info" | "warn", text: string, kind?: NoticeKind) {
-  await col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices), ...(kind ? { kind } : {}) });
+/** `quiet`: shown in the app's Updates only, never forwarded to the agent number (in-progress retries). `link`: where the card points. */
+export async function notice(uid: string, level: "info" | "warn", text: string, kind?: NoticeKind, extra: { quiet?: boolean; link?: string; linkLabel?: string } = {}) {
+  await col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices), ...(kind ? { kind } : {}), ...(extra.quiet ? { quiet: true } : {}), ...(extra.link ? { link: extra.link, linkLabel: extra.linkLabel ?? "Open" } : {}) });
 }
 
 /** Run one command handler directly (the agent's "confirm Monday" uses the same code as the Confirm button). */
