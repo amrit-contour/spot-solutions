@@ -33,7 +33,7 @@ async function copy(text: string) {
 type InviteRow = Invite & { email: string };
 
 /** Admin: invite an email address and get a message to send. */
-function Invites() {
+export function Invites() {
   const { user } = useApp();
   const [invites, setInvites] = useState<InviteRow[]>([]);
   const [email, setEmail] = useState("");
@@ -158,7 +158,7 @@ export function Curators({ servers }: { servers: ServerStatus[] | null }) {
 
   return (
     <>
-    <Collapsible id="curators" title="Curators" icon={IconComics} summary={pending.length ? `${pending.length} pending` : `${approved.length}/${max} in use`} summaryTone={pending.length ? "tertiary" : "neutral"}>
+    <Collapsible id="curators" title="Curators" icon={IconComics} summary={pending.length ? `${pending.length} pending` : `${approved.length}/${max} in use`} summaryTone={pending.length ? "tertiary" : "neutral"} flush>
       <div className="flex flex-wrap items-center gap-3 px-4 pb-2">
         <p className="min-w-0 flex-1 type-body-s text-on-surface-variant">
           Invite-only: new sign-ins wait here unless you invited them. Each approved curator gets their own WhatsApp session on the server (about 300–400 MB of memory). {approved.length}/{max} in use.

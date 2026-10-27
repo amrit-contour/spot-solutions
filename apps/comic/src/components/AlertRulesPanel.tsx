@@ -101,7 +101,7 @@ export function AlertRulesPanel({ uid }: { uid: string }) {
         <p className="mt-2 type-body-s text-on-surface-variant">Which of your rooms a post names isn't tried here.</p>
       </Card>
 
-      <Collapsible id="alert-rules-advanced" title="Advanced" subtitle="Switch rules on or off, change their weight, add your own" defaultOpen={false} persist={false}>
+      <Collapsible id="alert-rules-advanced" title="Advanced" subtitle="Switch rules on or off, change their weight, add your own" defaultOpen={false} persist={false} flush>
         <div className="flex min-w-0 flex-col gap-5 p-4">
           <Slider label="Closures: close straight away at" value={cfg.closureThreshold} min={0} max={100} step={5} onChange={(v) => update({ ...cfg, closureThreshold: v })} text={`${cfg.closureThreshold}`} hint={`Default ${DEFAULT_CLOSURE_THRESHOLD}`} />
           {(["offer", "closure"] as const).map((kind) => (

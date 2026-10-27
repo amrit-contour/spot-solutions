@@ -42,6 +42,7 @@ export function Collapsible({
   defaultOpen = true,
   persist = true,
   plain,
+  flush,
   onOpenChange,
   className,
   children,
@@ -59,6 +60,8 @@ export function Collapsible({
   persist?: boolean;
   /** No card around it (a server's own section). */
   plain?: boolean;
+  /** The body spans the whole card (lists with their own rows, bands, full-width logs). Without it the body gets the card's 16px inset on the left, right and bottom, so its content lines up with the header's icon. */
+  flush?: boolean;
   /** Called with the initial state on mount, then on every change. */
   onOpenChange?: (open: boolean) => void;
   className?: string;
@@ -95,7 +98,7 @@ export function Collapsible({
           transition={{ duration: reduce ? 0 : 0.25, ease: [0.23, 1, 0.32, 1] }}
           style={{ overflow: "hidden" }}
         >
-          {children}
+          {plain || flush ? children : <div className="px-4 pb-4">{children}</div>}
         </motion.div>
       )}
     </AnimatePresence>

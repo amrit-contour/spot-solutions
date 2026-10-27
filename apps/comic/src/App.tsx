@@ -12,6 +12,7 @@ import { Rooms } from "./routes/Rooms";
 import { Alerts } from "./routes/Alerts";
 import { Groups } from "./routes/Groups";
 import { Settings } from "./routes/Settings";
+import { Admin } from "./routes/Admin";
 import { useForegroundPush } from "./lib/push";
 import { ComicStores } from "./routes/Stores";
 import { Today } from "./routes/Today";
@@ -92,6 +93,7 @@ export default function App() {
             </Route>
             <Route path="/alerts" element={<Alerts uid={user.uid} />} />
             <Route path="/groups" element={<Groups uid={user.uid} />} />
+            <Route path="/admin" element={<Admin user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppShell>

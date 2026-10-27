@@ -129,7 +129,7 @@ export function FleetView({ servers }: { servers: ServerStatus[] | null }) {
   const sorted = [...servers].sort((a, b) => Number(serverOnline(b, now)) - Number(serverOnline(a, now)) || a.hostname.localeCompare(b.hostname));
   const onlineCount = sorted.filter((s) => serverOnline(s, now)).length;
   return (
-    <Collapsible id="fleet" title="Fleet" icon={IconServer} summary={`${onlineCount} online`} summaryTone={onlineCount ? "success" : "error"}>
+    <Collapsible id="fleet" title="Fleet" icon={IconServer} summary={`${onlineCount} online`} summaryTone={onlineCount ? "success" : "error"} flush>
       <p className="px-4 pb-3 type-body-s text-on-surface-variant">Each WhatsApp account runs on one server and moves to another by itself if that one goes offline.</p>
       <CollapsibleBand id="fleet:servers" label="Servers" count={servers.length}>
         <ul className="divide-y divide-outline-variant/40">

@@ -18,6 +18,7 @@ import { ServerPage } from "./routes/Server";
 import { Waiting } from "./routes/Waiting";
 import { useAccess } from "./lib/access";
 import { HelpPage } from "./routes/Help";
+import { AdminArea } from "./routes/Admin";
 import { AdminOnly } from "./components/AdminOnly";
 import { ConnectServer } from "./routes/ConnectServer";
 import { InstallPage } from "./routes/InstallPage";
@@ -70,6 +71,7 @@ export default function App() {
               <Route path="/shows" element={<Shows />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/server" element={<ServerPage />} />
+              <Route path="/admin" element={<AdminOnly><AdminArea /></AdminOnly>} />
               <Route path="/help" element={<AdminOnly><HelpPage /></AdminOnly>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

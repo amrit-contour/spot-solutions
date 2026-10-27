@@ -19,6 +19,8 @@ import { firestoreGcStore } from "./googleStore";
 import type { ComicBits } from "./googleLogic";
 import { memberLister } from "./members";
 import { firestoreMembers } from "./membersStore";
+import { firestoreAdmins } from "./adminsStore";
+import { memberActivity as adminActivity, setAdmin as adminSet } from "./admins";
 
 initializeApp();
 // A dedicated identity (deploy/setup-functions-iam.sh), not the default compute account.
@@ -279,6 +281,28 @@ export const listMembers = onCall(async (req) => {
     const a = req.auth;
     listMembersImpl ??= memberLister(firestoreMembers());
     return await listMembersImpl({ uid: a?.uid, email: a?.token.email, verified: a?.token.email_verified === true, anonymous: !a || a.token.firebase?.sign_in_provider === "anonymous" });
+  } catch (e) {
+    return rethrow(e);
+  }
+});
+
+// ---------- Admins (functions/src/admins.ts): shared by Curating and Comedy ----------
+
+const callerOf = (a: { uid: string; token: { email?: string; email_verified?: boolean; firebase?: { sign_in_provider?: string } } } | undefined) => ({ uid: a?.uid, email: a?.token.email, verified: a?.token.email_verified === true, anonymous: !a || a.token.firebase?.sign_in_provider === "anonymous" });
+
+/** Admin: add or remove an admin (config/access.admins). Never the last one; only approved members can be added. */
+export const setAdmin = onCall(async (req) => {
+  try {
+    return await adminSet(firestoreAdmins(), callerOf(req.auth), (req.data ?? {}) as { email?: unknown; admin?: unknown });
+  } catch (e) {
+    return rethrow(e);
+  }
+});
+
+/** Admin: which app each member uses and when they were last seen (for the Members list). */
+export const memberActivity = onCall(async (req) => {
+  try {
+    return await adminActivity(firestoreAdmins(), callerOf(req.auth));
   } catch (e) {
     return rethrow(e);
   }

@@ -1,5 +1,5 @@
 import { signOut } from "firebase/auth";
-import { AccountMenu as BaseAccountMenu, AccountMenuItem, IconLightbulb, IconServer, cx } from "@spot/ui";
+import { AccountMenu as BaseAccountMenu, AccountMenuItem, IconLightbulb, IconServer, IconShield, cx } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
 import { useServers } from "../routes/Server";
@@ -28,6 +28,17 @@ export function AccountMenu({ align = "right" }: { align?: "left" | "right" }) {
             >
               <span className="flex-1">Server</span>
               {servers && servers.length > 0 && <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : "bg-ok")} />}
+            </AccountMenuItem>
+          )}
+          {admin && (
+            <AccountMenuItem
+              icon={IconShield}
+              onClick={() => {
+                close();
+                nav("/admin");
+              }}
+            >
+              Members and admins
             </AccountMenuItem>
           )}
           {admin && (

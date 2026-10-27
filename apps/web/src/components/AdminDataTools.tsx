@@ -145,14 +145,14 @@ export function WipeDemoCard({ servers }: { servers: Servers }) {
   return (
     <>
     <Collapsible id="admin-data" title="Admin data tools" icon={IconTrash} summary="Demo sandboxes">
-      <div className="flex flex-wrap items-center gap-3 px-4 pb-4">
-      <div className="min-w-0 flex-1">
-        <h4 className="type-label-l">Wipe demo sandboxes</h4>
-        <p className="type-body-s text-on-surface-variant">Deletes the private copies of the sample data that demo visitors get. Never touches real curators or the demo template. They are also cleaned up automatically after 7 days.</p>
-      </div>
-      <Button size="sm" variant="tonal" icon={IconTrash} className="text-error" onClick={() => setOpen(true)}>
-        Wipe sandboxes…
-      </Button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="min-w-0 flex-1 basis-60">
+          <h4 className="type-label-l">Wipe demo sandboxes</h4>
+          <p className="mt-0.5 max-w-prose type-body-s text-on-surface-variant">Deletes the private copies of the sample data that demo visitors get. Never touches real curators or the demo template. They are also cleaned up automatically after 7 days.</p>
+        </div>
+        <Button size="sm" variant="tonal" icon={IconTrash} className="text-error" onClick={() => setOpen(true)}>
+          Wipe sandboxes…
+        </Button>
       </div>
     </Collapsible>
       <ConfirmDialog

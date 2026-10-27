@@ -15,10 +15,9 @@ import { AddServerCard } from "../components/AddServerCard";
 import { Menu, MenuItem } from "@spot/ui";
 import { RemoveServerButton } from "../components/RemoveServerButton";
 import { ServerUpdate } from "../components/ServerUpdate";
-import { WipeDemoCard } from "../components/AdminDataTools";
 import { isAdmin, useAccessConfig } from "../lib/access";
 import { Avatar, Card, Chip, CompactButton, Empty, cx } from "@spot/ui";
-import { IconComics, IconCpu, IconLightbulb, IconRefresh, IconServer } from "@spot/ui";
+import { IconArrowRight, IconComics, IconCpu, IconLightbulb, IconRefresh, IconServer, IconShield } from "@spot/ui";
 
 const ONLINE_MS = 90_000;
 
@@ -135,7 +134,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
       </div>
 
       <Collapsible id={`server:${s.id}:health`} title="Health and services" icon={IconCpu} summary={online ? `${Math.round(s.cpu.usage * 100)}% CPU` : "Offline"} summaryTone={online ? "neutral" : "error"}>
-      <div className="grid gap-4 px-4 pb-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card tone="container" className="flex flex-col gap-4 p-5">
           <Meter label="CPU" used={s.cpu.usage} total={1} detail={`${Math.round(s.cpu.usage * 100)}% · ${s.cpu.cores} cores · load ${s.cpu.load1.toFixed(2)}`} />
           <Meter label="Memory" used={s.memory.total - s.memory.free} total={s.memory.total} detail={`${fmtBytes(s.memory.total - s.memory.free)} of ${fmtBytes(s.memory.total)} · worker ${fmtBytes(s.memory.process)}`} />
@@ -177,7 +176,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
         </div>
       )}
 
-      <Collapsible id={`server:${s.id}:curators`} title="Connected curators" icon={IconComics} summary={`${linked} linked`} summaryTone={linked ? "success" : "neutral"}>
+      <Collapsible id={`server:${s.id}:curators`} title="Connected curators" icon={IconComics} summary={`${linked} linked`} summaryTone={linked ? "success" : "neutral"} flush>
         <ul className="divide-y divide-outline-variant/40">
           {s.sessions.map((x) => (
             <li key={x.uid} className="flex items-center gap-3 px-4 py-3">
@@ -196,7 +195,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
         </ul>
       </Collapsible>
 
-      <Collapsible id={`server:${s.id}:logs`} title="Worker log" icon={IconCpu} summary={logsOpen ? "Live" : "Off"} summaryTone={logsOpen ? "primary" : "neutral"} defaultOpen={false} persist={false} onOpenChange={setLogsOpen}>
+      <Collapsible id={`server:${s.id}:logs`} title="Worker log" icon={IconCpu} summary={logsOpen ? "Live" : "Off"} summaryTone={logsOpen ? "primary" : "neutral"} defaultOpen={false} persist={false} onOpenChange={setLogsOpen} flush>
         <div className="flex items-baseline justify-between px-4 pb-2">
           <p className="type-body-s text-on-surface-variant">Sent only while this is open, and updates every 30 s.</p>
         </div>
@@ -211,7 +210,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
 
       {s.ollama.models.length > 0 && (
         <Collapsible id={`server:${s.id}:models`} title="Local models" icon={IconCpu} summary={`${s.ollama.models.length}`}>
-          <div className="flex flex-wrap gap-2 border-t border-outline-variant/40 px-4 pt-3.5 pb-4">
+          <div className="flex flex-wrap gap-2">
             {s.ollama.models.map((m) => (
               <Chip key={m.name} tone={s.ollama.loaded.includes(m.name) ? "primary" : "neutral"}>
                 <span className="font-mono">{m.name}</span> <span className="opacity-70">· {fmtBytes(m.size)}</span>
@@ -236,7 +235,16 @@ export function ServerPage() {
         {admin && <AddServerCard />}
         {admin && <FleetView servers={servers} />}
         {admin && <Curators servers={servers} />}
-        {admin && <WipeDemoCard servers={servers} />}
+        {admin && (
+          <Link to="/admin" className="state-layer pressable flex min-h-16 items-center gap-3 rounded-lg bg-surface-low px-4 py-3">
+            <IconShield aria-hidden className="icon size-5 flex-none text-primary" />
+            <span className="min-w-0 flex-1">
+              <span className="block type-title-s">Members and admins</span>
+              <span className="block type-body-s text-on-surface-variant">Approve people, add admins, curator limit, demo sandboxes</span>
+            </span>
+            <IconArrowRight aria-hidden className="icon size-5 flex-none text-on-surface-variant" />
+          </Link>
+        )}
         {servers === null ? null : servers.length ? (
           servers.map((s) => <ServerCard key={s.id} s={s} />)
         ) : (
