@@ -30,6 +30,7 @@ export * from "./threads.ts";
 export * from "./chatState.ts";
 export * from "./aiBudget.ts";
 export * from "./groupPosts.ts";
+export * from "./groupPostSuggestions.ts";
 export * from "./groupCleanup.ts";
 export * from "./adhoc.ts";
 export * from "./rooms.ts";

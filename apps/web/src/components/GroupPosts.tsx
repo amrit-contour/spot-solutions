@@ -14,12 +14,16 @@ import {
   localNow,
   messageType,
   needsLineup,
+  planCopyAll,
+  suggestPosts,
   newGroupPost,
   nextRun,
   normalizeMessage,
   storeMessage,
   whenLabel,
   type GroupPost,
+  type PostSource,
+  type PostSuggestion,
   type RichMessage,
   type Show,
 } from "@spot/shared";
@@ -29,7 +33,7 @@ import { Menu, MenuItem } from "@spot/ui";
 import { SnippetMenu } from "./SnippetMenu";
 import { MessageComposer, MessagePreview, messageSummary } from "@spot/ui";
 import { Button, Chip, IconButton, Segmented, Select, Switch, TimePicker, cx } from "@spot/ui";
-import { IconAdd, IconArrowDown, IconClock, IconSparkle, IconTrash } from "@spot/ui";
+import { IconAdd, IconArrowDown, IconCheck, IconClock, IconSparkle, IconTrash } from "@spot/ui";
 
 const TEMPLATE_OPTIONS: { value: GroupPost["template"]; label: string }[] = [
   { value: "groupLineup", label: messageType("groupLineup").label },
@@ -59,7 +63,7 @@ const VARIABLES = [
 // Furthest before first, then the show day, then after it (for after-show posts, e.g. once the group is cleared).
 const DAY_OPTIONS = Array.from({ length: GROUP_POST_MAX_DAYS + GROUP_POST_MAX_AFTER + 1 }, (_, i) => GROUP_POST_MAX_DAYS - i).map((d) => ({ value: String(d), label: whenLabel(d) }));
 
-type PostShow = Pick<Show, "name" | "weekday" | "startTime" | "venueId" | "groupPostsSent" | "pocs">;
+type PostShow = Pick<Show, "name" | "weekday" | "startTime" | "venueId" | "groupPostsSent" | "pocs"> & { id?: string };
 
 export function GroupPostsEditor({ show, posts, onChange, compact }: { show: PostShow; posts: GroupPost[]; onChange: (posts: GroupPost[]) => void; compact?: boolean }) {
   const { settings } = useApp();
@@ -73,8 +77,12 @@ export function GroupPostsEditor({ show, posts, onChange, compact }: { show: Pos
   const remove = (id: string) => onChange(posts.filter((p) => p.id !== id));
   const sorted = [...posts].sort((a, b) => b.daysBefore - a.daysBefore || a.time.localeCompare(b.time));
 
+  const addMany = (added: GroupPost[]) => onChange([...posts, ...added]);
+  const suggestions = <PostSuggestions show={show} posts={posts} onAdd={addMany} />;
+
   return (
     <div className="flex flex-col gap-2">
+      {!posts.length && suggestions}
       {!posts.length && (
         <p className="type-body-m text-on-surface-variant">
           Nothing scheduled. Add the lineup, the venue pin, a reminder, or your own message, and your server posts it in the group at the time you pick.
@@ -106,7 +114,111 @@ export function GroupPostsEditor({ show, posts, onChange, compact }: { show: Pos
           Edit group templates
         </Link>
       </div>
+      {posts.length > 0 && suggestions}
     </div>
+  );
+}
+
+/**
+ * "Suggestions from your other groups": posts other shows have that this one doesn't, one tap to copy (timing, wording, kind, voice,
+ * picture). Names written out in the text become {{show}}/{{venue}}. "Copy all from <show>" reviews the lot first. With no posts yet
+ * this leads the empty state, open; otherwise it is a collapsed row.
+ */
+function PostSuggestions({ show, posts, onAdd }: { show: PostShow; posts: GroupPost[]; onAdd: (added: GroupPost[]) => void }) {
+  const { settings, shows, venues } = useApp();
+  const empty = posts.length === 0;
+  const [open, setOpen] = useState(false);
+  const [review, setReview] = useState<string | null>(null);
+  const venueName = (id?: string) => venues.find((v) => v.id === id)?.name ?? null;
+  const target = { id: show.id, name: show.name, venueName: venueName(show.venueId) };
+  const sources: PostSource[] = shows.filter((s) => s.id !== show.id && s.groupPosts?.some((p) => p.enabled)).map((s) => ({ id: s.id, name: s.name, venueName: venueName(s.venueId), posts: s.groupPosts ?? [] }));
+  const suggestions = suggestPosts(settings, target, posts, sources);
+  if (!suggestions.length) return null;
+  const expanded = empty || open;
+  const bySource = sources.map((s) => ({ source: s, count: planCopyAll(settings, target, posts, s).add.length })).filter((x) => x.count > 0);
+  const plan = review ? planCopyAll(settings, target, posts, sources.find((s) => s.id === review)!) : null;
+  const add = (list: PostSuggestion[]) => {
+    onAdd(list.map((x) => x.post));
+    setReview(null);
+  };
+
+  return (
+    <section aria-label="Suggestions from your other groups" className="rounded-lg border border-primary/25 bg-primary-container/25">
+      {empty ? (
+        <div className="flex items-center gap-2 px-3 pt-3">
+          <IconSparkle className="icon size-5 flex-none text-primary" />
+          <h4 className="min-w-0 flex-1 type-title-s">Suggestions from your other groups</h4>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="state-layer flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left">
+          <IconSparkle className="icon size-5 flex-none text-primary" />
+          <span className="min-w-0 flex-1 truncate type-title-s">Suggestions from your other groups</span>
+          <Chip tone="primary">{suggestions.length}</Chip>
+          <IconArrowDown className={cx("icon size-4 flex-none text-on-surface-variant transition-transform duration-200", open && "rotate-180")} />
+        </button>
+      )}
+      {expanded && (
+        <div className="flex flex-col gap-2 px-3 pt-2 pb-3">
+          <p className="type-body-s text-on-surface-variant">Copy what you already set up elsewhere. {"{{show}}"} and {"{{venue}}"} fit this show on their own.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {bySource.map(({ source, count }) => (
+              <Button key={source.id} size="sm" variant={review === source.id ? "filled" : "outlined"} onClick={() => setReview(review === source.id ? null : source.id)} aria-pressed={review === source.id}>
+                Copy all from {source.name} ({count})
+              </Button>
+            ))}
+          </div>
+          {plan && review && (
+            <div className="flex flex-col gap-2 rounded-md bg-surface p-3" role="group" aria-label={`Copy all from ${sources.find((s) => s.id === review)?.name}`}>
+              <p className="type-title-s">
+                Add {plan.add.length} {plan.add.length === 1 ? "post" : "posts"} from {sources.find((s) => s.id === review)?.name}?
+              </p>
+              <ul className="flex flex-col gap-1">
+                {plan.add.map((x) => (
+                  <li key={x.post.id} className="flex items-start gap-2 type-body-s">
+                    <IconCheck className="icon mt-0.5 size-4 flex-none text-primary" />
+                    <span className="min-w-0 flex-1">
+                      <span className="font-medium">{x.timing}</span> · {x.kind}
+                      <span className="line-clamp-1 text-on-surface-variant">{x.snippet || "(no text)"}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {plan.skipped > 0 && <p className="type-body-s text-on-surface-variant">{plan.skipped} already here or a repeat, skipped.</p>}
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button size="sm" variant="text" onClick={() => setReview(null)}>
+                  Cancel
+                </Button>
+                <Button size="sm" icon={IconAdd} onClick={() => add(plan.add)}>
+                  Add {plan.add.length}
+                </Button>
+              </div>
+            </div>
+          )}
+          <ul className="flex flex-col gap-2">
+            {suggestions.map((x) => (
+              <li key={x.key} className="flex items-center gap-2 rounded-md bg-surface py-2 pr-2 pl-3">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate type-title-s">{x.timing}</span>
+                  <span className="block type-body-s text-on-surface-variant">
+                    {x.kind} · from {x.sourceName}
+                    {x.alsoIn.length > 0 && ` and ${x.alsoIn.length} more`}
+                  </span>
+                  {x.snippet && <span className="mt-0.5 line-clamp-2 block type-body-s text-on-surface-variant">{x.snippet}</span>}
+                  {x.swapped.length > 0 && (
+                    <span className="mt-0.5 block type-label-m text-primary">
+                      {x.swapped.map((w) => `${w.name} → {{${w.variable}}}`).join(", ")}
+                    </span>
+                  )}
+                </span>
+                <Button size="sm" variant="tonal" icon={IconAdd} onClick={() => add([x])} aria-label={`Add ${x.timing} from ${x.sourceName}`}>
+                  Add
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 
