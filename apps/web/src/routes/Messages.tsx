@@ -67,8 +67,9 @@ import { RequestPills, requestPills } from "../components/RequestTags";
 import { messageSummary } from "@spot/ui";
 import { ChatComposer, type Outgoing } from "../components/ChatComposer";
 import { PinCard, PollCard, WaText } from "@spot/ui";
-import { Avatar, Button, Chip, ConfirmDialog, Empty, IconButton, Segmented, Select, Sheet, Spinner, cx } from "@spot/ui";
+import { Button, Chip, ConfirmDialog, Empty, IconButton, Segmented, Select, Sheet, Spinner, cx } from "@spot/ui";
 import { IconArrowDown, IconArrowLeft, IconArrowRight, IconChat, IconCheck, IconClock, IconClose, IconEye, IconGroup, IconMic, IconRefresh, IconMenuDots, IconSearch, IconServer, IconSkip, IconSparkle } from "@spot/ui";
+import { ComicAvatar } from "../lib/photos";
 
 const OPEN = ["new", "acked"];
 
@@ -447,7 +448,7 @@ function ThreadRow({ t, active, now, tz, onOpen, actions }: { t: ThreadItem; act
           aria-current={active ? "true" : undefined}
           className={cx("state-layer flex min-h-[4.5rem] w-full items-center gap-3 rounded-lg py-2.5 pr-10 pl-2 text-left", active && "bg-secondary-container")}
         >
-          <Avatar name={t.name} size={44} tone={t.awaitingYou ? "primary" : "secondary"} />
+          <ComicAvatar id={t.comicId} name={t.name} size={44} tone={t.awaitingYou ? "primary" : "secondary"} />
           <span className="min-w-0 flex-1">
             <span className="flex items-baseline gap-2">
               <span className={cx("min-w-0 flex-1 truncate type-title-m", !t.awaitingYou && !t.unread && "font-medium")}>{t.name}</span>
@@ -548,7 +549,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
       onDraftUsed={() => setDraft(null)}
       header={(sync) => (
         <>
-          <Avatar name={comic.name} size={40} />
+          <ComicAvatar id={comic.id} name={comic.name} size={40} />
           <div className="min-w-0 flex-1">
             <h2 className="truncate type-title-m">{comic.name}</h2>
             <p className="truncate type-body-s text-on-surface-variant tabular" aria-live="polite">

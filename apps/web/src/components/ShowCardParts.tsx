@@ -135,10 +135,18 @@ function timeOf(r: ActivityRow, now: number): { label: string; title?: string } 
   return { label: timeAgo(r.at, now), title: new Date(r.at).toLocaleString() };
 }
 
+// Building an Intl.DateTimeFormat is slow; every show card on the page used to build two per render.
+const nowFormats = new Map<string, [Intl.DateTimeFormat, Intl.DateTimeFormat]>();
+function zonedNow(timeZone: string, at: number) {
+  let f = nowFormats.get(timeZone);
+  if (!f) nowFormats.set(timeZone, (f = [new Intl.DateTimeFormat("en-CA", { timeZone }), new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" })]));
+  return { date: f[0].format(at), time: f[1].format(at) };
+}
+
 export function ActivitySection({ lineup, show, offers, nameOf, over }: { lineup?: Lineup; show: Show; offers: SpotOffer[]; nameOf: (id: string) => string; over: boolean }) {
   const { uid, settings } = useApp();
   const nowMs = Date.now();
-  const now = { date: new Intl.DateTimeFormat("en-CA", { timeZone: settings.timezone }).format(nowMs), time: new Intl.DateTimeFormat("en-GB", { timeZone: settings.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(nowMs) };
+  const now = zonedNow(settings.timezone, nowMs);
   const rows = lineupActivity({ lineup, show, offers, now, nameOf });
   const key = `${lineup?.id ?? show.id}:activity`;
   const [open, setOpen] = useRemembered(key, !over);

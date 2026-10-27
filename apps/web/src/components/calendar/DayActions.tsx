@@ -15,10 +15,11 @@ import { BackfillSheet } from "../BackfillSheet";
 import { OfferSheet } from "../OfferSheet";
 import { Popover } from "@spot/ui";
 import { SendUpdatesSheet } from "../SendUpdatesSheet";
-import { Avatar, Button, Spinner, cx } from "@spot/ui";
+import { Button, Spinner, cx } from "@spot/ui";
 import { IconCheck, IconHistory, IconMic, IconRefresh, IconSend, IconUserPlus } from "@spot/ui";
 import { listNames } from "./EventCard";
 import { pendingCount, type CalEvent, useCal } from "./shared";
+import { ComicAvatar } from "../../lib/photos";
 
 function ActionRow({ icon: I, label, hint, onClick, to, disabled, busy, accent }: { icon: typeof IconMic; label: string; hint?: string; onClick?: () => void; to?: string; disabled?: boolean; busy?: boolean; accent?: boolean }) {
   const cls = cx(
@@ -165,7 +166,7 @@ export function DayActions({ date, wants, anyDay, evs }: { date: string; wants: 
               <ul className="flex flex-col">
                 {waiting.map((r) => (
                   <li key={r.id} className="flex min-h-12 items-center gap-3 border-b border-outline-variant/40 py-1 last:border-b-0">
-                    <Avatar name={r.comicName} size={32} tone="secondary" />
+                    <ComicAvatar id={r.comicId} name={r.comicName} size={32} tone="secondary" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate type-body-m">{r.comicName}</span>
                       <span className="block type-label-s text-on-surface-variant">{r.intent.preferredDays.map((x) => DAY_SHORT[x]).join(" · ")}</span>

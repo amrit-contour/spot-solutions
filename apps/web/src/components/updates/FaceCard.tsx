@@ -13,6 +13,7 @@ import { MessageComposer } from "@spot/ui";
 import { SnippetMenu } from "../SnippetMenu";
 import { IconChatCheck, IconSkip, IconUserCheck, IconUserPlus } from "@spot/ui";
 import { UpdateItem } from "./shared";
+import { ComicAvatar } from "../../lib/photos";
 
 export function OnboardCard({ a }: { a: ComicAction }) {
   const { uid } = useApp();
@@ -33,7 +34,7 @@ export function OnboardCard({ a }: { a: ComicAction }) {
   return (
     <UpdateItem onDismiss={() => dismissAction(uid, a)}>
       <div className="flex gap-3 px-4 pt-4">
-        <Avatar name={a.comicName} size={40} tone="primary" />
+        <ComicAvatar id={a.comicId} name={a.comicName} size={40} tone="primary" />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <h3 className="min-w-0 flex-1 truncate type-title-m">{a.comicName}</h3>

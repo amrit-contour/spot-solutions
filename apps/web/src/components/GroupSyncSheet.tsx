@@ -5,8 +5,9 @@ import { comicChatKeys, inGroup, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { timeAgo, useNow } from "../lib/data";
 import { runCommand } from "../lib/data";
-import { Avatar, Button, Chip, Sheet, Spinner, cx } from "@spot/ui";
+import { Button, Chip, Sheet, Spinner, cx } from "@spot/ui";
 import { IconCheck, IconRefresh, IconShield, IconUserMinus, IconUserPlus } from "@spot/ui";
+import { ComicAvatar } from "../lib/photos";
 
 const RESULT_LABEL = { added: "Added", removed: "Removed", invited: "Invite sent", failed: "Failed" } as const;
 
@@ -57,7 +58,7 @@ export function GroupSyncSheet({ open, onClose, show, lineup }: { open: boolean;
     return (
       <li>
         <label className={cx("state-layer flex cursor-pointer items-center gap-3 rounded-md px-3 py-2", off && "opacity-50")}>
-          <Avatar name={name(id)} size={32} tone={kind === "add" ? "primary" : "secondary"} />
+          <ComicAvatar id={id} name={name(id)} size={32} tone={kind === "add" ? "primary" : "secondary"} />
           <span className={cx("flex-1 type-body-l", off && "line-through")}>
             {name(id)}
             {kind === "add" && lapsed.has(id) && <span className="block type-body-s text-on-surface-variant">Invite lapsed · Resend invite</span>}
@@ -133,7 +134,7 @@ export function GroupSyncSheet({ open, onClose, show, lineup }: { open: boolean;
               <ul className="flex flex-col">
                 {waiting.map(([id, at]) => (
                   <li key={id} className="flex items-center gap-3 px-3 py-2">
-                    <Avatar name={name(id)} size={32} tone="secondary" />
+                    <ComicAvatar id={id} name={name(id)} size={32} tone="secondary" />
                     <span className="flex-1 type-body-l">{name(id)}</span>
                     <Chip tone="tertiary">Invite sent {timeAgo(at, now)}</Chip>
                   </li>

@@ -1,6 +1,6 @@
 // Profile pictures in the app: comic avatars with the saved photo, and a quiet request to the worker for the ones on screen.
 // WhatsApp's picture URLs expire, so an image that fails to load falls back to initials and asks the worker to refresh that one.
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { PHOTO_BATCH_MAX, photoDue, photoSrc } from "@spot/shared";
 import { Avatar } from "@spot/ui";
 import { useApp } from "./app";
@@ -32,12 +32,36 @@ function request(uid: string, id: string, force: boolean) {
   timer ??= setTimeout(flush, 1500);
 }
 
-/** A comic's avatar with their WhatsApp photo, when there is one. */
+// One observer for every avatar on the page.
+const watchers = new Map<Element, () => void>();
+let io: IntersectionObserver | undefined;
+function whenVisible(el: Element, fn: () => void) {
+  if (typeof IntersectionObserver === "undefined") return fn(), () => undefined;
+  io ??= new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      io?.unobserve(e.target);
+      const f = watchers.get(e.target);
+      watchers.delete(e.target);
+      f?.();
+    }
+  });
+  watchers.set(el, fn);
+  io.observe(el);
+  return () => (watchers.delete(el), io?.unobserve(el));
+}
+
+/** A comic's avatar with their WhatsApp photo, when there is one. Asks the worker for a missing photo only once the avatar is on screen. */
 export function ComicAvatar({ id, name, size, tone }: { id: string | null | undefined; name: string; size?: number; tone?: "primary" | "tertiary" | "secondary" }) {
-  const { uid, comicsById } = useApp();
+  const { uid, comicsById, workerOnline } = useApp();
   const comic = id ? comicsById.get(id) : undefined;
+  const el = useRef<HTMLSpanElement>(null);
+  // Nobody to ask while the server is offline: the request would just queue behind a worker that isn't there.
+  const due = workerOnline && Boolean(comic && photoDue(comic, Date.now()));
+  const comicId = comic?.id;
   useEffect(() => {
-    if (comic && photoDue(comic, Date.now())) request(uid, comic.id, false);
-  }, [uid, comic]);
-  return <Avatar name={name} size={size} tone={tone} src={comic ? photoSrc(comic) : null} onBroken={comic ? () => request(uid, comic.id, true) : undefined} />;
+    if (!due || !comicId || !el.current) return;
+    return whenVisible(el.current, () => request(uid, comicId, false));
+  }, [uid, comicId, due]);
+  return <Avatar rootRef={el} name={name} size={size} tone={tone} src={comic ? photoSrc(comic) : null} onBroken={comic ? () => request(uid, comic.id, true) : undefined} />;
 }

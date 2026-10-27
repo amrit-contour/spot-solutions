@@ -12,6 +12,7 @@ import { Popover, ToolButton } from "@spot/ui";
 import { Pill, PillRow, type PillSpec } from "./Pills";
 import { Avatar, Button, IconButton, Select, Spinner, TextInput, cx } from "@spot/ui";
 import { IconAdd, IconCrown, IconUserCheck, IconGroup, IconMenuDots, IconMic, IconRefresh, IconSearch, IconShield, IconStar, IconUserMinus } from "@spot/ui";
+import { ComicAvatar } from "../lib/photos";
 
 /** Who they are to this show, and what the next sync does with them. */
 const TAGS: Record<GroupTag, Omit<PillSpec, "key">> = {
@@ -152,7 +153,7 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
                 <ul className="mt-2 flex max-h-72 flex-col gap-0.5 overflow-y-auto overscroll-contain">
                   {rows.map((r) => (
                     <li key={r.id} className={cx("flex min-h-12 items-center gap-2.5 rounded-md py-1 pl-1", r.tags.includes("leaving") && "opacity-70")}>
-                      <Avatar name={nameOf(r.id)} size={28} tone={r.member ? "secondary" : "primary"} />
+                      <ComicAvatar id={r.id} name={nameOf(r.id)} size={28} tone={r.member ? "secondary" : "primary"} />
                       <div className="min-w-0 flex-1">
                         <div className={cx("truncate type-label-l", r.tags.includes("leaving") && "line-through decoration-error/60")}>{nameOf(r.id)}</div>
                         <div className="mt-0.5 flex flex-wrap gap-1">

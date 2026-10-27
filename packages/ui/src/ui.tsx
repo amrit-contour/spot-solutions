@@ -9,6 +9,7 @@ import {
   type ComponentType,
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type SVGProps,
   type TextareaHTMLAttributes,
 } from "react";
@@ -170,12 +171,12 @@ export function sharpPhoto(url: string, px = 240) {
 }
 
 /** Initials, or a picture when `src` is given. A picture that fails to load falls back to the initials and calls `onBroken` once. */
-export function Avatar({ name, size = 40, tone = "primary", src, onBroken }: { name: string; size?: number; tone?: "primary" | "tertiary" | "secondary"; src?: string | null; onBroken?: () => void }) {
+export function Avatar({ name, size = 40, tone = "primary", src, onBroken, rootRef }: { name: string; size?: number; tone?: "primary" | "tertiary" | "secondary"; src?: string | null; onBroken?: () => void; /** The outer element, for callers that watch it (e.g. to fetch a photo only once it is on screen). */ rootRef?: Ref<HTMLSpanElement> }) {
   const t = { primary: "bg-primary-container text-on-primary-container", tertiary: "bg-tertiary-container text-on-tertiary-container", secondary: "bg-secondary-container text-on-secondary-container" }[tone];
   const [failed, setFailed] = useState<string | null>(null);
   const showImg = Boolean(src) && failed !== src;
   return (
-    <span className={cx("relative grid flex-none place-items-center overflow-hidden rounded-full type-label-l", t)} style={{ width: size, height: size, fontSize: size * 0.36 }} aria-hidden>
+    <span ref={rootRef} className={cx("relative grid flex-none place-items-center overflow-hidden rounded-full type-label-l", t)} style={{ width: size, height: size, fontSize: size * 0.36 }} aria-hidden>
       {initials(name)}
       {showImg && (
         <img

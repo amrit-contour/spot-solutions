@@ -6,12 +6,13 @@ import { DAY_NAMES, hasPin, pollProblem, type ComicAction, type Lineup, type Ric
 import { useApp } from "../../lib/app";
 import { runCommand, timeAgo } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
-import { Avatar, Bubble, Button, Chip } from "@spot/ui";
+import { Bubble, Button, Chip } from "@spot/ui";
 import { WaText } from "@spot/ui";
 import { MessageComposer } from "@spot/ui";
 import { SnippetMenu } from "../SnippetMenu";
 import { IconArrowRight, IconCancel, IconChat, IconChatCheck, IconClock, IconMap, IconMic, IconSkip } from "@spot/ui";
 import { UpdateItem } from "./shared";
+import { ComicAvatar } from "../../lib/photos";
 
 const KIND: Record<string, { label: string; icon: typeof IconChat }> = {
   cancel_spot: { label: "Wants to cancel", icon: IconCancel },
@@ -57,7 +58,7 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
   return (
     <UpdateItem onDismiss={() => dismissAction(uid, a)}>
       <div className="flex gap-3 px-4 pt-4">
-        <Avatar name={a.comicName} size={40} tone="tertiary" />
+        <ComicAvatar id={a.comicId} name={a.comicName} size={40} tone="tertiary" />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <h3 className="min-w-0 flex-1 truncate type-title-m">{a.comicName}</h3>

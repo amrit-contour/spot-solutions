@@ -7,10 +7,11 @@ import type { ComicAction, SpotRequest } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand, timeAgo, useDocument, userDoc } from "../../lib/data";
 import { dismissAction } from "../../lib/updates";
-import { Avatar, Bubble, Button, Chip } from "@spot/ui";
+import { Bubble, Button, Chip } from "@spot/ui";
 import { WaText } from "@spot/ui";
 import { IconChat, IconCheck, IconGroup, IconSkip, IconUserCheck, IconUserMinus } from "@spot/ui";
 import { UpdateItem } from "./shared";
+import { ComicAvatar } from "../../lib/photos";
 
 export function FollowUpCard({ a }: { a: ComicAction }) {
   const { uid } = useApp();
@@ -41,7 +42,7 @@ export function FollowUpCard({ a }: { a: ComicAction }) {
   return (
     <UpdateItem onDismiss={() => dismissAction(uid, a)}>
       <div className="flex gap-3 px-4 pt-4">
-        <Avatar name={a.comicName} size={40} tone="secondary" />
+        <ComicAvatar id={a.comicId} name={a.comicName} size={40} tone="secondary" />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <h3 className="min-w-0 flex-1 truncate type-title-m">{a.comicName}</h3>

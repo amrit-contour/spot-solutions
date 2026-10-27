@@ -5,9 +5,10 @@ import { toast } from "sonner";
 import type { SpotOffer } from "@spot/shared";
 import { useApp } from "../../lib/app";
 import { runCommand } from "../../lib/data";
-import { Avatar, Button } from "@spot/ui";
+import { Button } from "@spot/ui";
 import { IconUserPlus } from "@spot/ui";
 import { UpdateItem } from "./shared";
+import { ComicAvatar } from "../../lib/photos";
 
 export function AdhocCard({ offers }: { offers: SpotOffer[] }) {
   const { uid, shows } = useApp();
@@ -39,7 +40,7 @@ export function AdhocCard({ offers }: { offers: SpotOffer[] }) {
               <li key={o.id}>
                 <label className="state-layer -mx-2 flex min-h-11 items-center gap-3 rounded-md px-2">
                   <input type="checkbox" checked={picked.includes(o.comicId)} onChange={() => toggle(o.comicId)} aria-label={`Give the spot to ${o.comicName}`} className="size-5 flex-none accent-primary" />
-                  <Avatar name={o.comicName} size={28} />
+                  <ComicAvatar id={o.comicId} name={o.comicName} size={28} />
                   <span className="min-w-0 flex-1 truncate type-body-m">{o.comicName}</span>
                 </label>
               </li>
