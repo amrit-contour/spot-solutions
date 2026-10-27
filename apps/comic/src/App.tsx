@@ -3,28 +3,39 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { Toaster } from "sonner";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { ComicLogo } from "./components/ComicLogo";
-import { AccountMenu, AppShell, ErrorBoundary, Spinner, UpdatePrompt, IconSend, IconBell, IconCalendarMark, IconMic, IconRoom, IconSettings, type NavEntry } from "@spot/ui";
+import { AccountMenu, AppShell, ErrorBoundary, Spinner, UpdatePrompt, lazyRoute, prefetchRoutes, type RouteComponent, IconSend, IconBell, IconCalendarMark, IconMic, IconRoom, IconSettings, type NavEntry } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { useConnection, connectionStatus } from "./lib/connection";
-import { Landing } from "./routes/Landing";
-import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/install";
-import { Rooms } from "./routes/Rooms";
-import { Alerts } from "./routes/Alerts";
-import { Groups } from "./routes/Groups";
-import { Settings } from "./routes/Settings";
-import { Admin } from "./routes/Admin";
 import { useForegroundPush } from "./lib/push";
-import { ComicStores } from "./routes/Stores";
-import { Today } from "./routes/Today";
-import { Asks } from "./routes/Asks";
-import { MySpots } from "./routes/MySpots";
-import { Regulars } from "./routes/Regulars";
-import { RostersApp } from "./routes/RostersApp";
 import { RosterProvider, useFirestoreRoster } from "./lib/roster";
+import { RouteSkeleton } from "./components/RouteSkeleton";
+
+// One chunk per page (see @spot/ui lazyRoute): the shell appears at once and a page's code downloads when it is first opened.
+const Landing = lazyRoute(() => import("./routes/Landing").then((m) => ({ default: m.Landing })));
+const SignIn = lazyRoute(() => import("./routes/SignIn").then((m) => ({ default: m.SignIn })));
+const Rooms = lazyRoute(() => import("./routes/Rooms").then((m) => ({ default: m.Rooms })));
+const Alerts = lazyRoute(() => import("./routes/Alerts").then((m) => ({ default: m.Alerts })));
+const Groups = lazyRoute(() => import("./routes/Groups").then((m) => ({ default: m.Groups })));
+const Settings = lazyRoute(() => import("./routes/Settings").then((m) => ({ default: m.Settings })));
+const Admin = lazyRoute(() => import("./routes/Admin").then((m) => ({ default: m.Admin })));
+const ComicStores = lazyRoute(() => import("./routes/Stores").then((m) => ({ default: m.ComicStores })));
+const Today = lazyRoute(() => import("./routes/Today").then((m) => ({ default: m.Today })));
+const Asks = lazyRoute(() => import("./routes/Asks").then((m) => ({ default: m.Asks })));
+const MySpots = lazyRoute(() => import("./routes/MySpots").then((m) => ({ default: m.MySpots })));
+const Regulars = lazyRoute(() => import("./routes/Regulars").then((m) => ({ default: m.Regulars })));
+const RostersApp = lazyRoute(() => import("./routes/RostersApp").then((m) => ({ default: m.RostersApp })));
 
 // Dev only: the Rooms page on the Bangalore seed with no sign-in (/dev/rooms, or /dev/rooms?empty=1). Dropped from production builds.
 const DevApp = import.meta.env.DEV ? lazy(() => import("./routes/DevApp")) : null;
+
+const PAGES: Record<string, RouteComponent> = { "/": Today, "/rooms": Rooms, "/alerts": Alerts, "/asks": Asks, "/spots": MySpots, "/settings": Settings };
+
+/** Warms the page chunks while idle and when a link is hovered or touched. */
+function RoutePrefetch() {
+  useEffect(() => prefetchRoutes(PAGES, ["/rooms", "/alerts", "/asks", "/spots", "/settings"]), []);
+  return null;
+}
 
 /** Everything signed-in that needs the comic's rooms. */
 function RosterRoutes({ uid }: { uid: string }) {
@@ -71,6 +82,12 @@ function SignedInShell({ user, children }: { user: User; children: ReactNode }) 
   );
 }
 
+const PageSpinner = () => (
+  <div className="grid min-h-dvh place-items-center text-primary">
+    <Spinner className="size-8" />
+  </div>
+);
+
 export default function App() {
   const user = useAuthUser();
   const { pathname } = useLocation();
@@ -85,16 +102,16 @@ export default function App() {
         toastOptions={{ style: { background: "var(--md-sys-color-inverse-surface)", color: "var(--md-sys-color-inverse-on-surface)", border: "none", borderRadius: 8, fontFamily: "var(--font-sans)" } }}
       />
       {user === undefined ? (
-        <div className="grid min-h-dvh place-items-center text-primary">
-          <Spinner className="size-8" />
-        </div>
+        <PageSpinner />
       ) : user === null ? (
         // The installed app is already "the product": skip the marketing page and go straight to signing in.
-        isStandalone() ? <SignIn /> : <Landing />
+        <Suspense fallback={<PageSpinner />}>{isStandalone() ? <SignIn /> : <Landing />}</Suspense>
       ) : (
         <SignedInShell user={user}>
           <PushBridge />
+          <RoutePrefetch />
           <ErrorBoundary resetKey={pathname}>
+          <Suspense fallback={<RouteSkeleton />}>
           <Routes>
             <Route path="/rooms/*" element={<RosterRoutes uid={user.uid} />} />
             <Route path="/rosters/*" element={<RostersApp user={user} />} />
@@ -110,6 +127,7 @@ export default function App() {
             <Route path="/admin" element={<Admin user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
           </ErrorBoundary>
         </SignedInShell>
       )}

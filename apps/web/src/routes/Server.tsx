@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
@@ -16,26 +16,11 @@ import { Menu, MenuItem } from "@spot/ui";
 import { RemoveServerButton } from "../components/RemoveServerButton";
 import { ServerUpdate } from "../components/ServerUpdate";
 import { isAdmin, useAccessConfig } from "../lib/access";
+import { useServers } from "../lib/servers";
 import { Avatar, Card, Chip, CompactButton, Empty, cx } from "@spot/ui";
 import { IconArrowRight, IconComics, IconCpu, IconLightbulb, IconRefresh, IconServer, IconShield } from "@spot/ui";
 
 const ONLINE_MS = 90_000;
-
-/** Servers that list this user's email as an admin. */
-export function useServers() {
-  const { user } = useApp();
-  const [servers, setServers] = useState<ServerStatus[] | null>(null);
-  const email = user.email?.toLowerCase();
-  useEffect(() => {
-    if (!email) return setServers([]);
-    return onSnapshot(
-      query(collection(db, "servers"), where("admins", "array-contains", email)),
-      (q) => setServers(q.docs.map((d) => d.data() as ServerStatus)),
-      () => setServers([]),
-    );
-  }, [email]);
-  return servers;
-}
 
 const fmtBytes = (b: number) => (b >= 1e12 ? `${(b / 1e12).toFixed(1)} TB` : b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
 function fmtUptime(ms: number) {

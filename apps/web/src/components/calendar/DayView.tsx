@@ -1,6 +1,6 @@
 // One day: its shows as full cards, who is asking for that weekday, and the days that follow.
 import { addDays, fmtDayLong, mondayOf, weekdayOf } from "../../lib/calendarDates";
-import { laneOf } from "../../routes/Requests";
+import { laneOf } from "../../lib/lanes";
 import { IconCalendarMark } from "@spot/ui";
 import { Agenda } from "./Agenda";
 import { DayActions } from "./DayActions";

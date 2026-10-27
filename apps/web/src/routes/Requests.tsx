@@ -43,7 +43,7 @@ import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
 import { IconArrowDown, IconSort, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "@spot/ui";
 
-export type Lane = "asked" | "maybe" | "held" | "placed" | "closed";
+import { laneOf, type Lane } from "../lib/lanes";
 const LANES: { id: Lane; label: string }[] = [
   { id: "asked", label: "Asked" },
   { id: "maybe", label: "Maybe" },
@@ -62,16 +62,6 @@ const SORTS: { id: SortKey; label: string; help: string }[] = [
   { id: "name", label: "Name", help: "A to Z" },
 ];
 
-export const laneOf = (r: SpotRequest): Lane =>
-  r.status === "dismissed" || r.status === "rejected"
-    ? "closed"
-    : r.status === "assigned" || r.status === "confirmed"
-      ? "placed"
-      : r.hold && !r.holdOverridden
-        ? "held"
-        : r.intent.confidence >= INTENT_THRESHOLD
-          ? "asked"
-          : "maybe";
 
 export function Requests() {
   const { uid, week, session, shows, comicsById } = useApp();

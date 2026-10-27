@@ -8,7 +8,7 @@ import { useApp } from "../lib/app";
 import { useAccessConfig } from "../lib/access";
 import { WipeDemoCard } from "../components/AdminDataTools";
 import { Invites } from "../components/Curators";
-import { useServers } from "./Server";
+import { useServers } from "../lib/servers";
 
 function CuratingTools({ max }: { max: number }) {
   const servers = useServers();

@@ -24,3 +24,4 @@ export * from "./rich/emojiData";
 export * from "./admin";
 export * from "./useAppUpdate";
 export * from "./AppVersion";
+export * from "./lazyRoute";

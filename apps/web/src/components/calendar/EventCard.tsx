@@ -26,9 +26,10 @@ import { OfferSheet } from "../OfferSheet";
 import { BackfillSheet } from "../BackfillSheet";
 import { GroupSyncSheet } from "../GroupSyncSheet";
 import { PillRow, comicPills, type TellState } from "../Pills";
-import { Avatar, Button, Chip, buttonClass, cx } from "@spot/ui";
+import { Button, Chip, buttonClass, cx } from "@spot/ui";
 import { IconArrowRight, IconCheck, IconClock, IconHistory, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "@spot/ui";
-import { laneOf } from "../../routes/Requests";
+import { laneOf } from "../../lib/lanes";
+import { ComicAvatar } from "../../lib/photos";
 
 const first = (name: string) => name.split(" ")[0];
 
@@ -143,7 +144,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
             return (
               <li key={s.comicId} className="flex h-10 items-center gap-2.5 rounded-md bg-surface-container pr-3 pl-2">
                 <span className="w-4 flex-none text-center type-label-m text-on-surface-variant tabular">{i + 1}</span>
-                <Avatar name={name(s.comicId)} size={28} />
+                <ComicAvatar id={s.comicId} name={name(s.comicId)} size={28} />
                 <span className="min-w-0 flex-1 truncate type-body-m">{name(s.comicId)}</span>
                 <PillRow pills={pills} max={4} compact className="flex-none" />
               </li>

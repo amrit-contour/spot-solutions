@@ -1,28 +1,36 @@
-import { useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppProvider, useAuthUser } from "./lib/app";
 import { Shell } from "./components/Shell";
-import { ErrorBoundary, Spinner, UpdatePrompt } from "@spot/ui";
-import { Landing } from "./routes/Landing";
-import { SignIn } from "./routes/SignIn";
+import { ErrorBoundary, Spinner, UpdatePrompt, lazyRoute } from "@spot/ui";
 import { isStandalone } from "./lib/standalone";
-import { Requests } from "./routes/Requests";
-import { Messages } from "./routes/Messages";
-import { Home } from "./routes/Calendar";
-import { LineupBoard } from "./routes/Lineup";
-import { Comics } from "./routes/Comics";
-import { Shows } from "./routes/Shows";
-import { SettingsPage } from "./routes/Settings";
-import { ServerPage } from "./routes/Server";
-import { Waiting } from "./routes/Waiting";
 import { useAccess } from "./lib/access";
-import { HelpPage } from "./routes/Help";
-import { AdminArea } from "./routes/Admin";
 import { AdminOnly } from "./components/AdminOnly";
-import { ConnectServer } from "./routes/ConnectServer";
-import { InstallPage } from "./routes/InstallPage";
 import { OverfillHost } from "./lib/overfill";
+import { AdminArea, Comics, HelpPage, Home, LineupBoard, Messages, Requests, ServerPage, SettingsPage, Shows, prefetchRoutes } from "./lib/lazyRoutes";
+import { RouteSkeleton } from "./components/RouteSkeleton";
+
+// Pages outside the signed-in app load only when someone lands on them.
+const Landing = lazyRoute(() => import("./routes/Landing").then((m) => ({ default: m.Landing })));
+const SignIn = lazyRoute(() => import("./routes/SignIn").then((m) => ({ default: m.SignIn })));
+const Waiting = lazyRoute(() => import("./routes/Waiting").then((m) => ({ default: m.Waiting })));
+const ConnectServer = lazyRoute(() => import("./routes/ConnectServer").then((m) => ({ default: m.ConnectServer })));
+const InstallPage = lazyRoute(() => import("./routes/InstallPage").then((m) => ({ default: m.InstallPage })));
+
+const PageSpinner = () => (
+  <div className="grid min-h-dvh place-items-center text-primary">
+    <Spinner className="size-8" />
+  </div>
+);
+
+/** Once signed in: warm the page chunks while idle, and when a link is hovered or touched. */
+function RoutePrefetch() {
+  useEffect(() => {
+    return prefetchRoutes();
+  }, []);
+  return null;
+}
 
 export default function App() {
   const user = useAuthUser();
@@ -48,24 +56,24 @@ export default function App() {
         }}
       />
       {standalone ? (
-        standalone
+        <Suspense fallback={<PageSpinner />}>{standalone}</Suspense>
       ) : user === undefined ? (
-        <div className="grid min-h-dvh place-items-center text-primary">
-          <Spinner className="size-8" />
-        </div>
+        <PageSpinner />
       ) : user === null ? (
         // The installed app is already "the product": skip the marketing page and go straight to signing in.
-        installed ? <SignIn /> : <Landing />
+        <Suspense fallback={<PageSpinner />}>{installed ? <SignIn /> : <Landing />}</Suspense>
       ) : access === undefined ? (
-        <div className="grid min-h-dvh place-items-center text-primary">
-          <Spinner className="size-8" />
-        </div>
+        <PageSpinner />
       ) : access?.status !== "approved" ? (
-        <Waiting user={user} entry={access} />
+        <Suspense fallback={<PageSpinner />}>
+          <Waiting user={user} entry={access} />
+        </Suspense>
       ) : (
         <AppProvider user={user}>
           <Shell>
+            <RoutePrefetch />
             <ErrorBoundary resetKey={pathname}>
+            <Suspense fallback={<RouteSkeleton />}>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/requests" element={<Requests />} />
@@ -79,6 +87,7 @@ export default function App() {
               <Route path="/help" element={<AdminOnly><HelpPage /></AdminOnly>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
             </ErrorBoundary>
           </Shell>
         </AppProvider>

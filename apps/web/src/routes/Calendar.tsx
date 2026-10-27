@@ -30,7 +30,7 @@ import {
 } from "../lib/calendarDates";
 import { PageHeader } from "@spot/ui";
 import { Count } from "../components/updates/shared";
-import { Avatar, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
+import { Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { IconArrowLeft, IconArrowRight, IconCalendarMark, IconChat, IconInbox } from "@spot/ui";
 import { ToolButton } from "@spot/ui";
 import { Agenda } from "../components/calendar/Agenda";
@@ -40,6 +40,7 @@ import { TONE_LEGEND, CalProvider, legendBar, makeEvent, type CalData, type CalE
 import { WeekGrid } from "../components/calendar/WeekGrid";
 import { listNames } from "../components/calendar/EventCard";
 import { laneOf, type Lane } from "../lib/lanes";
+import { ComicAvatar } from "../lib/photos";
 
 /** "/" used to be Requests. Old links like /?view=updates keep working by moving to /requests. */
 export function Home() {
@@ -399,7 +400,7 @@ function NextWeekCard({ by, loading, viewing, onOpen, shows }: { by: Record<Lane
           <ul className="mt-3 flex flex-col gap-1.5">
             {live.slice(0, 5).map((r) => (
               <li key={r.id} className="flex h-10 items-center gap-2.5">
-                <Avatar name={r.comicName} size={28} tone="secondary" />
+                <ComicAvatar id={r.comicId} name={r.comicName} size={28} tone="secondary" />
                 <span className="min-w-0 flex-1 truncate type-body-m">{r.comicName}</span>
                 <span className="flex-none type-label-s text-on-surface-variant">{r.intent.preferredDays.length ? r.intent.preferredDays.map((d) => DAY_SHORT[d]).join(" ") : "Any day"}</span>
               </li>

@@ -2,7 +2,7 @@ import { signOut } from "firebase/auth";
 import { AccountMenu as BaseAccountMenu, type AccountStatus, AccountMenuItem, IconLightbulb, IconServer, IconShield, cx } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
-import { useServers } from "../routes/Server";
+import { useServers } from "../lib/servers";
 import { isAdmin, useAccessConfig } from "../lib/access";
 import { clearChatCache } from "../lib/chatCache";
 
