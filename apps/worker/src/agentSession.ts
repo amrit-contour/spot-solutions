@@ -11,6 +11,7 @@ import { wipeLogin } from "./vault.ts";
 import { prepareLoginSafe } from "./vaultCalls.ts";
 import { launchDecision, shouldFlagAbort } from "./fleetPlan.ts";
 import { killOrphanChromium } from "./sessions.ts";
+import { live } from "./stats.ts";
 
 const { Client, LocalAuth } = WAWebJS;
 
@@ -21,7 +22,10 @@ const PREPARE_RETRY_MS = 30_000;
 export const agentRef = (uid: string) => col(uid, "session").doc("agent");
 
 const notice = (uid: string, text: string) => col(uid, "notices").add({ level: "warn", text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
-const setState = (uid: string, s: Partial<SessionState>) => agentRef(uid).set({ ...s, lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true });
+const setState = (uid: string, s: Partial<SessionState>) => {
+  live.recordSession(uid, s, "agent"); // the server console lists the agent number under its account
+  return agentRef(uid).set({ ...s, lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true });
+};
 
 interface Hooks {
   /** Set by fleet.ts: the agent runs only while this server holds the account's lease. */
@@ -115,6 +119,7 @@ class AgentSessionManager {
       return;
     }
     this.clients.set(uid, client);
+    live.bindClient(uid, client, "agent"); // the agent's own sends count toward it
 
     client.on("qr", (qr) => {
       if (!sawQr && wasLinked) void notice(uid, "The agent number asked to be linked again. Open Settings → WhatsApp → Agent number and scan the code.");

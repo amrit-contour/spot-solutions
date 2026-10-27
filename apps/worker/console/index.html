@@ -307,6 +307,9 @@
   .banner.bad button { background: var(--error); color: var(--surface); }
   /* Health card (Check and repair) */
   .health { margin-top: 12px; }
+  .accgroup + .accgroup { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
+  .accgroup .acc.agent { margin-left: 22px; padding-top: 0; border-top: 0; }
+  .acc.agent .who b { font-weight: 500; }
   .health > .hh { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 4px; }
   .health h3 { margin: 0; font-size: 14px; font-weight: 600; flex: 1 1 160px; }
   .health h3:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 4px; }
@@ -929,7 +932,7 @@ function liveStatsBody() {
   const stale = l.state === "stale", q = l.queue;
   return `${stale && !state?.workerControl?.stopped ? `<div class="banner bad" style="margin-bottom:12px" role="status"><div class="grow"><b>The worker isn't reporting</b><div class="small">Last report ${esc(ago(Date.now() - l.ageMs))}. ${state && !state.services.worker ? "It's stopped: check Server below." : "The numbers below are the last ones it sent."}</div></div></div>` : ""}
     <div class="${stale ? "dimmed" : ""}"><div class="tiles">
-      ${tileOf(null, "Connected", n(l.counts.ready), `of ${n(l.counts.accounts)} account${l.counts.accounts === 1 ? "" : "s"} here`)}
+      ${tileOf(null, "Connected", n(clientsOf(l).filter((a) => a.status === "ready").length), `of ${n(clientsOf(l).length)} account${clientsOf(l).length === 1 ? "" : "s"} here${agentsReady(l) ? ` · ${n(agentsReady(l))} agent${agentsReady(l) === 1 ? "" : "s"}` : ""}`)}
       ${tileOf("in", "Messages read", n(l.day.in), `${n(l.totals.in)} since start`)}
       ${tileOf("spot", "Spot requests", n(l.day.spot), `${n(l.totals.spot)} since start`)}
       ${tileOf("sent", "Sent", n(l.day.sent), `${n(l.totals.sent)} since start`)}
@@ -963,16 +966,33 @@ function liveDetailBody() {
     </div></div>`;
 }
 
+// Accounts here, each with its agent number (if linked) underneath. Counts are per account; the agent is a detail of it.
+const clientsOf = (l) => l.accounts.filter((a) => a.role !== "agent");
+const agentOf = (l, uid) => l.accounts.find((a) => a.role === "agent" && a.uid === uid);
+const agentsReady = (l) => l.accounts.filter((a) => a.role === "agent" && a.status === "ready").length;
+function accStatus(a) {
+  let st = STATUS[a.status] || [a.status, "neutral", "warn"];
+  if (a.status === "ready" && a.health && a.health !== "ok") st = [a.health === "failing" ? "Not responding" : "Restarting", "bad", "bad"];
+  return st;
+}
 function accountsBody() {
   const l = liveData;
   if (!l) return `<div class="muted empty">No report from the worker yet.</div>`;
   if (!l.accounts.length) return `<div class="muted empty">No accounts on this server right now. Curators show up here once they link WhatsApp in the app and this server takes them on.</div>`;
-  return `<div class="acclist ${l.state === "stale" ? "dimmed" : ""}">${l.accounts.map((a) => {
-    let st = STATUS[a.status] || [a.status, "neutral", "warn"];
-    if (a.status === "ready" && a.health && a.health !== "ok") st = [a.health === "failing" ? "Not responding" : "Restarting", "bad", "bad"];
+  // An agent whose main account isn't on this server still shows, as its own row.
+  const rows = [...clientsOf(l), ...l.accounts.filter((a) => a.role === "agent" && !l.accounts.some((c) => c.role !== "agent" && c.uid === a.uid))];
+  return `<div class="acclist ${l.state === "stale" ? "dimmed" : ""}">${rows.map((a) => {
+    const st = accStatus(a);
     const title = a.name || a.email || "Account";
     const sub = [a.name && a.email ? a.email : null, a.phone, a.since ? `${st[0].toLowerCase()} since ${when(a.since)}` : null, a.healthNote].filter(Boolean).map(esc).join(" · ");
-    return `<div class="acc"><span class="dot ${st[2]}"></span><div class="who"><b>${esc(title)}${a.role === "agent" ? ` <span class="chip neutral" style="height:20px;padding:0 6px;font-size:11px">agent</span>` : ""}</b><div class="muted small">${sub}</div></div><span class="chip ${st[1]}">${esc(st[0])}</span><div class="nums small">${n(a.in)} read · ${n(a.spot)} spot · ${n(a.sent)} sent${a.err ? ` · <span class="err-text">${n(a.err)} err</span>` : ""}</div></div>`;
+    const ag = a.role === "agent" ? null : agentOf(l, a.uid);
+    const agRow = ag ? (() => {
+      const at = accStatus(ag);
+      const asub = [ag.phone, ag.since ? `${at[0].toLowerCase()} since ${when(ag.since)}` : null, ag.healthNote].filter(Boolean).map(esc).join(" · ");
+      return `<div class="acc agent"><span class="dot ${at[2]}"></span><div class="who"><b>Agent number</b><div class="muted small">${asub || "Talks to you on WhatsApp for this account"}</div></div><span class="chip ${at[1]}">${esc(at[0])}</span><div class="nums small">${n(ag.sent)} sent${ag.err ? ` · <span class="err-text">${n(ag.err)} err</span>` : ""}</div></div>`;
+    })() : "";
+    const agChip = a.role === "agent" ? ` <span class="chip neutral" style="height:20px;padding:0 6px;font-size:11px">agent</span>` : "";
+    return `<div class="accgroup"><div class="acc"><span class="dot ${st[2]}"></span><div class="who"><b>${esc(title)}${agChip}</b><div class="muted small">${sub}</div></div><span class="chip ${st[1]}">${esc(st[0])}</span><div class="nums small">${n(a.in)} read · ${n(a.spot)} spot · ${n(a.sent)} sent${a.err ? ` · <span class="err-text">${n(a.err)} err</span>` : ""}</div></div>${agRow}</div>`;
   }).join("")}</div><div class="muted small" style="margin-top:10px">Totals since the worker started. Phone numbers are masked and message text never leaves WhatsApp and the app.</div>`;
 }
 
@@ -981,9 +1001,9 @@ function liveSummaries() {
   const dot = (c) => `<span class="dot ${c}" style="display:inline-block;width:8px;height:8px;margin-right:6px"></span>`;
   const avg = l?.ai?.avgMs == null ? "" : ` · avg ${(l.ai.avgMs / 1000).toFixed(l.ai.avgMs < 10000 ? 1 : 0)} s`;
   return {
-    stats: !l ? "Waiting for the worker" : l.state === "stale" ? `${dot("bad")}Worker not reporting` : `${dot("ok")}${n(l.counts.ready)} connected · ${n(l.day.in)} read · ${n(l.day.sent)} sent in 24 h`,
+    stats: !l ? "Waiting for the worker" : l.state === "stale" ? `${dot("bad")}Worker not reporting` : `${dot("ok")}${n(clientsOf(l).filter((a) => a.status === "ready").length)} connected${agentsReady(l) ? ` · ${n(agentsReady(l))} agent${agentsReady(l) === 1 ? "" : "s"}` : ""} · ${n(l.day.in)} read · ${n(l.day.sent)} sent in 24 h`,
     detail: !l ? "No report yet" : `${METRICS[metric][0]} ${n(l.day[metric])} in 24 h · AI ${n(l.ai.day)} call${l.ai.day === 1 ? "" : "s"}${avg}`,
-    accounts: !l ? "No report yet" : `${n(l.counts.ready)} of ${n(l.counts.accounts)} connected${l.counts.qr ? ` · ${l.counts.qr} need a scan` : ""}`,
+    accounts: !l ? "No report yet" : `${n(clientsOf(l).filter((a) => a.status === "ready").length)} of ${n(clientsOf(l).length)} connected${agentsReady(l) ? ` · ${n(agentsReady(l))} agent${agentsReady(l) === 1 ? "" : "s"} linked` : ""}${l.counts.qr ? ` · ${l.counts.qr} need a scan` : ""}`,
   };
 }
 const liveBodies = { stats: liveStatsBody, detail: liveDetailBody, accounts: accountsBody };
