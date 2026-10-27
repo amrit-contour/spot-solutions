@@ -74,6 +74,7 @@ import { addDirect, settleRound } from "./replies.ts";
 import { askForSpot } from "./groupWatch.ts";
 import { sendAsk } from "./asks.ts";
 import { profilePics } from "./profilePics.ts";
+import { mergeComicDocs } from "./mergeComics.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
@@ -672,6 +673,7 @@ const handlers: Record<Command["type"], Handler> = {
   list_voice_sources: (uid) => listVoiceSourceChats(uid),
   // Profile pictures: queued and fetched in the background (one every couple of seconds); the answer lands on the comic docs.
   profile_pics: profilePics,
+  merge_comics: (uid, payload) => mergeComicDocs(uid, payload),
 };
 
 /** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */

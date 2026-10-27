@@ -16,6 +16,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { IconClose } from "./icons";
 
+import { useSheetKeyboard } from "./sheetKeyboard";
 export type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
 export const initials = (name: string) =>
@@ -315,6 +316,10 @@ export function Empty({ icon: I, title, children, action }: { icon: Icon; title:
  */
 export function Sheet({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   useEffect(() => {
+  const root = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  // The keyboard shrinks what is visible, not the layout: size to it and keep the focused field above it.
+  useSheetKeyboard(root, scroller, open);
     if (!open) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
@@ -330,6 +335,7 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
       {open && (
         <motion.div
           role="dialog"
+          ref={root}
           aria-modal
           className="fixed inset-0 z-50 flex flex-col bg-surface sm:left-24"
           initial={{ opacity: 0, transform: "translateY(12px)" }}
@@ -342,10 +348,10 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
             <h2 className="ml-2 min-w-0 flex-1 truncate type-title-l sm:type-headline-s">{title}</h2>
             {footer && <div className="hidden items-center gap-2 sm:flex">{footer}</div>}
           </header>
-          <div className="flex-1 overflow-y-auto overscroll-contain">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <div className={cx("mx-auto w-full px-4 py-6 sm:px-8 sm:py-8", wide ? "max-w-4xl" : "max-w-2xl")}>{children}</div>
           </div>
-          {footer && <footer className="flex flex-none items-center justify-end gap-2 border-t border-outline-variant/60 bg-surface-low px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:hidden">{footer}</footer>}
+          {footer && <footer className="flex flex-none items-center justify-end gap-2 border-t border-outline-variant/60 bg-surface-low px-4 py-3 pb-[max(12px,calc(env(safe-area-inset-bottom)*var(--sheet-safe,1)))] sm:hidden">{footer}</footer>}
         </motion.div>
       )}
     </AnimatePresence>,

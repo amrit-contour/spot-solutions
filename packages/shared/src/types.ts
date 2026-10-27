@@ -289,6 +289,8 @@ export interface GroupMembersCache {
 export interface Comic {
   id: string; // stable id: phone-based (919876543210@c.us) when known, else the @lid
   chatId?: string; // the JID WhatsApp actually delivers to (often @lid on current WhatsApp)
+  /** Other ids WhatsApp has known this person by (left behind when a duplicate doc was merged into this one), so their messages still land here. */
+  aliases?: string[];
   name: string;
   /** Where `name` came from. Only "manual" names are left alone when WhatsApp data changes. */
   nameSource?: "contact" | "whatsapp" | "number" | "manual";
@@ -486,7 +488,8 @@ export type CommandType =
   | "settle_round"
   | "send_ask"
   | "ask_for_spot"
-  | "profile_pics";
+  | "profile_pics"
+  | "merge_comics";
 
 export interface Command {
   type: CommandType;

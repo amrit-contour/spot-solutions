@@ -52,3 +52,4 @@ export * from "./comicSettings.ts";
 export * from "./peopleSearch.ts";
 export * from "./profilePics.ts";
 export * from "./appVersion.ts";
+export * from "./comicMerge.ts";

@@ -42,6 +42,7 @@ import { counters, live } from "./stats.ts";
 import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
 import { notice } from "./commands.ts";
 import { dropNeverRead, isNeverRead } from "./neverRead.ts";
+import { knownComicId } from "./knownComic.ts";
 
 const MAX_CONTEXT = 12;
 
@@ -69,7 +70,7 @@ export function isDirectHumanMessage(msg: WAWebJS.Message) {
 }
 
 /** Stable identity for a sender. WhatsApp often hands us an @lid; map it back to the phone number when it'll tell us. */
-export async function resolveContact(client: WAWebJS.Client, msg: WAWebJS.Message) {
+export async function resolveContact(client: WAWebJS.Client, msg: WAWebJS.Message, uid?: string) {
   const chatId = msg.from;
   const contact = await msg.getContact().catch(() => null);
   let pn: string | undefined = chatId.endsWith("@c.us") ? chatId : undefined;
@@ -81,7 +82,8 @@ export async function resolveContact(client: WAWebJS.Client, msg: WAWebJS.Messag
     }
   }
   const phone = pn?.split("@")[0] ?? "";
-  const id = pn ?? chatId;
+  // Already on the roster under another id (phone vs @lid)? Use that one, so no second comic or request is created.
+  const id = uid ? await knownComicId(uid, { id: pn ?? chatId, chatId, phone }) : (pn ?? chatId);
   // Prefer the name saved in the curator's phone, then the person's WhatsApp profile name.
   const saved = contact?.isMyContact ? contact.name?.trim() : undefined;
   const profile = contact?.pushname?.trim();
@@ -104,7 +106,7 @@ export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.
   if (!opts.quiet && (!since || msg.timestamp * 1000 < since - 5_000)) return;
   counters.messagesIn++;
   live.noteIn(uid);
-  const contact = await resolveContact(client, msg);
+  const contact = await resolveContact(client, msg, uid);
   const key = `${uid}|${contact.id}`;
   const p = pending.get(key);
   const item: InboundMessage = { id: msg.id._serialized, body: msg.body.slice(0, 1000), at: msg.timestamp * 1000 };

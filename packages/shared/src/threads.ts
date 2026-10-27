@@ -218,9 +218,9 @@ export function snippetOf(m: WaMessageLike | null | undefined, names?: Map<strin
 }
 
 /** Every id WhatsApp might use for this comic. Current WhatsApp mixes phone ids and @lid, so match on all we know. */
-export function comicChatKeys(c: Pick<Comic, "id" | "chatId" | "phone">): string[] {
+export function comicChatKeys(c: Pick<Comic, "id" | "chatId" | "phone"> & { aliases?: string[] }): string[] {
   const phone = (c.phone ?? "").replace(/\D/g, "");
-  return [...new Set([c.id, c.chatId, phone ? comicIdForPhone(phone) : undefined].filter((x): x is string => Boolean(x)))];
+  return [...new Set([c.id, c.chatId, ...(c.aliases ?? []), phone ? comicIdForPhone(phone) : undefined].filter((x): x is string => Boolean(x)))];
 }
 
 /**

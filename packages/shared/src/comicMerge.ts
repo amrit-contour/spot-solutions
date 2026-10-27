@@ -1,0 +1,245 @@
+// One person, several comic docs: WhatsApp hands the same contact over as a phone id (91…@c.us) or an @lid, so a roster can end up
+// holding them twice. This finds those, picks the doc WhatsApp can actually deliver to, and merges the others into it.
+// Pure logic: the worker applies the plan (apps/worker/src/mergeComics.ts), the Show editor's people picker uses the same identity rules.
+import type { Comic, GroupMember, Lineup, Show, SpotHistoryEntry, Tier } from "./types.ts";
+
+/** What identifies a comic across its ids: the phone, the id WhatsApp delivers to, the other ids it has been seen under. */
+export type Identity = Pick<Comic, "id" | "chatId" | "phone"> & { aliases?: string[] };
+
+/** An @lid and the phone it belongs to, as WhatsApp reported them (group member lists carry both). */
+export interface IdLink {
+  lid: string;
+  phone: string;
+}
+
+const digitsOf = (s: string) => s.split("@")[0].split(":")[0].replace(/\D/g, "");
+const isLid = (id: string) => id.endsWith("@lid");
+const isPhoneJid = (id: string) => id.endsWith("@c.us");
+
+/** Phone digits of this comic when it has one (its phone field, or a phone id), else "". An @lid number is not a phone. */
+export function phoneDigitsOf(c: Identity): string {
+  const own = (c.phone ?? "").replace(/\D/g, "");
+  if (own.length >= 7) return own;
+  const jid = [c.id, c.chatId, ...(c.aliases ?? [])].find((x): x is string => Boolean(x) && isPhoneJid(x as string));
+  return jid ? digitsOf(jid) : "";
+}
+
+const lidDigitsOf = (c: Identity): string[] => [...new Set([c.id, c.chatId, ...(c.aliases ?? [])].filter((x): x is string => Boolean(x) && isLid(x as string)).map(digitsOf))];
+
+/** Links from a show's cached group members: the phone id next to the raw @lid WhatsApp also knows them by. */
+export function linksFromMembers(members: readonly GroupMember[]): IdLink[] {
+  return members.flatMap((m) => (isPhoneJid(m.id) ? (m.alt ?? []).filter(isLid).map((l) => ({ lid: digitsOf(l), phone: digitsOf(m.id) })) : []));
+}
+
+/** Every key a member answers to (phone digits, lid digits), used to ask "is this comic in the group?". */
+export function memberKeySet(members: readonly GroupMember[]): Set<string> {
+  const keys = new Set<string>();
+  for (const m of members) {
+    const phone = isPhoneJid(m.id);
+    keys.add(`${phone ? "p" : isLid(m.id) ? "l" : "x"}${digitsOf(m.id) || m.id}`);
+    for (const a of m.alt ?? []) keys.add(`${isLid(a) ? "l" : "p"}${digitsOf(a)}`);
+  }
+  return keys;
+}
+
+/** The keys of one comic, in the same space as memberKeySet. */
+export function identityKeys(c: Identity): string[] {
+  const phone = phoneDigitsOf(c);
+  return [...(phone ? [`p${phone}`] : []), ...lidDigitsOf(c).map((l) => `l${l}`), ...(!phone && !lidDigitsOf(c).length ? [`x${c.id}`] : [])];
+}
+
+/** Is this comic one of these group members, by phone or @lid? */
+export const inMemberSet = (c: Identity, members: Set<string>) => identityKeys(c).some((k) => members.has(k));
+
+/** Groups of items that are the same person (every group is in input order; singletons included). */
+export function personGroups<T extends Identity>(items: readonly T[], links: readonly IdLink[] = []): T[][] {
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    let r = parent.get(k) ?? k;
+    while ((parent.get(r) ?? r) !== r) r = parent.get(r)!;
+    parent.set(k, r);
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const l of links) union(`p${l.phone}`, `l${l.lid}`);
+  const keysOf = items.map((it) => identityKeys(it));
+  keysOf.forEach((ks) => ks.slice(1).forEach((k) => union(ks[0], k)));
+  const out = new Map<string, T[]>();
+  items.forEach((it, i) => {
+    const root = find(keysOf[i][0]);
+    out.set(root, [...(out.get(root) ?? []), it]);
+  });
+  return [...out.values()];
+}
+
+/**
+ * Which of several docs for one person to keep: the one WhatsApp can reach. In the group first, then a phone-based id (the
+ * canonical id; the merge carries the delivery id over), then one with a delivery id (chatId), then the one with more history. Stable: a tie keeps the earlier one.
+ */
+export function pickKeep<T extends Identity & { history?: unknown[] }>(group: readonly T[], members: Set<string> = new Set()): T {
+  const score = (c: T) => (inMemberSet(c, members) ? 8 : 0) + (isPhoneJid(c.id) ? 3 : 0) + (c.chatId ? 2 : 0) + Math.min(c.history?.length ?? 0, 30) / 100;
+  return group.reduce((best, c) => (score(c) > score(best) ? c : best), group[0]);
+}
+
+export interface DuplicateSet<T extends Identity> {
+  keep: T;
+  others: T[];
+  /** Why they look like one person. */
+  why: "number" | "whatsapp";
+}
+
+/** Comics that are the same person under more than one doc. The doc to keep is the one WhatsApp reaches. */
+export function findDuplicateComics<T extends Identity & { name: string; history?: unknown[] }>(comics: readonly T[], links: readonly IdLink[] = [], members: Set<string> = new Set()): DuplicateSet<T>[] {
+  return personGroups(comics, links)
+    .filter((g) => g.length > 1)
+    .map((g) => {
+      const keep = pickKeep(g, members);
+      const phones = new Set(g.map((c) => phoneDigitsOf(c)).filter(Boolean));
+      return { keep, others: g.filter((c) => c !== keep), why: (phones.size === 1 && g.every((c) => phoneDigitsOf(c)) ? "number" : "whatsapp") as "number" | "whatsapp" };
+    })
+    .sort((a, b) => a.keep.name.localeCompare(b.keep.name));
+}
+
+const NAME_RANK = { number: 0, whatsapp: 1, contact: 2, manual: 3 } as const;
+const TIER_RANK: Record<Tier, number> = { open: 0, regular: 1, featured: 2 };
+
+/** The doc that survives a merge: the kept one, filled in from the others (never overwriting what the kept one has). */
+export function mergeComics(keep: Comic, others: readonly Comic[]): Comic {
+  let out: Comic = { ...keep };
+  const ids = new Set<string>([keep.id, ...(keep.aliases ?? [])]);
+  const seen = (x: string | undefined) => x && ids.has(x);
+  for (const o of others) {
+    // The best name wins: hand-edited, then saved in your phone, then WhatsApp's, then the bare number.
+    if (NAME_RANK[o.nameSource ?? "whatsapp"] > NAME_RANK[out.nameSource ?? "whatsapp"]) out = { ...out, name: o.name, nameSource: o.nameSource };
+    if (!out.phone && o.phone) out.phone = o.phone;
+    if (!out.chatId && o.chatId) out.chatId = o.chatId;
+    if (o.notes && o.notes !== out.notes) out.notes = out.notes ? `${out.notes}\n${o.notes}` : o.notes;
+    if (TIER_RANK[o.tier] > TIER_RANK[out.tier]) out.tier = o.tier;
+    if (!out.list && o.list) out.list = o.list;
+    if ((o.lastPerformedWeek ?? "") > (out.lastPerformedWeek ?? "")) out.lastPerformedWeek = o.lastPerformedWeek;
+    if (o.regularOf?.length) out.regularOf = [...new Set([...(out.regularOf ?? []), ...o.regularOf])];
+    if (o.history?.length) out.history = mergeHistory(out.history, o.history);
+    if (!out.onboarding && o.onboarding) out.onboarding = o.onboarding;
+    if (o.profile) out.profile = { ...o.profile, ...out.profile };
+    if (!out.photoUrl && o.photoUrl) {
+      out.photoUrl = o.photoUrl;
+      out.photoAt = o.photoAt;
+    }
+    for (const x of [o.id, o.chatId, ...(o.aliases ?? [])]) if (x && !seen(x)) ids.add(x);
+  }
+  // Every other id WhatsApp has known them by stays on the doc, so a message from the old one still finds this person.
+  const aliases = [...ids].filter((x) => x !== out.id && x !== out.chatId);
+  if (aliases.length) out.aliases = aliases;
+  // Firestore refuses undefined.
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined)) as unknown as Comic;
+}
+
+function mergeHistory(a: SpotHistoryEntry[] | undefined, b: SpotHistoryEntry[]): SpotHistoryEntry[] {
+  const byKey = new Map<string, SpotHistoryEntry>();
+  for (const h of [...b, ...(a ?? [])]) byKey.set(`${h.date}|${h.showId}`, h);
+  return [...byKey.values()].sort((x, y) => y.date.localeCompare(x.date)).slice(0, 30);
+}
+
+const swapId = (id: string, from: ReadonlySet<string>, to: string) => (from.has(id) ? to : id);
+const swapList = (xs: string[], from: ReadonlySet<string>, to: string) => [...new Set(xs.map((x) => swapId(x, from, to)))];
+
+/** A show with the dropped comic ids replaced by the kept one (regulars, co-hosts, POCs). Null when nothing changes. */
+export function remapShow(show: Show, from: ReadonlySet<string>, to: string): Partial<Pick<Show, "regulars" | "protected" | "pocs">> | null {
+  const patch: Partial<Pick<Show, "regulars" | "protected" | "pocs">> = {};
+  for (const k of ["regulars", "protected", "pocs"] as const) {
+    const cur = show[k];
+    if (cur?.some((x) => from.has(x))) patch[k] = swapList(cur, from, to);
+  }
+  return Object.keys(patch).length ? patch : null;
+}
+
+/** A lineup with the dropped comic ids replaced by the kept one (slots, what was sent, invites, leaving, dropped). Null when nothing changes. */
+export function remapLineup(l: Lineup, from: ReadonlySet<string>, to: string): Partial<Lineup> | null {
+  const patch: Partial<Lineup> = {};
+  if (l.slots.some((s) => from.has(s.comicId))) {
+    const seen = new Set<string>();
+    // Someone on the lineup under both docs is one slot (the first).
+    patch.slots = l.slots.map((s) => ({ ...s, comicId: swapId(s.comicId, from, to) })).filter((s) => !seen.has(s.comicId) && seen.add(s.comicId));
+  }
+  const rekey = <V>(m: Record<string, V> | null | undefined): Record<string, V> | null => {
+    if (!m || !Object.keys(m).some((k) => from.has(k))) return null;
+    const out: Record<string, V> = {};
+    for (const [k, v] of Object.entries(m)) {
+      const nk = swapId(k, from, to);
+      if (!(nk in out) || k === to) out[nk] = v;
+    }
+    return out;
+  };
+  const sent = rekey(l.sent);
+  if (sent) patch.sent = sent;
+  const invites = rekey(l.groupInvites);
+  if (invites) patch.groupInvites = invites;
+  if (l.groupLeaving?.some((x) => from.has(x))) patch.groupLeaving = swapList(l.groupLeaving, from, to);
+  if (l.dropped?.some((d) => from.has(d.comicId))) patch.dropped = l.dropped.map((d) => ({ ...d, comicId: swapId(d.comicId, from, to) }));
+  return Object.keys(patch).length ? patch : null;
+}
+
+/** Request docs are named `${week}_${comicId}`: the id a request moves to when its comic is merged. */
+export const requestIdFor = (weekOf: string, comicId: string) => `${weekOf}_${comicId}`;
+
+// ---- People picker rows ----
+
+export type PickerRole = "poc" | "regular" | "cohost";
+
+export interface PickerRow {
+  /** The id a tap toggles: the doc WhatsApp reaches. */
+  id: string;
+  /** Every doc id for this person (the duplicates); a tap on one counts for all. */
+  ids: string[];
+  name: string;
+  phone: string;
+  /** "+91 ••••• 3210", or "" when the number isn't known. */
+  masked: string;
+  inGroup: boolean;
+  roles: PickerRole[];
+}
+
+/** "919876543210" -> "+91 ••••• 3210": enough to tell two Amans apart, without printing the number. */
+export function maskPhoneDigits(phone: string): string {
+  const d = phone.replace(/\D/g, "");
+  if (d.length < 7) return "";
+  const cc = d.length > 10 ? d.slice(0, d.length - 10) : d.slice(0, 2);
+  return `+${cc} ••••• ${d.slice(-4)}`;
+}
+
+export interface PickerContext {
+  members?: readonly GroupMember[];
+  pocs?: readonly string[];
+  regulars?: readonly string[];
+  cohosts?: readonly string[];
+}
+
+/** One row per person (duplicate docs merged), with group membership, roles and a masked number. */
+export function pickerRows<T extends Identity & { name: string; nameSource?: Comic["nameSource"]; history?: unknown[] }>(comics: readonly T[], ctx: PickerContext = {}): PickerRow[] {
+  const members = ctx.members ?? [];
+  const keys = memberKeySet(members);
+  const poc = new Set(ctx.pocs ?? []);
+  const reg = new Set(ctx.regulars ?? []);
+  const co = new Set(ctx.cohosts ?? []);
+  return personGroups(comics, linksFromMembers(members)).map((g) => {
+    const rep = pickKeep(g, keys);
+    const ids = g.map((c) => c.id);
+    const any = (s: Set<string>) => ids.some((i) => s.has(i));
+    const phone = g.map(phoneDigitsOf).find(Boolean) ?? "";
+    // Prefer a hand-set name, then a saved one: the same ranking as a merge.
+    const name = g.reduce((best, c) => (NAME_RANK[c.nameSource ?? "whatsapp"] > NAME_RANK[best.nameSource ?? "whatsapp"] ? c : best), rep).name;
+    return {
+      id: rep.id,
+      ids,
+      name,
+      phone,
+      masked: maskPhoneDigits(phone),
+      inGroup: g.some((c) => inMemberSet(c, keys)),
+      roles: [...(any(poc) ? (["poc"] as const) : []), ...(any(reg) ? (["regular"] as const) : []), ...(any(co) ? (["cohost"] as const) : [])],
+    };
+  });
+}

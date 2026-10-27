@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { GroupPostsEditor } from "../components/GroupPosts";
 import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { VenuePin } from "@spot/ui";
-import { DAY_SHORT, DEFAULT_CLEANUP, PEOPLE_SEARCH_HINT, formatTime, groupModeOf, searchPeople, type GroupInfo, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
+import { DAY_SHORT, DEFAULT_CLEANUP, formatTime, groupModeOf, type GroupInfo, type GroupMember, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
 import { PageHeader } from "@spot/ui";
-import { SearchField } from "../components/PeopleSearch";
+import { ShowPeoplePicker } from "../components/ShowPeoplePicker";
 import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
 import { IconAdd, IconBuilding, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "@spot/ui";
 
@@ -192,13 +192,22 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
     }
   };
   const cleanup = draft.cleanup ?? DEFAULT_CLEANUP;
-  const toggleIn = (k: "regulars" | "protected" | "pocs", id: string) => {
+  // One person can be two comic docs (phone id and @lid): a tap adds the one WhatsApp reaches, and removes every doc of them.
+  const toggleIn = (k: "regulars" | "protected" | "pocs", ids: string[], rep: string) => {
     const cur = new Set(draft[k] ?? []);
-    if (cur.has(id)) cur.delete(id);
-    else cur.add(id);
+    if (ids.some((i) => cur.has(i))) ids.forEach((i) => cur.delete(i));
+    else cur.add(rep);
     set(k, [...cur]);
   };
 
+  // Who is in the show's WhatsApp group: the cached members read from the group, plus anyone just pulled with "Get members from group".
+  const groupMembers = useMemo<GroupMember[] | null>(() => {
+    const cache = draft.groupId && value?.groupMembers?.groupId === draft.groupId ? value.groupMembers.members : [];
+    if (!cache.length && !memberIds) return null;
+    const have = new Set(cache.map((m) => m.id));
+    return [...cache, ...(memberIds ?? []).filter((id) => !have.has(id)).map((id) => ({ id, name: "", isAdmin: false }))];
+  }, [draft.groupId, value?.groupMembers, memberIds]);
+  const roles = useMemo(() => ({ pocs: draft.pocs, regulars: draft.regulars, cohosts: draft.protected }), [draft.pocs, draft.regulars, draft.protected]);
   return (
     <Sheet
       open={Boolean(value)}
@@ -335,7 +344,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                 </div>
                 <GroupPostsEditor show={{ name: draft.name ?? "", weekday: draft.weekday ?? 1, startTime: draft.startTime ?? "20:00", venueId: draft.venueId ?? "", groupPostsSent: value?.groupPostsSent, pocs: draft.pocs }} posts={draft.groupPosts ?? []} onChange={(v) => set("groupPosts", v)} />
               </div>
-              <PeoplePicker label="POCs (run the mic; always stay; tagged with {{pocs}})" icon={IconUserCheck} selected={draft.pocs ?? []} onToggle={(id) => toggleIn("pocs", id)} people={comics} members={memberIds} />
+              <ShowPeoplePicker label="POCs (run the mic; always stay; tagged with {{pocs}})" icon={IconUserCheck} selected={draft.pocs ?? []} onToggle={(ids, id) => toggleIn("pocs", ids, id)} comics={comics} members={groupMembers} roles={roles} />
               <div className="flex flex-col gap-3 rounded-lg bg-surface-container p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
@@ -363,48 +372,13 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                   </div>
                 )}
               </div>
-              <PeoplePicker label="Regulars (always stay in the group)" icon={IconStar} selected={draft.regulars ?? []} onToggle={(id) => toggleIn("regulars", id)} people={comics} members={memberIds} />
-              <PeoplePicker label="Protected (co-hosts, staff)" icon={IconMap} selected={draft.protected ?? []} onToggle={(id) => toggleIn("protected", id)} people={comics} members={memberIds} />
+              <ShowPeoplePicker label="Regulars (always stay in the group)" icon={IconStar} selected={draft.regulars ?? []} onToggle={(ids, id) => toggleIn("regulars", ids, id)} comics={comics} members={groupMembers} roles={roles} />
+              <ShowPeoplePicker label="Protected (co-hosts, staff)" icon={IconMap} selected={draft.protected ?? []} onToggle={(ids, id) => toggleIn("protected", ids, id)} comics={comics} members={groupMembers} roles={roles} />
             </div>
           )}
         </section>
       </div>
     </Sheet>
-  );
-}
-
-function PeoplePicker({ label, people, selected, onToggle, icon, members }: { label: string; people: { id: string; name: string }[]; selected: string[]; onToggle: (id: string) => void; icon: typeof IconStar; members: string[] | null }) {
-  const [q, setQ] = useState("");
-  const [groupOnly, setGroupOnly] = useState(false);
-  const sel = new Set(selected);
-  const inGroup = new Set(members ?? []);
-  const typing = Boolean(q.trim());
-  // Type-first: only who's already chosen is shown until something is typed. "In this group" is an explicit way to browse.
-  const chosen = people.filter((p) => sel.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
-  const pool = people.filter((p) => !sel.has(p.id) && (!groupOnly || inGroup.has(p.id)));
-  const found = typing ? searchPeople(pool, q, 40) : groupOnly ? pool.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 40) : [];
-  return (
-    <div>
-      <div className="mb-2 flex items-center gap-2 type-label-l text-on-surface-variant">
-        <span className="flex-1">{label}</span>
-        {members && <Chip selected={groupOnly} onClick={() => setGroupOnly(!groupOnly)}>In this group</Chip>}
-      </div>
-      <SearchField value={q} onChange={setQ} className="h-10" />
-      <div className="mt-2 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
-        {chosen.map((p) => (
-          <Chip key={p.id} selected onClick={() => onToggle(p.id)} icon={icon}>
-            {p.name}
-          </Chip>
-        ))}
-        {found.map((p) => (
-          <Chip key={p.id} onClick={() => onToggle(p.id)}>
-            {p.name}
-          </Chip>
-        ))}
-        {(typing || groupOnly) && !found.length && <span className="self-center type-body-s text-on-surface-variant">No one matches.</span>}
-        {!typing && !groupOnly && !chosen.length && <span className="self-center type-body-s text-on-surface-variant">{people.length ? PEOPLE_SEARCH_HINT : "Comics appear here once they message you, or when you add or import them in Comics."}</span>}
-      </div>
-    </div>
   );
 }
 

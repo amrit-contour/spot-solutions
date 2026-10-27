@@ -75,7 +75,7 @@ export async function scanHistory(uid: string, payload: Record<string, unknown>,
       const msgs = (await chat.fetchMessages({ limit: MESSAGES_PER_CHAT }).catch(() => [])).filter((m) => m.timestamp * 1000 >= cutoff && isDirectHumanMessage(m));
       out.chatsScanned++;
       if (msgs.length) {
-        const contact = await resolveContact(client, msgs[0]);
+        const contact = await resolveContact(client, msgs[0], uid);
         // Banks, telcos, delivery apps: never read as requests.
         if (!contact.isBusiness) {
           const inbound: InboundMessage[] = msgs.map((m) => ({ id: m.id._serialized, body: m.body.slice(0, 1000), at: m.timestamp * 1000 }));

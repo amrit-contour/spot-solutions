@@ -14,6 +14,7 @@ import { PageHeader } from "@spot/ui";
 import { StickyBar } from "@spot/ui";
 import { ConfirmDialog } from "@spot/ui";
 import { Menu, MenuItem } from "@spot/ui";
+import { DuplicateComics } from "../components/DuplicateComics";
 import { PastSpotSheet } from "../components/PastSpotSheet";
 import { ImportContactsSheet, ImportFileSheet, ImportGoogleSheet } from "../components/ImportSheets";
 import { Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "@spot/ui";
@@ -137,6 +138,7 @@ export function Comics() {
           <Empty icon={IconComics} title={comics.length ? "No matches" : "No comics yet"}>
             {comics.length ? "Try a different search." : "Once someone asks for a spot, they're added here automatically. You can also add people by hand."}
           </Empty>
+        <DuplicateComics />
         ) : (
           <>
           {selecting && (
