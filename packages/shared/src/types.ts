@@ -268,6 +268,8 @@ export interface GroupMember {
   id: string;
   name: string;
   isAdmin: boolean;
+  /** The other ids WhatsApp knows them by (the raw @lid next to a phone id), so they match a roster entry kept under the other one. */
+  alt?: string[];
 }
 
 export interface GroupMembersCache {
@@ -365,6 +367,10 @@ export interface GroupSyncPlan {
   toRemove: string[];
   kept: string[];
   results?: Record<string, "added" | "removed" | "invited" | "failed">;
+  /** On the lineup with an invite link out, not yet in the group (id -> when it was sent). Not in `toAdd`. */
+  invited?: Record<string, number>;
+  /** Invited more than a day ago and still not in: also in `toAdd`, offered as "Resend invite". */
+  lapsed?: string[];
   error?: string | null;
 }
 
@@ -390,6 +396,8 @@ export interface Lineup {
   /** Per comic, what was last sent. Edits after confirming are diffed against this. */
   sent?: SentMap | null;
   groupSync?: GroupSyncPlan | null;
+  /** Comics sent a WhatsApp invite link to the group who haven't joined (id -> sent at). Dropped once they're in, or after a day they're offered again. */
+  groupInvites?: Record<string, number> | null;
   /** Members the curator marked to leave the group on the next sync, even if they'd normally stay (admins). */
   groupLeaving?: string[] | null;
   /** Comics who dropped out after confirmation. */

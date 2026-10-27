@@ -6,7 +6,13 @@ import {
   DAY_NAMES,
   dateInWeek,
   cancelledPatch,
+  comicChatKeys,
+  comicIdForPhone,
   diffGroup,
+  inGroup,
+  liveInvites,
+  settleSyncResults,
+  type SyncResult,
   diffLineup,
   formatDate,
   formatTime,
@@ -62,7 +68,7 @@ import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
 import { chatFor, getMedia, getThread, listThreads, reactMessage, sendMedia, summarizeThread } from "./chats.ts";
-import { clearGroup, keepGroup } from "./groupCleanup.ts";
+import { clearGroup, keepGroup, readCleanupMembers } from "./groupCleanup.ts";
 import { addDirect, settleRound } from "./replies.ts";
 import { askForSpot } from "./groupWatch.ts";
 import { sendAsk } from "./asks.ts";
@@ -230,14 +236,19 @@ const handlers: Record<Command["type"], Handler> = {
     if (!show.groupId) throw new Error("No WhatsApp group linked to this show");
     await lineupRef.update({ groupSync: { status: "computing", toAdd: [], toRemove: [], kept: [] } });
 
-    const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;
-    const participants = await normaliseParticipants(client, group);
-    const resolved = participants.filter((p) => p.id.endsWith("@c.us"));
-    const unresolved = participants.filter((p) => !p.id.endsWith("@c.us")).map((p) => p.id);
+    const info = client.info as { wid: { user: string; _serialized: string }; lid?: { _serialized?: string } };
+    const members = await readCleanupMembers(client, show.groupId);
+    const confirmed = lineup.slots.map((s) => s.comicId);
+    const roster = await loadComics(uid, [...new Set([...confirmed, ...(show.regulars ?? []), ...(show.protected ?? []), ...(show.pocs ?? []), ...(lineup.groupLeaving ?? [])])]);
+    const aliases = Object.fromEntries([...roster].map(([id, c]) => [id, comicChatKeys(c)]));
+    // Phone-based id when the number is known, else the first id WhatsApp gave; every id form rides along for matching.
+    const participants = members.map((m) => ({ id: m.phone ? `${m.phone}@c.us` : m.ids[0], isAdmin: m.isAdmin, keys: m.ids }));
+    const isIn = (id: string) => inGroup(id, participants, aliases);
+    const { waiting, lapsed, all: invites } = liveInvites(lineup.groupInvites, Date.now(), confirmed, isIn);
 
-    const { toAdd, toRemove, kept } = diffGroup({
-      participants: resolved,
-      confirmed: lineup.slots.map((s) => s.comicId),
+    const diff = diffGroup({
+      participants,
+      confirmed,
       regulars: show.regulars ?? [],
       protected: [...(show.protected ?? []), ...(show.pocs ?? [])],
       self: `${client.info.wid.user}@c.us`,
@@ -283,7 +294,20 @@ const handlers: Record<Command["type"], Handler> = {
         }
       });
     }
-    await lineupRef.update({ "groupSync.status": "done", "groupSync.results": results, groupLeaving: null });
+    // WhatsApp reports success when it only sent an invite link, so read the group again before saying who is in.
+    const roster = await loadComics(uid, lineup.slots.map((x) => x.comicId));
+    const aliases = Object.fromEntries([...roster, ...addable].map(([cid, c]) => [cid, comicChatKeys(c)]));
+    let members = await readCleanupMembers(client, show.groupId!);
+    if (Object.values(raw).some((r) => r === "added" || r === "removed")) {
+      for (let i = 0; i < 2; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        members = await readCleanupMembers(client, show.groupId!);
+        const settled = settleSyncResults({ results: raw, now: Date.now(), prior: lineup.groupInvites, isIn: (id) => inGroup(id, members.map((m) => ({ id: m.ids[0], alt: m.ids.slice(1) })), aliases) });
+        if (!Object.values(settled.results).some((r, k) => r !== Object.values(raw)[k])) break;
+      }
+    }
+    const { results, invites } = settleSyncResults({ results: raw, now: Date.now(), prior: lineup.groupInvites, isIn: (id) => inGroup(id, members.map((m) => ({ id: m.ids[0], alt: m.ids.slice(1) })), aliases) });
+    await lineupRef.update({ "groupSync.status": "done", "groupSync.results": results, "groupSync.invited": invites, "groupSync.lapsed": [], groupInvites: invites, groupLeaving: null });
     {
       const r = Object.values(results);
       const n = (k: string) => r.filter((x) => x === k).length;

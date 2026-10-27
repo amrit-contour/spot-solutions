@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { toast } from "sonner";
-import { formatTime, groupModeOf, groupPanel, type GroupRow, type GroupTag, type Lineup, type Show } from "@spot/shared";
+import { comicChatKeys, formatTime, groupModeOf, groupPanel, inGroup, liveInvites, type GroupRow, type GroupTag, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useNow } from "../lib/data";
 import { setGroupLeaving, tagMember, untagMember, withSelf } from "../lib/lineup";
@@ -20,12 +20,13 @@ const TAGS: Record<GroupTag, Omit<PillSpec, "key">> = {
   cohost: { label: "Co-host", tone: "warn", icon: IconCrown },
   regular: { label: "Regular", tone: "secondary", icon: IconStar },
   lineup: { label: "On lineup", tone: "fact", icon: IconMic },
-  joining: { label: "Joining", tone: "joining", icon: IconMic },
+  joining: { label: "Joining", tone: "joining", icon: IconMic, title: "On the lineup but not in the group yet. They are added when you sync." },
+  invited: { label: "Invite sent", tone: "joining", icon: IconMic, title: "WhatsApp sent them an invite link (their privacy settings block a direct add). They join when they accept it." },
   leaving: { label: "Leaving", tone: "error", icon: IconUserMinus },
 };
 export const tagPills = (tags: GroupTag[]): PillSpec[] => tags.map((t) => ({ key: t, ...TAGS[t] }));
 
-const RANK: Record<GroupTag, number> = { joining: 0, lineup: 1, poc: 2, cohost: 2, admin: 3, regular: 4, leaving: 6 };
+const RANK: Record<GroupTag, number> = { joining: 0, invited: 0, lineup: 1, poc: 2, cohost: 2, admin: 3, regular: 4, leaving: 6 };
 const rankOf = (r: GroupRow) => (r.tags.includes("leaving") ? 6 : Math.min(...r.tags.map((t) => RANK[t]), 5));
 
 /** The cached WhatsApp members of a show, tagged against its lineup. Shared by the column popover and the Waiting "Group" tab. */
@@ -36,10 +37,20 @@ export function useGroupRows(show: Show, ids: string[], lineup?: Lineup) {
   const names = useMemo(() => new Map((cache?.members ?? []).map((m) => [m.id, m.name])), [cache]);
   const nameOf = (id: string) => comicsById.get(id)?.name ?? names.get(id) ?? `+${id.split("@")[0]}`;
   const leaving = lineup?.groupLeaving ?? [];
-  const panel = useMemo(
-    () => groupPanel({ members: cache?.members ?? [], lineup: ids, regulars: show.regulars ?? [], protected: show.protected ?? [], pocs: show.pocs ?? [], forceRemove: leaving }),
-    [cache, ids, show.regulars, show.protected, leaving],
-  );
+  // Comics are known by several ids (phone, @lid, chat id): the roster supplies the alternates so the group matches by person.
+  const aliases = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const id of new Set([...ids, ...(show.regulars ?? []), ...(show.protected ?? []), ...(show.pocs ?? []), ...leaving])) {
+      const c = comicsById.get(id);
+      if (c) out[id] = comicChatKeys(c);
+    }
+    return out;
+  }, [ids, show.regulars, show.protected, show.pocs, leaving, comicsById]);
+  const panel = useMemo(() => {
+    const isIn = (id: string) => inGroup(id, cache?.members ?? [], aliases);
+    const invited = liveInvites(lineup?.groupInvites, Date.now(), ids, isIn).waiting;
+    return groupPanel({ members: cache?.members ?? [], lineup: ids, regulars: show.regulars ?? [], protected: show.protected ?? [], pocs: show.pocs ?? [], forceRemove: leaving, aliases, invited });
+  }, [cache, ids, show.regulars, show.protected, show.pocs, leaving, aliases, lineup?.groupInvites]);
   const rows = useMemo(() => [...panel.rows].sort((a, b) => rankOf(a) - rankOf(b) || nameOf(a.id).localeCompare(nameOf(b.id))), [panel.rows, names, comicsById]); // eslint-disable-line react-hooks/exhaustive-deps
   return { cache, nameOf, leaving, panel, rows };
 }
@@ -66,7 +77,7 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
   const stayers = panel.rows.filter((r) => kept.has(r.id));
   const staying = stayers.filter((r) => r.tags.includes("regular") || r.tags.includes("cohost") || r.tags.includes("poc")).length;
   const adminsOnly = stayers.length - staying;
-  const preview = `+${panel.toAdd.length} add, −${panel.toRemove.length} remove${cache ? `, ${staying} regular${staying === 1 ? "" : "s"} and co-host${staying === 1 ? "" : "s"} stay${adminsOnly ? `, ${adminsOnly} admin${adminsOnly === 1 ? "" : "s"} stay` : ""}` : ""}`;
+  const preview = `+${panel.toAdd.length} add, −${panel.toRemove.length} remove${panel.invited.length ? `, ${panel.invited.length} invite${panel.invited.length === 1 ? "" : "s"} waiting` : ""}${cache ? `, ${staying} regular${staying === 1 ? "" : "s"} and co-host${staying === 1 ? "" : "s"} stay${adminsOnly ? `, ${adminsOnly} admin${adminsOnly === 1 ? "" : "s"} stay` : ""}` : ""}`;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -146,7 +157,7 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
                         <div className={cx("truncate type-label-l", r.tags.includes("leaving") && "line-through decoration-error/60")}>{nameOf(r.id)}</div>
                         <div className="mt-0.5 flex flex-wrap gap-1">
                           {tagPills(r.tags).map((p) => (
-                            <Pill key={p.key} tone={p.tone} icon={p.icon}>{p.label}</Pill>
+                            <Pill key={p.key} tone={p.tone} icon={p.icon} title={p.title}>{p.label}</Pill>
                           ))}
                           {!r.known && <span className="type-body-s text-on-surface-variant">Number unknown</span>}
                         </div>
@@ -210,6 +221,7 @@ export function GroupPopover({ show, lineup, ids, pendingLeave, onLeaveHandled, 
                   {busy && <Spinner className="size-4 text-primary" />}
                 </div>
                 <p className="mt-2 type-body-s text-on-surface-variant">You review every change before anything happens in the group.</p>
+                <p className="mt-1 type-body-s text-on-surface-variant">Joining: on the lineup, not in the group yet. Invite sent: their privacy settings blocked a direct add, so WhatsApp sent a link; they join when they accept it.</p>
               </div>
             </div>
           )

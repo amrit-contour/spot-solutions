@@ -76,9 +76,10 @@ export async function listGroupMembers(uid: string, { showId }: Record<string, u
   });
   const members = await mapLimit(others, CONCURRENCY, async (m): Promise<GroupMember> => {
     const known = roster.get(m.id)?.name;
-    if (known) return { id: m.id, name: known, isAdmin: m.isAdmin };
+    const alt = m.raw !== m.id ? { alt: [m.raw] } : {};
+    if (known) return { id: m.id, name: known, isAdmin: m.isAdmin, ...alt };
     const contact = await client.getContactById(m.raw).catch(() => null);
-    return { id: m.id, name: contactName(contact, m.phone).name, isAdmin: m.isAdmin };
+    return { id: m.id, name: contactName(contact, m.phone).name, isAdmin: m.isAdmin, ...alt };
   });
   // The same person can show up twice (@lid and @c.us); keep one entry.
   const unique = [...new Map(members.map((m) => [m.id, m])).values()];

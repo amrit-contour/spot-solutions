@@ -1,31 +1,110 @@
 import type { GroupMember, GroupMode, Show } from "./types.ts";
 
+/** Digits of a WhatsApp id or number: how people are matched across @c.us, @lid, comic ids and chat ids. */
+const digitsOf = (id: string) => id.split("@")[0].split(":")[0].replace(/\D/g, "");
+/** Digits when there are any (a phone or @lid number), else the id itself (test ids, odd JIDs). */
+const keysOf = (ids: (string | undefined | null)[]) => ids.filter((x): x is string => Boolean(x)).map((x) => digitsOf(x) || x);
+
+/** An invite link is good for this long: after it, someone who never joined is offered again ("Resend invite"). */
+export const INVITE_TTL_MS = 24 * 3600_000;
+
+export interface GroupParticipant {
+  id: string;
+  isAdmin: boolean;
+  /** Every other id WhatsApp gave for this member (the @lid next to a phone id, or the reverse). */
+  keys?: string[];
+}
+
 export interface GroupDiffInput {
-  participants: { id: string; isAdmin: boolean }[];
+  participants: GroupParticipant[];
   confirmed: string[];
   regulars: string[];
   protected: string[];
   self: string;
   /** Marked to leave by the curator: removed even if an admin, regular or co-host. Never someone on the lineup. */
   forceRemove?: string[];
+  /** Comic id -> the other ids that comic goes by (chat id, phone id), so an @lid comic matches a member read as a phone. */
+  aliases?: Record<string, string[]>;
+  /** Comics who were sent an invite link that is still good (not yet joined): not offered again. */
+  waiting?: string[];
 }
 
-/** Who to add to / remove from a show's group so it holds exactly this week's lineup + regulars. */
+/**
+ * Who to add to / remove from a show's group so it holds exactly this week's lineup + regulars.
+ * People are matched by phone digits across every id form (the same rule as the cleanup), so someone already in the group is
+ * never offered for adding just because the roster knows them by an @lid and the group by a phone id.
+ */
 export function diffGroup(input: GroupDiffInput) {
-  const current = new Set(input.participants.map((p) => p.id));
-  const onLineup = new Set(input.confirmed);
-  const forced = new Set((input.forceRemove ?? []).filter((id) => !onLineup.has(id) && id !== input.self));
-  const keep = new Set([
-    ...input.confirmed,
-    ...input.regulars,
-    ...input.protected,
-    input.self,
-    ...input.participants.filter((p) => p.isAdmin).map((p) => p.id),
-  ].filter((id) => !forced.has(id)));
-  const toAdd = input.confirmed.filter((id) => !current.has(id));
-  const toRemove = [...current].filter((id) => !keep.has(id));
-  const kept = [...current].filter((id) => keep.has(id) && !onLineup.has(id));
-  return { toAdd, toRemove, kept };
+  const aliases = input.aliases ?? {};
+  const idKeys = (id: string) => keysOf([id, ...(aliases[id] ?? [])]);
+  const keySet = (ids: string[]) => new Set(ids.flatMap(idKeys));
+  const memberKeys = (p: GroupParticipant) => keysOf([p.id, ...(p.keys ?? [])]);
+  const present = new Set(input.participants.flatMap(memberKeys));
+  const lineupKeys = keySet(input.confirmed);
+  const selfKeys = new Set(idKeys(input.self));
+  const forcedKeys = new Set((input.forceRemove ?? []).flatMap(idKeys).filter((k) => !lineupKeys.has(k) && !selfKeys.has(k)));
+  const stay = new Set([...keySet([...input.confirmed, ...input.regulars, ...input.protected]), ...selfKeys]);
+  for (const k of forcedKeys) stay.delete(k);
+  const isKept = (p: GroupParticipant) => {
+    const ks = memberKeys(p);
+    return ks.some((k) => stay.has(k)) || (p.isAdmin && !ks.some((k) => forcedKeys.has(k)));
+  };
+  const waiting = new Set(input.waiting ?? []);
+  const missing = input.confirmed.filter((id) => !idKeys(id).some((k) => present.has(k)));
+  const toAdd = missing.filter((id) => !waiting.has(id));
+  const invited = missing.filter((id) => waiting.has(id));
+  const toRemove = input.participants.filter((p) => !isKept(p)).map((p) => p.id);
+  const kept = input.participants.filter((p) => isKept(p) && !memberKeys(p).some((k) => lineupKeys.has(k))).map((p) => p.id);
+  return { toAdd, toRemove, kept, invited };
+}
+
+/** Is this person (a comic id, with its aliases) among these group members? The review sheet uses it to never list who is already in. */
+export function inGroup(id: string, members: { id: string; alt?: string[] }[], aliases: Record<string, string[]> = {}): boolean {
+  const mine = keysOf([id, ...(aliases[id] ?? [])]);
+  return members.some((m) => keysOf([m.id, ...(m.alt ?? [])]).some((k) => mine.includes(k)));
+}
+
+/**
+ * Which invites are still good. `lapsed`: invited more than a day ago and still not in, offered again with "Resend invite".
+ * Anyone in the group (or off the lineup) drops out of the record.
+ */
+export function liveInvites(invites: Record<string, number> | null | undefined, now: number, confirmed: string[], isIn: (id: string) => boolean) {
+  const waiting: Record<string, number> = {};
+  const all: Record<string, number> = {};
+  const lapsed: string[] = [];
+  for (const [id, at] of Object.entries(invites ?? {})) {
+    if (!confirmed.includes(id) || isIn(id)) continue;
+    all[id] = at;
+    if (now - at < INVITE_TTL_MS) waiting[id] = at;
+    else lapsed.push(id);
+  }
+  return { waiting, lapsed, all };
+}
+
+export type SyncResult = "added" | "removed" | "invited" | "failed";
+
+/**
+ * WhatsApp says "added" even when it only sent an invite link (the person's privacy settings), so the group is read again:
+ * an add that isn't in it becomes an invite waiting for them to accept; a removal that is still in it failed.
+ * `invites` is the new record (existing ones for people who still aren't in, plus these).
+ */
+export function settleSyncResults(input: {
+  results: Record<string, SyncResult>;
+  now: number;
+  isIn: (id: string) => boolean;
+  prior?: Record<string, number> | null;
+}): { results: Record<string, SyncResult>; invites: Record<string, number> } {
+  const results: Record<string, SyncResult> = {};
+  const invites: Record<string, number> = {};
+  for (const [id, r] of Object.entries(input.results)) {
+    const inside = input.isIn(id);
+    if (r === "added") results[id] = inside ? "added" : "invited";
+    else if (r === "removed") results[id] = inside ? "failed" : "removed";
+    else results[id] = r === "invited" && inside ? "added" : r;
+    if (results[id] === "invited") invites[id] = input.now;
+  }
+  for (const [id, at] of Object.entries(input.prior ?? {})) if (!(id in input.results) && !input.isIn(id)) invites[id] = at;
+  return { results, invites };
 }
 
 /**
@@ -34,7 +113,8 @@ export function diffGroup(input: GroupDiffInput) {
  */
 export const groupModeOf = (show: Pick<Show, "groupMode" | "groupId">): GroupMode => show.groupMode ?? (show.groupId ? "confirm" : "manual");
 
-export type GroupTag = "admin" | "poc" | "cohost" | "regular" | "lineup" | "joining" | "leaving";
+/** joining: on the lineup, not in the group yet. invited: an invite link was sent and they haven't accepted. */
+export type GroupTag = "admin" | "poc" | "cohost" | "regular" | "lineup" | "joining" | "invited" | "leaving";
 
 export interface GroupRow {
   id: string;
@@ -55,6 +135,9 @@ export interface GroupPanelInput {
   /** POCs who run the mic: always kept, tagged POC. */
   pocs?: string[];
   forceRemove?: string[];
+  aliases?: Record<string, string[]>;
+  /** Comic id -> when the invite link went out (only the ones still good). */
+  invited?: Record<string, number>;
 }
 
 export interface GroupPanel {
@@ -62,6 +145,8 @@ export interface GroupPanel {
   toAdd: string[];
   toRemove: string[];
   kept: string[];
+  /** On the lineup with an invite link out: not offered again until it lapses. */
+  invited: string[];
 }
 
 const isPhoneId = (id: string) => id.endsWith("@c.us");
@@ -71,24 +156,41 @@ const isPhoneId = (id: string) => id.endsWith("@c.us");
  * Anyone without a phone-based id is never tagged leaving: they can't be matched, so a sync keeps them.
  */
 export function groupPanel(input: GroupPanelInput): GroupPanel {
-  const known = input.members.filter((m) => isPhoneId(m.id));
-  const { toAdd, toRemove, kept } = diffGroup({ participants: known, confirmed: input.lineup, regulars: input.regulars, protected: [...input.protected, ...(input.pocs ?? [])], self: "", forceRemove: input.forceRemove });
+  const aliases = input.aliases ?? {};
+  const idKeys = (id: string) => keysOf([id, ...(aliases[id] ?? [])]);
+  const keySet = (ids: string[]) => new Set(ids.flatMap(idKeys));
+  const memberKeys = (m: GroupMember) => keysOf([m.id, ...(m.alt ?? [])]);
+  const { toAdd, toRemove: wouldRemove, kept, invited } = diffGroup({
+    participants: input.members.map((m) => ({ id: m.id, isAdmin: m.isAdmin, keys: m.alt })),
+    confirmed: input.lineup,
+    regulars: input.regulars,
+    protected: [...input.protected, ...(input.pocs ?? [])],
+    self: "",
+    forceRemove: input.forceRemove,
+    aliases,
+    waiting: Object.keys(input.invited ?? {}),
+  });
+  const phoneOf = new Set(input.members.filter((m) => isPhoneId(m.id)).map((m) => m.id));
+  const toRemove = wouldRemove.filter((id) => phoneOf.has(id));
+  const keptKnown = kept.filter((id) => phoneOf.has(id));
   const leaving = new Set(toRemove);
-  const onLineup = new Set(input.lineup);
-  const regulars = new Set(input.regulars);
-  const cohosts = new Set(input.protected);
-  const pocs = new Set(input.pocs ?? []);
-  const tags = (id: string, isAdmin: boolean, member: boolean): GroupTag[] => [
+  const onLineup = keySet(input.lineup);
+  const regulars = keySet(input.regulars);
+  const cohosts = keySet(input.protected);
+  const pocs = keySet(input.pocs ?? []);
+  const has = (set: Set<string>, ks: string[]) => ks.some((k) => set.has(k));
+  const invitedIds = new Set(invited);
+  const tags = (id: string, ks: string[], isAdmin: boolean, member: boolean): GroupTag[] => [
     ...(isAdmin ? (["admin"] as const) : []),
-    ...(pocs.has(id) ? (["poc"] as const) : []),
-    ...(cohosts.has(id) && !pocs.has(id) ? (["cohost"] as const) : []),
-    ...(regulars.has(id) ? (["regular"] as const) : []),
-    ...(onLineup.has(id) ? ([member ? "lineup" : "joining"] as const) : []),
+    ...(has(pocs, ks) ? (["poc"] as const) : []),
+    ...(has(cohosts, ks) && !has(pocs, ks) ? (["cohost"] as const) : []),
+    ...(has(regulars, ks) ? (["regular"] as const) : []),
+    ...(has(onLineup, ks) ? ([member ? "lineup" : invitedIds.has(id) ? "invited" : "joining"] as const) : []),
     ...(leaving.has(id) ? (["leaving"] as const) : []),
   ];
   const rows: GroupRow[] = [
-    ...toAdd.map((id) => ({ id, member: false, isAdmin: false, known: true, tags: tags(id, false, false) })),
-    ...input.members.map((m) => ({ id: m.id, member: true, isAdmin: m.isAdmin, known: isPhoneId(m.id), tags: tags(m.id, m.isAdmin, true) })),
+    ...[...toAdd, ...invited].map((id) => ({ id, member: false, isAdmin: false, known: true, tags: tags(id, idKeys(id), false, false) })),
+    ...input.members.map((m) => ({ id: m.id, member: true, isAdmin: m.isAdmin, known: isPhoneId(m.id), tags: tags(m.id, memberKeys(m), m.isAdmin, true) })),
   ];
-  return { rows, toAdd, toRemove, kept };
+  return { rows, toAdd, toRemove, kept: keptKnown, invited };
 }

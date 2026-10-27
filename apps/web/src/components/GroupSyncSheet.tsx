@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import type { Lineup, Show } from "@spot/shared";
+import { comicChatKeys, inGroup, type Lineup, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
+import { timeAgo, useNow } from "../lib/data";
 import { runCommand } from "../lib/data";
 import { Avatar, Button, Chip, Sheet, Spinner, cx } from "@spot/ui";
 import { IconCheck, IconRefresh, IconShield, IconUserMinus, IconUserPlus } from "@spot/ui";
@@ -39,7 +40,13 @@ export function GroupSyncSheet({ open, onClose, show, lineup }: { open: boolean;
     }
   };
 
-  const adds = plan?.toAdd ?? [];
+  const now = useNow(30_000);
+  // Never list someone already in the group: the plan can be a little old, and the cached member list may know them by another id.
+  const cached = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers : null;
+  const aliases = useMemo(() => Object.fromEntries((plan?.toAdd ?? []).flatMap((id) => { const c = comicsById.get(id); return c ? [[id, comicChatKeys(c)]] : []; })), [plan?.toAdd, comicsById]);
+  const adds = (plan?.toAdd ?? []).filter((id) => !cached || plan?.results?.[id] || !inGroup(id, cached.members, aliases));
+  const lapsed = new Set(plan?.lapsed ?? []);
+  const waiting = Object.entries(plan?.invited ?? {}).filter(([id]) => !cached || !inGroup(id, cached.members, aliases));
   const removes = plan?.toRemove ?? [];
   const results = plan?.results;
   const done = plan?.status === "done";
@@ -51,9 +58,12 @@ export function GroupSyncSheet({ open, onClose, show, lineup }: { open: boolean;
       <li>
         <label className={cx("state-layer flex cursor-pointer items-center gap-3 rounded-md px-3 py-2", off && "opacity-50")}>
           <Avatar name={name(id)} size={32} tone={kind === "add" ? "primary" : "secondary"} />
-          <span className={cx("flex-1 type-body-l", off && "line-through")}>{name(id)}</span>
+          <span className={cx("flex-1 type-body-l", off && "line-through")}>
+            {name(id)}
+            {kind === "add" && lapsed.has(id) && <span className="block type-body-s text-on-surface-variant">Invite lapsed · Resend invite</span>}
+          </span>
           {res ? (
-            <Chip tone={res === "failed" ? "error" : "success"}>{RESULT_LABEL[res]}</Chip>
+            <Chip tone={res === "failed" ? "error" : "success"}>{res === "invited" ? "Invite sent · waiting" : RESULT_LABEL[res]}</Chip>
           ) : (
             !done && <input type="checkbox" className="size-5 accent-[var(--md-sys-color-primary)]" checked={!off} onChange={() => toggle(id)} aria-label={`${kind === "add" ? "Add" : "Remove"} ${name(id)}`} />
           )}
@@ -115,6 +125,23 @@ export function GroupSyncSheet({ open, onClose, show, lineup }: { open: boolean;
               <ul className="flex flex-col">{adds.map((id) => <Row key={id} id={id} kind="add" />)}</ul>
             </section>
           )}
+          {waiting.length > 0 && (
+            <section className="mb-6">
+              <h3 className="mb-2 flex items-center gap-2 type-title-s text-on-surface-variant">
+                <IconUserPlus className="icon size-5" /> Invite sent · waiting
+              </h3>
+              <ul className="flex flex-col">
+                {waiting.map(([id, at]) => (
+                  <li key={id} className="flex items-center gap-3 px-3 py-2">
+                    <Avatar name={name(id)} size={32} tone="secondary" />
+                    <span className="flex-1 type-body-l">{name(id)}</span>
+                    <Chip tone="tertiary">Invite sent {timeAgo(at, now)}</Chip>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 px-3 type-body-s text-on-surface-variant">They show as Joining until they accept the link. If they haven't after 24 hours you can resend it.</p>
+            </section>
+          )}
           {removes.length > 0 && (
             <section className="mb-6">
               <h3 className="mb-2 flex items-center gap-2 type-title-s text-error">
@@ -123,14 +150,14 @@ export function GroupSyncSheet({ open, onClose, show, lineup }: { open: boolean;
               <ul className="flex flex-col">{removes.map((id) => <Row key={id} id={id} kind="remove" />)}</ul>
             </section>
           )}
-          {!adds.length && !removes.length && (
+          {!adds.length && !removes.length && !waiting.length && (
             <p className="flex items-center gap-2 py-6 type-body-l text-on-surface-variant">
               <IconCheck className="icon size-5 text-primary" /> The group already matches this lineup.
             </p>
           )}
           <p className="flex items-start gap-2 rounded-md bg-surface-container p-3 type-body-s text-on-surface-variant">
             <IconShield className="icon mt-px size-4 flex-none text-primary" />
-            Admins, regulars for {show.name}, protected members, and anyone we can't match to a phone number are never removed. Comics whose privacy settings block being added get an invite link instead.
+            Admins, regulars for {show.name}, protected members, and anyone we can't match to a phone number are never removed. Comics whose privacy settings block being added get an invite link instead; they show as "Joining" until they accept it.
           </p>
         </>
       )}
