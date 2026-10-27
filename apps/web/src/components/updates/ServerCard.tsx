@@ -22,8 +22,8 @@ export function ServerCard({ n }: { n: AppNotice }) {
   const link = n.link ? { to: n.link, label: n.linkLabel ?? "Open" } : fix(n.text);
   return (
     <UpdateItem className={warn ? "bg-error-container text-on-error-container" : "bg-surface-container"} onDismiss={() => dismissNotice(uid, n)}>
-      <div className="flex items-start gap-3 py-3 pr-2 pl-4">
-        {warn ? <IconWarn className="icon mt-0.5 size-5 flex-none" /> : <IconHistory className="icon mt-0.5 size-5 flex-none text-primary" />}
+      <div className="flex items-center gap-3 py-3 pr-2 pl-4">
+        {warn ? <IconWarn className="icon size-5 flex-none" /> : <IconHistory className="icon size-5 flex-none text-primary" />}
         <div className="min-w-0 flex-1">
           <WaText className="type-body-m [overflow-wrap:anywhere]" text={n.text} />
           <div className="mt-1.5 flex flex-wrap items-center gap-2">

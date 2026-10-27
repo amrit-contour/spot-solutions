@@ -183,20 +183,21 @@ export function ActivitySection({ lineup, show, offers, nameOf }: { lineup?: Lin
             const I = ICON[r.icon];
             const t = timeOf(r, nowMs);
             return (
-              <li key={r.key} className="flex gap-2.5 py-1.5">
-                <span className={cx("mt-0.5 grid size-7 flex-none place-items-center rounded-full", TONE[r.tone])}>{r.tone === "failed" ? <IconWarn className="icon size-4" aria-label="Failed" /> : <I className="icon size-4" aria-hidden />}</span>
-                <div className="min-w-0 flex-1">
+              // One grid for every row: icon | text block | time. The icon and the time are centred on the text block (title, then its subtext below), so titles share one left edge down the list.
+              <li key={r.key} className="grid min-h-12 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 py-2">
+                <span className={cx("grid size-8 place-items-center justify-self-center rounded-full", TONE[r.tone])}>{r.tone === "failed" ? <IconWarn className="icon size-4" aria-label="Failed" /> : <I className="icon size-4" aria-hidden />}</span>
+                <div className="min-w-0">
                   <p className="type-body-m break-words">{r.text}</p>
                   {r.detail?.map((d, i) => (
                     <p key={i} className="type-body-s break-words text-on-surface-variant">{d}</p>
                   ))}
-                  {r.action === "retry_cleanup" && (
-                    <Button size="sm" variant="tonal" className="mt-1.5" loading={busy} disabled={busy} onClick={() => void retry()}>
-                      Retry now
-                    </Button>
-                  )}
                 </div>
-                {t.label && <time title={t.title} className="mt-0.5 max-w-[6.5rem] flex-none text-right type-label-m tabular text-on-surface-variant">{t.label}</time>}
+                {t.label ? <time title={t.title} className="max-w-[6.5rem] text-right type-label-m tabular text-on-surface-variant">{t.label}</time> : <span aria-hidden />}
+                {r.action === "retry_cleanup" && (
+                  <Button size="sm" variant="tonal" className="col-start-2 justify-self-start" loading={busy} disabled={busy} onClick={() => void retry()}>
+                    Retry now
+                  </Button>
+                )}
               </li>
             );
           })}
