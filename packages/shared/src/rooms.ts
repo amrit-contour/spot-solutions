@@ -61,7 +61,11 @@ export interface Limit {
 export interface Pin {
   lat: number;
   lng: number;
+  /** The real Google Maps link (Google's googleMapsUri, or one generated from the coordinates). */
   mapsUrl?: string;
+  placeId?: string;
+  /** The full address the place search returned. */
+  address?: string;
   /** The place name the pin was found with. */
   label?: string;
 }

@@ -19,6 +19,7 @@ export * from "./rich/EmojiPicker";
 export * from "./rich/MessageComposer";
 export * from "./rich/RichField";
 export * from "./rich/VenuePin";
+export * from "./rich/PlacePicker";
 export * from "./rich/WaText";
 export * from "./rich/emojiData";
 export * from "./admin";

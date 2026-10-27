@@ -4,7 +4,7 @@ import { GroupPostsEditor } from "../components/GroupPosts";
 import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { VenuePin } from "@spot/ui";
+import { PlacePicker } from "@spot/ui";
 import { DAY_SHORT, DEFAULT_CLEANUP, formatTime, groupModeOf, type GroupInfo, type GroupMember, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
@@ -397,8 +397,8 @@ function VenueEditor({ value, onClose }: { value: Partial<Venue> | null; onClose
     const { id, ...rest } = draft as Venue;
     const aliases = (rest.aliases ?? []).map((a) => a.trim()).filter(Boolean);
     const { lat, lng, ...base } = rest;
-    // Firestore refuses undefined, so a venue with no pin simply has no lat/lng.
-    const data = { ...base, aliases, ...(typeof lat === "number" && typeof lng === "number" && { lat, lng }) };
+    // Firestore refuses undefined, so a venue with no pin simply has no lat/lng (or link, place id, address).
+    const data = Object.fromEntries(Object.entries({ ...base, aliases, ...(typeof lat === "number" && typeof lng === "number" && { lat, lng }) }).filter(([, v]) => v !== undefined));
     if (id) await setDoc(userDoc(uid, "venues", id), data);
     else await addDoc(userCol(uid, "venues"), data);
     onClose();
@@ -415,8 +415,17 @@ function VenueEditor({ value, onClose }: { value: Partial<Venue> | null; onClose
             placeholder="bloom, indira nagar"
           />
         </Field>
-        <Field label="Google Maps link" hint="Shared in confirmations through {{mapsLink}}"><TextInput value={draft.mapsLink ?? ""} onChange={(e) => setDraft({ ...draft, mapsLink: e.target.value })} placeholder="https://maps.app.goo.gl/…" /></Field>
-        <VenuePin key={draft.id ?? "new"} lat={draft.lat} lng={draft.lng} onChange={(pin) => setDraft((d) => ({ ...d, lat: pin?.lat, lng: pin?.lng }))} />
+        <div className="flex flex-col gap-1.5">
+          <span className="type-label-l text-on-surface-variant">Location</span>
+          <PlacePicker
+            allowLinkOnly
+            near={draft.area}
+            value={draft.mapsLink || typeof draft.lat === "number" ? { lat: draft.lat, lng: draft.lng, mapsUrl: draft.mapsLink, placeId: draft.placeId, label: draft.name?.trim() || undefined, address: draft.address } : null}
+            onChange={(v) => setDraft((d) => ({ ...d, mapsLink: v?.mapsUrl, lat: v?.lat, lng: v?.lng, placeId: v?.placeId, address: v?.address }))}
+            onPlace={(p) => setDraft((d) => ({ ...d, name: d.name?.trim() ? d.name : p.name }))}
+          />
+          <span className="type-body-s text-on-surface-variant">The Google Maps link goes out in confirmations through {"{{mapsLink}}"}.</span>
+        </div>
       </div>
     </Sheet>
   );

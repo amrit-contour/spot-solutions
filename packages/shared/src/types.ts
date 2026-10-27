@@ -229,6 +229,9 @@ export interface Venue {
   /** Pin for location messages, in decimal degrees. Both or neither. */
   lat?: number;
   lng?: number;
+  /** Google place id and address from the place search (the card shows them). */
+  placeId?: string;
+  address?: string;
   /** Other names comics use for this place ("bloom", "indira nagar"). Shown to the model. */
   aliases?: string[];
 }

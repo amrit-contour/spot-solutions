@@ -25,6 +25,7 @@ export * from "./tagPeople.ts";
 export * from "./richText.ts";
 export * from "./waFormat.ts";
 export * from "./geo.ts";
+export * from "./places.ts";
 export * from "./threads.ts";
 export * from "./chatState.ts";
 export * from "./aiBudget.ts";
