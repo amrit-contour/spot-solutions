@@ -65,6 +65,8 @@ export interface Settings {
   appearance?: { brand: "nbc" | "classic" };
   /** The agent number: a second WhatsApp that talks only to you (agent.ts). Missing counts as DEFAULT_SETTINGS.agent. */
   agent?: AgentSettings;
+  /** People and groups whose messages are skipped before anything is read, stored or sent to the AI (neverRead.ts). */
+  neverRead?: import("./neverRead.ts").NeverReadEntry[];
 }
 
 /** What the agent number may do for you. Linking it is the opt-in; these switch each part off again. */
@@ -83,6 +85,8 @@ export interface AgentSettings {
   digestTime: string;
   /** Anyone else who messages the agent gets one polite line. Off by default (they get nothing). */
   politeNote: boolean;
+  /** Name people in lists as real WhatsApp mentions (tappable, shown as their name). Off: plain first names. Default on. */
+  agentTagPeople?: boolean;
 }
 
 export interface ComicProfile {

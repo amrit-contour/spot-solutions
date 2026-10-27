@@ -83,7 +83,7 @@ describe("roster edits", () => {
     const { state, send } = fake();
     await send("Comedy Square closed this week");
     await send("no");
-    expect(last(state)).toBe("Okay, nothing was changed.");
+    expect(last(state)).toBe("Okay, cancelled. Nothing changed.");
     expect(state.rooms.find((r) => r.name === "Comedy Square")!.shows[0]!.closures).toBeUndefined();
     expect(state.logs[0]).toMatchObject({ status: "cancelled" });
     await send("pause Bloom Indiranagar till Nov 10");

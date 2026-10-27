@@ -60,7 +60,7 @@ export async function dispatch(scope: AgentScope, text: string, h: RouteHandlers
     await h.writeSideAsk(null);
     const c = both ? parseSideChoice(text) : null;
     if (c && now > sa.expiresAt) return void (await h.say("That one timed out after 10 minutes, so nothing was changed. Ask me again if you still want it."));
-    if (c === "cancel") return void (await h.say("Okay, nothing was changed."));
+    if (c === "cancel") return void (await h.say("Okay, cancelled. Nothing changed."));
     if (c) return runSide(c, sa.text);
     // anything else is a new message: the old question is dropped
   }

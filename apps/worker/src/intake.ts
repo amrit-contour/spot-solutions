@@ -123,11 +123,17 @@ export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.
  * later, and tell the curator once an hour what's wrong (no message text in the notice). After the last try, point them
  * at Scan past messages, which re-reads WhatsApp once the AI works again.
  */
+const readNoticed = new Map<string, number>();
+const gaveUp = new Set<string>();
+
 async function retryLater(uid: string, client: WAWebJS.Client, key: string, p: Pending, e: Error) {
   const tries = (p.tries ?? 0) + 1;
   console.error(`[intake] ${uid} flush failed (try ${tries})`, e);
   const last = lastAiNotice.get(uid) ?? 0;
-  if (Date.now() - last > 60 * 60_000) {
+  // One "couldn't read" notice per hour for the account, and never twice for the same person in that hour.
+  const noticeKey = `${uid}|${p.contact.id}`;
+  if (Date.now() - last > 60 * 60_000 && Date.now() - (readNoticed.get(noticeKey) ?? 0) > 60 * 60_000) {
+    readNoticed.set(noticeKey, Date.now());
     lastAiNotice.set(uid, Date.now());
     const why = /No Gemini API key/.test(e.message)
       ? "The local model on your server is too slow to answer in time and there's no Gemini key to fall back on. Add a Gemini key in Settings → AI models, or move your account to a faster server."
@@ -135,6 +141,8 @@ async function retryLater(uid: string, client: WAWebJS.Client, key: string, p: P
     await notice(uid, "warn", `Couldn't read new messages from ${p.contact.name}. ${why} Trying again in a few minutes.`).catch(() => undefined);
   }
   if (tries > RETRY_MS.length) {
+    if (gaveUp.has(`${key}|${p.messages[0]?.id}`)) return;
+    gaveUp.add(`${key}|${p.messages[0]?.id}`);
     await notice(uid, "warn", `Gave up reading messages from ${p.contact.name} after ${tries} tries. Once the AI works again, run Requests → Scan past messages to pick them up.`).catch(() => undefined);
     return;
   }

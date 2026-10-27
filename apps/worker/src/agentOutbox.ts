@@ -1,9 +1,9 @@
 // Everything the agent number sends goes through here: one place that checks it is linked, switched on, has the curator's number,
 // stays inside the rate limits, and uses the send queue (typing, jitter). It only ever addresses the curator's own number.
-import { AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyBatch, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type SideAsk, type Settings } from "@spot/shared";
+import { resolvePlaceholders, AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyRich, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type SideAsk, type Settings } from "@spot/shared";
 import { sessionRef, userRef } from "./firebase.ts";
 import { agentRef, agentSessions } from "./agentSession.ts";
-import { sendQueued } from "./sendQueue.ts";
+import { deliverableId, sendContent, sendQueued } from "./sendQueue.ts";
 import { settingsFromDoc } from "./userData.ts";
 
 /** What the agent remembers between messages, in users/{uid}/session/agent (owner-readable, worker-written). */
@@ -63,7 +63,7 @@ function reserve(uid: string, unprompted: boolean) {
  * number, rate limit): callers decide whether that matters. `unprompted` is for things the agent starts (notices, digest);
  * replies to the curator have a higher cap.
  */
-export async function sendToCurator(uid: string, text: string, o: { unprompted?: boolean; ignoreSwitch?: boolean } = {}): Promise<boolean> {
+export async function sendToCurator(uid: string, text: string, o: { unprompted?: boolean; ignoreSwitch?: boolean; /** Real WhatsApp mentions: raw ids behind the "@<number>" placeholders in `text`, and the same reply as plain first names. */ mentions?: { ids: string[]; plain: string } } = {}): Promise<boolean> {
   const client = agentSessions.get(uid);
   if (!client) return false;
   if (!o.ignoreSwitch && !(await readSettings(uid)).agent?.enabled) return false;
@@ -73,7 +73,21 @@ export async function sendToCurator(uid: string, text: string, o: { unprompted?:
     console.warn(`[agent] ${uid} rate limit reached; dropped a ${o.unprompted ? "notice" : "reply"}`);
     return false;
   }
-  await sendQueued(client, `${phone}@c.us`, text);
+  const to = `${phone}@c.us`;
+  const tag = o.mentions?.ids.length && (await readSettings(uid)).agent?.agentTagPeople !== false ? o.mentions : null;
+  if (tag) {
+    try {
+      const map = await Promise.all(tag.ids.map(async (raw) => ({ raw, resolved: await deliverableId(client, raw) })));
+      await sendContent(client, to, resolvePlaceholders(text, map), text.length, { mentions: map.map((m) => m.resolved) });
+      return true;
+    } catch (e) {
+      // Mentions can fail in a 1:1 chat; the same answer goes once more as plain first names.
+      console.warn(`[agent] ${uid} send with mentions failed, resending plain:`, (e as Error).message);
+      await sendQueued(client, to, tag.plain);
+      return true;
+    }
+  }
+  await sendQueued(client, to, o.mentions?.plain ?? text);
   return true;
 }
 
@@ -104,10 +118,10 @@ export async function flushNotify(uid: string, force = false): Promise<"none" | 
   if (!b?.items.length) return "none";
   const now = Date.now();
   if (!force && now - b.lastAt < AGENT_BATCH_QUIET_MS && now - b.firstAt < AGENT_BATCH_MAX_MS) return "waiting";
-  const text = composeNotifyBatch(b.items);
+  const rich = composeNotifyRich(b.items);
   batches.delete(uid);
-  if (!text) return "none";
-  const ok = await sendToCurator(uid, text, { unprompted: true }).catch((e) => {
+  if (!rich) return "none";
+  const ok = await sendToCurator(uid, rich.text, { unprompted: true, mentions: { ids: rich.mentions, plain: rich.plain } }).catch((e) => {
     console.warn(`[agent] ${uid} notice failed:`, (e as Error).message);
     return false;
   });

@@ -3,6 +3,7 @@
 // The worker (agent*.ts) does the Firestore and WhatsApp side. The model never writes an answer: it only maps free text to
 // one of the intents below, and every fact in a reply comes from data through the formatters in this file.
 import { DAY_NAMES, DAY_SHORT, dateInWeek, formatDate, formatTime } from "./week.ts";
+import { richReply, type RichReply } from "./tagPeople.ts";
 import type { Comic, Lineup, Show, SpotRequest, Venue, Weekday } from "./types.ts";
 
 // ---- identity of the second session (it rides on the account's lease; see docs/fleet.md) ----
@@ -65,14 +66,27 @@ export function maskPhone(phone: string | null | undefined): string {
 
 // ---- yes / no (strict: these gate real changes) ----
 
-const YES = /^(yes|y|yeah|yep|yup|ya|ok|okay|sure|confirm|confirmed|do it|go ahead|go for it|please do|haan|ha|han)\b[\s.!,]*(please|pls|thanks|thank you)?[\s.!]*$/;
-const NO = /^(no|n|nope|nah|cancel|stop|dont|don't|do not|never mind|nevermind|leave it|nahi|nahin|no thanks)\b[\s.!,]*$/;
+const YES_WORDS = /^(?:yes|y|yeah|yep|yup|ya|ok|okay|k|sure|confirm|confirmed|do it|go ahead|go for it|please do|haan|haan ji|ha|han|hanji|ha ji|theek hai|thik hai|kar do|karo)(?:[\s.!,]+(?:please|pls|thanks|thank you|confirm|do it|go ahead|ji))*$/;
+const NO_WORDS = /^(?:(?:no|n|nope|nah|na|naa|nahi|nahin|nay)(?:[\s,.!-]+(?:cancel|stop|dont|don't|do not|never ?mind|leave it|thanks|thank you|it|that|please|ji|cancel it|stop it))*|(?:cancel|stop|dont|don't|do not|never ?mind|leave it|rehne do|rehne de|mat karo|nahi chahiye)(?: it| that)?|no thanks)$/;
+const YES_EMOJI = /^(?:[\u{1F44D}\u{1F44C}\u2705\u2714\u{1F197}]\uFE0F?[\u{1F3FB}-\u{1F3FF}]?\s*)+$/u;
+const NO_EMOJI = /^(?:[\u{1F44E}\u274C\u{1F6AB}\u2716\u26D4]\uFE0F?[\u{1F3FB}-\u{1F3FF}]?\s*)+$/u;
+const flat = (text: string) => text.toLowerCase().trim().replace(/[.!,\s]+$/g, "");
 
+/** A plain yes (words, Hinglish, a thumbs-up or tick). These gate real changes, so it is strict: anything else is not a yes. */
 export function strictYes(text: string): boolean {
-  return YES.test(text.toLowerCase().trim());
+  const t = flat(text);
+  return YES_WORDS.test(t) || YES_EMOJI.test(text.trim());
 }
+/** A plain no or cancel ("no", "no, cancel", "never mind", "nahi", "na", a cross or thumbs-down). "no one asked for Tuesday" is not a no. */
 export function strictNo(text: string): boolean {
-  return NO.test(text.toLowerCase().trim());
+  const t = flat(text);
+  return NO_WORDS.test(t) || NO_EMOJI.test(text.trim());
+}
+
+/** An interrogative message (did/was/has/is/how many/which/who/when/what/where...?): answered from data, never turned into a change. */
+export function isQuestion(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return /^(?:did|was|were|has|have|had|is|are|does|do|how|which|who|whose|when|what|where|any)\b/.test(t) || (/\?\s*$/.test(t) && !/^(?:please\s+)?(?:can|could|would|will)\s+you\b/.test(t));
 }
 
 /**
@@ -119,11 +133,11 @@ const WEEKDAY_WORDS: Record<string, Weekday> = {
 // ---- intents ----
 
 export type AgentIntentName =
-  | "lineup" | "waiting" | "pending_confirm" | "asked" | "last_performed" | "help"
+  | "lineup" | "waiting" | "pending_confirm" | "asked" | "last_performed" | "mic_status" | "help"
   | "add" | "remove" | "confirm" | "outcome" | "retime"
   | "unknown";
 
-export const QUESTION_INTENTS: readonly AgentIntentName[] = ["lineup", "waiting", "pending_confirm", "asked", "last_performed", "help"];
+export const QUESTION_INTENTS: readonly AgentIntentName[] = ["lineup", "waiting", "pending_confirm", "asked", "last_performed", "mic_status", "help"];
 export const ACTION_INTENTS: readonly AgentIntentName[] = ["add", "remove", "confirm", "outcome", "retime"];
 export const INTENT_NAMES: readonly AgentIntentName[] = [...QUESTION_INTENTS, ...ACTION_INTENTS, "unknown"];
 
@@ -146,12 +160,35 @@ const strip = (t: string) => t.trim().replace(/[?!.\s]+$/g, "").replace(/\s+/g, 
  * them: the worker then asks the model to map the text to an intent (still never to an answer).
  */
 export function parseIntentByRules(raw: string): AgentIntent | null {
+  const r = parseRules(raw);
+  // A question never becomes a change: "did Monday not happen?" must not run "mark Monday as didn't happen".
+  if (r && ACTION_INTENTS.includes(r.name) && isQuestion(strip(raw))) return { name: "unknown" };
+  return r;
+}
+
+function parseRules(raw: string): AgentIntent | null {
   const t = strip(raw);
   const l = t.toLowerCase();
   if (!l) return null;
   let m: RegExpMatchArray | null;
 
   if (/^(help|\?|menu|commands|what can you do|what do you do|hi|hello|hey)$/.test(l)) return { name: "help" };
+  // Questions about a mic ("did mic on Monday happen this week?", "how did Monday go", "was Bloom cancelled?"): read-only, answered
+  // from the lineup's outcome and mic check. Never a change: "mark Monday as happened" is the command.
+  if (isQuestion(l)) {
+    if (/\b(?:happen(?:ed)?|go ahead|went ahead|cancell?ed|canned|called off|on or off|still on)\b/.test(l) || /^how (?:did|was|is|went)\b.*\b(?:go|went|mic|show)\b|^how (?:did|was) /.test(l)) {
+      const day = l
+        .replace(/[?!.]+/g, " ")
+        .replace(/\b(?:did|was|were|has|have|is|the|a|mic|show|check|on|this|last|week|happen|happened|go|ahead|went|cancell?ed|canned|called|off|still|or|how|it|yet)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const wd = l.match(/\b(sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|today|yesterday|tonight)\b/);
+      return { name: "mic_status", day: (wd?.[1] ?? day) || undefined };
+    }
+    if ((m = l.match(/^how many (?:people |comics |requests )?(?:are |have |is )?(?:waiting|asked|requested|requests?)\b/))) return { name: "waiting" };
+    if (/^what(?:'s| is)? (?:still )?(?:pending|open|left)\b/.test(l) && !/line ?up/.test(l)) return { name: "pending_confirm" };
+  }
+
   if (/\bwho(?:'s| is| are| all)?\s+waiting\b|\bwaiting list\b|\bwaitlist\b|^waiting$/.test(l)) return { name: "waiting" };
   if (/what(?:'s| is)?\s+(?:is\s+)?left to confirm|what(?:'s| is)?\s+(?:still\s+)?(?:un|not\s)confirmed|\bunconfirmed\b|what needs confirm|what do i (?:still )?need to confirm/.test(l)) return { name: "pending_confirm" };
 
@@ -228,6 +265,7 @@ export function normalizeRawIntent(raw: unknown): AgentIntent {
   if (name === "confirm" && !day) return { name: "unknown" };
   if (name === "last_performed" && !person) return { name: "unknown" };
   if (name === "asked" && !day) return { name: "unknown" };
+  if (name === "mic_status" && !day) return { name: "unknown" };
   return out;
 }
 
@@ -491,6 +529,8 @@ export interface ShowDay {
   status: Lineup["status"] | "none";
   /** Names in slot order. */
   names: string[];
+  /** The comic ids behind `names`, same order. */
+  comicIds?: string[];
 }
 
 export function showDay(show: Pick<Show, "id" | "name" | "weekday" | "startTime" | "slotCount">, week: string, lineup: Pick<Lineup, "slots" | "status"> | undefined, nameOf: (comicId: string) => string): ShowDay {
@@ -503,6 +543,7 @@ export function showDay(show: Pick<Show, "id" | "name" | "weekday" | "startTime"
     slotCount: show.slotCount,
     status: lineup?.status ?? "none",
     names: (lineup?.slots ?? []).map((s) => nameOf(s.comicId)),
+    comicIds: (lineup?.slots ?? []).map((s) => s.comicId),
   };
 }
 
@@ -523,6 +564,8 @@ export function formatPendingConfirm(days: ShowDay[]): string {
 
 export interface WaitingPerson {
   name: string;
+  /** WhatsApp id, when known (the person is then mentioned). */
+  id?: string;
   /** What they asked for, e.g. "Mon, Tue". */
   days?: string;
 }
@@ -538,6 +581,27 @@ export function formatAsked(label: string, people: WaitingPerson[], max = 12): s
   if (!people.length) return `Nobody asked for ${label} this week.`;
   const shown = people.slice(0, max).map((w) => `• ${w.name}`);
   return `${people.length} asked for ${label}:\n${shown.join("\n")}${people.length > max ? `\n…and ${people.length - max} more.` : ""}`;
+}
+
+export interface MicStatusInput {
+  showName: string;
+  date: string;
+  time: string;
+  status: Lineup["status"] | "none";
+  outcome?: "happened" | "canned" | null;
+  micCheckSent?: boolean;
+}
+
+/** "Did Monday happen?", answered from the lineup's outcome and mic check. Read-only. */
+export function formatMicStatus(m: MicStatusInput, today: string): string {
+  const when = `${m.showName}, ${DAY_SHORT[new Date(`${m.date}T00:00:00Z`).getUTCDay() as Weekday]} ${formatDate(m.date)}`;
+  if (m.status === "cancelled") return `${when}: called off.`;
+  if (m.outcome === "happened") return `${when}: yes, it happened.`;
+  if (m.outcome === "canned" || m.status === "canned") return `${when}: it didn't happen.`;
+  if (m.status === "none") return `${when}: no lineup was set up${m.date >= today ? " yet" : ""}.`;
+  if (m.date > today) return `${when}: hasn't happened yet (${m.status === "confirmed" ? "confirmed" : "not confirmed yet"}).`;
+  if (m.micCheckSent) return `${when}: not marked yet. I asked about it; reply *yes* if it happened or *no* if it didn't.`;
+  return `${when}: not marked yet. Say "mark ${DAY_NAMES[new Date(`${m.date}T00:00:00Z`).getUTCDay() as Weekday]} happened" or "...didn't happen" to record it.`;
 }
 
 export function formatLastPerformed(name: string, last: { showName: string; date: string } | null, today: string): string {
@@ -591,27 +655,86 @@ export function describePlan(plan: ActionPlan, c: { show: Pick<Show, "name" | "w
 
 export interface NotifyItem {
   kind: "mic" | "request" | "followup" | "notice" | "warn";
+  /** For "request" and "followup": the person's name. Otherwise the line itself. */
   text: string;
+  /** The person's WhatsApp id when known, so they are mentioned rather than named. */
+  id?: string;
+  /** For "followup": what happened, e.g. "(on Monday Mic)". */
+  detail?: string;
 }
 
-/** Several things that happened close together become one message. New requests are counted, not listed one by one. */
-export function composeNotifyBatch(items: NotifyItem[]): string | null {
-  if (!items.length) return null;
-  const lines: string[] = [];
-  const reqs = items.filter((i) => i.kind === "request");
-  if (reqs.length) {
-    const names = reqs.map((r) => r.text);
-    const shown = names.slice(0, 5).join(", ");
-    lines.push(reqs.length === 1 ? `New spot request: ${shown}.` : `${reqs.length} new spot requests: ${shown}${names.length > 5 ? `, +${names.length - 5} more` : ""}.`);
+const normLine = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const WARN_READ = /^Couldn't read new messages from (.+?)\. ([\s\S]*)$/;
+const joinNames = (n: string[]) => (n.length <= 1 ? (n[0] ?? "") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`);
+
+/** Identical lines appear once; "Couldn't read new messages from A" and "...from B" with the same reason become one line. */
+function tidyItems(items: NotifyItem[]): NotifyItem[] {
+  const seen = new Set<string>();
+  const out: NotifyItem[] = [];
+  for (const i of items) {
+    const key = `${i.kind === "request" || i.kind === "followup" ? i.kind : "line"}|${normLine(i.text)}|${normLine(i.detail ?? "")}|${i.id ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(i);
   }
-  const fu = items.filter((i) => i.kind === "followup");
-  if (fu.length) lines.push(fu.length === 1 ? `Follow-up to check in the app: ${fu[0].text}` : `${fu.length} follow-ups to check in the app: ${fu.map((f) => f.text).join("; ")}`);
-  for (const i of items) if (i.kind === "notice") lines.push(i.text);
-  for (const i of items) if (i.kind === "warn") lines.push(`Heads up: ${i.text}`);
-  for (const i of items) if (i.kind === "mic") lines.push(i.text);
-  const out = lines.join("\n\n");
-  return out.length > 1500 ? `${out.slice(0, 1480)}…` : out;
+  const merged: NotifyItem[] = [];
+  const byWhy = new Map<string, { item: NotifyItem; names: string[] }>();
+  for (const i of out) {
+    const m = i.kind === "warn" ? i.text.match(WARN_READ) : null;
+    if (!m) {
+      merged.push(i);
+      continue;
+    }
+    const hit = byWhy.get(m[2]!);
+    if (hit) hit.names.push(m[1]!);
+    else {
+      const e = { item: { ...i }, names: [m[1]!] };
+      byWhy.set(m[2]!, e);
+      merged.push(e.item);
+    }
+  }
+  for (const [why, e] of byWhy) if (e.names.length > 1) e.item.text = `Couldn't read new messages from ${joinNames([...new Set(e.names)])}. ${why}`;
+  // the same sentence under two kinds ("notice" and "warn") is still one line
+  const lines = new Set<string>();
+  return merged.filter((i) => {
+    if (i.kind === "request" || i.kind === "followup") return true;
+    const k = normLine(i.text);
+    if (lines.has(k)) return false;
+    lines.add(k);
+    return true;
+  });
 }
+
+/**
+ * Several things that happened close together become one message. New requests are counted, not listed one by one. People are
+ * mentioned when they have a WhatsApp id (text has "@<number>", `mentions` the ids), else named by first name (`plain` is the
+ * all-first-names twin). Repeated lines are dropped.
+ */
+export function composeNotifyRich(raw: NotifyItem[]): RichReply | null {
+  const items = tidyItems(raw);
+  if (!items.length) return null;
+  const who = items.filter((i) => i.kind === "request" || i.kind === "followup");
+  return richReply(who.map((i) => ({ name: i.text, id: i.id })), (labels) => {
+    const label = new Map(who.map((i, k) => [i, labels[k]!]));
+    const lines: string[] = [];
+    const reqs = items.filter((i) => i.kind === "request");
+    if (reqs.length) {
+      const names = reqs.map((r) => label.get(r)!);
+      const shown = names.slice(0, 5).join(", ");
+      lines.push(reqs.length === 1 ? `New spot request: ${shown}.` : `${reqs.length} new spot requests: ${shown}${names.length > 5 ? `, +${names.length - 5} more` : ""}.`);
+    }
+    const fu = items.filter((i) => i.kind === "followup").map((i) => `${label.get(i)!}${i.detail ? ` ${i.detail}` : ""}`);
+    if (fu.length) lines.push(fu.length === 1 ? `Follow-up to check in the app: ${fu[0]}` : `${fu.length} follow-ups to check in the app: ${fu.join("; ")}`);
+    for (const i of items) if (i.kind === "notice") lines.push(i.text);
+    for (const i of items) if (i.kind === "warn") lines.push(`Heads up: ${i.text}`);
+    for (const i of items) if (i.kind === "mic") lines.push(i.text);
+    const out = lines.join("\n\n");
+    return out.length > 1500 ? `${out.slice(0, 1480)}…` : out;
+  });
+}
+
+/** The plain-text form of composeNotifyRich. */
+export const composeNotifyBatch = (items: NotifyItem[]): string | null => composeNotifyRich(items)?.plain ?? null;
 
 export interface DigestInput {
   /** YYYY-MM-DD in the curator's timezone. */
@@ -625,25 +748,36 @@ export interface DigestInput {
   unconfirmed: ShowDay[];
 }
 
-/** The morning message, or null when there's nothing to say (the agent then stays quiet). */
-export function composeDigest(d: DigestInput): string | null {
-  const parts: string[] = [];
-  for (const s of d.todayShows) {
-    if (s.status === "cancelled" || s.status === "canned") continue;
-    const list = s.names.length ? s.names.map((n, i) => `${i + 1}. ${n}`).join("\n") : "Nobody placed yet.";
-    parts.push(`*Today: ${s.showName}* · ${formatTime(s.time)} (${STATUS_WORD[s.status]}, ${s.names.length} of ${s.slotCount})\n${list}`);
-  }
-  if (d.waiting.length) parts.push(`*Waiting this week (${d.waiting.length}):* ${d.waiting.slice(0, 6).map((w) => w.name).join(", ")}${d.waiting.length > 6 ? `, +${d.waiting.length - 6} more` : ""}`);
-  const needs: string[] = [];
-  if (d.updates) needs.push(`${d.updates} ${d.updates === 1 ? "item" : "items"} in Updates`);
-  for (const s of d.unconfirmed.slice(0, 3)) needs.push(`${s.showName} (${DAY_SHORT[s.weekday]}) isn't confirmed`);
-  if (needs.length) parts.push(`*Needs you:* ${needs.join("; ")}`);
-  for (const s of d.tomorrowShows) {
-    if (s.status === "cancelled" || s.status === "canned") continue;
-    parts.push(`*Tomorrow: ${s.showName}* · ${formatTime(s.time)} (${STATUS_WORD[s.status]}, ${s.names.length} of ${s.slotCount})`);
-  }
-  return parts.length ? `Good morning. Here's your day.\n\n${parts.join("\n\n")}` : null;
+/** The morning message with people mentioned where they have a WhatsApp id; null when there's nothing to say (the agent then stays quiet). */
+export function composeDigestRich(d: DigestInput): RichReply | null {
+  const today = d.todayShows.filter((s) => s.status !== "cancelled" && s.status !== "canned");
+  const waiting = d.waiting.slice(0, 6);
+  const people = [...today.flatMap((s) => s.names.map((n, i) => ({ name: n, id: s.comicIds?.[i] }))), ...waiting.map((w) => ({ name: w.name, id: w.id }))];
+  const r = richReply(people, (labels) => {
+    let k = 0;
+    const parts: string[] = [];
+    for (const s of today) {
+      const names = s.names.map(() => labels[k++]!);
+      const list = names.length ? names.map((n, i) => `${i + 1}. ${n}`).join("\n") : "Nobody placed yet.";
+      parts.push(`*Today: ${s.showName}* · ${formatTime(s.time)} (${STATUS_WORD[s.status]}, ${s.names.length} of ${s.slotCount})\n${list}`);
+    }
+    const wl = waiting.map(() => labels[k++]!);
+    if (d.waiting.length) parts.push(`*Waiting this week (${d.waiting.length}):* ${wl.join(", ")}${d.waiting.length > 6 ? `, +${d.waiting.length - 6} more` : ""}`);
+    const needs: string[] = [];
+    if (d.updates) needs.push(`${d.updates} ${d.updates === 1 ? "item" : "items"} in Updates`);
+    for (const s of d.unconfirmed.slice(0, 3)) needs.push(`${s.showName} (${DAY_SHORT[s.weekday]}) isn't confirmed`);
+    if (needs.length) parts.push(`*Needs you:* ${needs.join("; ")}`);
+    for (const s of d.tomorrowShows) {
+      if (s.status === "cancelled" || s.status === "canned") continue;
+      parts.push(`*Tomorrow: ${s.showName}* · ${formatTime(s.time)} (${STATUS_WORD[s.status]}, ${s.names.length} of ${s.slotCount})`);
+    }
+    return parts.length ? `Good morning. Here's your day.\n\n${parts.join("\n\n")}` : "";
+  });
+  return r.text ? r : null;
 }
+
+/** The plain-text form of composeDigestRich. */
+export const composeDigest = (d: DigestInput): string | null => composeDigestRich(d)?.plain ?? null;
 
 /** Digest timing: due once per local day, from the chosen time on, and not at all if it's already more than `maxLateMin` past (a late link or restart must not send "good morning" in the afternoon). */
 export function digestDue(o: { now: { date: string; time: string }; digestTime: string; lastDigestOn?: string | null; maxLateMin?: number }): boolean {

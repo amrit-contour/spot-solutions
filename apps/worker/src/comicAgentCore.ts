@@ -133,13 +133,15 @@ export function comicAgent(d: ComicDeps) {
       }
       if (step.type === "cancel") {
         if (step.plan) await d.log({ at: d.now(), kind: step.plan.type, summary: step.plan.summary.split("\n")[0]!, status: "cancelled" });
-        return void (await d.say("Okay, nothing was changed.")), true;
+        return void (await d.say("Okay, cancelled. Nothing changed.")), true;
       }
       if (step.type === "expired") {
         await d.say("That one timed out after 10 minutes, so nothing was changed. Ask me again if you still want it.");
         return strictYes(text) || strictNo(text);
       }
-      return false; // drop: a new request, the old question is gone
+      // drop: a new request. The old question is gone; say so in a few words so nobody waits on it.
+      await d.say(`(Dropped the earlier question: ${(pending.stage === "confirm" ? pending.summary : pending.prompt).split("\n")[0]!.slice(0, 80)}. Say it again if you still want it.)`);
+      return false;
     },
 
     /** Rules only: true when the message was one of the comic's commands (and was handled). */

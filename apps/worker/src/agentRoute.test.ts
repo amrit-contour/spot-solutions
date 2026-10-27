@@ -160,7 +160,7 @@ describe("both", () => {
       comic: { answerPending: async () => false, byRules: async () => false, byModel: async () => true },
     };
     await dispatch(BOTH, "no", h);
-    expect(said).toEqual(["Okay, nothing was changed."]);
+    expect(said).toEqual(["Okay, cancelled. Nothing changed."]);
     ask = { text: "x", createdAt: NOW, expiresAt: NOW + 1000 };
     await dispatch(BOTH, "Monday lineup?", h);
     expect(calls).toEqual(["curate:Monday lineup?"]);

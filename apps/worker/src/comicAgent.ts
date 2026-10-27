@@ -8,6 +8,7 @@ import {
   localDate,
   mergeRegulars,
   regularWindow,
+  tagText,
   type AgentScope,
   type Ask,
   type ComicPending,
@@ -114,7 +115,13 @@ function depsFor(uid: string): ComicDeps {
     async log(e) {
       await col(uid, "agentLog").add({ ...e, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
     },
-    say: (text) => sendToCurator(uid, text),
+    // Curators the reply names are mentioned (WhatsApp tags) when they have a number, else first names (shared tagText).
+    say: async (text) => {
+      const curators = (await col(uid, "curators").get()).docs.map((x) => x.data() as Curator);
+      const people = curators.map((c) => ({ name: c.name, id: c.phone && c.phone.replace(/\D/g, "").length >= 8 ? `${c.phone.replace(/\D/g, "")}@c.us` : null }));
+      const r = tagText(text, people);
+      return sendToCurator(uid, r.text, { mentions: { ids: r.mentions, plain: r.plain } });
+    },
     now: () => Date.now(),
   };
 }
