@@ -1,5 +1,6 @@
 import { DAY_NAMES, WEEK_ORDER, type AskRule, type AskRuleKind } from "@spot/shared";
-import { Field, Select, Switch, TextInput } from "@spot/ui";
+import { Field, Select, TextInput } from "@spot/ui";
+import { ToggleRow } from "./ui";
 
 const KINDS: { value: AskRuleKind | ""; label: string }[] = [
   { value: "same_day", label: "On the day" },
@@ -44,7 +45,7 @@ export function AskRuleEditor({ value, onChange, emptyLabel = "No rule" }: { val
           <Select label="Weekday" value={String(value.day ?? 1)} onChange={(d) => onChange({ ...value, day: Number(d) as 0 })} options={DAY_OPTIONS} />
         </Field>
       )}
-      {hasMorning && <Switch label="Best in the morning" checked={Boolean(value.morning)} onChange={(m) => onChange({ ...value, morning: m || undefined } as AskRule)} />}
+      {hasMorning && <ToggleRow label="Best in the morning" checked={Boolean(value.morning)} onChange={(m) => onChange({ ...value, morning: m || undefined } as AskRule)} />}
       {value && (
         <Field label="Note (optional)">
           <TextInput value={value.note ?? ""} onChange={(e) => onChange({ ...value, note: e.target.value || undefined })} placeholder="DM before 11 AM" maxLength={140} />

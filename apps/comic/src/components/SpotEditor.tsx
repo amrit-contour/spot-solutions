@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DAY_NAMES, SPOT_SOURCE_LABEL, formatTime, materializeRegular, mergeRegulars, regularFromSpot, regularLabel, regularWindow, spotClashes, validateSpot, type MySpot, type RegularSpot, type SpotNotes } from "@spot/shared";
-import { Button, ConfirmDialog, Field, IconRepeat, IconStar, IconTrash, Segmented, Select, Sheet, Switch, TextArea, TextInput, TimePicker } from "@spot/ui";
+import { Button, ConfirmDialog, Field, IconRepeat, IconStar, IconTrash, Segmented, Select, Sheet, TextArea, TextInput, TimePicker } from "@spot/ui";
+import { ToggleRow } from "./ui";
 import { useAsks } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { newRegularId, useSpotActions } from "../lib/regulars";
@@ -101,7 +102,7 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
             <TextInput id="spot-date" type="date" disabled={Boolean(draft.regularId)} value={draft.date} onChange={(e) => set({ date: e.target.value })} />
           </Field>
           <div className="flex min-w-0 flex-col gap-2">
-            <Switch label="Start time" checked={Boolean(draft.time)} onChange={(on) => set({ time: on ? "20:00" : undefined })} />
+            <ToggleRow label="Start time" checked={Boolean(draft.time)} onChange={(on) => set({ time: on ? "20:00" : undefined })} />
             {draft.time && <TimePicker label="Start time" value={draft.time} onChange={(time) => set({ time })} />}
           </div>
         </div>

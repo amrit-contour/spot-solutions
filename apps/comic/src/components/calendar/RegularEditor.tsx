@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { DAY_NAMES, NTH_LABEL, nthWeekdayOf, regularLabel, spotDateLabel, validateRegular, weekdayOf, type RegularCadence, type RegularSpot, type Weekday } from "@spot/shared";
-import { Button, ConfirmDialog, Field, Segmented, Select, Sheet, Switch, TextArea, TextInput, TimePicker, IconTrash } from "@spot/ui";
+import { Button, ConfirmDialog, Field, Segmented, Select, Sheet, TextArea, TextInput, TimePicker, IconTrash } from "@spot/ui";
+import { ToggleRow } from "../ui";
 import { useAsks } from "../../lib/asks";
 import { useRoster } from "../../lib/roster";
 
@@ -161,12 +162,12 @@ export function RegularEditor({ value, onClose, today }: { value: RegularSpot | 
             <TextInput id="reg-start" type="date" value={draft.startDate} onChange={(e) => set({ startDate: e.target.value })} />
           </Field>
           <div className="flex min-w-0 flex-col gap-2">
-            <Switch label="Ends on a date" checked={Boolean(draft.endDate)} onChange={(on) => set({ endDate: on ? (draft.endDate ?? today) : undefined })} />
+            <ToggleRow label="Ends on a date" checked={Boolean(draft.endDate)} onChange={(on) => set({ endDate: on ? (draft.endDate ?? today) : undefined })} />
             {draft.endDate !== undefined && <TextInput aria-label="End date" type="date" value={draft.endDate} onChange={(e) => set({ endDate: e.target.value })} />}
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-2">
-          <Switch label="Start time" checked={Boolean(draft.time)} onChange={(on) => set({ time: on ? "21:00" : undefined })} />
+          <ToggleRow label="Start time" checked={Boolean(draft.time)} onChange={(on) => set({ time: on ? "21:00" : undefined })} />
           {draft.time && <TimePicker label="Start time" value={draft.time} onChange={(time) => set({ time })} />}
         </div>
         <Field label="Notes" hint="Optional">

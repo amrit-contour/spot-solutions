@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { ASK_VARIABLES, DEFAULT_ASK_TEMPLATE, askHints, renderAsk, type PlannedAsk, type Room } from "@spot/shared";
-import { Bubble, Button, Chip, Field, Segmented, Sheet, Switch, TextArea } from "@spot/ui";
+import { Bubble, Button, Chip, Field, Segmented, Sheet, TextArea } from "@spot/ui";
+import { ToggleRow } from "./ui";
 import { useAsks } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { dateTime } from "../lib/time";
@@ -52,8 +53,7 @@ export function AskEditSheet({ ask, message, onClose, onSend }: { ask: PlannedAs
         <Field label="Message">
           <TextArea value={text} onChange={(e) => setText(e.target.value)} rows={5} />
         </Field>
-        <Switch label="Write it the way I write" checked={voice} onChange={setVoice} />
-        <p className="-mt-3 type-body-s text-on-surface-variant">Uses your voice profile when you've set one up in Nothing BOT Curating. The day, date and room stay exactly as written.</p>
+        <ToggleRow label="Write it the way I write" checked={voice} onChange={setVoice} hint="Uses your voice profile when you've set one up in Nothing BOT Curating. The day, date and room stay exactly as written." />
       </div>
     </Sheet>
   );

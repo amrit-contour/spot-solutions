@@ -1,5 +1,6 @@
 import type { Limit, RoomShow } from "@spot/shared";
-import { Button, Chip, IconAdd, IconButton, IconTrash, Segmented, Select, Stepper, Switch } from "@spot/ui";
+import { Button, Chip, IconAdd, IconButton, IconTrash, Segmented, Select, Stepper } from "@spot/ui";
+import { ToggleRow } from "./ui";
 import { validateLimit } from "../lib/rooms";
 
 const PERIODS = [
@@ -32,7 +33,7 @@ export function LimitsEditor({ limits, shows, onChange }: { limits: Limit[]; sho
             {l.scope === "show" && (
               <Select label="Which show" value={l.showId ?? ""} onChange={(showId) => set(i, { ...l, showId })} placeholder="Pick a show" options={shows.map((s) => ({ value: s.id, label: s.name || s.id }))} />
             )}
-            <Switch label="No limit here" checked={Boolean(l.unlimited)} onChange={(u) => set(i, u ? { scope: l.scope, showId: l.showId, unlimited: true } : { ...l, unlimited: undefined })} />
+            <ToggleRow label="No limit here" checked={Boolean(l.unlimited)} onChange={(u) => set(i, u ? { scope: l.scope, showId: l.showId, unlimited: true } : { ...l, unlimited: undefined })} />
             {!l.unlimited && (
               <div className="flex min-w-0 flex-col gap-2.5">
                 {PERIODS.map((p) => (

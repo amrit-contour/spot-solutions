@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { DAY_NAMES, DAY_SHORT, WEEK_ORDER, type DayPlan, type RoomShow, type Weekday } from "@spot/shared";
-import { Button, Chip, Field, IconAdd, IconButton, IconClose, Segmented, Switch, TextInput, TimePicker } from "@spot/ui";
+import { Button, Chip, Field, IconAdd, IconButton, IconClose, Segmented, TextInput, TimePicker } from "@spot/ui";
+import { ToggleRow } from "./ui";
 import { useRoster } from "../lib/roster";
 import { AskRuleEditor } from "./AskRuleEditor";
 import { CuratorPicker } from "./CuratorPicker";
@@ -48,7 +49,7 @@ function DayCard({ day, onChange, onCopy, canCopy, showName }: { day: DayPlan; o
         <h4 className="min-w-0 flex-1 truncate type-title-s">{DAY_NAMES[day.weekday]}</h4>
         {canCopy && <Button variant="text" size="sm" onClick={onCopy}>Same for every day</Button>}
       </div>
-      <Switch label="They'll reach out (nothing to ask)" checked={Boolean(day.theyReachOut)} onChange={(v) => onChange({ ...day, theyReachOut: v || undefined })} />
+      <ToggleRow label="They'll reach out (nothing to ask)" checked={Boolean(day.theyReachOut)} onChange={(v) => onChange({ ...day, theyReachOut: v || undefined })} />
       <div className="flex min-w-0 flex-col gap-1">
         <span className="type-label-l text-on-surface-variant">Curators</span>
         {ids.length === 0 && !picking && <p className="type-body-s text-on-surface-variant">No one yet. The first you add is who to ask.</p>}
@@ -75,7 +76,7 @@ function DayCard({ day, onChange, onCopy, canCopy, showName }: { day: DayPlan; o
           </Button>
         </div>
       )}
-      <Switch label="Different times, ask rule or note this day" checked={more} onChange={setMore} />
+      <ToggleRow label="Different times, ask rule or note this day" checked={more} onChange={setMore} />
       {more && (
         <div className="flex min-w-0 flex-col gap-4">
           <Field label="Start times this day">
