@@ -51,7 +51,7 @@ export function AccountMenu({
           {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
           {/* The dot sits inside the avatar's square, flush with its bottom-right corner (the button's 2px padding = the avatar's edge). */}
           {status && (
-            <span data-status={status.tone} className="absolute right-0.5 bottom-0.5">
+            <span data-status={status.tone} className="absolute right-0.5 bottom-0.5 flex leading-none">
               <StatusDot tone={status.tone} size={12} ring />
             </span>
           )}
