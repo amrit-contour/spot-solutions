@@ -19,9 +19,11 @@ import {
   type SpotRequest,
 } from "@spot/shared";
 import { useApp } from "../../lib/app";
-import { userDoc } from "../../lib/data";
+import { runCommand, userDoc } from "../../lib/data";
 import { markCanned } from "../../lib/lineup";
 import { answerMicCheck } from "../../lib/updates";
+import { useMicDue } from "../../lib/micDue";
+import { RateLineup } from "../RateLineup";
 import { ConfirmSheet } from "../ConfirmSheet";
 import { SendUpdatesSheet } from "../SendUpdatesSheet";
 import { OfferSheet } from "../OfferSheet";
@@ -29,9 +31,19 @@ import { BackfillSheet } from "../BackfillSheet";
 import { GroupSyncSheet } from "../GroupSyncSheet";
 import { PillRow, comicPills, type TellState } from "../Pills";
 import { Button, Chip, buttonClass, cx } from "@spot/ui";
-import { IconAdd, IconArrowRight, IconCheck, IconClock, IconHistory, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "@spot/ui";
+import { IconAdd, IconArrowRight, IconCancel, IconCheck, IconClock, IconClose, IconGroup, IconHistory, IconInbox, IconMap, IconMic, IconPen, IconSend, IconSparkle, type Icon } from "@spot/ui";
 import { laneOf } from "../../lib/lanes";
 import { ComicAvatar } from "../../lib/photos";
+
+/** A status pill whose icon is the status's own (tick, pencil, cross...) in the pill's accent colour. */
+function StatusPill({ tone, icon: I, accent, children }: { tone: "neutral" | "tertiary" | "error" | "success"; icon: Icon; accent: string; children: string }) {
+  return (
+    <Chip tone={tone}>
+      <I className={cx("icon -ml-0.5 size-4 flex-none", accent)} />
+      {children}
+    </Chip>
+  );
+}
 
 const first = (name: string) => name.split(" ")[0];
 
@@ -92,6 +104,25 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
     }
   }, [syncStatus, lineupLoaded]);
 
+  // The Group button: plan a sync for this lineup, then open the review (same as the Lineup page's group toolbar button).
+  const [planning, setPlanning] = useState(false);
+  const reviewWaiting = lineup?.groupSync?.status === "pending" && groupPlanNeedsReview(lineup.groupSync, { members: show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.members : undefined, lapsed: lineup.groupSync.lapsed });
+  const openGroup = async () => {
+    if (reviewWaiting) return void setSyncOpen(true);
+    if (!lineup && !ids.length) return void toast("Put someone on the lineup first.");
+    armed.current = true;
+    setPlanning(true);
+    try {
+      await runCommand(uid, "plan_group_sync", { lineupId: lineup?.id ?? `${week}_${show.id}` }, 120_000);
+      setSyncOpen(true);
+    } catch (e) {
+      armed.current = false;
+      toast.error((e as Error).message);
+    } finally {
+      setPlanning(false);
+    }
+  };
+
   // Who asked for this weekday and isn't placed yet. People with no day preference are counted apart.
   const waiting = asks.filter((r) => {
     const lane = laneOf(r);
@@ -99,16 +130,17 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
   });
   const wantsDay = waiting.filter((r) => r.intent.preferredDays.includes(show.weekday));
   const anyDay = waiting.filter((r) => !r.intent.preferredDays.length);
-  const seeds = !lineup && !past && week >= currentWeek ? defaultLineupIds(show).map(name) : [];
+  const seeds = !lineup && !past && week >= currentWeek ? [...new Set([...(show.regulars ?? []), ...(show.protected ?? [])])].map(name) : [];
 
-  const statusChip = past && status === "confirmed" && lineup?.outcome === "happened" ? <Chip tone="success" icon={IconCheck}>Happened</Chip>
-    : status === "canned" ? <Chip tone="error">Didn't happen</Chip>
-    : status === "cancelled" ? <Chip tone="error">Cancelled</Chip>
-    : confirmed ? <Chip tone="success" icon={IconCheck}>Confirmed</Chip>
-    : slots.length ? <Chip tone="tertiary">Draft</Chip>
-    : <Chip>Not started</Chip>;
+  const statusChip = past && status === "confirmed" && lineup?.outcome === "happened" ? <StatusPill tone="success" icon={IconCheck} accent="text-primary">Happened</StatusPill>
+    : status === "canned" ? <StatusPill tone="error" icon={IconClose} accent="text-error">Didn't happen</StatusPill>
+    : status === "cancelled" ? <StatusPill tone="error" icon={IconCancel} accent="text-error">Cancelled</StatusPill>
+    : confirmed ? <StatusPill tone="success" icon={IconCheck} accent="text-primary">Confirmed</StatusPill>
+    : slots.length ? <StatusPill tone="tertiary" icon={IconPen} accent="text-tertiary">Draft</StatusPill>
+    : <StatusPill tone="neutral" icon={IconMic} accent="text-on-surface-variant">Not started</StatusPill>;
 
-  const mic = past && confirmed && !lineup?.outcome && lineup;
+  const micDue = useMicDue();
+  const mic = lineup && micDue(lineup, show) && lineup;
   const canAct = !off && !past;
   const open = slots.length < show.slotCount;
 
@@ -169,7 +201,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
       {seeds.length > 0 && (
         <p className="mt-3 flex items-start gap-1.5 type-body-s text-on-surface-variant">
           <IconSparkle className="icon mt-0.5 size-4 flex-none text-primary" />
-          <span>Starts with {listNames(seeds)} (POCs, regulars and co-hosts).</span>
+          <span>Starts with {listNames(seeds)} (regulars and co-hosts).</span>
         </p>
       )}
       {!past && !off && (wantsDay.length > 0 || anyDay.length > 0) && !confirmed && (
@@ -196,7 +228,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
           </div>
         </div>
       )}
-      {past && confirmed && lineup?.outcome === "happened" && slots.length > 0 && <p className="mt-3 type-body-s text-on-surface-variant">Performed: {listNames(ids.map(name))}</p>}
+      {confirmed && lineup?.outcome === "happened" && slots.length > 0 && <RateLineup lineup={lineup} listNames={listNames} />}
 
       <div className="min-h-3 flex-1" />
       {/* One row in every card, never wrapping: primary action left, Offer a spot (icon only in a narrow card), Open lineup pinned right. */}
@@ -208,37 +240,33 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
           {canAct && confirmed && changes && changes.total > 0 && (
             <Button size="sm" icon={IconSend} onClick={() => setUpdatesOpen(true)} className="flex-none">Send updates</Button>
           )}
-          {canAct && confirmed && !(changes && changes.total > 0) && (
-            <span className="inline-flex min-w-0 items-center gap-1.5 type-label-m text-on-surface-variant"><IconCheck className="icon size-4 flex-none text-primary" /><span className="truncate">Everyone's been told</span></span>
-          )}
           {past && (
             <Button size="sm" variant="tonal" icon={IconHistory} onClick={() => setBackfillOpen(true)} className="flex-none">Record who performed</Button>
           )}
           {canAct && !slots.length && (
             <Link to="/lineup" className={buttonClass({ size: "sm", variant: "tonal", icon: true, className: "flex-none" })}><IconMic className="icon size-4" />Start lineup</Link>
           )}
-          {canAct && open && (
+          {canAct && show.groupId && (
             <button
               type="button"
-              onClick={() => setOfferOpen(true)}
-              aria-label="Offer a spot"
-              title="Offer a spot"
-              className={buttonClass({ size: "sm", variant: "outlined", icon: true, className: "flex-none @max-[24rem]:size-8 @max-[24rem]:px-0" })}
+              onClick={() => void openGroup()}
+              disabled={planning}
+              aria-label="WhatsApp group: review who to add or remove"
+              title="WhatsApp group"
+              className={cx("state-layer pressable relative grid size-10 flex-none place-items-center rounded-full disabled:opacity-60", reviewWaiting ? "bg-tertiary-container text-on-tertiary-container" : "bg-surface-highest text-on-surface")}
             >
-              <IconUserPlus className="icon size-4" />
-              <span className="@max-[24rem]:hidden">Offer a spot</span>
+              <IconGroup className={cx("icon size-5", planning && "animate-pulse")} />
             </button>
           )}
           {canAct && (
             <button
               type="button"
               onClick={() => setOfferOpen(true)}
-              aria-label={open ? "Ad hoc spot" : "Ad hoc spot (lineup is full, asks first)"}
+              aria-label={open ? "Ad hoc spot: offer or add someone" : "Ad hoc spot (lineup is full, asks first)"}
               title={open ? "Ad hoc spot" : "Lineup is full: asks before adding"}
-              className={buttonClass({ size: "sm", variant: "outlined", icon: true, className: "flex-none @max-[24rem]:size-8 @max-[24rem]:px-0" })}
+              className="state-layer pressable grid size-10 flex-none place-items-center rounded-full bg-surface-highest text-on-surface"
             >
-              <IconAdd className="icon size-4" />
-              <span className="@max-[24rem]:hidden">Ad hoc{!open && <span className="ml-1 text-on-surface-variant">· Full</span>}</span>
+              <IconAdd className="icon size-5" />
             </button>
           )}
           <Link to="/lineup" aria-label="Open lineup" title="Open lineup" className="state-layer pressable -mr-2 ml-auto grid size-10 flex-none place-items-center rounded-full text-primary">
