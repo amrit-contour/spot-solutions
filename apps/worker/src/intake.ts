@@ -40,6 +40,7 @@ import { greetFor } from "./greet.ts";
 import { inVoice } from "./voice.ts";
 import { counters, live } from "./stats.ts";
 import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
+import { notice } from "./commands.ts";
 
 const MAX_CONTEXT = 12;
 
@@ -49,7 +50,13 @@ interface Pending {
   contact: { id: string; chatId: string; name: string; nameSource: NonNullable<Comic["nameSource"]>; phone: string; isBusiness: boolean };
   /** Read while the server was down: triage it, but never reply on our own. */
   quiet?: boolean;
+  /** Failed reads so far (the AI timed out or wasn't available). */
+  tries?: number;
 }
+
+/** When a read fails, try again after these waits. Kept in memory only: chats that aren't requests are never stored. */
+const RETRY_MS = [2, 5, 15, 30].map((m) => m * 60_000);
+const lastAiNotice = new Map<string, number>();
 
 const pending = new Map<string, Pending>();
 
@@ -106,8 +113,42 @@ export async function enqueue(uid: string, client: WAWebJS.Client, msg: WAWebJS.
   if (!next.messages.some((m) => m.id === item.id)) next.messages.push(item);
   next.timer = setTimeout(() => {
     pending.delete(key);
-    flush(uid, client, next).catch((e) => console.error(`[intake] ${uid} flush failed`, e));
+    flush(uid, client, next).catch((e) => void retryLater(uid, client, key, next, e as Error));
   }, settings.debounceSeconds * 1000);
+  pending.set(key, next);
+}
+
+/**
+ * The AI couldn't read a burst (a slow local model timing out, no Gemini key to fall back on). Don't drop it: try again
+ * later, and tell the curator once an hour what's wrong (no message text in the notice). After the last try, point them
+ * at Scan past messages, which re-reads WhatsApp once the AI works again.
+ */
+async function retryLater(uid: string, client: WAWebJS.Client, key: string, p: Pending, e: Error) {
+  const tries = (p.tries ?? 0) + 1;
+  console.error(`[intake] ${uid} flush failed (try ${tries})`, e);
+  const last = lastAiNotice.get(uid) ?? 0;
+  if (Date.now() - last > 60 * 60_000) {
+    lastAiNotice.set(uid, Date.now());
+    const why = /No Gemini API key/.test(e.message)
+      ? "The local model on your server is too slow to answer in time and there's no Gemini key to fall back on. Add a Gemini key in Settings → AI models, or move your account to a faster server."
+      : `The AI couldn't read them (${e.message}).`;
+    await notice(uid, "warn", `Couldn't read new messages from ${p.contact.name}. ${why} Trying again in a few minutes.`).catch(() => undefined);
+  }
+  if (tries > RETRY_MS.length) {
+    await notice(uid, "warn", `Gave up reading messages from ${p.contact.name} after ${tries} tries. Once the AI works again, run Requests → Scan past messages to pick them up.`).catch(() => undefined);
+    return;
+  }
+  // A newer burst from the same person may already be waiting: fold these messages into it rather than racing it.
+  const cur = pending.get(key);
+  if (cur) {
+    for (const m of p.messages) if (!cur.messages.some((x) => x.id === m.id)) cur.messages.push(m);
+    return;
+  }
+  const next: Pending = { ...p, tries, timer: undefined as never };
+  next.timer = setTimeout(() => {
+    pending.delete(key);
+    flush(uid, client, next).catch((err) => void retryLater(uid, client, key, next, err as Error));
+  }, RETRY_MS[tries - 1]);
   pending.set(key, next);
 }
 
