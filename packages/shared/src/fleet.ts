@@ -192,4 +192,4 @@ export interface FleetServerSummary extends CandidateServer {
 }
 
 /** Push notification kinds the worker sends (users/{uid}/devices/{token}). */
-export type PushKind = "account_moved" | "scan_needed" | "server_offline" | "new_request";
+export type PushKind = "account_moved" | "scan_needed" | "server_offline" | "new_request" | "ask_open" | "ask_closing" | "ask_reply";

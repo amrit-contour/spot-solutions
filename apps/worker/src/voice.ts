@@ -137,7 +137,7 @@ export async function previewVoice(uid: string, { kind }: Record<string, unknown
   const profile = settings.voice?.profile;
   if (!profile?.summary) throw new Error("Learn your voice first.");
   const k = (String(kind ?? "confirm") as VoiceKind);
-  if (k === "reply") throw new Error("Replies are written from what you type, so there is nothing to preview.");
+  if (k === "reply" || k === "spotAsk") throw new Error("Replies and asks are written from what you type, so there is nothing to preview.");
   const template = k === "ack" ? settings.ack.template : k === "confirm" ? settings.confirm.template : k === "cancelSpot" ? settings.cancelSpot.template : k === "reject" ? settings.reject.template : messageTemplate(settings, k);
   const sample = MESSAGE_TYPES.find((m) => m.key === k)?.sample ?? {};
   const facts = { ...SAMPLE_VARS, ...sample } as VoiceFacts;

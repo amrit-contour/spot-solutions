@@ -36,7 +36,7 @@ export interface VoiceSources {
 }
 
 /** Messages that can be written in the curator's voice. Group invite notes stay as typed. */
-export type VoiceKind = "ack" | "confirm" | "cancelSpot" | "reject" | "reply" | Exclude<MessageKey, "groupWelcome" | GroupPostKey>;
+export type VoiceKind = "ack" | "confirm" | "cancelSpot" | "reject" | "reply" | "spotAsk" | Exclude<MessageKey, "groupWelcome" | GroupPostKey>;
 
 export const VOICE_SAMPLE_CAP = 300;
 export const VOICE_EXAMPLE_CAP = 15;
@@ -108,6 +108,7 @@ const KIND_GOAL: Record<VoiceKind, string> = {
   ack: "Tell them you got their spot request and will confirm later. Don't promise a spot or say when.",
   reply: "Say what the curator typed below, in their own voice. Change the wording only: no new facts.",
   confirm: "Confirm their spot with every detail below.",
+  spotAsk: "The writer is a comic asking this curator for a spot at their show. Keep it short and friendly, with the show, day and date exactly as given.",
   cancelSpot: "Tell them, kindly, that you've had to take them off the lineup.",
   reject: "Tell them, kindly, there's no spot for them this week.",
   onboard: "Ask who they are: full name, comedy scene, how long they've done comedy, and if they're travelling.",

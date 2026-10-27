@@ -139,6 +139,8 @@ export interface Room extends Omit<RoomShared, "shows"> {
   shows: RoomShow[];
   myNotes?: string;
   pausedUntil?: string;
+  /** Private. When an ask window opens: send the ask by itself ("auto") or leave it as a draft to review ("review", the default). */
+  askMode?: "auto" | "review";
 }
 
 export interface Curator {
@@ -164,6 +166,19 @@ export interface SharedRoster {
 }
 
 export type AskStatus = "planned" | "sent" | "got_it" | "declined" | "no_reply" | "expired";
+
+/** What the curator's reply to an ask was read as. `unclear` waits for the comic to decide. */
+export interface AskReply {
+  text: string;
+  at: number;
+  messageId?: string;
+  decision: "got_it" | "declined" | "unclear";
+  /** The reply was only an emoji or a one-word yes, so it is worth a second look. */
+  unsure?: boolean;
+  /** A time the curator named (HH:MM), when the ask didn't have one. */
+  time?: string;
+}
+
 export interface Ask {
   id: string;
   roomId: string;
@@ -181,6 +196,32 @@ export interface Ask {
   /** The curator's reply that settled it. */
   evidence?: { text: string; at: number; messageId?: string };
   createdAt: number;
+  /** Denormalised so an ask outlives its room and reads well in a list. */
+  roomName?: string;
+  showName?: string;
+  curatorName?: string;
+  /** How it was meant to go out: the worker sent it by itself ("auto") or the comic reviewed it ("review"). */
+  mode?: "auto" | "review";
+  /** Write it in the comic's own voice when it is sent (only does anything when "Your voice" is on). Default on. */
+  voice?: boolean;
+  /** The comic chose to skip this one: it is not offered again. */
+  skipped?: boolean;
+  /** WhatsApp ids from the send, so replies are read from the right chat after the send. */
+  messageId?: string;
+  chatId?: string;
+  /** Why the last send failed. */
+  error?: string;
+  /** The worker is sending it right now (guards against a double send). */
+  sendingAt?: number;
+  /** The window closes at this time (ms): the show's start. */
+  closesAt?: number;
+  /** When the "window is open" and "closing soon" reminders went out (ms). */
+  remindedOpenAt?: number;
+  remindedCloseAt?: number;
+  /** The latest reply read, kept while the comic still has to confirm it. */
+  lastReply?: AskReply;
+  /** The worker looked for replies up to this time (ms). */
+  readAt?: number;
 }
 
 export type SpotSource = "ask" | "adhoc" | "group_offer" | "regular";
@@ -333,6 +374,9 @@ const toMs = (iso: string) => {
 const addDays = (iso: string, n: number) => new Date(toMs(iso) + n * DAY_MS).toISOString().slice(0, 10);
 export const weekdayOf = (iso: string) => new Date(toMs(iso)).getUTCDay() as Weekday;
 const mondayOf = (iso: string) => addDays(iso, -((weekdayOf(iso) + 6) % 7));
+/** The same date helpers, for the rest of the comic rules (asks, spots). */
+export const isoAddDays = addDays;
+export const isoMondayOf = mondayOf;
 const minutes = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
   return h! * 60 + (m || 0);

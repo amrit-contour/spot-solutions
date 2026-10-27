@@ -432,7 +432,8 @@ export type CommandType =
   | "summarize_thread"
   | "list_voice_sources"
   | "cleanup_group"
-  | "settle_round";
+  | "settle_round"
+  | "send_ask";
 
 export interface Command {
   type: CommandType;

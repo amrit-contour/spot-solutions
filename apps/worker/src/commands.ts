@@ -61,6 +61,7 @@ import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
 import { getMedia, getThread, listThreads, summarizeThread } from "./chats.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { settleRound } from "./replies.ts";
+import { sendAsk } from "./asks.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
@@ -534,6 +535,12 @@ const handlers: Record<Command["type"], Handler> = {
     }
     await deliverDraft(uid, client, String(to), text, r, mentions);
     return { body: text };
+  },
+
+  /** Nothing BOT Comedy: send one drafted ask to a room's curator (asks/{askId}). In the comic's voice when the ask says so. */
+  async send_ask(uid, { askId }) {
+    if (!askId) throw new Error("Pick an ask to send.");
+    return sendAsk(uid, String(askId));
   },
 
   /** The curator's answer to "clear the group?" (Updates), or a clear-now. keep: leave everyone in. */
