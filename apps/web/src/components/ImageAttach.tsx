@@ -193,7 +193,7 @@ export function ImageField({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate type-label-l">{att.status === "preparing" ? "Preparing photo…" : att.status === "uploading" ? "Uploading…" : "Photo"}</span>
-            <span className="block truncate type-body-s text-on-surface-variant">{mine ? `${formatBytes(mine.bytes)} · the text above goes as its caption` : "The text above goes as its caption"}</span>
+            <span className="block type-body-s text-on-surface-variant">{mine ? `${formatBytes(mine.bytes)} · the text above goes as its caption` : "The text above goes as its caption"}</span>
           </span>
           <PickImage onPick={(f) => void att.pick(f)}>
             {(open) => (

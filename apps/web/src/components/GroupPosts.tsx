@@ -305,12 +305,12 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pos
           <IconClock className="icon size-5 flex-none text-primary" />
           <span className="min-w-0 flex-1">
             <span className="block truncate type-title-s">{labelOf(post.template)}</span>
-            <span className="block truncate type-body-s text-on-surface-variant">
+            <span className="block type-body-s text-on-surface-variant">
               {whenLabel(post.daysBefore)}, {formatTime(post.time)}
               {hasCriteria(post.criteria) && ` · ${criteriaSummary(post.criteria)}`}
               {post.enabled ? ` · next ${nextLabel}` : " · paused"}
             </span>
-            {status && <span className={cx("block truncate type-label-m", status.state === "waiting" ? "text-primary" : "text-on-surface-variant")}>{status.text} · for {formatDate(status.showDate)}</span>}
+            {status && <span className={cx("block type-label-m", status.state === "waiting" ? "text-primary" : "text-on-surface-variant")}>{status.text} · for {formatDate(status.showDate)}</span>}
           </span>
           <IconArrowDown className={cx("icon size-4 flex-none text-on-surface-variant transition-transform duration-200", open && "rotate-180")} />
         </button>
@@ -331,7 +331,7 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pos
               onChange={(v) => setMessage(v === "own" ? msg : null)}
               options={[
                 { value: "template", label: "Use the template" },
-                { value: "own", label: "Change it for this show" },
+                { value: "own", label: "Change for this show" },
               ]}
             />
           )}
@@ -413,8 +413,14 @@ function SendOnlyIf({ post, onChange }: { post: GroupPost; onChange: (p: Partial
         ))}
       </div>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
-        <Select label="Comics on the lineup" value={String(c.minComics ?? 0)} onChange={(v) => set({ minComics: Number(v) || undefined })} options={MIN_OPTIONS} />
-        <Select label="Lineup repeats next week" value={c.repeats === undefined ? "" : c.repeats ? "yes" : "no"} onChange={(v) => set({ repeats: v === "" ? undefined : v === "yes" })} options={REPEAT_OPTIONS} />
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="px-1 type-label-m text-on-surface-variant">Comics on the lineup</span>
+          <Select label="Comics on the lineup" value={String(c.minComics ?? 0)} onChange={(v) => set({ minComics: Number(v) || undefined })} options={MIN_OPTIONS} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="px-1 type-label-m text-on-surface-variant">Lineup repeats next week</span>
+          <Select label="Lineup repeats next week" value={c.repeats === undefined ? "" : c.repeats ? "yes" : "no"} onChange={(v) => set({ repeats: v === "" ? undefined : v === "yes" })} options={REPEAT_OPTIONS} />
+        </div>
       </div>
       <label className="flex items-center gap-3">
         <span className="min-w-0 flex-1 type-body-m">The lineup is full</span>
@@ -423,7 +429,10 @@ function SendOnlyIf({ post, onChange }: { post: GroupPost; onChange: (p: Partial
       {needsAnswer && (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-1 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end sm:gap-3">
           <p className="type-body-s text-on-surface-variant">If an answer isn't in yet ("did it happen?", "repeating?"), the post waits, then skips and says why. It never waits past the end of its day.</p>
-          <Select label="Wait up to" value={String(c.waitHours ?? DEFAULT_WAIT_HOURS)} onChange={(v) => set({ waitHours: Number(v) })} options={WAIT_OPTIONS} />
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="px-1 type-label-m text-on-surface-variant">Wait up to</span>
+            <Select label="Wait up to" value={String(c.waitHours ?? DEFAULT_WAIT_HOURS)} onChange={(v) => set({ waitHours: Number(v) })} options={WAIT_OPTIONS} />
+          </div>
         </div>
       )}
       <p className="type-body-s text-on-surface-variant">{summary ? `Goes out ${summary}. Skipped posts show why on the show's Activity.` : "Always goes out, unless the show is called off or didn't happen."}</p>

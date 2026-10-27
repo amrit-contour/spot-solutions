@@ -349,7 +349,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                     </Link>
                   )}
                 </div>
-                <GroupPostsEditor show={{ id: draft.id, name: draft.name ?? "", weekday: draft.weekday ?? 1, startTime: draft.startTime ?? "20:00", venueId: draft.venueId ?? "", groupPostsSent: value?.groupPostsSent, pocs: draft.pocs }} posts={draft.groupPosts ?? []} onChange={(v) => set("groupPosts", v)} />
+                <GroupPostsEditor show={{ id: draft.id, name: draft.name ?? "", weekday: draft.weekday ?? 1, startTime: draft.startTime ?? "20:00", venueId: draft.venueId ?? "", groupPostsSent: value?.groupPostsSent, groupPostStatus: value?.groupPostStatus, pocs: draft.pocs }} posts={draft.groupPosts ?? []} onChange={(v) => set("groupPosts", v)} />
               </div>
               <ShowPeoplePicker label="POCs (run the mic; always stay; tagged with {{pocs}})" icon={IconUserCheck} selected={draft.pocs ?? []} onToggle={(ids, id) => toggleIn("pocs", ids, id)} comics={comics} members={groupMembers} roles={roles} />
               <div className="flex flex-col gap-3 rounded-lg bg-surface-container p-4">

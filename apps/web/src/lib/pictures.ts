@@ -17,7 +17,7 @@ function storageSdk() {
     const app = getApp();
     const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || app.options.storageBucket || `${app.options.projectId}.firebasestorage.app`;
     const storage = sdk.getStorage(app, `gs://${bucket}`);
-    if (emulate) sdk.connectStorageEmulator(storage, "127.0.0.1", 9199);
+    if (emulate) sdk.connectStorageEmulator(storage, "127.0.0.1", Number(import.meta.env.VITE_EMULATOR_STORAGE_PORT || 9199));
     return { storage, sdk };
   });
   return ready;

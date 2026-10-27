@@ -178,12 +178,14 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
         <ol className={cx("mt-3 flex flex-col gap-1.5", off && "opacity-60")}>
           {slots.map((s, i) => {
             const pills = comicPills({ comic: comicsById.get(s.comicId), request: asks.find((r) => r.comicId === s.comicId), show, lastWeek, states: statesFor(s.comicId), days: false, adhoc: s.adhoc }, s.comicId);
+            const live = lineup && !off && !past ? liveOf(s) : null;
             return (
-              <li key={s.comicId} className="flex h-10 items-center gap-2.5 rounded-md bg-surface-container pr-3 pl-2">
+              // A row with a live pill wraps (name first, pills after) so the name is never squeezed out on a phone.
+              <li key={s.comicId} className={cx("flex items-center gap-x-2.5 rounded-md bg-surface-container pr-3 pl-2", live ? "min-h-10 flex-wrap gap-y-1 py-1" : "h-10")}>
                 <span className="w-4 flex-none text-center type-label-m text-on-surface-variant tabular">{i + 1}</span>
                 <ComicAvatar id={s.comicId} name={name(s.comicId)} size={28} />
-                <span className="min-w-0 flex-1 truncate type-body-m">{name(s.comicId)}</span>
-                {lineup && !off && !past && liveOf(s) && <LiveChip uid={uid} live={liveOf(s)!} name={name(s.comicId)} show={show} lineup={lineup} className="flex-none" />}
+                <span className={cx("min-w-0 flex-1 truncate type-body-m", live && "basis-24")}>{name(s.comicId)}</span>
+                {live && lineup && <LiveChip uid={uid} live={live} name={name(s.comicId)} show={show} lineup={lineup} className="flex-none" />}
                 <PillRow pills={pills} max={4} compact className="flex-none" />
               </li>
             );

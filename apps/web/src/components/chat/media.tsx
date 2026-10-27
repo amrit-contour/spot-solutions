@@ -161,7 +161,13 @@ function ZoomImage({ src }: { src: string }) {
   return (
     <div
       className="flex size-full touch-none items-center justify-center overflow-hidden"
-      onClick={(e) => e.stopPropagation()}
+      // A tap on the empty black around the picture (not zoomed in, not the end of a drag) closes the viewer; anything else stays.
+      onClick={(e) => {
+        // Pointer capture retargets the click to this box, so "outside the picture" is decided by where the tap landed.
+        const r = el.current?.getBoundingClientRect();
+        const outside = !r || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        if (!(outside && v.s <= 1.05 && !dragged.current)) e.stopPropagation();
+      }}
       onWheel={(e) => {
         const c = centre({ x: e.clientX, y: e.clientY });
         setV((cur) => clampView(zoomAbout(cur, cur.s * Math.exp(-e.deltaY * 0.0025), c.x, c.y), box()));

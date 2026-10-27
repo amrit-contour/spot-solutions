@@ -58,9 +58,11 @@ export function LiveChip({ uid, live, name, show, lineup, className }: { uid: st
       <Popover
         title={`${name}: ${label}`}
         width={320}
+        anchorClassName="relative inline-flex min-w-0 max-w-full"
         trigger={(toggle) => (
           <button type="button" onClick={toggle} aria-label={`${name}: ${label}. Show message and actions`} className="state-layer pressable inline-flex min-w-0 max-w-full rounded-sm">
-            <Pill tone={tone} icon={icon}>{label}</Pill>
+            {/* The words matter (the ETA), so on a narrow row they wrap onto a second line instead of being cut off. */}
+            <Pill tone={tone} icon={icon} className="h-auto min-h-5 py-0.5 text-left leading-tight whitespace-normal [&>span]:overflow-visible [&>span]:whitespace-normal">{label}</Pill>
           </button>
         )}
       >

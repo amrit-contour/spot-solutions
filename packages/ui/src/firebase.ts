@@ -22,6 +22,7 @@ export const db = initializeFirestore(app, {
 });
 
 if (emulate) {
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  // Ports can be overridden (VITE_EMULATOR_AUTH_PORT / _FIRESTORE_PORT / _STORAGE_PORT) so a second set of emulators can run beside the first.
+  connectAuthEmulator(auth, `http://127.0.0.1:${import.meta.env.VITE_EMULATOR_AUTH_PORT || 9099}`, { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", Number(import.meta.env.VITE_EMULATOR_FIRESTORE_PORT || 8080));
 }
