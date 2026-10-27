@@ -130,6 +130,10 @@ mkdir -p "${DATA_DIR}" "${APP_DIR}"
 curl -fsSL "${SRC_URL}" | tar -xz -C "${APP_DIR}"
 chown -R "${SVC_USER}:${SVC_USER}" "${APP_DIR}" "${DATA_DIR}"
 sudo -u "${SVC_USER}" -H bash -c "cd ${APP_DIR} && npx -y ${PNPM} install --frozen-lockfile --filter @spot/worker..."
+# pnpm skips puppeteer's own Chrome download when it installs from its store cache, so make sure the browser is there
+# (an older install's identical build is copied instead of downloaded).
+sudo -u "${SVC_USER}" -H "${NODE}" "${APP_DIR}/deploy/ensure-browser.mjs" --from /var/lib/spot-solutions/.cache/puppeteer \
+  || { echo "Couldn't install the browser WhatsApp needs (Chrome). Check the internet connection and run this again."; exit 1; }
 ok "Code at ${APP_DIR}"
 
 step "Configuration"
@@ -245,6 +249,11 @@ systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target 
 ok "Sleep disabled, lid close ignored (takes effect after reboot)"
 
 for _ in $(seq 1 10); do [[ -f "${DATA_DIR}/console-token" ]] && break; sleep 1; done
+step "Checking everything"
+# The doctor (apps/worker/console/doctor.mjs): finds, reuses or downloads what this server needs, and says what it did.
+sudo -u "${SVC_USER}" -H env NBS_DATA_DIR="${DATA_DIR}" NBS_ENV_FILE="${ENV_FILE}" "${NODE}" "${APP_DIR}/apps/worker/console/doctor-run.mjs" --repair \
+  || echo "  Something this server needs is still broken (see above). Retry from the console: Check and repair."
+
 step "Done"
 echo "One-time setup: open the server console from a phone or laptop on THIS Wi-Fi:"
 /usr/local/bin/nbs-console-url | sed 's/^/  /'

@@ -165,6 +165,11 @@ $env:Path = "$NodeDir;$env:Path"   # again: steps above may have refreshed PATH
 $code = $LASTEXITCODE
 Pop-Location
 if ($code -ne 0) { throw "Installing dependencies failed (see above)." }
+# pnpm skips puppeteer's own Chrome download when it installs from its store cache, so make sure the browser is there
+# (an older install's identical build is copied instead of downloaded).
+Step "WhatsApp's browser"
+& "$NodeDir\node.exe" "$AppDir\deploy\ensure-browser.mjs" --from "C:\SpotSolutions\chrome"
+if ($LASTEXITCODE -ne 0) { throw "Couldn't install the browser WhatsApp needs (Chrome). Check the internet connection and run this again." }
 
 Step "Configuration"
 # Same flow as Linux: no questions here. Keys go in through the Server Console afterwards
@@ -344,6 +349,12 @@ powercfg /change hibernate-timeout-ac 0
 powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0  # lid closed on power: do nothing
 powercfg /setactive SCHEME_CURRENT
 Ok "Sleep off while plugged in, lid close ignored"
+
+Step "Checking everything"
+# The doctor (apps\worker\console\doctor.mjs): finds, reuses or downloads what this server needs, and says what it did.
+$env:NBS_DATA_DIR = $DataDir; $env:NBS_ENV_FILE = $EnvFile
+& $Node "$AppDir\apps\worker\console\doctor-run.mjs" --repair
+if ($LASTEXITCODE -ne 0) { Write-Host "  Something this server needs is still broken (see above). It can be retried from the console: Check and repair." -ForegroundColor Yellow }
 
 Step "Done"
 Start-Sleep 5

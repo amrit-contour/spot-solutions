@@ -14,6 +14,7 @@ import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
 import { live } from "./stats.ts";
 import { wipeLogin } from "./vault.ts";
 import { prepareLoginSafe } from "./vaultCalls.ts";
+import { BROWSER_MISSING_MESSAGE, healBrowser, isMissingBrowserError } from "./browserHeal.ts";
 import { launchDecision, orphanPids, shouldFlagAbort } from "./fleetPlan.ts";
 
 const { Client, LocalAuth } = WAWebJS;
@@ -291,6 +292,19 @@ class SessionManager {
     try {
       await client.initialize();
     } catch (e) {
+      if (isMissingBrowserError(e)) {
+        // Chrome isn't on this server (pnpm skipped puppeteer's download). Install it once and try again; say it plainly, not puppeteer's text.
+        console.error(`[session] ${uid} can't start: ${BROWSER_MISSING_MESSAGE}`);
+        await this.stop(uid);
+        if (await healBrowser()) {
+          console.log(`[session] ${uid} the browser is installed now; starting again`);
+          this.scheduleRestart(uid, 2_000);
+        } else {
+          await setState(uid, { status: "error", error: BROWSER_MISSING_MESSAGE });
+          this.scheduleRestart(uid);
+        }
+        return;
+      }
       console.error(`[session] ${uid} failed to start`, e);
       await setState(uid, { status: "error", error: (e as Error).message });
       await this.stop(uid);

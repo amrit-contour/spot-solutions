@@ -51,6 +51,18 @@ LEGACY_ROOT="$HOME/Library/Application Support/SpotSolutions"
 step() { printf '\n▸ %s\n' "$*"; }
 ok()   { printf '  ✓ %s\n' "$*"; }
 die()  { printf '  ✗ %s\n' "$*" >&2; exit 1; }
+# pnpm skips puppeteer's own Chrome download when it installs from its store cache, so check for the browser ourselves
+# (copying an older install's identical build when there is one) and fail clearly if it can't be had. deploy/ensure-browser.mjs.
+# The doctor (apps/worker/console/doctor.mjs): finds, reuses or downloads what this server needs and says what it did.
+# Exit 1 only when something critical (Node, packages, browser, data folder) is still broken.
+run_doctor() {
+  [[ -f "$APP/apps/worker/console/doctor-run.mjs" ]] || return 0
+  PATH="$RT/node/bin:$PATH" PUPPETEER_CACHE_DIR="$ROOT/chrome" NBS_DATA_DIR="$DATA" NBS_ENV_FILE="$APP/apps/worker/.env" "$RT/node/bin/node" "$APP/apps/worker/console/doctor-run.mjs" "$@"
+}
+ensure_browser() {
+  [[ -f "$APP/deploy/ensure-browser.mjs" ]] || return 0
+  PATH="$RT/node/bin:$PATH" PUPPETEER_CACHE_DIR="$ROOT/chrome" "$RT/node/bin/node" "$APP/deploy/ensure-browser.mjs" --from "$LEGACY_ROOT/chrome"
+}
 
 node_bin() { echo "$RT/node/bin/node"; }
 
@@ -226,6 +238,8 @@ cmd_setup() {
   curl -fsSL "$SRC_URL" | tar -xz -C "$APP"
   ok "Version $(cat "$APP/VERSION" 2>/dev/null || echo dev)"
   (cd "$APP" && PATH="$RT/node/bin:$PATH" PUPPETEER_CACHE_DIR="$ROOT/chrome" "$RT/node/bin/npx" -y pnpm@9.15.4 install --frozen-lockfile --filter "@spot/worker...") || die "Installing dependencies failed"
+  step "WhatsApp's browser"
+  ensure_browser || die "Couldn't install the browser WhatsApp needs (Chrome). Check the internet connection and run setup again."
 
   step "Configuration"
   local env="$APP/apps/worker/.env"
@@ -261,6 +275,8 @@ EOF
     for _ in $(seq 1 30); do ollama_up && break; sleep 1; done
     "$(find_ollama)" pull "$MODEL" || die "Downloading $MODEL failed"
   fi
+  step "Checking everything"
+  run_doctor --repair || die "Setup finished, but something it needs is still broken (see above). Run: nbsctl doctor"
   ok "Done. Open the console to add your Firebase key."
 }
 
@@ -372,9 +388,15 @@ cmd_update() {
     step "Installing packages"; progress running "Installing packages"
     (cd "$APP" && PATH="$RT/node/bin:$PATH" PUPPETEER_CACHE_DIR="$ROOT/chrome" "$RT/node/bin/npx" -y pnpm@9.15.4 install --frozen-lockfile --filter "@spot/worker...") || task_fail "Installing packages failed. The old version may still run; try again."
   fi
+  # Every update, not only when packages changed: the browser build follows the pinned puppeteer, and a cache that is empty
+  # or from an older install gets fixed here.
   install_self "$APP/deploy/mac/nbsctl"
   write_agents          # the launch agents may have changed in this release
   ok "Version $latest"
+  # Every update: find, reuse or download what this release needs (the browser build follows the pinned puppeteer; pnpm skips
+  # puppeteer's own download when it installs from its store cache).
+  step "Checking everything"; progress running "Checking WhatsApp's browser and settings"
+  run_doctor --repair || task_fail "Something this version needs couldn't be set up (see the log). Check the internet connection and try again."
 
   step "Restarting"; progress running "Restarting the worker"
   # kickstart without -k leaves a running process alone, so an update would keep serving the old code.
@@ -492,6 +514,8 @@ case "${1:-}" in
   apply) cmd_apply ;;
   task) shift; cmd_task "${1:-}" ;;
   start) cmd_start ;;
+  doctor) shift; run_doctor --repair "$@" ;;
+  write-agents) write_agents ;;
   stop) cmd_stop ;;
   restart) shift; cmd_restart "${1:-all}" ;;
   status) cmd_status ;;

@@ -69,7 +69,7 @@ deploy/new-server-key.sh <device-name> [--dry-run]
 deploy/new-server-key.sh studio-mac
 ```
 
-It makes the same account with the same roles, and saves the key to `~/.spot-keys/spot-<device-name>.json` (folder mode 700; set `NBS_KEY_DIR` to change it). The device name is lower-cased, anything but letters, digits and dashes becomes a dash, and the full account name must be 6 to 30 characters. Running it again adds a fresh key. `--dry-run` prints the `gcloud` commands. `NBS_PROJECT` and `NBS_BUCKET` override the project (default `spot-solutions`) and bucket (default `spot-solutions.firebasestorage.app`). The script is also served at `https://nothingbotcurating.web.app/new-server-key.sh`.
+It makes the same account with the same roles, and saves the key to `~/.spot-keys/spot-<device-name>.json` (folder mode 700; set `NBS_KEY_DIR` to change it). The device name is lower-cased, anything but letters, digits and dashes becomes a dash, and the full account name must be 6 to 30 characters. Running it again adds a fresh key. `--dry-run` prints the `gcloud` commands. `NBS_PROJECT` and `NBS_BUCKET` override the project (default `spot-solutions`) and bucket (default `spot-solutions.firebasestorage.app`). The script is an admin tool and is not hosted on the website: run it from a checkout of the repo.
 
 In that server's console, open **First server ever? Use a key file** and drop `spot-<device-name>.json` onto it (this is also where the very first server of a brand-new project goes, when nobody is an admin yet). The worker restarts by itself. Delete the file from the machine you made it on. It is a password.
 

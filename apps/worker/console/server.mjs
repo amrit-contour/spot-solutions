@@ -21,6 +21,8 @@ import { createLive } from "./live.mjs";
 import { createStorage } from "./storageview.mjs";
 import { createBrowser } from "./fsbrowse.mjs";
 import { createWorkerControl, isStopped } from "./control.mjs";
+import { createMachine } from "./doctor-run.mjs";
+import { runDoctor, summarize } from "./doctor.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 
 const exec = promisify(execFile);
@@ -138,6 +140,14 @@ const workerCtl = createWorkerControl({
   platform: process.platform, uid: process.getuid?.() ?? 0, home: os.homedir(), dataDir: DATA, chromeDir: process.env.PUPPETEER_CACHE_DIR ?? "",
   run: runCmd, active: (svc) => isActive(svc === "ollama" ? "ollama" : "nothing-bot-server-worker"), readEnv, writeEnv, dry: DRY,
 });
+// Doctor (doctor.mjs): the same checks the installer and updater run, here for the "Check and repair" button.
+let doctorBusy = null;
+async function doctorRun(opts) {
+  if (doctorBusy) { await doctorBusy.catch(() => {}); }
+  const p = runDoctor(createMachine({ env: process.env }), opts).then((r) => ({ ...r, summary: summarize(r), at: Date.now() }));
+  doctorBusy = p;
+  try { return await p; } finally { if (doctorBusy === p) doctorBusy = null; }
+}
 function tailFile(file, bytes = 24000) {
   if (!existsSync(file)) return null;
   const size = statSync(file).size;
@@ -514,6 +524,14 @@ createServer(async (req, res) => {
       }
     }
 
+    // The doctor: GET checks everything (nothing is changed); POST {id?} repairs one check, or all of them, then reports. One run at a time.
+    if (url.pathname === "/api/doctor" && req.method === "GET") return json(res, 200, await doctorRun({ repair: false }));
+    if (url.pathname === "/api/doctor/repair" && req.method === "POST") {
+      const b = await body(req);
+      if (DRY) return json(res, 200, await doctorRun({ repair: false }));
+      return json(res, 200, await doctorRun({ repair: true, only: typeof b.id === "string" ? [b.id] : null }));
+    }
+
     if (url.pathname === "/api/restart" && req.method === "POST") {
       const { service } = await body(req);
       if (service === "ollama" && noLocalModel()) return json(res, 400, { error: "This server runs without a local model (Gemini only)." });
@@ -529,4 +547,6 @@ createServer(async (req, res) => {
   }
 }).listen(PORT, "0.0.0.0", () => {
   console.log(`[console] http://${lanIps()[0] ?? "localhost"}:${PORT}/?token=${TOKEN}`);
+  // Quick doctor pass at start (no network, no downloads); problems are logged, repairs wait for the button or the next update.
+  if (!DRY) doctorRun({ repair: false, quick: true }).then((r) => { if (!r.ok) console.warn(`[doctor] ${r.summary}`); }).catch(() => {});
 });

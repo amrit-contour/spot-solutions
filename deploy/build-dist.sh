@@ -4,7 +4,7 @@
 #
 # Two sets of files land in dl/, and they never share a name:
 #   NEW  (Nothing BOT Server):  dl/nothing-bot-server.json, dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip,
-#                               dl/NothingBotServer-mac.zip, plus install.sh, install.ps1, install-mac.sh, uninstall.sh at the root.
+#                               dl/NothingBotServer-mac.zip, plus install.sh, install.ps1, install-mac.sh, uninstall.sh at the root (never the admin key scripts).
 #   LEGACY (frozen at 3c43570): dl/version.json, dl/spot-solutions.tar.gz, dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip,
 #                               copied unchanged from deploy/legacy-dl/ (gitignored). Servers installed before the rename
 #                               poll /dl/version.json and download /dl/spot-solutions.tar.gz; they must never be offered the
@@ -60,9 +60,9 @@ cp deploy/ubuntu/uninstall.sh "$DIST/uninstall.sh"
 # Migration helpers (docs/migrate-to-nothing-bot-server.md): run on the owner's Mac, no secrets inside.
 cp deploy/migrate/migrate-mac.sh "$DIST/migrate-mac.sh"
 cp deploy/migrate/restore-backup.sh "$DIST/restore-backup.sh"
-# Admin helpers for per-device Firebase keys (need gcloud; contain no secrets).
-cp deploy/new-server-key.sh "$DIST/new-server-key.sh"
-cp deploy/revoke-server-key.sh "$DIST/revoke-server-key.sh"
+# new-server-key.sh / revoke-server-key.sh are admin tools (they spell out the project, bucket and IAM layout): they are
+# NOT hosted. Run them from a checkout of the repo (docs/multi-server.md). Remove any copy an earlier build left behind.
+rm -f "$DIST/new-server-key.sh" "$DIST/revoke-server-key.sh"
 cp deploy/windows/install.ps1 "$DIST/install.ps1"
 cp deploy/windows/uninstall.ps1 "$DIST/uninstall.ps1"
 (cd deploy && rm -f "$TMP/w.zip" && cp -R windows "$TMP/NothingBotServer-Windows" && cd "$TMP" && zip -qr w.zip NothingBotServer-Windows)
@@ -79,5 +79,5 @@ rm -rf "$TMP"
 # The frozen legacy files, byte for byte, every build.
 for f in "${LEGACY_FILES[@]}"; do cp "$LEGACY_DIR/$f" "$DIST/dl/$f"; done
 
-echo "dist (new):    dl/nothing-bot-server.json ($SHA), dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip, dl/NothingBotServer-mac.zip, install.sh, install.ps1, install-mac.sh, uninstall.sh, uninstall.ps1, migrate-mac.sh, restore-backup.sh, new-server-key.sh, revoke-server-key.sh"
+echo "dist (new):    dl/nothing-bot-server.json ($SHA), dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip, dl/NothingBotServer-mac.zip, install.sh, install.ps1, install-mac.sh, uninstall.sh, uninstall.ps1, migrate-mac.sh, restore-backup.sh"
 echo "dist (legacy): dl/version.json, dl/spot-solutions.tar.gz, dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip (frozen at $(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version)' "$LEGACY_DIR/version.json"))"

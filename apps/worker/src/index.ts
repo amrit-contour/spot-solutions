@@ -6,6 +6,7 @@ import { col, db, sessionRef } from "./firebase.ts";
 import { notice, runCommand } from "./commands.ts";
 import { isAdminEmail, startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
+import { checkBrowserAtStart } from "./browserHeal.ts";
 import { agentSessions } from "./agentSession.ts";
 import { onAgentMessage } from "./agent.ts";
 import { fleet } from "./fleet.ts";
@@ -65,6 +66,8 @@ async function main() {
   };
   setInterval(() => void pushStatus().catch((e) => console.error("[stats]", e.message)), HEARTBEAT_MS).unref();
   await pushStatus().catch((e) => console.error("[stats]", e.message)); // peers need our capacity before ranking us
+
+  checkBrowserAtStart(); // missing Chrome is installed in the background before the first session needs it
 
   // Only approved curators get a command listener; those who've linked WhatsApp also get a session.
   const userDocs = new Map<string, FirebaseFirestore.DocumentData>();

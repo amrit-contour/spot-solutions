@@ -236,6 +236,14 @@ try {
     Pop-Location
     if ($code -ne 0) { throw "Installing packages failed (see the console log). Try again." }
   }
+  # Every update: the doctor finds, reuses or downloads what this release needs (the browser build follows the pinned
+  # puppeteer; pnpm skips puppeteer's own download when it installs from its store cache). apps\worker\console\doctor.mjs
+  Set-Progress "running" "Checking WhatsApp's browser and settings"
+  $env:Path = "$NodeDir;$env:Path"
+  $env:PUPPETEER_CACHE_DIR = $ChromeDir
+  $env:NBS_DATA_DIR = $DataDir; $env:NBS_ENV_FILE = "$AppDir\apps\worker\.env"
+  & "$NodeDir\node.exe" "$AppDir\apps\worker\console\doctor-run.mjs" --repair
+  if ($LASTEXITCODE -ne 0) { throw "Something this version needs couldn't be set up (see the console log). Check the internet connection and try again." }
   Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
   Update-Launcher
   Update-ConsoleIcon

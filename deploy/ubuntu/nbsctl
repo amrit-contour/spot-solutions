@@ -171,6 +171,12 @@ if [[ "${NBS_SKIP_DEPS:-0}" != 1 ]] && [[ "$OLD_LOCK" != "$NEW_LOCK" || ! -d "$A
   PNPM="$("$NODE" -e 'try{const p=require(process.argv[1]).packageManager;console.log(/^pnpm@[0-9.]+$/.test(p)?p:"pnpm@9.15.4")}catch{console.log("pnpm@9.15.4")}' "$APP_DIR/package.json")"
   asuser bash -c "cd '$APP_DIR' && npx -y '$PNPM' install --frozen-lockfile --filter '@spot/worker...'" || fail "Installing packages failed. The old version may still run; try again."
 fi
+# Every update: the doctor finds, reuses or downloads what this release needs (the browser build follows the pinned puppeteer;
+# pnpm skips puppeteer's own download when it installs from its store cache). Runs as the service user. apps/worker/console/doctor.mjs
+progress running "Checking WhatsApp's browser and settings"
+if [[ "${NBS_SKIP_DEPS:-0}" != 1 && -f "$APP_DIR/apps/worker/console/doctor-run.mjs" ]]; then
+  asuser env NBS_DATA_DIR="$DATA_DIR" NBS_ENV_FILE="$ENV_FILE" "$NODE" "$APP_DIR/apps/worker/console/doctor-run.mjs" --repair || fail "Something this version needs couldn't be set up (see the log). Check the internet connection and try again."
+fi
 
 progress running "Restarting the worker and console"
 restart_worker
