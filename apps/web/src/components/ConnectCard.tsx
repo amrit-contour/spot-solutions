@@ -8,6 +8,7 @@ import { Button, ConfirmDialog, cx } from "@spot/ui";
 import { deriveLink, netNotice, phoneNotice, restartLabel, unreachableNotice } from "@spot/shared";
 import { IconLogout, IconPhone, IconQr, IconWarn } from "@spot/ui";
 import { LinkStatusPill, cardView, phoneLabel } from "./LinkStatusPill";
+import { LinkCardHeader, MenuItem, OverflowMenu } from "./LinkCardHeader";
 
 const QR_SIZE = 216;
 
@@ -44,21 +45,34 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
   const view = cardView(deriveLink(session, server), busy);
 
   const showQr = view === "qr" && Boolean(session?.qr);
+  const unlinkShown = view === "ready" || ((view === "offline" || view === "restarting" || view === "unknown") && status === "ready");
   const pillLabel = view === "ready" ? (stuck ? "Not responding" : "Connected") : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "unknown" ? phoneLabel(server.phone) : view === "starting" ? "Starting WhatsApp…" : view === "qr" ? "Waiting for scan" : "Not linked";
 
   return (
     <section id="whatsapp" className={cx("overflow-hidden rounded-xl bg-surface-low", compact ? "p-5 sm:p-8" : "p-4 sm:p-6")}>
       <div className={cx("grid items-center gap-6", showQr && "md:grid-cols-[1fr_auto] md:gap-8")}>
         <div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {!compact && (
-              <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
-                <IconPhone className="icon size-5" />
-              </span>
-            )}
-            <h2 className="type-headline-s">{view === "ready" || (view === "unknown" && status === "ready") ? "WhatsApp is linked" : "Link your WhatsApp"}</h2>
-            <LinkStatusPill view={view} label={pillLabel} warn={stuck} />
-          </div>
+          <LinkCardHeader
+            icon={compact ? undefined : IconPhone}
+            title={view === "ready" || (view === "unknown" && status === "ready") ? "WhatsApp is linked" : "Link your WhatsApp"}
+            pill={<LinkStatusPill view={view} label={pillLabel} warn={stuck} />}
+            actions={
+              unlinkShown && (
+                <>
+                  <Button variant="outlined" size="sm" icon={IconLogout} onClick={() => setConfirmUnlink(true)} loading={busy} disabled={view !== "ready"} className="max-sm:hidden">
+                    Unlink
+                  </Button>
+                  <OverflowMenu label="More actions">
+                    {(close) => (
+                      <MenuItem disabled={view !== "ready" || busy} onClick={() => { close(); setConfirmUnlink(true); }}>
+                        Unlink
+                      </MenuItem>
+                    )}
+                  </OverflowMenu>
+                </>
+              )
+            }
+          />
           <AnimatePresence mode="wait" initial={false}>
             <motion.div key={view} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
               {view === "ready" && stuck && (
@@ -101,26 +115,18 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
               )}
             </motion.div>
           </AnimatePresence>
-          <div className="mt-6 flex flex-wrap gap-2">
-            {view === "ready" ? (
-              <Button variant="outlined" icon={IconLogout} onClick={() => setConfirmUnlink(true)} loading={busy}>
-                Unlink
-              </Button>
-            ) : (view === "offline" || view === "restarting" || view === "unknown") && status === "ready" ? (
-              <div className="flex flex-col gap-1.5">
-                <Button variant="outlined" icon={IconLogout} disabled>
-                  Unlink
-                </Button>
-                <p className="type-body-s text-on-surface-variant">
-                  {view === "restarting" ? "Unlink is off while the server restarts. It comes back by itself in a minute or two." : view === "unknown" ? "Unlink is off until your phone is back online." : "Unlink is off while the server is offline, so a missed connection can't sign you out."}
-                </p>
-              </div>
-            ) : view === "idle" ? (
+          {unlinkShown && view !== "ready" && (
+            <p className="mt-3 type-body-s text-on-surface-variant">
+              {view === "restarting" ? "Unlink is off while the server restarts. It comes back by itself in a minute or two." : view === "unknown" ? "Unlink is off until your phone is back online." : "Unlink is off while the server is offline, so a missed connection can't sign you out."}
+            </p>
+          )}
+          {view === "idle" && (
+            <div className="mt-6 flex flex-wrap gap-2">
               <Button icon={IconQr} onClick={connect} loading={busy}>
                 Show QR code
               </Button>
-            ) : null}
-          </div>
+            </div>
+          )}
           <p className="mt-5 flex items-start gap-2 type-body-s text-on-surface-variant">
             <IconWarn className="icon mt-px size-4 flex-none" />
             Uses WhatsApp Web through whatsapp-web.js, an unofficial client. Keep message volume human: Nothing BOT Curate spaces out every send.

@@ -12,6 +12,7 @@ import { isDemoUser } from "../lib/demo";
 import { Button, Collapsible, ConfirmDialog, Info, SettingRow, Switch, TimePicker, cx } from "@spot/ui";
 import { IconChatCheck, IconLogout, IconQr, IconSend, IconShield } from "@spot/ui";
 import { LinkStatusPill, cardView, phoneLabel } from "./LinkStatusPill";
+import { LinkCardHeader, MenuItem, OverflowMenu } from "./LinkCardHeader";
 
 const QR_SIZE = 216;
 const DEFAULTS = DEFAULT_SETTINGS.agent as AgentSettings;
@@ -32,6 +33,8 @@ export function AgentCard() {
   const view = cardView(deriveLink(agent, server), busy === "link");
 
   const showQr = view === "qr" && Boolean(agent?.qr);
+  // Unlink (and Send me a hello) live in the header while the agent is linked; off, with a reason underneath, when the server or phone is unreachable.
+  const unlinkShown = view === "ready" || ((view === "offline" || view === "restarting" || view === "unknown") && status === "ready");
   const pillLabel = view === "ready" ? "Connected" : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "unknown" ? phoneLabel(server.phone) : view === "starting" ? "Starting the agent…" : view === "qr" ? "Waiting for scan" : "Not linked";
 
   const run = async (kind: "link" | "unlink" | "test", type: "connect_agent" | "logout_agent" | "test_agent", done?: string) => {
@@ -60,23 +63,51 @@ export function AgentCard() {
     <section id="agent" className="overflow-hidden rounded-xl bg-surface-low p-4 sm:p-6">
       <div className={cx("grid items-center gap-6", showQr && "md:grid-cols-[1fr_auto] md:gap-8")}>
         <div>
-          <div className="flex items-center gap-3">
-            <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
-              <IconChatCheck className="icon size-5" />
-            </span>
-            <h2 className="type-headline-s">Agent number</h2>
-            <Info label="About the agent number">
-              A second WhatsApp number for Nothing BOT Curate to talk to you from. It only ever messages your own number, and only reads messages you send it. It never messages comics, groups or anyone else: anything that goes to comics still goes out from your own WhatsApp, and only after you say yes.
-            </Info>
-          </div>
-          <div className="mt-3"><LinkStatusPill view={view} label={pillLabel} /></div>
+          <LinkCardHeader
+            icon={IconChatCheck}
+            title="Agent number"
+            info={
+              <Info label="About the agent number">
+                A second WhatsApp number for Nothing BOT Curate to talk to you from. It only ever messages your own number, and only reads messages you send it. It never messages comics, groups or anyone else: anything that goes to comics still goes out from your own WhatsApp, and only after you say yes.
+              </Info>
+            }
+            pill={<LinkStatusPill view={view} label={pillLabel} />}
+            primary={
+              view === "ready" && (
+                <Button variant="tonal" size="sm" icon={IconSend} onClick={() => run("test", "test_agent", "Hello sent. Check your WhatsApp.")} loading={busy === "test"}>
+                  Send me a hello
+                </Button>
+              )
+            }
+            actions={
+              unlinkShown && (
+                <>
+                  <Button variant="outlined" size="sm" icon={IconLogout} onClick={() => setConfirmUnlink(true)} loading={busy === "unlink"} disabled={view !== "ready"} className="max-sm:hidden">
+                    Unlink
+                  </Button>
+                  <OverflowMenu label="More actions">
+                    {(close) => (
+                      <MenuItem disabled={view !== "ready" || busy === "unlink"} onClick={() => { close(); setConfirmUnlink(true); }}>
+                        Unlink
+                      </MenuItem>
+                    )}
+                  </OverflowMenu>
+                </>
+              )
+            }
+          />
           <AnimatePresence mode="wait" initial={false}>
             <motion.div key={view} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
               {view === "ready" && (
-                <p className="mt-3 type-body-l text-on-surface-variant">
-                  Talking to you as <span className="text-on-surface tabular">+{agent?.phone}</span>
-                  {agent?.pushName ? ` (${agent.pushName})` : ""}. Save it in your contacts, then message it from <span className="text-on-surface tabular">+{session?.phone}</span>. Try “Monday lineup?”.
-                </p>
+                <>
+                  <p className="mt-3 truncate type-body-l text-on-surface-variant">
+                    Talking to you as <span className="text-on-surface tabular">+{agent?.phone}</span>
+                    {agent?.pushName ? ` (${agent.pushName})` : ""}
+                  </p>
+                  <p className="mt-1 type-body-l text-on-surface-variant">
+                    Save it in your contacts, then message it from <span className="text-on-surface tabular">+{session?.phone}</span>. Try “Monday lineup?”.
+                  </p>
+                </>
               )}
               {view === "offline" && <p className="mt-3 type-body-l text-on-surface-variant">Your Nothing BOT Server isn't reachable, so the agent is paused. This card updates by itself once it's back.</p>}
               {(view === "idle" || view === "starting" || view === "qr") && (
@@ -101,31 +132,18 @@ export function AgentCard() {
             </motion.div>
           </AnimatePresence>
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            {view === "ready" ? (
-              <>
-                <Button variant="tonal" icon={IconSend} onClick={() => run("test", "test_agent", "Hello sent. Check your WhatsApp.")} loading={busy === "test"}>
-                  Send me a hello
-                </Button>
-                <Button variant="outlined" icon={IconLogout} onClick={() => setConfirmUnlink(true)} loading={busy === "unlink"}>
-                  Unlink
-                </Button>
-              </>
-            ) : (view === "offline" || view === "restarting" || view === "unknown") && status === "ready" ? (
-              <div className="flex flex-col gap-1.5">
-                <Button variant="outlined" icon={IconLogout} disabled>
-                  Unlink
-                </Button>
-                <p className="type-body-s text-on-surface-variant">
-                  {view === "restarting" ? `${restartLabel(serverRestarting?.reason)}. Unlink is off meanwhile; the agent comes back by itself.` : view === "unknown" ? `${phoneNotice(server)}. Unlink is off until your phone is back online.` : "Unlink is off while the server is offline."}
-                </p>
-              </div>
-            ) : view === "idle" ? (
+          {unlinkShown && view !== "ready" && (
+            <p className="mt-3 type-body-s text-on-surface-variant">
+              {view === "restarting" ? `${restartLabel(serverRestarting?.reason)}. Unlink is off meanwhile; the agent comes back by itself.` : view === "unknown" ? `${phoneNotice(server)}. Unlink is off until your phone is back online.` : "Unlink is off while the server is offline."}
+            </p>
+          )}
+          {view === "idle" && (
+            <div className="mt-5 flex flex-wrap gap-2">
               <Button icon={IconQr} onClick={() => run("link", "connect_agent")} loading={busy === "link"} disabled={demo || !mainReady || !workerOnline}>
                 Link agent number
               </Button>
-            ) : null}
-          </div>
+            </div>
+          )}
           {demo && <p className="mt-3 type-body-s text-on-surface-variant">The agent needs a linked WhatsApp, so it's off in the demo.</p>}
 
         </div>
