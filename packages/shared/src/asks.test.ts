@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ASK_SEND_FROM, CLOSING_SOON_MS, DEFAULT_ASK_TEMPLATE, askDayLabel, askDue, askHandled, askId, askShowLabel, askVars, awaitingReply, closesLabel, draftExpired,
+  ASK_SEND_FROM, limitsText, CLOSING_SOON_MS, DEFAULT_ASK_TEMPLATE, askDayLabel, askDue, askHandled, askId, askShowLabel, askVars, awaitingReply, closesLabel, draftExpired,
   emojiReply, missedReply, openNow, opensLabel, planAsks, reminderText, renderAsk, spanLabel, spotFromAsk, upcomingGroups, zonedMs,
 } from "./asks.ts";
 import type { Ask, Curator, MySpot, Room, RoomShow } from "./rooms.ts";
@@ -101,6 +101,8 @@ describe("planAsks", () => {
     expect(plan([limited], { mySpots: [spot({})] })[0]).toMatchObject({ blocked: true });
     expect(plan([limited], { mySpots: [spot({ source: "adhoc" })] })[0]).toMatchObject({ blocked: false });
     expect(plan([limited])[0]).toMatchObject({ blocked: false });
+    expect(limitsText(plan([limited], { mySpots: [spot({})] })[0]!.hits)).toBe("Over your limit: 1 a week");
+    expect(limitsText([])).toBe("");
   });
   it("can't send without a curator number, and says so", () => {
     const noNumber = room({}, mic({ days: [{ weekday: 4, curatorIds: ["sam"] }] }));

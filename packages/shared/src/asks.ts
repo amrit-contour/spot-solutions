@@ -224,6 +224,14 @@ export function planAsks(rooms: Room[], curators: Curator[], range: { from: stri
   return out.sort((a, b) => a.showDate.localeCompare(b.showDate) || a.label.localeCompare(b.label));
 }
 
+/** "Over your limit: 2 a week" for the first limit an ask would break. */
+export function limitsText(hits: LimitHit[]): string {
+  const h = hits[0];
+  if (!h) return "";
+  const per = h.per === "day" ? "a day" : h.per === "week" ? "a week" : "a month";
+  return `Over your limit: ${h.max} ${per}${h.limit.scope === "show" ? " at this show" : ""}`;
+}
+
 /** Asks open now, soonest to close first. */
 export const openNow = (plan: PlannedAsk[]) => plan.filter(openAsksOnly).sort((a, b) => a.closesAt - b.closesAt || a.label.localeCompare(b.label));
 

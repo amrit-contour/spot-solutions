@@ -10,6 +10,10 @@ import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/install";
 import { Placeholder } from "./routes/Placeholder";
 import { Rooms } from "./routes/Rooms";
+import { ComicStores } from "./routes/Stores";
+import { Today } from "./routes/Today";
+import { Asks } from "./routes/Asks";
+import { MySpots } from "./routes/MySpots";
 import { Alerts } from "./routes/Alerts";
 import { Groups } from "./routes/Groups";
 import { Settings } from "./routes/Settings";
@@ -76,12 +80,12 @@ export default function App() {
         <AppShell nav={NAV} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={(align) => <AccountMenu user={user} align={align} onSignOut={() => void signOut(auth)} />}>
           <PushBridge />
           <Routes>
-            <Route path="/" element={<Placeholder icon={IconCalendarMark} title="Today" subtitle="Your day at a glance." empty="Today is coming" text="A calendar of the spots you're on and the rooms you're watching will live here." />} />
             <Route path="/rooms/*" element={<RosterRoutes uid={user.uid} />} />
-            <Route path="/asks" element={<Placeholder icon={IconAdd} title="Asks" subtitle="Ask a room for a spot." empty="Asks are coming" text="Ask rooms for a spot in one tap, and see their replies here." />} />
-            <Route path="/spots" element={<Placeholder icon={IconMic} title="My spots" subtitle="Everything you're booked for." empty="My spots are coming" text="Your confirmed and pending spots across every room will list here." />} />
-            <Route path="/alerts" element={<Alerts uid={user.uid} />} />
-            <Route path="/groups" element={<Groups uid={user.uid} />} />
+            <Route element={<ComicStores uid={user.uid} />}>
+              <Route path="/" element={<Today />} />
+              <Route path="/asks" element={<Asks />} />
+              <Route path="/spots" element={<MySpots />} />
+            </Route>
             <Route path="/settings" element={<Settings uid={user.uid} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

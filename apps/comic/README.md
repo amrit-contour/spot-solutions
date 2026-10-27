@@ -13,7 +13,7 @@ pnpm dev:emulator     # terminal 2: http://localhost:5175 (reads .env.emulator, 
 On the sign-in page tap "Sign in as the emulator test user" (creates a throwaway local user). Rooms > the menu > "Load the
 Bangalore starter" > Apply fills it. Emulator data is wiped when the emulators stop. The switch only works in `vite dev`.
 
-Without any sign-in: `pnpm dev`, then open `/dev/rooms` (Bangalore seed) or `/dev/rooms?empty=1`. In memory, nothing is saved.
+Without any sign-in: `pnpm dev`, then open `/dev` (Today), `/dev/rooms`, `/dev/asks` or `/dev/spots` (Bangalore seed, with sample asks and spots) or add `?empty=1`. In memory, nothing is saved.
 
 ## Group spot alerts (emulator)
 

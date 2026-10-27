@@ -1,15 +1,43 @@
-// Dev only: the shell and Rooms page with no sign-in, on the Bangalore seed (or empty with ?empty=1). Nothing is saved.
-import { useLocation } from "react-router-dom";
+// Dev only: the shell, Rooms, Asks, My spots and Today with no sign-in, on the Bangalore seed (or empty with ?empty=1). Nothing is saved.
+import { useMemo } from "react";
+import { Route, Routes, useLocation } from "react-router-dom";
 import { ComicLogo } from "../components/ComicLogo";
 import { AppShell, Spinner, type NavEntry } from "@spot/ui";
 import { BLR_ROSTER } from "@spot/shared/fixtures/blrRooms";
-import { DevRooms } from "./DevRooms";
+import type { Roster } from "@spot/shared";
+import { AsksProvider, useMemoryAsks } from "../lib/asks";
+import { RosterProvider, useMemoryRoster } from "../lib/roster";
+import { demoAsksAndSpots, demoRoster } from "../lib/devSeed";
+import { Asks } from "./Asks";
+import { MySpots } from "./MySpots";
+import { Rooms } from "./Rooms";
+import { Today } from "./Today";
+
+function Demo({ initial }: { initial: Roster }) {
+  const seed = useMemo(() => demoAsksAndSpots(initial), [initial]);
+  const roster = useMemoryRoster(initial);
+  const asks = useMemoryAsks(seed);
+  return (
+    <RosterProvider store={roster}>
+      <AsksProvider store={asks}>
+        <Routes>
+          <Route path="/dev" element={<Today />} />
+          <Route path="/dev/rooms/*" element={<Rooms base="/dev/rooms" />} />
+          <Route path="/dev/asks" element={<Asks />} />
+          <Route path="/dev/spots" element={<MySpots />} />
+        </Routes>
+      </AsksProvider>
+    </RosterProvider>
+  );
+}
 
 export default function DevApp({ nav }: { nav: NavEntry[] }) {
   const empty = new URLSearchParams(useLocation().search).has("empty");
+  const devNav = nav.map((e) => ({ ...e, to: `/dev${e.to === "/" ? "" : e.to}` }));
+  const initial = useMemo(() => (empty ? { rooms: [], curators: [] } : demoRoster(structuredClone(BLR_ROSTER))), [empty]);
   return (
-    <AppShell nav={nav} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={() => null}>
-      {BLR_ROSTER ? <DevRooms initial={empty ? { rooms: [], curators: [] } : structuredClone(BLR_ROSTER)} /> : <Spinner />}
+    <AppShell nav={devNav} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={() => null}>
+      {BLR_ROSTER ? <Demo initial={initial} /> : <Spinner />}
     </AppShell>
   );
 }

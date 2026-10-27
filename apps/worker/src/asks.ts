@@ -37,7 +37,7 @@ import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
 import { ASK_REPLY_SCHEMA, NOT_TEXT, readAskReply, type ReplyMessage } from "./askReplyPrompt.ts";
 
-const PLAN_DAYS = 14;
+const PLAN_DAYS = 7;
 const READ_EVERY_MS = 10 * 60_000;
 const COMIC_RECHECK_MS = 30 * 60_000;
 const SENDING_STALE_MS = 5 * 60_000;
