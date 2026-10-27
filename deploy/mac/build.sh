@@ -26,7 +26,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Nothing BOT Server</string>
+  <key>CFBundleName</key><string>nBOT Server</string>
   <key>CFBundleDisplayName</key><string>Nothing BOT Server</string>
   <key>CFBundleIdentifier</key><string>app.nothingbot.server</string>
   <key>CFBundleExecutable</key><string>NothingBotServer</string>

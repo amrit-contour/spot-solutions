@@ -1,8 +1,8 @@
-// What the Nothing BOT apps show about the shared WhatsApp link and server. Pure: Curating and Comedy read the same
+// What the Nothing BOT apps show about the shared WhatsApp link and server. Pure: Curate and Comedy read the same
 // Firestore docs (users/{uid}/session/state, session/agent, fleet/lease) and must agree on what they mean.
 import type { SessionState } from "./types.ts";
 
-/** session/state.lastSeen fresher than this counts as "the server is up" (same rule Curating uses). */
+/** session/state.lastSeen fresher than this counts as "the server is up" (same rule Curate uses). */
 export const WORKER_STALE_MS = 90_000;
 
 export type LinkView = "connected" | "offline" | "qr" | "starting" | "unlinked";

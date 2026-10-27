@@ -6,7 +6,7 @@ Status: research note. Phase 1 (plain text, no buttons) is built on whatsapp-web
 
 Each account links two WhatsApp numbers:
 
-- **Your number** (today): comics message you, you reply, Nothing BOT Curating reads and drafts. Personal chats stay personal.
+- **Your number** (today): comics message you, you reply, Nothing BOT Curate reads and drafts. Personal chats stay personal.
 - **An agent number** (new, optional): a business number that talks to *you*. It asks "Did the Monday mic happen?", reminds you of ask windows for other rooms, and takes updates from you ("Bloom moved Thursday to 9 PM") and turns them into changes in the app. Because it's a business number, it can send real buttons and lists.
 
 ## What we tested

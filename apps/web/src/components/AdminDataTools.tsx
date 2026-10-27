@@ -119,7 +119,7 @@ export function RemoveUserDialog({ entry, servers, onClose }: { entry: AccessEnt
       <p>This will:</p>
       <ul className="list-disc pl-5">
         <li>log them out of WhatsApp on the server, which unlinks their phone</li>
-        <li>revoke their access to Nothing BOT Curating</li>
+        <li>revoke their access to Nothing BOT Curate</li>
         <li>delete all their data:</li>
       </ul>
       <Counts state={state} none="They have no data." />

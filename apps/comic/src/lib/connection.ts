@@ -1,5 +1,5 @@
-// The shared WhatsApp link and server, as Nothing BOT Comedy shows it. Same Firestore docs as Nothing BOT Curating: the signed-in uid
-// is the same account, so there is nothing to set up here. All of it is read-only; linking and servers live in Curating.
+// The shared WhatsApp link and server, as Nothing BOT Comedy shows it. Same Firestore docs as Nothing BOT Curate: the signed-in uid
+// is the same account, so there is nothing to set up here. All of it is read-only; linking and servers live in Curate.
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
@@ -7,7 +7,7 @@ import { isServerUp, linkView, serverLastSeen, type FleetServerSummary, type Lea
 import { useClock } from "./alerts";
 
 /** Where linking, relinking, choosing a server and installing one happen. */
-export const CURATING_URL = "https://nothingbotcurating.web.app";
+export const CURATING_URL = "https://nothingbotcurate.web.app";
 export const CURATING_WHATSAPP = `${CURATING_URL}/settings#whatsapp`;
 export const CURATING_AGENT = `${CURATING_URL}/settings#agent`;
 export const CURATING_SERVER = `${CURATING_URL}/server`;

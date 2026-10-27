@@ -42,7 +42,7 @@ function PushBridge() {
   return null;
 }
 
-// Same Firebase project and Google account as Nothing BOT Curating. Undefined while Firebase is still working it out.
+// Same Firebase project and Google account as Nothing BOT Curate. Undefined while Firebase is still working it out.
 function useAuthUser() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   useEffect(() => onAuthStateChanged(auth, setUser), []);

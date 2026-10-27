@@ -34,7 +34,7 @@ export function firestoreAdmins(db = getFirestore(), auth = getAuth()): AdminPor
           const t = Date.parse(u.metadata.lastRefreshTime ?? u.metadata.lastSignInTime ?? "");
           if (Number.isFinite(t)) seen.set(u.uid, t);
         }
-        // Curating keeps shows and lineups; Comedy keeps rooms and its own settings on the user doc.
+        // Curate keeps shows and lineups; Comedy keeps rooms and its own settings on the user doc.
         for (let j = 0; j < chunk.length; j += 20) {
           await Promise.all(
             chunk.slice(j, j + 20).map(async (uid) => {

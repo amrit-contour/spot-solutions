@@ -20,7 +20,7 @@ import { HeroDemo } from "../components/landing/HeroDemo";
 import { AlertDemo } from "../components/landing/AlertDemo";
 import { Button, cx } from "@spot/ui";
 
-const CURATING = "https://nothingbotcurating.web.app";
+const CURATING = "https://nothingbotcurate.web.app";
 
 const FEATURES = [
   { icon: IconBuilding, title: "Every open mic, in one roster", body: "Rooms, shows, who curates which day, and when to ask: the morning of, the day before, “ping Mondays”, or “they'll reach out”. Instagram-only and walk-in rooms are notes, not tasks." },
@@ -34,8 +34,8 @@ const FEATURES = [
 const FAQ = [
   ["Will it message curators without asking me?", "Only the way you set it. Each room is either “review first” (you tap Send) or “send on time”. Replies are never sent for you. Asks go out slowly, one at a time, so it reads like a person."],
   ["Where do my chats go?", "They stay on the laptop running your Nothing BOT Server. A model on that machine reads the replies and group messages. The app in your pocket only gets the results: Got it, Declined, a spot offer. Nothing is stored for chats you didn't watch."],
-  ["Do I need my own server?", "Yes, any computer that stays on: an old laptop, a Mac, a Windows PC or Ubuntu. One installer each, and it links your own WhatsApp. If you already run one for Nothing BOT Curating, it's the same server."],
-  ["I'm a curator too. Is this the same app?", "No, the sister app. Nothing BOT Curating is for the person receiving the requests. Nothing BOT Comedy is for the person sending them. Same Google account and same server, two apps."],
+  ["Do I need my own server?", "Yes, any computer that stays on: an old laptop, a Mac, a Windows PC or Ubuntu. One installer each, and it links your own WhatsApp. If you already run one for Nothing BOT Curate, it's the same server."],
+  ["I'm a curator too. Is this the same app?", "No, the sister app. Nothing BOT Curate is for the person receiving the requests. Nothing BOT Comedy is for the person sending them. Same Google account and same server, two apps."],
   ["What does it cost?", "Nothing. The app runs on Firebase's free tier, the model is open-weight and runs on your own computer, and there's no per-message bill."],
   ["Is it official WhatsApp?", "No. It uses whatsapp-web.js, an open-source WhatsApp Web client, and isn't affiliated with WhatsApp. That's why it keeps volume human and spaces messages out."],
   ["What's a community roster?", "A list of a city's rooms, shows and curators that one trusted person keeps up to date. You follow it, import it, and get a heads-up when it changes. It only shows to signed-in users, never on the open web."],
@@ -89,7 +89,7 @@ export function Landing() {
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.75, duration: 0.5, ease: EASE }} className="mt-8">
               <Ctas />
-              <p className="mt-4 type-body-s text-on-surface-variant">Free. Uses the same Google account as Nothing BOT Curating, if you have one.</p>
+              <p className="mt-4 type-body-s text-on-surface-variant">Free. Uses the same Google account as Nothing BOT Curate, if you have one.</p>
             </motion.div>
           </div>
           <motion.div className="min-w-0" initial={{ opacity: 0, y: 30, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.3, duration: 0.8, ease: EASE }}>
@@ -177,7 +177,7 @@ export function Landing() {
         <section id="private" className="relative z-10 mx-auto max-w-6xl scroll-mt-[calc(5rem+env(safe-area-inset-top))] px-5 py-24 sm:px-8">
           <div className="grid items-center gap-10 lg:grid-cols-2">
             <SectionHead kicker="Privacy" title="Your chats stay on your laptop.">
-              A small model runs on a computer you own, reads the replies and the groups you pick, and sends only the result to your phone. No per-message bill and nobody else's server reading your DMs. It's the same server Nothing BOT Curating uses, so if you curate too, there's nothing more to set up.
+              A small model runs on a computer you own, reads the replies and the groups you pick, and sends only the result to your phone. No per-message bill and nobody else's server reading your DMs. It's the same server Nothing BOT Curate uses, so if you curate too, there's nothing more to set up.
             </SectionHead>
             <Reveal className="grid gap-3 sm:grid-cols-2">
               {[
@@ -207,10 +207,10 @@ export function Landing() {
             </span>
             <div className="flex-1">
               <h3 className="type-title-l">Run a mic too?</h3>
-              <p className="mt-1 type-body-m text-on-surface-variant">Nothing BOT Curating is the other side of the table: it reads the spot requests in your DMs and builds your lineup.</p>
+              <p className="mt-1 type-body-m text-on-surface-variant">Nothing BOT Curate is the other side of the table: it reads the spot requests in your DMs and builds your lineup.</p>
             </div>
             <a href={CURATING} className="state-layer pressable inline-flex h-10 items-center justify-center rounded-full bg-secondary-container px-5 type-label-l whitespace-nowrap text-on-secondary-container">
-              Nothing BOT Curating
+              Nothing BOT Curate
             </a>
           </Reveal>
         </section>
@@ -246,7 +246,7 @@ export function Landing() {
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-5 py-8 type-body-s text-on-surface-variant sm:px-8">
             <span>Nothing BOT Comedy · Made by Amrit Dash · open source (MIT)</span>
             <div className="flex-1" />
-            <a className="hover:text-on-surface" href={CURATING}>Nothing BOT Curating</a>
+            <a className="hover:text-on-surface" href={CURATING}>Nothing BOT Curate</a>
             <a className="hover:text-on-surface" href="/privacy">Privacy</a>
             <a className="hover:text-on-surface" href="/terms">Terms</a>
             <a className="hover:text-on-surface" href="https://github.com/amrit-contour/spot-solutions" target="_blank" rel="noreferrer">GitHub</a>

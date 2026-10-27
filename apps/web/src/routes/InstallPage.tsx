@@ -98,7 +98,7 @@ export function InstallPage() {
         <Card className="mt-4 p-5 sm:p-6">
           <h2 className="type-title-m">2. Connect it</h2>
           <p className="mt-1 type-body-m text-on-surface-variant">
-            In the server console (it opens by itself, or use the link the installer printed), click <b>Connect with Nothing BOT Curating</b>. Open the link or scan the QR with your phone, sign in with Google as an admin, and approve. No key files.
+            In the server console (it opens by itself, or use the link the installer printed), click <b>Connect with Nothing BOT Curate</b>. Open the link or scan the QR with your phone, sign in with Google as an admin, and approve. No key files.
           </p>
           <h2 className="mt-5 type-title-m">3. Pick its AI</h2>
           <p className="mt-1 type-body-m text-on-surface-variant">

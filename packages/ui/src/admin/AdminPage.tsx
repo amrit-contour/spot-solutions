@@ -17,7 +17,7 @@ export interface AdminTab {
 }
 
 /**
- * The admin area both apps mount: Members and Admins, plus the app's own tabs (Comedy: Publishers, Curating: Tools).
+ * The admin area both apps mount: Members and Admins, plus the app's own tabs (Comedy: Publishers, Curate: Tools).
  * The tab lives in the URL hash so a link can open it. Render only for admins; the data it reads is admin-only in firestore.rules anyway.
  */
 export function AdminPage({ me, extraTabs = [], approveLimit, title = "Members & admins", subtitle = "Who can use the apps and who runs them" }: { me: { uid: string; email: string }; extraTabs?: AdminTab[]; approveLimit?: number; title?: string; subtitle?: string }) {

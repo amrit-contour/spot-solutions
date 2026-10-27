@@ -1,4 +1,4 @@
-// Account → Members and admins (admins only): the shared Members and Admins tabs from @spot/ui, plus what only Curating has:
+// Account → Members and admins (admins only): the shared Members and Admins tabs from @spot/ui, plus what only Curate has:
 // how many curators there can be, invites by email, and the demo-sandbox tool.
 import { doc, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
@@ -35,5 +35,5 @@ export function AdminArea() {
   const cfg = useAccessConfig();
   const max = cfg?.maxCurators ?? 6;
   if (!user.email) return null;
-  return <AdminPage me={{ uid: user.uid, email: user.email }} approveLimit={max} extraTabs={[{ id: "curating", label: "Curating", node: <CuratingTools max={max} /> }]} />;
+  return <AdminPage me={{ uid: user.uid, email: user.email }} approveLimit={max} extraTabs={[{ id: "curating", label: "Curate", node: <CuratingTools max={max} /> }]} />;
 }

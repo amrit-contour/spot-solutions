@@ -68,7 +68,7 @@ export function SignIn() {
         <div className="flex items-center gap-3">
           <CuratingLogo className="size-10" />
           <span className="flex flex-col leading-tight">
-            <span className="type-title-m">Nothing BOT Curating</span>
+            <span className="type-title-m">Nothing BOT Curate</span>
           </span>
         </div>
         <div className="my-12 max-w-xl">

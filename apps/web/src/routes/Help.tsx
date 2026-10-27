@@ -1,4 +1,4 @@
-// Public server guide: nothingbotcurating.web.app/help. No sign-in needed.
+// Public server guide: nothingbotcurate.web.app/help. No sign-in needed.
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { toast } from "sonner";
@@ -147,7 +147,7 @@ export function HelpPage() {
           {pick}
 
           <Section id="overview" title="How it works">
-            <P>Nothing BOT Curating has two halves:</P>
+            <P>Nothing BOT Curate has two halves:</P>
             <Bullets>
               <li><B>The app</B> (this website). You and other curators use it from any phone or computer to see requests, build lineups and send confirmations. Your data lives in the cloud (Firebase).</li>
               <li><B>The server</B>: one computer you keep on (an old laptop, a Mac, a Windows PC). It keeps each curator's WhatsApp linked, runs Gemma locally to read DMs, and sends the messages you approve.</li>
@@ -168,7 +168,7 @@ export function HelpPage() {
               ]}
             />
             <h3 id="get-code" className="mt-6 type-title-m">How a server connects</h3>
-            <P>You don't need a key file or a code. After installing, the server console shows <B>Connect with your Nothing BOT Curating account</B>: a link and a QR code. Open it on the same computer or scan it with your phone, sign in with Google, check that the 4-character check matches, and approve. The server makes its own key, and your email becomes one of its admins. The link works once and lasts 15 minutes. Only admins can approve; anyone else sees "ask an admin".</P>
+            <P>You don't need a key file or a code. After installing, the server console shows <B>Connect with your Nothing BOT Curate account</B>: a link and a QR code. Open it on the same computer or scan it with your phone, sign in with Google, check that the 4-character check matches, and approve. The server makes its own key, and your email becomes one of its admins. The link works once and lasts 15 minutes. Only admins can approve; anyone else sees "ask an admin".</P>
             <P><B>Prefer a code?</B> In the app, open <B>Account → Server</B>, click <B>Add a server</B>, then <B>Make a code</B> (like <Code>SPOT-7K3F-Q9TX</Code>, works once, lasts 15 minutes) and type it into the console under <B>Have a join code from the app?</B></P>
             <Callout>Each server gets its own key, made for it. Nothing to download or move around, and one server can be removed without touching the others. The only time you need a key file is the very first server of a brand-new project, before anyone is an admin: the console tucks that under <B>First server ever?</B></Callout>
           </Section>
@@ -192,7 +192,7 @@ export function HelpPage() {
                 </Steps>
                 <P>Or, in PowerShell as Administrator:</P>
                 <Cmd>{"Set-ExecutionPolicy -Scope Process Bypass -Force\nirm https://nothingbotcurating.web.app/install.ps1 | iex"}</Cmd>
-                <P>When it finishes you'll have <B>Nothing BOT Server Console</B> and <B>Nothing BOT Curating</B> on the desktop and in the Start menu.</P>
+                <P>When it finishes you'll have <B>Nothing BOT Server Console</B> and <B>Nothing BOT Curate</B> on the desktop and in the Start menu.</P>
               </>
             )}
             {os === "linux" && (
@@ -213,9 +213,9 @@ export function HelpPage() {
                 {os === "mac" ? " (it's inside the Nothing BOT Server window)" : os === "windows" ? " (the Nothing BOT Server Console shortcut; it opens by itself after installing)" : <> from a phone or laptop on the same Wi-Fi, using the link the installer printed. Lost it? Run <Code>sudo nbs-console-url</Code></>}
                 .
               </li>
-              <li>Click <B>Connect with Nothing BOT Curating</B>, open the link (or scan the QR with your phone), sign in with Google and approve. The worker starts by itself, and your email is added as an admin so the server shows in the app under <B>Account → Server</B>. A join code from the app works too; see <a className="underline" href="#get-code">above</a>.</li>
+              <li>Click <B>Connect with Nothing BOT Curate</B>, open the link (or scan the QR with your phone), sign in with Google and approve. The worker starts by itself, and your email is added as an admin so the server shows in the app under <B>Account → Server</B>. A join code from the app works too; see <a className="underline" href="#get-code">above</a>.</li>
               <li>Optional: open <B>AI models</B> in the console to add a Gemini key (it's checked with Google before it's saved), pick models, test them, or turn the local model on or off.</li>
-              <li>On any computer, open <Link className="text-primary underline-offset-4 hover:underline" to="/settings">Nothing BOT Curating → Settings</Link> → <B>Show QR code</B>, and scan it from WhatsApp on your phone (<B>Settings → Linked devices → Link a device</B>).</li>
+              <li>On any computer, open <Link className="text-primary underline-offset-4 hover:underline" to="/settings">Nothing BOT Curate → Settings</Link> → <B>Show QR code</B>, and scan it from WhatsApp on your phone (<B>Settings → Linked devices → Link a device</B>).</li>
             </Steps>
             <Callout tone="ok">That's it. From now on you can manage the server from the app, from anywhere. The console is only needed to join.</Callout>
             <P>Other curators don't touch the server. They sign in on the website, you approve them under <B>Account → Server → Curators</B>, and they link their own WhatsApp from their Settings.</P>
@@ -224,7 +224,7 @@ export function HelpPage() {
           <Section id="several-servers" title="Running several servers">
             <P>You can run as many servers as you like. Each WhatsApp account runs on one server at a time. If that server goes offline, another one takes the account over with its saved login, with no new QR scan.</P>
             <P><B>One key per device.</B> Never copy one Firebase key between computers. A join code makes each server its own key (see <a className="underline" href="#get-code">above</a>). Lost or retired a device? On <B>Account → Server</B>, click <B>Remove server</B>. That deletes its key and the others carry on. If the server is online and still runs accounts, you are asked to confirm first.</P>
-            <P>Servers set up with the project's default Firebase key (older installs) are only removed from the list. Their key isn't revoked, since Nothing BOT Curating didn't make it.</P>
+            <P>Servers set up with the project's default Firebase key (older installs) are only removed from the list. Their key isn't revoked, since Nothing BOT Curate didn't make it.</P>
             <P><B>Fallback.</B> If a server can't use a code, make its key by hand on your own Mac (with the Google Cloud CLI signed in), from the project folder, and click <B>or drop a key file</B> in its console:</P>
             <Cmd>deploy/new-server-key.sh studio-mac</Cmd>
             <P>The key can only use the database, the login backups and push notifications, nothing else. To revoke one by hand:</P>

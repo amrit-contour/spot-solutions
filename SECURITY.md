@@ -1,6 +1,6 @@
 # Security
 
-This covers Nothing BOT Curating, Nothing BOT Comedy and Nothing BOT Server. They share one Firebase project, one privacy policy and one set of rules.
+This covers Nothing BOT Curate, Nothing BOT Comedy and Nothing BOT Server. They share one Firebase project, one privacy policy and one set of rules.
 
 ## Report a vulnerability
 

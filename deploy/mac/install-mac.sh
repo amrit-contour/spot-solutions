@@ -40,5 +40,5 @@ if [[ "${NBS_SKIP_SETUP:-0}" != 1 ]]; then
   echo "▸ Setting up this Mac"
   "/Applications/Nothing BOT Server.app/Contents/Resources/nbsctl" setup || echo "Setup didn't finish. Open Nothing BOT Server and click Set up this Mac to retry."
 fi
-echo "✓ Opening Nothing BOT Server. In its console, click Connect with Nothing BOT Curating and sign in."
+echo "✓ Opening Nothing BOT Server. In its console, click Connect with Nothing BOT Curate and sign in."
 open "/Applications/Nothing BOT Server.app"

@@ -169,7 +169,7 @@ function Wait-Console([int]$Seconds = 40) {
 }
 
 # Desktop + Start menu shortcuts, always rewritten so icons and addresses are current: the console uses the Nothing BOT
-# Server icon, the Curating web app uses the Curating icon (both ship in the code download, no downloading at install time).
+# Server icon, the Curate web app uses the Curate icon (both ship in the code download, no downloading at install time).
 function Install-Shortcuts {
   try {
     $shell = New-Object -ComObject WScript.Shell
@@ -182,9 +182,11 @@ function Install-Shortcuts {
     $places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT Server")
     New-Item -ItemType Directory -Force -Path $places[1] | Out-Null
     foreach ($dir in $places) {
+      # The web app was called "Nothing BOT Curating" before the rename: drop the old-named shortcut.
+      Remove-Item -Force -ErrorAction SilentlyContinue "$dir\Nothing BOT Curating.lnk"
       foreach ($sc in @(
         @{ Name = "Nothing BOT Server Console"; Url = "http://localhost:7420"; Icon = $serverIcon },
-        @{ Name = "Nothing BOT Curating"; Url = "https://nothingbotcurating.web.app"; Icon = $curatingIcon }
+        @{ Name = "Nothing BOT Curate"; Url = "https://nothingbotcurate.web.app"; Icon = $curatingIcon }
       )) {
         $lnk = $shell.CreateShortcut("$dir\$($sc.Name).lnk")
         if (Test-Path $edge) { $lnk.TargetPath = $edge; $lnk.Arguments = "--app=$($sc.Url)" } else { $lnk.TargetPath = $sc.Url; $lnk.Arguments = "" }
@@ -194,7 +196,7 @@ function Install-Shortcuts {
     }
     # Windows keeps showing a shortcut's old picture from its icon cache; ask it to rebuild.
     try { Start-Process -FilePath "$env:SystemRoot\System32\ie4uinit.exe" -ArgumentList "-show" -WindowStyle Hidden -ErrorAction SilentlyContinue } catch { }
-    Log "Shortcuts refreshed: 'Nothing BOT Server Console' and 'Nothing BOT Curating' (desktop and Start menu)"
+    Log "Shortcuts refreshed: 'Nothing BOT Server Console' and 'Nothing BOT Curate' (desktop and Start menu)"
   } catch { Write-Host "  Couldn't refresh the shortcuts: $($_.Exception.Message)" -ForegroundColor Yellow }
 }
 
@@ -462,11 +464,11 @@ $token = (Get-Content "$DataDir\console-token" -ErrorAction SilentlyContinue)
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Dhcp,Manual -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "169.*" } | Select-Object -First 1).IPAddress
 Write-Host ""
 Write-Host "Open 'Nothing BOT Server Console' on the desktop (it's opening now):" -ForegroundColor Green
-Write-Host "  1. Click Connect with Nothing BOT Curating and sign in with Google (an admin account). The worker starts by itself."
+Write-Host "  1. Click Connect with Nothing BOT Curate and sign in with Google (an admin account). The worker starts by itself."
 Write-Host "     No admin yet (a brand-new project)? Use 'First server ever? Use a key file' in the same card."
 if ($NoLocal) { Write-Host "     This server uses Gemini: add a Gemini key under AI models (or each curator in the app). A local model can be turned on there too." }
 else { Write-Host "     Local or Gemini only, and which models, is under AI models in the console." }
-Write-Host "  2. Link WhatsApp at https://nothingbotcurating.web.app -> Settings."
+Write-Host "  2. Link WhatsApp at https://nothingbotcurate.web.app -> Settings."
 Write-Host "  The server updates itself; the console has an Update now button."
 if ($token -and $ip) {
   $phoneUrl = "http://${ip}:7420/?token=$token"

@@ -21,8 +21,8 @@ export default defineConfig({
       // This is the NBC (default) manifest; the Classic one is public/manifest-classic.webmanifest (see @spot/ui theme).
       manifest: {
         id: "/",
-        name: "Nothing BOT Curating",
-        short_name: "NBot Curate",
+        name: "Nothing BOT Curate",
+        short_name: "nBOT Curate",
         description: "Open-mic lineups sorted from your WhatsApp by a Gemma model on your own laptop.",
         start_url: "/",
         scope: "/",

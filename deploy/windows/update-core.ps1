@@ -192,7 +192,7 @@ function Wait-Console([int]$Seconds = 40) {
 }
 
 # Desktop + Start menu shortcuts, always rewritten so icons and addresses are current: the console uses the Nothing BOT
-# Server icon, the Curating web app uses the Curating icon (both ship in the code download, no downloading at install time).
+# Server icon, the Curate web app uses the Curate icon (both ship in the code download, no downloading at install time).
 function Install-Shortcuts {
   try {
     $shell = New-Object -ComObject WScript.Shell
@@ -205,9 +205,11 @@ function Install-Shortcuts {
     $places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT Server")
     New-Item -ItemType Directory -Force -Path $places[1] | Out-Null
     foreach ($dir in $places) {
+      # The web app was called "Nothing BOT Curating" before the rename: drop the old-named shortcut.
+      Remove-Item -Force -ErrorAction SilentlyContinue "$dir\Nothing BOT Curating.lnk"
       foreach ($sc in @(
         @{ Name = "Nothing BOT Server Console"; Url = "http://localhost:7420"; Icon = $serverIcon },
-        @{ Name = "Nothing BOT Curating"; Url = "https://nothingbotcurating.web.app"; Icon = $curatingIcon }
+        @{ Name = "Nothing BOT Curate"; Url = "https://nothingbotcurate.web.app"; Icon = $curatingIcon }
       )) {
         $lnk = $shell.CreateShortcut("$dir\$($sc.Name).lnk")
         if (Test-Path $edge) { $lnk.TargetPath = $edge; $lnk.Arguments = "--app=$($sc.Url)" } else { $lnk.TargetPath = $sc.Url; $lnk.Arguments = "" }
@@ -217,7 +219,7 @@ function Install-Shortcuts {
     }
     # Windows keeps showing a shortcut's old picture from its icon cache; ask it to rebuild.
     try { Start-Process -FilePath "$env:SystemRoot\System32\ie4uinit.exe" -ArgumentList "-show" -WindowStyle Hidden -ErrorAction SilentlyContinue } catch { }
-    Log "Shortcuts refreshed: 'Nothing BOT Server Console' and 'Nothing BOT Curating' (desktop and Start menu)"
+    Log "Shortcuts refreshed: 'Nothing BOT Server Console' and 'Nothing BOT Curate' (desktop and Start menu)"
   } catch { Write-Host "  Couldn't refresh the shortcuts: $($_.Exception.Message)" -ForegroundColor Yellow }
 }
 

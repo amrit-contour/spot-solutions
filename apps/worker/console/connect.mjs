@@ -1,4 +1,4 @@
-// "Connect with your Nothing BOT Curating account": the console asks the start function for a one-time link, shows it as a
+// "Connect with your Nothing BOT Curate account": the console asks the start function for a one-time link, shows it as a
 // link and QR, and polls until an admin approves it in the web app. The console proves itself with a secret that
 // never leaves this machine except as a hash, and the key only ever comes back in the reply to that proof.
 import "./envcompat.mjs";
@@ -6,7 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-export const WEB_BASE = process.env.NBS_WEB_URL ?? "https://nothingbotcurating.web.app";
+export const WEB_BASE = process.env.NBS_WEB_URL ?? "https://nothingbotcurate.web.app";
 const FN_BASE = process.env.NBS_FUNCTIONS_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net";
 const POLL_MS = Number(process.env.NBS_CONNECT_POLL_MS ?? 3000);
 
@@ -61,7 +61,7 @@ export function createConnect({ hostname, onApproved, fetchImpl = fetch, now = D
     if (mine !== session) return;
     if (!r.ok) {
       secret = null;
-      st = { phase: "error", error: r.body.error || "Nothing BOT Curating couldn't check this link. Try again.", deviceName: st.deviceName };
+      st = { phase: "error", error: r.body.error || "Nothing BOT Curate couldn't check this link. Try again.", deviceName: st.deviceName };
       return;
     }
     const b = r.body;
@@ -96,7 +96,7 @@ export function createConnect({ hostname, onApproved, fetchImpl = fetch, now = D
         r = await post("startDeviceLink", { deviceName: name, challenge }, 30_000);
       } catch {
         secret = null;
-        st = { phase: "error", error: "Couldn't reach Nothing BOT Curating. Check this server's internet and try again.", deviceName: name };
+        st = { phase: "error", error: "Couldn't reach Nothing BOT Curate. Check this server's internet and try again.", deviceName: name };
         return this.state();
       }
       if (!r.ok) {

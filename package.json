@@ -13,7 +13,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "deploy:web": "pnpm --filter @spot/web build && bash deploy/build-dist.sh && firebase deploy --only hosting:curating,hosting:curating-nbc,hosting:curating-nbc-hyphen,hosting:curating-but,hosting:curating-but-hyphen,firestore:rules,storage",
+    "deploy:web": "pnpm --filter @spot/web build && bash deploy/build-dist.sh && firebase deploy --only hosting:curating,hosting:curate,hosting:curate-hyphen,hosting:curate-but,hosting:curate-but-hyphen,hosting:curating-nbc,hosting:curating-nbc-hyphen,hosting:curating-but,hosting:curating-but-hyphen,firestore:rules,storage",
     "deploy:comic": "pnpm --filter @spot/comic build && firebase deploy --only hosting:comedy,hosting:comedy-hyphen,hosting:comedy-but,hosting:comedy-but-hyphen"
   },
   "packageManager": "pnpm@9.15.4"

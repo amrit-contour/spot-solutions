@@ -194,7 +194,7 @@ export function SettingsPage() {
 
   return (
     <div className="w-full">
-      <PageHeader title="Settings" subtitle="How Nothing BOT Curating talks on your behalf" />
+      <PageHeader title="Settings" subtitle="How Nothing BOT Curate talks on your behalf" />
       <p className="px-4 pb-3 type-body-s text-on-surface-variant sm:px-8"><a className="underline underline-offset-4" href="/privacy">Privacy</a> · <a className="underline underline-offset-4" href="/terms">Terms</a></p>
       <div className="flex flex-col gap-6 px-4 pb-12 sm:px-8 lg:flex-row lg:items-start lg:gap-8">
         {/* Phones and tablets: a bar pinned under the top edge. `contents` keeps it a direct child of the page column, so it sticks for the whole page. */}
@@ -309,7 +309,7 @@ export function SettingsPage() {
         <Section
           title="Follow-ups from your replies"
           icon={IconChatCheck}
-          description="Answered someone yourself in WhatsApp (“haan bhai, Monday done” or “sorry, full this week”)? Every 20 minutes Nothing BOT Curating reads your own replies to people still Waiting this week. When your words are clear, it suggests placing them (and adding them to the show's group if they aren't in it) or closing their request. Nothing is sent to anyone. Group removals stay with each show's group update."
+          description="Answered someone yourself in WhatsApp (“haan bhai, Monday done” or “sorry, full this week”)? Every 20 minutes Nothing BOT Curate reads your own replies to people still Waiting this week. When your words are clear, it suggests placing them (and adding them to the show's group if they aren't in it) or closing their request. Nothing is sent to anyone. Group removals stay with each show's group update."
           aside={<Switch checked={settings.followUp?.enabled ?? true} onChange={(v) => saveSettings({ followUp: { enabled: v, auto: settings.followUp?.auto ?? false } })} label="Check my replies" />}
         >
           <SettingRow label="Apply them without asking me" info={<>Off: each one lands in Updates → You already replied, for you to Apply or Ignore. On: clear ones are applied straight away and you get a note in Updates.</>} className={cx(!(settings.followUp?.enabled ?? true) && "pointer-events-none opacity-50")}>
@@ -342,7 +342,7 @@ function InstallCard() {
   const { installed, canPrompt, ios, install } = useInstall();
   if (installed) return null;
   return (
-    <Section title="Install the app" icon={IconPhone} description="Add Nothing BOT Curating to your home screen. It opens full screen like a native app, and you can triage requests on the go.">
+    <Section title="Install the app" icon={IconPhone} description="Add Nothing BOT Curate to your home screen. It opens full screen like a native app, and you can triage requests on the go.">
       {canPrompt ? (
         <Button icon={IconCheck} onClick={() => void install().then((ok) => ok && toast.success("Installed. Find it on your home screen."))}>
           Install app
@@ -422,7 +422,7 @@ function RulesSection() {
             />
           </SettingRow>
         )}
-        <SettingRow label="Scan past messages: days to look back" info={<>The starting choice when you run Requests → Scan past messages. Nothing BOT Curating only reads older DMs when you run that scan yourself.</>}>
+        <SettingRow label="Scan past messages: days to look back" info={<>The starting choice when you run Requests → Scan past messages. Nothing BOT Curate only reads older DMs when you run that scan yourself.</>}>
           <Stepper value={clampScanDays(settings.scanDays)} onChange={(v) => saveSettings({ scanDays: v })} min={SCAN_DAYS_MIN} max={SCAN_DAYS_MAX} suffix="days" />
         </SettingRow>
       </div>
@@ -437,7 +437,7 @@ function DataSection() {
     <Section
       title="Data"
       icon={IconShield}
-      description="Nothing BOT Curating tidies up old requests once a day, on your server. Lineups, comics and their history are never deleted."
+      description="Nothing BOT Curate tidies up old requests once a day, on your server. Lineups, comics and their history are never deleted."
     >
       <SettingRow
         label="Delete closed requests after"
@@ -692,7 +692,7 @@ function VoiceSection({ kind }: { kind: VoiceKind | null }) {
       icon={IconSparkle}
       description={
         <>
-          Messages go out the way you write: your greetings, your Hinglish, your emoji, a little different for each comic. Nothing BOT Curating reads only messages <b>you</b> sent, in the chats you choose (by default your recent DMs and show groups), keeps a short description and up to 15 examples, and never stores the chats. Your template below is the guide and the safety net: if a draft changes or drops a date, time, venue or link, or the model is busy, the template goes out instead. It uses your AI models setting, so on Local only nothing leaves your server.
+          Messages go out the way you write: your greetings, your Hinglish, your emoji, a little different for each comic. Nothing BOT Curate reads only messages <b>you</b> sent, in the chats you choose (by default your recent DMs and show groups), keeps a short description and up to 15 examples, and never stores the chats. Your template below is the guide and the safety net: if a draft changes or drops a date, time, venue or link, or the model is busy, the template goes out instead. It uses your AI models setting, so on Local only nothing leaves your server.
         </>
       }
       aside={<Switch checked={voice.enabled && Boolean(profile)} disabled={!profile} onChange={(v) => saveSettings({ voice: { ...voice, enabled: v } })} label="Write messages in my voice" />}

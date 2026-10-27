@@ -60,7 +60,7 @@ async function politeNote(uid: string, client: WAWebJS.Client, from: string) {
   if (mem?.told?.includes(key)) return;
   await writeMemory(uid, { told: [...(mem?.told ?? []), key].slice(-200) });
   const name = String((await userRef(uid).get()).data()?.name ?? "").split(" ")[0];
-  await sendQueued(client, from, `I'm ${name ? `${name}'s` : "the curator's"} assistant for Nothing BOT Curating. Please message ${name || "them"} directly on their own number.`);
+  await sendQueued(client, from, `I'm ${name ? `${name}'s` : "the curator's"} assistant for Nothing BOT Curate. Please message ${name || "them"} directly on their own number.`);
 }
 
 // ---------------------------------------------------------------- the conversation

@@ -27,7 +27,7 @@ export function Waiting({ user, entry }: { user: User; entry: AccessEntry | null
             ? "The person running this Nothing BOT Server has removed your access. Reach out to them if that's a mistake."
             : admin
               ? "You're an admin of this server, so you'll be let in automatically as soon as it's online. If this takes more than a minute, check the server is running."
-              : "Nothing BOT Curating is invite-only. The person running this server has been told you asked to join. This page opens by itself once they approve you."}
+              : "Nothing BOT Curate is invite-only. The person running this server has been told you asked to join. This page opens by itself once they approve you."}
         </p>
         <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-surface-container px-4 py-2 type-label-l text-on-surface-variant">
           {user.photoURL && <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-6 rounded-full" />}

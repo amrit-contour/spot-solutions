@@ -84,7 +84,7 @@ At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it 
 
 The console has Setup steps, a Health card (Check and repair), Services with Restart plus Stop and Start for the worker and for Ollama, CPU/RAM/disk, AI models (Gemini key check, local models, routing), live worker logs, and a Display options menu (theme, brand).
 
-1. **Connect with Nothing BOT Curating:** click it, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The server gets its own key and the worker starts by itself. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is only for a brand-new project (see [multi-server.md](multi-server.md)).
+1. **Connect with Nothing BOT Curate:** click it, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The server gets its own key and the worker starts by itself. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is only for a brand-new project (see [multi-server.md](multi-server.md)).
 2. **Admins:** signing in adds your email. It opens **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere. Add other admins in the console's **Admin emails**.
 3. **Server Gemini key:** optional on a server with Gemma. Leave it blank; each curator adds their own in the app under **Settings → AI models**, where they can test it, browse models and pick a primary and a fallback. On a Gemini-only server, add one here or have each curator add theirs.
 
@@ -92,7 +92,7 @@ Lost the link? `sudo nbs-console-url`.
 
 ## 6. Link WhatsApp
 
-Open **nothingbotcurating.web.app → Settings → Show QR code** on a computer and scan it with your phone (WhatsApp → Linked devices). Only messages that arrive after linking are read, and auto-acknowledge stays off until you turn it on.
+Open **nothingbotcurate.web.app → Settings → Show QR code** on a computer and scan it with your phone (WhatsApp → Linked devices). Only messages that arrive after linking are read, and auto-acknowledge stays off until you turn it on.
 
 ## Several curators on one server
 

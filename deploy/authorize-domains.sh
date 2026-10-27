@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Adds the Nothing BOT Curating / Comedy hosting domains to Firebase Auth's authorized sign-in domains.
+# Adds the Nothing BOT Curate / Comedy hosting domains to Firebase Auth's authorized sign-in domains.
 # The firebase CLI can't do this; the Identity Toolkit admin API can. NOT run automatically: read it, then run it
 # yourself while logged in to gcloud as an owner/editor of the project:   bash deploy/authorize-domains.sh
 # It only ADDS domains (existing ones are kept), and does nothing if they are already there.
 set -euo pipefail
 PROJECT="${FIREBASE_PROJECT:-spot-solutions}"
 NEW=(
+  nothingbotcurate.web.app nothingbotcurate.firebaseapp.com
+  nothing-bot-curate.web.app nothing-bot-curate.firebaseapp.com
+  nothingbutcurate.web.app nothingbutcurate.firebaseapp.com
+  nothing-but-curate.web.app nothing-but-curate.firebaseapp.com
   nothingbotcurating.web.app nothingbotcurating.firebaseapp.com
   nothing-bot-curating.web.app nothing-bot-curating.firebaseapp.com
   nothingbotcomedy.web.app nothingbotcomedy.firebaseapp.com

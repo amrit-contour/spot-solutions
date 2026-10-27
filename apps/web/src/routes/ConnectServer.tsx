@@ -65,14 +65,14 @@ export function ConnectServer({ user }: { user: User | null | undefined }) {
 
   let body: React.ReactNode;
   if (!code) {
-    body = <Notice title="This link is missing its code">Start again from the server console: click Connect with Nothing BOT Curating there.</Notice>;
+    body = <Notice title="This link is missing its code">Start again from the server console: click Connect with Nothing BOT Curate there.</Notice>;
   } else if (user === undefined) {
     body = <Spinner className="mx-auto size-8 text-primary" />;
   } else if (user === null || user.isAnonymous) {
     body = (
       <>
         <h1 className="type-headline-m text-balance">Connect your server</h1>
-        <p className="mt-3 type-body-l text-on-surface-variant">Sign in with the Google account you use for Nothing BOT Curating. Only admins can connect a server.</p>
+        <p className="mt-3 type-body-l text-on-surface-variant">Sign in with the Google account you use for Nothing BOT Curate. Only admins can connect a server.</p>
         <div className="mt-6">
           <Button size="lg" loading={busy === "google"} onClick={() => void signIn()}>
             Continue with Google

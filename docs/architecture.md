@@ -1,6 +1,6 @@
 # Architecture
 
-Nothing BOT Curating has three parts: a React web app, Firestore, and one or more workers that run on the curator's own computers. Firestore is the only transport. The web app never talks to a worker directly, and a worker never opens a port.
+Nothing BOT Curate has three parts: a React web app, Firestore, and one or more workers that run on the curator's own computers. Firestore is the only transport. The web app never talks to a worker directly, and a worker never opens a port.
 
 ```mermaid
 flowchart LR
@@ -199,8 +199,8 @@ Any number of servers share one Firebase project. Each approved account has a le
 
 | Path | What it is |
 | --- | --- |
-| `apps/web` | Nothing BOT Curating: React 19 + Vite + Tailwind PWA, deployed to Firebase Hosting. |
-| `apps/comic` | Nothing BOT Comedy, the comic-side PWA (rooms, asks, my spots, regular spots, group spot alerts, community rosters). Same Firebase project and servers as Curating; its data is owner-only collections under `users/{uid}` plus `publishedRosters`. |
+| `apps/web` | Nothing BOT Curate: React 19 + Vite + Tailwind PWA, deployed to Firebase Hosting. |
+| `apps/comic` | Nothing BOT Comedy, the comic-side PWA (rooms, asks, my spots, regular spots, group spot alerts, community rosters). Same Firebase project and servers as Curate; its data is owner-only collections under `users/{uid}` plus `publishedRosters`. |
 | `packages/ui` | App-agnostic UI shared by both apps: components, theme (NBC and Classic), shell, Firebase init (with the `VITE_USE_EMULATORS` switch). |
 | `functions` | Cloud Functions: join codes and device links, Google Contacts, roster lookups. |
 | `apps/worker` | The Node worker: WhatsApp sessions, intake, commands, fleet, vault. Also `console/` (the local server console on port 7420) and `scripts/` (demo seed, intent eval). |
@@ -208,4 +208,4 @@ Any number of servers share one Firebase project. Each approved account has a le
 | `deploy` | Installers (`install.sh`, `windows/`, `mac/`), per-device key scripts, `build-dist.sh`, Docker files. |
 | `docs` | These docs. |
 
-Root files: `firestore.rules`, `storage.rules`, `firestore.indexes.json` and `firebase.json` define the Firebase side. `pnpm deploy:web` builds Curating, adds the installers and a source tarball to the build (`deploy/build-dist.sh`, which also writes the redirect-only page for the retired spot-solutions.web.app), and deploys the Curating hosting sites, Firestore rules and Storage rules. `pnpm deploy:comic` deploys Nothing BOT Comedy.
+Root files: `firestore.rules`, `storage.rules`, `firestore.indexes.json` and `firebase.json` define the Firebase side. `pnpm deploy:web` builds Curate, adds the installers and a source tarball to the build (`deploy/build-dist.sh`, which also writes the redirect-only page for the retired spot-solutions.web.app), and deploys the Curate hosting sites, Firestore rules and Storage rules. `pnpm deploy:comic` deploys Nothing BOT Comedy.

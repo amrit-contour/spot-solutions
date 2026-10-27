@@ -45,17 +45,17 @@ There is one installer. A PC with about 8 GB of RAM or more starts with Ollama a
 | Worker | A scheduled task `NothingBotServerWorker` that starts at boot as SYSTEM and restarts after a crash. It waits until a Firebase key exists, starts Ollama if needed, and logs to `data\worker.log`. |
 | Console | A second task, `NothingBotServerConsole`, serves the server console on port 7420 (log: `data\console.log`). |
 | Updates | A third task, `NothingBotServerUpdate` (SYSTEM, no trigger), started by the console to update the server or turn the local model on or off. It runs `update.ps1`, which runs the release's `deploy\windows\update-core.ps1`. |
-| Firewall | An inbound rule "Nothing BOT Curating Console" for TCP 7420, **private networks only**. |
-| Shortcuts | **Nothing BOT Server Console** and **Nothing BOT Curating** on the desktop (all users) and in the Start menu. They open in an Edge app window when Edge is installed. |
+| Firewall | An inbound rule "Nothing BOT Curate Console" for TCP 7420, **private networks only**. |
+| Shortcuts | **Nothing BOT Server Console** and **Nothing BOT Curate** on the desktop (all users) and in the Start menu. They open in an Edge app window when Edge is installed. |
 | Power | No standby or hibernate on power, and closing the lid on power does nothing. |
 
 At the end the console opens and the installer prints a link for a phone on the same Wi-Fi.
 
 ## Finish setup in the console
 
-1. Click **Connect with Nothing BOT Curating**, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The worker starts by itself and your email is added as an admin, so the server shows in the app under **Account, Server**. A join code from the app works too; a key file is only for the very first server of a brand-new project (**First server ever?**).
+1. Click **Connect with Nothing BOT Curate**, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The worker starts by itself and your email is added as an admin, so the server shows in the app under **Account, Server**. A join code from the app works too; a key file is only for the very first server of a brand-new project (**First server ever?**).
 2. Optional: under **AI models**, add a Gemini key (it is checked with Google before it is saved), pick and test models, or turn the local model on or off.
-3. Open **Nothing BOT Curating** from the desktop, go to **Settings, Show QR code**, and scan it from WhatsApp on your phone (**Linked devices**).
+3. Open **Nothing BOT Curate** from the desktop, go to **Settings, Show QR code**, and scan it from WhatsApp on your phone (**Linked devices**).
 
 ## Everyday
 
@@ -118,7 +118,7 @@ Double-click **Uninstall.cmd** (in the unzipped folder). It stops the worker and
 | Symptom | Fix |
 |---|---|
 | App says "Server offline" | Check the PC is on and online. Double-click **Restart Worker.cmd**, then **View Logs.cmd**. |
-| Nothing starts after install | The worker waits until the server is connected. Click **Connect with Nothing BOT Curating** in the console (or enter a join code from the app). |
+| Nothing starts after install | The worker waits until the server is connected. Click **Connect with Nothing BOT Curate** in the console (or enter a join code from the app). |
 | The installer says it can't install Ollama | Install it from ollama.com/download, then run the installer again. |
 | The installer says to run as Administrator | Use the `.cmd` and click Yes on the prompt, or open PowerShell as Administrator. |
 | Console doesn't open from a phone | The PC must be on the same Wi-Fi, and that network set to **Private**. Use the link the installer printed. |

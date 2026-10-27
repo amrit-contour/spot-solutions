@@ -45,7 +45,7 @@ export default defineConfig({
       manifest: {
         id: "/",
         name: "Nothing BOT Comedy",
-        short_name: "NBot Comedy",
+        short_name: "nBOT Comedy",
         description: "Rooms, spots and group alerts for comics.",
         start_url: "/",
         scope: "/",

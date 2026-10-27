@@ -99,7 +99,7 @@ export function shouldQueueComic(before: ComicBits | undefined, after: ComicBits
 
 /**
  * The Google account whose contacts get the names. Any verified Google account the curator can sign in to
- * (often their main one, not the one they log in to Nothing BOT Curating with); the caller must be verified too.
+ * (often their main one, not the one they log in to Nothing BOT Curate with); the caller must be verified too.
  */
 export function checkAccountEmail(google: { email?: string; verified?: boolean }, firebase: { email?: string; verified: boolean }): { ok: true; email: string } | { ok: false; message: string } {
   const g = google.email?.trim().toLowerCase();

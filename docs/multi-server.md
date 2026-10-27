@@ -30,23 +30,23 @@ Which server gets an account, best first: the pinned server, then servers with a
 
 ## Connect a server with your account
 
-The quickest way, and the only one most people need. On a freshly installed server, the console starts with **Connect with your Nothing BOT Curating account**.
+The quickest way, and the only one most people need. On a freshly installed server, the console starts with **Connect with your Nothing BOT Curate account**.
 
-1. Click **Connect with Nothing BOT Curating**. The console shows a link, a QR code and a 4-character check (like `K7QF`).
+1. Click **Connect with Nothing BOT Curate**. The console shows a link, a QR code and a 4-character check (like `K7QF`).
 2. Open the link on the same computer, or scan the QR code with your phone. Sign in with Google.
 3. The page asks **Connect server <name>?** and shows the same 4 characters. Check they match, then click **Connect server**.
 4. The console collects its own key, restarts the worker, and adds your email to its admins. The server shows up under **Account, Server** within a minute.
 
 Only admins can approve (the same list as everywhere else in the app); anyone else sees "Ask an admin". The link lasts 15 minutes and works once. Only approve a computer you set up yourself.
 
-How it works: the console makes a random secret and sends only its sha256 to `startDeviceLink`, which returns a one-time code (stored hashed in `deviceLinks`, closed to every client). The link is `https://nothingbotcurating.web.app/connect-server?c=<code>`. When an admin approves (`approveDeviceLink`, verified email in `config/access.admins`), the console, which polls `pollDeviceLink` with the code and its secret, gets a key made the same way as for a join code. The key is only in that one reply: never in a URL, never stored, never logged. If the reply is lost, the same console can ask again for 10 minutes (the first key's account is revoked first). `startDeviceLink` is limited to 10 per 15 minutes per IP.
+How it works: the console makes a random secret and sends only its sha256 to `startDeviceLink`, which returns a one-time code (stored hashed in `deviceLinks`, closed to every client). The link is `https://nothingbotcurate.web.app/connect-server?c=<code>`. When an admin approves (`approveDeviceLink`, verified email in `config/access.admins`), the console, which polls `pollDeviceLink` with the code and its secret, gets a key made the same way as for a join code. The key is only in that one reply: never in a URL, never stored, never logged. If the reply is lost, the same console can ask again for 10 minutes (the first key's account is revoked first). `startDeviceLink` is limited to 10 per 15 minutes per IP.
 
 ## Join a server with a code
 
 The other way, for when signing in on the server's side isn't convenient. Every server has its own Firebase service-account key. Never copy one key between computers. With a join code the app makes that key for you, so nobody needs the Google Cloud CLI.
 
 1. Sign in to the app as an admin and open **Account, Server**. Click **Add a server**. Optionally name it, then click **Make a code**. You get a code like `SPOT-7K3F-Q9TX`, a copy button, a QR of the code text and a countdown. A code works once and lasts 15 minutes.
-2. On the new computer, install Nothing BOT Curating (see the guide for [Mac](mac-server.md), [Windows](windows-server.md) or [Ubuntu](ubuntu-usb-server.md)) and open its server console. Type the code under **Have a join code from the app?**. The device name is filled in with the computer's name; change it if you like. Click **Join**.
+2. On the new computer, install Nothing BOT Curate (see the guide for [Mac](mac-server.md), [Windows](windows-server.md) or [Ubuntu](ubuntu-usb-server.md)) and open its server console. Type the code under **Have a join code from the app?**. The device name is filled in with the computer's name; change it if you like. Click **Join**.
 3. The console trades the code for a key, saves it and restarts the worker. Under **Admins** in the console, add your email if it isn't there yet. The server shows up under **Account, Server** within a minute, and the Add a server card says it joined.
 
 What happens behind the scenes: the code is hashed in Firestore (`joinCodes`), and the console calls the `redeemJoinCode` Cloud Function over HTTPS, at most 10 tries per 15 minutes per IP address. The function creates the service account `spot-<device-name>` (a number is added if the name is taken) with only what the worker uses: `roles/datastore.user` and `roles/firebasecloudmessaging.admin` on the project, and `roles/storage.objectAdmin` on the default bucket only. It returns the key once and records the account in `serverKeys`. If setting up fails, the account is cleaned up and the code works again.
@@ -56,9 +56,9 @@ The functions run as their own service account, `spot-enroller`. Set that up onc
 **Remove a server.** On **Account, Server**, each server has **Remove server**. It deletes the server's key, its Google Cloud account and its roles, and its entries on the Server page. This is how you clear out old or offline servers.
 
 - If the server is online and still runs WhatsApp accounts, you are told so and can remove it anyway. Its key is cut at once, but the computer may keep answering chats until its access runs out (up to an hour), and another server starts those accounts after about 150 seconds. Moving the accounts first is cleaner.
-- A server that was set up before join codes, or with the project's default `firebase-adminsdk` key, has no Nothing BOT Curating account. Remove only deletes it from the list and says its key wasn't revoked. The default key is never deleted. Rotate it in the Firebase console if you need to.
+- A server that was set up before join codes, or with the project's default `firebase-adminsdk` key, has no Nothing BOT Curate account. Remove only deletes it from the list and says its key wasn't revoked. The default key is never deleted. Rotate it in the Firebase console if you need to.
 
-If the computer is still on, uninstall Nothing BOT Curating there afterwards.
+If the computer is still on, uninstall Nothing BOT Curate there afterwards.
 
 ### Fallback: the key scripts
 
@@ -163,7 +163,7 @@ The Server page and the Settings card also show a server as "isn't responding" o
 
 ## Upgrading safely
 
-Stop any server running an older Nothing BOT Curating release before you link a new one.
+Stop any server running an older Nothing BOT Curate release before you link a new one.
 
 Servers from before the fleet release heartbeat but ignore leases: they start every approved account themselves. If one stays on next to a fleet server, both would answer the same chats. So fleet servers check for them. While a server without fleet support is online, every fleet server:
 
@@ -197,7 +197,7 @@ To update a server by hand, run its installer again (see the guide for [Mac](mac
 | A server shows no capacity bar | It is running an older release. Update it. |
 | `new-server-key.sh` says the name is too long | Use a device name of 25 characters or fewer. (Join codes shorten the name for you.) |
 | The console says the code isn't valid | Codes work once and last 15 minutes. Make a new one under **Add a server**. After 10 wrong tries from one network, wait 15 minutes. |
-| The console can't reach Nothing BOT Curating when joining | The server needs internet, and the functions must be deployed. Use the key scripts as a fallback. |
+| The console can't reach Nothing BOT Curate when joining | The server needs internet, and the functions must be deployed. Use the key scripts as a fallback. |
 | A removed or revoked server still seems alive | Its token can last up to an hour. Stop the worker on the device. |
 | Two servers answer the same chat | Look for a server on an older release. The lease stops two fleet servers running one account. |
 | A cloned laptop disk shows up as a new server | Expected. A cloned disk gets a new server id, so two servers never merge. |
@@ -207,7 +207,7 @@ To update a server by hand, run its installer again (see the guide for [Mac](mac
 `connectGoogleContacts`, `disconnectGoogleContacts`, `planGoogleContacts` and `runGoogleContacts` (callable, any real signed-in curator), the Firestore trigger `queueGoogleContact` and the scheduled `syncGoogleContacts` (every 2 minutes) save comic names to a curator's Google Contacts while the app is closed. They run as `spot-enroller`, need no new keys, and use two secrets and one parameter:
 
 1. APIs: People API (`people.googleapis.com`), Secret Manager, Eventarc and Cloud Scheduler (`deploy/setup-functions-iam.sh` enables them and gives `spot-enroller` `roles/eventarc.eventReceiver`; run it again).
-2. Google Cloud Console, APIs & Services, Credentials, open the Web client Firebase created ("Web client (auto created by Google Service)"). Under **Authorized JavaScript origins** add `https://nothingbotcurating.web.app`, `https://spot-solutions.firebaseapp.com` and `http://localhost:5173` (the Firebase project id is unchanged, so its `firebaseapp.com` address is too). Copy its **Client secret**.
+2. Google Cloud Console, APIs & Services, Credentials, open the Web client Firebase created ("Web client (auto created by Google Service)"). Under **Authorized JavaScript origins** add `https://nothingbotcurate.web.app` (and the other Curate and Curating addresses people still sign in on, such as `https://nothingbotcurating.web.app`), `https://spot-solutions.firebaseapp.com` and `http://localhost:5173` (the Firebase project id is unchanged, so its `firebaseapp.com` address is too). Copy its **Client secret**.
 3. `firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_SECRET` (paste the client secret) and `openssl rand -base64 32 | firebase functions:secrets:set GOOGLE_TOKEN_KEY` (the key that encrypts stored tokens; lose it and curators press Keep connected again).
 4. The client id is public: `VITE_GOOGLE_OAUTH_CLIENT_ID` in `apps/web/.env` for the web build, and `GOOGLE_OAUTH_CLIENT_ID` for the functions (`functions/.env`, or answer the prompt on first deploy).
 5. `firebase deploy --only functions,firestore:rules`, then build and deploy hosting as above.

@@ -104,7 +104,7 @@ export function GoogleContactsCard() {
                 </span>
               </div>
               <p className="type-body-s text-on-surface-variant">
-                Say yes once and names keep saving to your Google Contacts even when this app is closed. Nothing BOT Curating keeps the access encrypted on its server, and you can disconnect here or at myaccount.google.com/permissions any time.
+                Say yes once and names keep saving to your Google Contacts even when this app is closed. Nothing BOT Curate keeps the access encrypted on its server, and you can disconnect here or at myaccount.google.com/permissions any time.
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Button variant="text" onClick={() => void connect()} loading={connecting} disabled={demo || keeping}>

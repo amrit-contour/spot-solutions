@@ -7,7 +7,7 @@ a pasted curator list per venue, and screenshots of the Bangalore Comics WhatsAp
 
 ## Two apps, one platform
 
-- **Nothing BOT Curating**: today's app (requests, lineups, groups) for curators.
+- **Nothing BOT Curate**: today's app (requests, lineups, groups) for curators.
 - **Nothing BOT Comedy**: new, for comics asking rooms for spots.
 - Same Firebase project, same servers, same WhatsApp link, one account (many people are both). Two Hosting sites, each with its
   own home-screen name and icon. Shared UI (calendar, cards, composer, sheets, theme) moves into a shared package first.
@@ -80,7 +80,7 @@ a pasted curator list per venue, and screenshots of the Bangalore Comics WhatsAp
   a spot already booked. No cooldown or limit checks: a spot offered in a group is ad hoc and the comic decides.
 - **The co-comic's sheet** ("Spots - Arjun") was made by another comic for themselves: a weekly calendar of their spots, a
   spots counter and an asks log. That is what My spots should replace.
-- **Domains**: nothingbotcurating.web.app, nothingbotcomedy.web.app, and hyphenated nothing-bot-curating.web.app,
+- **Domains**: nothingbotcurate.web.app, nothingbotcomedy.web.app, and hyphenated nothing-bot-curating.web.app,
   nothing-bot-comedy.web.app (plus nothingbut* and nothing-but-* mirrors). spot-solutions.web.app was kept for a while for installed servers, then retired on 27 October 2026: it only forwards to nothingbotcurating.web.app.
 - **Logo**: minimal first; built from the NBC mark (outlined "n", solid "bc", lime dot) and the current logo; may use the
   NBC wording. Files: Amrit's zip (four PNGs: nbc and "Nothing but comedy." on black and on white).

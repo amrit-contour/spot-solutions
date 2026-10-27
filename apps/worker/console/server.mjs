@@ -395,7 +395,7 @@ createServer(async (req, res) => {
       return json(res, 200, { url: link, qr: qrText(link) });
     }
 
-    // Connect with a Nothing BOT Curating account: a one-time link an admin approves in the web app (connect.mjs).
+    // Connect with a Nothing BOT Curate account: a one-time link an admin approves in the web app (connect.mjs).
     if (url.pathname === "/api/connect" && req.method === "GET") return json(res, 200, connect.state());
     if (url.pathname === "/api/connect/start" && req.method === "POST") {
       const b = await body(req);
@@ -497,10 +497,10 @@ createServer(async (req, res) => {
         });
         out = await r.json().catch(() => ({}));
       } catch {
-        return json(res, 502, { error: "Couldn't reach Nothing BOT Curating. Check this server's internet and try again." });
+        return json(res, 502, { error: "Couldn't reach Nothing BOT Curate. Check this server's internet and try again." });
       }
       if (!r.ok) return json(res, r.status === 429 ? 429 : 400, { error: out.error || "That code didn't work." });
-      if (!isServiceAccountKey(out.key)) return json(res, 502, { error: "Nothing BOT Curating sent back something that isn't a key." });
+      if (!isServiceAccountKey(out.key)) return json(res, 502, { error: "Nothing BOT Curate sent back something that isn't a key." });
       await installKey(out.key);
       return json(res, 200, { ok: true, projectId: out.key.project_id, serviceAccount: out.serviceAccount });
     }

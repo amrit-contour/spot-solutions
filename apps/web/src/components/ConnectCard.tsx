@@ -58,7 +58,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
               )}
               {(view === "idle" || view === "starting" || view === "qr") && (
                 <p className="mt-3 rounded-md bg-surface-container px-3 py-2 type-body-s text-on-surface-variant md:hidden">
-                  Linking needs a second screen. Open nothingbotcurating.web.app on a laptop and scan the code there with this phone.
+                  Linking needs a second screen. Open nothingbotcurate.web.app on a laptop and scan the code there with this phone.
                 </p>
               )}
               {(view === "idle" || view === "starting" || view === "qr") && (
@@ -86,7 +86,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
           </div>
           <p className="mt-5 flex items-start gap-2 type-body-s text-on-surface-variant">
             <IconWarn className="icon mt-px size-4 flex-none" />
-            Uses WhatsApp Web through whatsapp-web.js, an unofficial client. Keep message volume human: Nothing BOT Curating spaces out every send.
+            Uses WhatsApp Web through whatsapp-web.js, an unofficial client. Keep message volume human: Nothing BOT Curate spaces out every send.
           </p>
         </div>
 

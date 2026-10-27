@@ -48,7 +48,7 @@ export function AgentCard() {
             </span>
             <h2 className="type-headline-s">{view === "ready" ? "Agent number is linked" : "Agent number"}</h2>
             <Info label="About the agent number">
-              A second WhatsApp number for Nothing BOT Curating to talk to you from. It only ever messages your own number, and only reads messages you send it. It never messages comics, groups or anyone else: anything that goes to comics still goes out from your own WhatsApp, and only after you say yes.
+              A second WhatsApp number for Nothing BOT Curate to talk to you from. It only ever messages your own number, and only reads messages you send it. It never messages comics, groups or anyone else: anything that goes to comics still goes out from your own WhatsApp, and only after you say yes.
             </Info>
           </div>
           <AnimatePresence mode="wait" initial={false}>
@@ -76,7 +76,7 @@ export function AgentCard() {
                       ))}
                     </ol>
                   )}
-                  <p className="mt-3 rounded-md bg-surface-container px-3 py-2 type-body-s text-on-surface-variant md:hidden">Linking needs a second screen. Open nothingbotcurating.web.app on a laptop and scan the code there.</p>
+                  <p className="mt-3 rounded-md bg-surface-container px-3 py-2 type-body-s text-on-surface-variant md:hidden">Linking needs a second screen. Open nothingbotcurate.web.app on a laptop and scan the code there.</p>
                 </>
               )}
             </motion.div>

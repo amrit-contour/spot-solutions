@@ -18,8 +18,8 @@ Or download [NothingBotServer-mac.zip](https://nothingbotcurating.web.app/dl/Not
 
 1. Open **Nothing BOT Server** and type your email.
 2. Click **Set up this Mac** (the Terminal install command already did this). It downloads Node.js and, on a Mac with about 8 GB of memory or more, Ollama and Gemma (about 3.5 GB) into `~/Library/Application Support/NothingBotServer`. It needs no Homebrew and no admin password. If Ollama is already running on the Mac, it uses that.
-3. The server console appears inside the app. Click **Connect with Nothing BOT Curating**, open the link (or scan the QR with your phone), sign in with Google, check the 4-character code and approve. The worker starts by itself, with a key made for this Mac only, and your email becomes one of its admins. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is for a brand-new project (see [multi-server.md](multi-server.md)).
-4. Link WhatsApp at nothingbotcurating.web.app → Settings → Show QR code.
+3. The server console appears inside the app. Click **Connect with Nothing BOT Curate**, open the link (or scan the QR with your phone), sign in with Google, check the 4-character code and approve. The worker starts by itself, with a key made for this Mac only, and your email becomes one of its admins. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is for a brand-new project (see [multi-server.md](multi-server.md)).
+4. Link WhatsApp at nothingbotcurate.web.app → Settings → Show QR code.
 
 **Local model or Gemini only.** A Mac with little memory (under about 8 GB) starts on Gemini, and any Mac can switch in the console under **AI models** (**Local model on this computer**, with progress). Add a Gemini key there, or each curator under Settings → AI models. A Gemini-only server can't host accounts set to **Local only**. From Terminal: `nbsctl local on` or `nbsctl local off`. Updates keep the choice.
 

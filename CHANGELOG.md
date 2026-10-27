@@ -1,5 +1,12 @@
 # Changelog
 
+## 27 October 2026 (rename: Nothing BOT Curate)
+
+- **Nothing BOT Curating is now Nothing BOT Curate** (formerly Nothing BOT Curating) across both apps, the server console, notices, installers, docs and the legal pages. The home-screen short names are "nBOT Curate", "nBOT Comedy" and (Mac Dock and menu bar) "nBOT Server"; full names stay "Nothing BOT Curate / Comedy / Server".
+- **New main address: nothingbotcurate.web.app** (also nothing-bot-curate, nothingbutcurate and nothing-but-curate; hosting targets `curate`, `curate-hyphen`, `curate-but`, `curate-but-hyphen`, in `deploy:web`). It is the canonical address (canonical link, og:url, sitemap, robots) and what Comedy, the console and notices link to. The nothing*curating addresses keep serving the same app.
+- **Updates and installs unchanged:** servers still update from, and install commands still point at, nothingbotcurating.web.app/dl, so existing installs keep working.
+- Windows installer and updater remove the old "Nothing BOT Curating" shortcuts when they create the "Nothing BOT Curate" ones. The Mac updater rewrites the installed app's short name to "nBOT Server".
+
 ## 27 October 2026 (Nothing BOT Comedy, server console, hosting)
 
 ### Nothing BOT Comedy (new, `apps/comic`)

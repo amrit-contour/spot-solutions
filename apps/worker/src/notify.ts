@@ -4,7 +4,7 @@ import { getMessaging } from "firebase-admin/messaging";
 import type { PushKind } from "@spot/shared";
 import { col } from "./firebase.ts";
 
-const APP_URL = "https://nothingbotcurating.web.app/settings#whatsapp";
+const APP_URL = "https://nothingbotcurate.web.app/settings#whatsapp";
 const TITLES: Record<PushKind, string> = {
   account_moved: "Your account moved",
   scan_needed: "WhatsApp needs a scan",

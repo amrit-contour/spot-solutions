@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="apps/web/public/press/cover.jpg" alt="Nothing BOT Curating: WhatsApp spot requests, sorted by Gemma on an old laptop" width="100%" />
+  <img src="apps/web/public/press/cover.jpg" alt="Nothing BOT Curate: WhatsApp spot requests, sorted by Gemma on an old laptop" width="100%" />
 </p>
 
 <p align="center">
-  <a href="https://nothingbotcurating.web.app"><img alt="Live demo" src="https://img.shields.io/badge/live%20demo-nothingbotcurating.web.app-7DDC5A?style=for-the-badge&labelColor=0a0a0a" /></a>
+  <a href="https://nothingbotcurate.web.app"><img alt="Live demo" src="https://img.shields.io/badge/live%20demo-nothingbotcurate.web.app-7DDC5A?style=for-the-badge&labelColor=0a0a0a" /></a>
   <img alt="Gemma 3 on Ollama" src="https://img.shields.io/badge/Gemma%203-on%20Ollama-7DDC5A?style=for-the-badge&labelColor=0a0a0a" />
   <img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-7DDC5A?style=for-the-badge&labelColor=0a0a0a" />
 </p>
@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://nothingbotcurating.web.app"><b>Try the live demo</b></a> ·
+  <a href="https://nothingbotcurate.web.app"><b>Try the live demo</b></a> ·
   <a href="https://nothingbotcomedy.web.app">For comics: Nothing BOT Comedy</a> ·
   <a href="https://dev.to/amrit-dash/my-whatsapp-was-my-open-mic-booking-system-so-i-gave-it-to-gemma-5274">The write-up on DEV</a> ·
   <a href="#run-a-server">Run a server</a> ·
@@ -30,11 +30,11 @@ I'm a stand-up comic in Bangalore and I curate the Monday and Tuesday open-mic l
 
 **That was about 3 hours a week. Now it's about 15 minutes.**
 
-Version 1 ran for 7 months across 2024 and 2025 on Google Apps Script, Sheets and Twilio (2,200+ requests from 150+ comics). Nothing BOT Curating keeps every rule V1 learned and hands the messy human part to an open-weight model that runs on hardware you already own.
+Version 1 ran for 7 months across 2024 and 2025 on Google Apps Script, Sheets and Twilio (2,200+ requests from 150+ comics). Nothing BOT Curate keeps every rule V1 learned and hands the messy human part to an open-weight model that runs on hardware you already own.
 
 ## See it
 
-<p align="center"><sub>Try your own demo sandbox at <a href="https://nothingbotcurating.web.app">nothingbotcurating.web.app</a>, no sign-up.</sub></p>
+<p align="center"><sub>Try your own demo sandbox at <a href="https://nothingbotcurate.web.app">nothingbotcurate.web.app</a>, no sign-up.</sub></p>
 
 <table>
   <tr>
@@ -140,7 +140,7 @@ The sister app, at [nothingbotcomedy.web.app](https://nothingbotcomedy.web.app) 
 - **My spots.** Booked spots with room, time and curator, plus notes afterwards. **Regular spots** (a weekly or monthly slot) are computed from their rule, can be skipped for a date, and are suggested from your roster.
 - **Group spot alerts.** Watched WhatsApp groups are read on your server. Clear offers and closures push instantly with no model call (**rules first**); only doubtful messages go to the model. The alert rules are weighted and editable on the Groups page. **Ask for it** on an alert creates an ask.
 - **Rooms and rosters.** Rooms, shows, curators and limits, with paste-anything import (text, CSV or Excel, PDF, image or link) reviewed in plain words before anything is saved. Community rosters let a city share its rooms: browse, follow, see updates, suggest changes, publish.
-- **Connection status.** Settings and Today show whether your server and WhatsApp are linked, from the same session data Curating uses.
+- **Connection status.** Settings and Today show whether your server and WhatsApp are linked, from the same session data Curate uses.
 - **Agent number.** Message your agent number to change rooms, spots, regulars and asks in plain words. It checks with you before anything that matters, unless you turn that off.
 
 ## Several laptops, one lineup
@@ -179,7 +179,9 @@ The user guide is in [docs/multi-server.md](docs/multi-server.md) and the protoc
 | **macOS** | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| bash` (installs the Nothing BOT Server menu-bar app; `install-mac.sh` at the same address still works) · [guide](docs/mac-server.md) |
 | **Docker** | `docker compose -f deploy/docker-compose.yml up -d` |
 
-[nothingbotcurating.web.app/install](https://nothingbotcurating.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Nothing BOT Curating** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves. Installers and updaters also remove an old pre-rename Spot Solutions install on the same machine and keep its data.
+[nothingbotcurating.web.app/install](https://nothingbotcurating.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Nothing BOT Curate** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves. Installers and updaters also remove an old pre-rename Spot Solutions install on the same machine and keep its data.
+
+Install commands stay on nothingbotcurating.web.app on purpose: installed servers update from it, and every Nothing BOT Curate and Curating address serves the same files, so a command from either works. The app's main address is nothingbotcurate.web.app.
 
 > [!IMPORTANT]
 > Upgrading from an older release? Stop the old server before the new one links. Servers from before multi-server support don't know about leases, so new servers pause and show a notice while one is online.
@@ -207,7 +209,7 @@ pnpm --filter @spot/worker exec tsx scripts/eval-intent.ts gemma3:4b   # intent 
 ```
 
 ```
-apps/web         Nothing BOT Curating: React + Vite app (Material 3, PWA) on Firebase Hosting
+apps/web         Nothing BOT Curate: React + Vite app (Material 3, PWA) on Firebase Hosting
 apps/comic       Nothing BOT Comedy: the comic-side app (rooms, asks, spots, group alerts)
 apps/worker      Node worker: WhatsApp sessions, Gemma intake, commands, fleet, login vault, and the server console
 packages/shared  Types and pure logic shared by the apps and the worker (templates, weeks, rules, rooms, fleet)
@@ -230,7 +232,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 - Security details and how to report a problem: [SECURITY.md](SECURITY.md).
 
 > [!NOTE]
-> Nothing BOT Curating uses [whatsapp-web.js](https://wwebjs.dev), an unofficial WhatsApp Web client. It isn't affiliated with WhatsApp, and automated use can get a number restricted. Every send is queued with a 3 to 8 second gap and a typing indicator to keep volume human. Use it at your own risk.
+> Nothing BOT Curate uses [whatsapp-web.js](https://wwebjs.dev), an unofficial WhatsApp Web client. It isn't affiliated with WhatsApp, and automated use can get a number restricted. Every send is queued with a 3 to 8 second gap and a typing indicator to keep volume human. Use it at your own risk.
 
 ## Credits
 

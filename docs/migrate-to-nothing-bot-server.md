@@ -1,6 +1,6 @@
 # Moving to Nothing BOT Server
 
-The self-hosted server used to be called "Spot Solutions" (and "Spot Server" on the Mac). It is now **Nothing BOT Server** everywhere: the Mac app, the Windows folder, the Linux services, the downloads and the settings names. The web app is called Nothing BOT Curating. This page has the naming scheme, how old servers are kept apart from new ones, and how to move your own server across without a new QR code.
+The self-hosted server used to be called "Spot Solutions" (and "Spot Server" on the Mac). It is now **Nothing BOT Server** everywhere: the Mac app, the Windows folder, the Linux services, the downloads and the settings names. The web app is called Nothing BOT Curate. This page has the naming scheme, how old servers are kept apart from new ones, and how to move your own server across without a new QR code.
 
 ## The naming scheme
 
@@ -22,7 +22,7 @@ One name, written three ways. Use the right one for the place.
 | Windows folder | `C:\SpotSolutions` | `C:\NothingBotServer` |
 | Windows tasks | `SpotSolutionsWorker`, `...Console`, `...Update` | `NothingBotServerWorker`, `...Console`, `...Update` |
 | Windows firewall rule | "Spot Solutions Console" | "Nothing BOT Server Console" |
-| Windows shortcuts | "Spot Server Console", Start menu folder "Spot Solutions" | "Nothing BOT Server Console", Start menu folder "Nothing BOT Server" (the "Nothing BOT Curating" shortcut opens the web app) |
+| Windows shortcuts | "Spot Server Console", Start menu folder "Spot Solutions" | "Nothing BOT Server Console", Start menu folder "Nothing BOT Server" (the "Nothing BOT Curate" shortcut opens the web app) |
 | Windows installers | `Install Spot Solutions.cmd` | `Install Nothing BOT Server.cmd` (and `... (Gemini only).cmd`) |
 | Linux services | `spot-worker`, `spot-console`, `spot-task@` | `nothing-bot-server-worker`, `nothing-bot-server-console`, `nothing-bot-server-task@` |
 | Linux paths | `/opt/spot-solutions`, `/var/lib/spot-solutions`, `/etc/spot-solutions`, `/usr/local/lib/spot-solutions` | the same with `nothing-bot-server` |
@@ -80,7 +80,7 @@ Then:
 | Uninstall the old server | The new installer stops and removes it for you. Or **Spot Server, More, Uninstall**, or run `spotctl uninstall` from inside the old app. | PowerShell as Administrator: `irm https://nothingbotcurating.web.app/uninstall.ps1 \| iex` | `curl -fsSL https://nothingbotcurating.web.app/uninstall.sh \| sudo bash` |
 | Install the new server | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| bash` | `Set-ExecutionPolicy -Scope Process Bypass -Force; irm https://nothingbotcurating.web.app/install.ps1 \| iex` | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| sudo bash` |
 
-Then open the new server's console, click **Connect with Nothing BOT Curating**, sign in as an admin and approve. In the app, **Settings, WhatsApp** should show the account running again with no QR. Afterwards, remove the old server in **Account, Server** so its key is revoked.
+Then open the new server's console, click **Connect with Nothing BOT Curate**, sign in as an admin and approve. In the app, **Settings, WhatsApp** should show the account running again with no QR. Afterwards, remove the old server in **Account, Server** so its key is revoked.
 
 ### Uninstallers
 

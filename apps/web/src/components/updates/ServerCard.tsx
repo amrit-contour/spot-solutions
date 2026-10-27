@@ -11,7 +11,7 @@ import { UpdateItem } from "./shared";
 /** A notice that points at a fix gets one obvious button for it. */
 function fix(text: string): { to: string; label: string } | null {
   if (/Show QR code|link(ed)? again|WhatsApp login/i.test(text)) return { to: "/settings#whatsapp", label: "Open Settings" };
-  if (/asked to use Nothing BOT Curating/i.test(text)) return { to: "/server", label: "Open Server" };
+  if (/asked to use Nothing BOT Curate/i.test(text)) return { to: "/server", label: "Open Server" };
   return null;
 }
 

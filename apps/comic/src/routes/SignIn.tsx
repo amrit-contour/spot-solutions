@@ -21,7 +21,7 @@ export function SignIn() {
         <ComicLogo className="size-16" />
         <div>
           <h1 className="type-headline-m">Nothing BOT Comedy</h1>
-          <p className="mt-2 type-body-l text-on-surface-variant">Rooms, spot asks and group alerts for comics. Sign in with the same Google account as Nothing BOT Curating.</p>
+          <p className="mt-2 type-body-l text-on-surface-variant">Rooms, spot asks and group alerts for comics. Sign in with the same Google account as Nothing BOT Curate.</p>
         </div>
         <Button size="lg" onClick={go}>
           Continue with Google

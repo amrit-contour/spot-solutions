@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Adds the installers and a source tarball to the web build, so servers install from
-# nothingbotcurating.web.app with no GitHub dependency. Run after `vite build`, before deploying.
+# nothingbotcurate.web.app with no GitHub dependency. Run after `vite build`, before deploying.
 #
 # Files in dl/: nothing-bot-server.json, nothing-bot-server.tar.gz, NothingBotServer-Windows.zip, NothingBotServer-mac.zip,
 # plus install.sh, install.ps1, install-mac.sh, uninstall.sh at the root (never the admin key scripts). Every hosting site but
@@ -54,7 +54,7 @@ cp deploy/mac/install-mac.sh "$DIST/install-mac.sh"
 rm -rf "$TMP"
 
 # spot-solutions.web.app is retired (hosting target `curating`): its own public dir, apps/web/dist-retired, with only a page
-# that clears the old PWA and forwards to nothingbotcurating.web.app (and a self-unregistering sw.js). No downloads.
+# that clears the old PWA and forwards to nothingbotcurate.web.app (and a self-unregistering sw.js). No downloads.
 RETIRED="${NBS_RETIRED_DIR:-apps/web/dist-retired}"
 rm -rf "$RETIRED"
 mkdir -p "$RETIRED"

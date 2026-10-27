@@ -34,11 +34,11 @@ For UI work you don't need a real project. Start the Auth and Firestore emulator
 
 ```bash
 pnpm --filter @spot/comic emulators                                                    # terminal 1: Auth 9099, Firestore 8080
-VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=demo-nbot pnpm dev:web                   # terminal 2: Nothing BOT Curating
+VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=demo-nbot pnpm dev:web                   # terminal 2: Nothing BOT Curate
 pnpm --filter @spot/comic dev:emulator                                                 # or: Nothing BOT Comedy on :5175
 ```
 
-The switch only applies in `vite dev` (`packages/ui/src/firebase.ts`). For Curating, seed a demo curator into the emulator and open the printed sign-in link:
+The switch only applies in `vite dev` (`packages/ui/src/firebase.ts`). For Curate, seed a demo curator into the emulator and open the printed sign-in link:
 
 ```bash
 cd apps/worker
@@ -55,7 +55,7 @@ Run these before you open a pull request.
 ```bash
 pnpm test                     # Vitest across the workspace (shared, worker, functions)
 pnpm typecheck                # tsc --noEmit where a package defines it
-cd apps/web && npx tsc -b     # strict build check for Curating
+cd apps/web && npx tsc -b     # strict build check for Curate
 cd apps/comic && npx tsc -b   # strict build check for Comedy
 ```
 
@@ -95,17 +95,17 @@ Use `feat`, `fix`, `docs` or `chore` (the history also has a few `refactor` and 
 
 ## Deploy
 
-Maintainers only. Curating (the five Curating Hosting sites), the installers and the Firestore and Storage rules go out with:
+Maintainers only. Curate (the five Curate Hosting sites), the installers and the Firestore and Storage rules go out with:
 
 ```bash
 pnpm deploy:web
 ```
 
-That runs the Curating build, `deploy/build-dist.sh` (adds the installers and a source tarball, and writes the redirect-only page for the retired `spot-solutions.web.app`), and a `firebase deploy` of the Curating Hosting targets plus `firestore:rules` and `storage`. Nothing BOT Comedy is `pnpm deploy:comic`. Always run `build-dist.sh` after the web build, never deploy `apps/web/dist` without it. It needs the Firebase CLI signed in to the production project.
+That runs the Curate build, `deploy/build-dist.sh` (adds the installers and a source tarball, and writes the redirect-only page for the retired `spot-solutions.web.app`), and a `firebase deploy` of the Curate Hosting targets plus `firestore:rules` and `storage`. Nothing BOT Comedy is `pnpm deploy:comic`. Always run `build-dist.sh` after the web build, never deploy `apps/web/dist` without it. It needs the Firebase CLI signed in to the production project.
 
 ## Anything that messages comics must be opt-in
 
-Nothing BOT Curating sends WhatsApp messages on a curator's behalf. A wrong message goes to a real person, from the curator's own number. So:
+Nothing BOT Curate sends WhatsApp messages on a curator's behalf. A wrong message goes to a real person, from the curator's own number. So:
 
 - New automatic messaging is **off by default**, behind a setting the curator turns on. Auto-acknowledge (`ack.enabled`) and auto-send of drafted replies (`selfService.autoSend`) both start off.
 - Keep the existing guards: no replies to backlog messages, none to business accounts, none for low-confidence requests, none for messages older than 10 minutes.

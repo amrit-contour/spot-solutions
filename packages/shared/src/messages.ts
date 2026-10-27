@@ -1,4 +1,4 @@
-// Every message Nothing BOT Curating can send a comic, beyond the four with their own settings
+// Every message Nothing BOT Curate can send a comic, beyond the four with their own settings
 // (ack, confirm, cancelSpot, reject). Each has a default; the curator can rewrite any of them in
 // Settings → Messages, and saved snippets (custom templates) can be dropped into any reply box.
 import { renderTemplate, type TemplateVars } from "./template.ts";

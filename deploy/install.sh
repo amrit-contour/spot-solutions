@@ -264,9 +264,9 @@ step "Done"
 echo "One-time setup: open the server console from a phone or laptop on THIS Wi-Fi:"
 /usr/local/bin/nbs-console-url | sed 's/^/  /'
 echo
-echo "1. In the console, click Connect with Nothing BOT Curating and sign in with Google (an admin account)."
+echo "1. In the console, click Connect with Nothing BOT Curate and sign in with Google (an admin account)."
 echo "   No admin yet (a brand-new project)? Use 'First server ever? Use a key file' in the same card."
 if [[ "${NO_LOCAL}" == 1 ]]; then echo "   This server uses Gemini: add a Gemini key under AI models (or each curator in the app). A local model can be turned on there too."; else echo "   Local or Gemini only, and which models, is under AI models in the console."; fi
-echo "2. Link WhatsApp at https://nothingbotcurating.web.app → Settings."
+echo "2. Link WhatsApp at https://nothingbotcurate.web.app → Settings."
 echo "After that, everything (restarts, logs, updates) is in the app → Account → Server, from anywhere."
 echo "The server updates itself; the console has an Update now button. Forgot the link later? sudo nbs-console-url"

@@ -11,6 +11,8 @@
 <link rel="icon" href="/favicon.ico?v=__ICON_V__" sizes="16x16 32x32 48x48" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=__ICON_V__" />
 <title>Nothing BOT Server</title>
+<meta name="application-name" content="nBOT Server" />
+<meta name="apple-mobile-web-app-title" content="nBOT Server" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,300..800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <script>try { var b = localStorage.getItem("nbs-console-brand"); if (b === "classic") document.documentElement.setAttribute("data-brand", "classic"); } catch (e) {}</script>
@@ -666,7 +668,7 @@ function alerts(s) {
   const moving = s.update.running && ["move-data", "move-cleanup"].includes(s.update.progress?.task);
   const st = s.storage;
   if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Nothing BOT Server keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
-  if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Nothing BOT Curating below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
+  if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Nothing BOT Curate below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
   else if (ws === "stopped" || ws === "stopping") out.push(`<div class="banner bad" role="alert"><div class="grow"><b>${ws === "stopping" ? "Stopping the server…" : "Your server is stopped."}</b><div class="small">${ws === "stopping" ? "WhatsApp is being saved and closed. This can take up to a minute." : "WhatsApp messages aren't being read. It stays stopped, even after a restart or an update, until you start it."}</div></div>${ws === "stopped" ? `<button data-worker="start" data-models="1">Start server</button>` : ""}</div>`);
   else if (ws === "starting") out.push(`<div class="banner busy" role="status">${spin}<div class="grow"><b>Starting the server…</b><div class="small">WhatsApp reconnects within a minute.</div></div></div>`);
   else if (!s.services.worker && !s.update.running) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The worker isn't running</b><div class="small">WhatsApp is offline until it starts. Try restarting it; the logs say why it stopped.</div></div><button data-restart="worker">Restart worker</button></div>`);
@@ -689,7 +691,7 @@ function connectBlock(s) {
   if (c.phase === "waiting")
     return `<div class="panel"><div class="conn">
       <div class="grow"><b>Open this link and sign in</b>
-        <ol class="steps small muted"><li>Open the link on this computer, or scan the code with your phone.</li><li>Sign in to Nothing BOT Curating with Google. Only admins can connect a server.</li><li>Check that it shows <b class="mono check">${esc(c.verify)}</b>, then approve <b>${esc(c.deviceName)}</b>.</li></ol>
+        <ol class="steps small muted"><li>Open the link on this computer, or scan the code with your phone.</li><li>Sign in to Nothing BOT Curate with Google. Only admins can connect a server.</li><li>Check that it shows <b class="mono check">${esc(c.verify)}</b>, then approve <b>${esc(c.deviceName)}</b>.</li></ol>
         <div class="linkbox mono">${esc(c.link)}</div>
         <div class="actions"><a class="btn" href="${esc(c.link)}" target="_blank" rel="noreferrer">Open sign-in page ↗</a><button class="tonal" data-copy-link>Copy link</button><button class="text" data-connect-cancel>Cancel</button></div>
         <div class="muted small" style="margin-top:10px">${spin} Waiting for approval · expires in <span id="cd" class="mono">${left(c.expiresAt)}</span></div></div>
@@ -699,12 +701,12 @@ function connectBlock(s) {
   if (c.phase === "done") return `<div class="panel"><b>Connected</b><div class="muted small" style="margin-top:2px">Approved by ${esc(c.approvedBy || "an admin")}. The worker is starting; this server will show up under Server in the app within a minute.</div><div class="actions"><button class="text" data-connect-cancel>Connect again</button></div></div>`;
   const msg = c.phase === "error" ? c.error : c.phase === "expired" ? "That link expired. Make a new one." : "";
   return `<div class="panel">
-      <b>Connect with your Nothing BOT Curating account</b>
+      <b>Connect with your Nothing BOT Curate account</b>
       <div class="muted small" style="margin-top:2px">Sign in with Google, on this computer or your phone, and approve this server. It gets its own key automatically, and you become one of its admins.</div>
       <label for="devname">Name for this server</label>
       <input type="text" id="devname" placeholder="${esc(s.hostname)}" value="${name}">
       ${msg ? `<div class="small err-text" style="margin-top:8px" role="alert">${esc(msg)}</div>` : ""}
-      <div class="actions"><button data-connect-start>Connect with Nothing BOT Curating</button></div>
+      <div class="actions"><button data-connect-start>Connect with Nothing BOT Curate</button></div>
     </div>`;
 }
 
@@ -1011,7 +1013,7 @@ function render() {
   const allUp = !wStopped && s.services.worker && (s.services.ollama || !s.localModel || mOff); // Gemini-only servers have no Ollama; one the owner stopped is not a fault
   const hasAdmins = c.admins.length > 0, gSet = !!c.geminiServerKey;
   const steps = [
-    { id: "key", done: !!(k && k.projectId), title: "Connected to Nothing BOT Curating", action: k ? "Replace Firebase key" : "" },
+    { id: "key", done: !!(k && k.projectId), title: "Connected to Nothing BOT Curate", action: k ? "Replace Firebase key" : "" },
     { id: "admins", done: hasAdmins, title: "Admins", action: hasAdmins ? "Edit" : "" },
     { id: "gemini", done: gSet, optional: s.localModel, title: s.localModel ? "Gemini key" : "Gemini key", tag: s.localModel ? " (optional)" : "", action: gSet ? "Manage in AI models" : "Set up in AI models" },
   ];
@@ -1022,10 +1024,10 @@ function render() {
   const markCls = (st) => st.done ? "done" : st.optional ? "todo" : "warn";
   const stepBody = {
     key: k && k.projectId
-      ? `<div class="muted small">Project <b>${esc(k.projectId)}</b></div><div class="keyline"><span class="mono small muted" style="overflow-wrap:anywhere">${esc(k.clientEmail)}</span><button type="button" class="iconbtn" data-copy="${esc(k.clientEmail)}" aria-label="Copy service account email" title="Copy service account email">${ICN.copy}</button><span class="copied" role="status" aria-live="polite"></span></div><div class="muted small" style="margin-top:4px">The key that lets this server read and write your Nothing BOT Curating data. Replace it if it was revoked, you moved to another project, or the logs show permission errors.</div>`
-      : `<div class="muted small">Not connected yet. Sign in below, or use a join code. <a href="https://nothingbotcurating.web.app/help#several-servers" target="_blank" rel="noreferrer">How ↗</a></div>`,
-    admins: admOpen ? `<div class="muted small">Admins can see and manage this server in the Nothing BOT Curating app (Server page).</div>` : hasAdmins
-      ? `<div class="chips" role="list" aria-label="Admin emails">${c.admins.map((e) => `<span class="chip neutral" role="listitem">${esc(e)}</span>`).join("")}</div><div class="muted small" style="margin-top:6px">Admins can see and manage this server in the Nothing BOT Curating app (Server page). Connecting with your account adds yours.</div>`
+      ? `<div class="muted small">Project <b>${esc(k.projectId)}</b></div><div class="keyline"><span class="mono small muted" style="overflow-wrap:anywhere">${esc(k.clientEmail)}</span><button type="button" class="iconbtn" data-copy="${esc(k.clientEmail)}" aria-label="Copy service account email" title="Copy service account email">${ICN.copy}</button><span class="copied" role="status" aria-live="polite"></span></div><div class="muted small" style="margin-top:4px">The key that lets this server read and write your Nothing BOT Curate data. Replace it if it was revoked, you moved to another project, or the logs show permission errors.</div>`
+      : `<div class="muted small">Not connected yet. Sign in below, or use a join code. <a href="https://nothingbotcurate.web.app/help#several-servers" target="_blank" rel="noreferrer">How ↗</a></div>`,
+    admins: admOpen ? `<div class="muted small">Admins can see and manage this server in the Nothing BOT Curate app (Server page).</div>` : hasAdmins
+      ? `<div class="chips" role="list" aria-label="Admin emails">${c.admins.map((e) => `<span class="chip neutral" role="listitem">${esc(e)}</span>`).join("")}</div><div class="muted small" style="margin-top:6px">Admins can see and manage this server in the Nothing BOT Curate app (Server page). Connecting with your account adds yours.</div>`
       : `<div class="muted small">Nobody can see this server in the app yet. Add the email of everyone who should manage it.</div>`,
     gemini: gSet
       ? `<div class="muted small">Shared key set · <span class="mono">${esc(c.geminiServerKey)}</span>. Used by curators who haven't added their own.</div>`
@@ -1049,7 +1051,7 @@ function render() {
   };
   const stepList = `<ol class="ssteps">${steps.map((st, i) => `<li class="sstep" aria-labelledby="st-${st.id}"><span class="num ${markCls(st)}" aria-hidden="true">${mark(st, i)}</span><div class="shead"><div class="stitle" id="st-${st.id}">${st.title}${st.tag ? `<span class="opt-tag">${st.tag}</span>` : ""}<span class="sr">${st.done ? ", done" : st.optional ? ", not set" : ", needs attention"}</span></div><div style="margin-top:2px">${stepBody[st.id]}</div></div>${actions[st.id]}${panels[st.id]}</li>`).join("")}</ol>`;
   const setupBody = `${stepList}
-    <div class="sfoot"><div class="actions"><a class="btn text" href="https://nothingbotcurating.web.app" target="_blank" rel="noreferrer">Open Nothing BOT Curating${ICN.ext}</a><a class="btn text" href="https://nothingbotcurating.web.app/help" target="_blank" rel="noreferrer">Server guide${ICN.ext}</a></div></div>`;
+    <div class="sfoot"><div class="actions"><a class="btn text" href="https://nothingbotcurate.web.app" target="_blank" rel="noreferrer">Open Nothing BOT Curate${ICN.ext}</a><a class="btn text" href="https://nothingbotcurate.web.app/help" target="_blank" rel="noreferrer">Server guide${ICN.ext}</a></div></div>`;
   const nAdm = c.admins.length;
   const setupDone = steps.every((x) => x.done || x.optional);
   const setupSummary = setupDone

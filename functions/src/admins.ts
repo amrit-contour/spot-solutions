@@ -1,4 +1,4 @@
-// Admin management for both apps (Curating and Comedy share config/access.admins). The browser can never write the admin list
+// Admin management for both apps (Curate and Comedy share config/access.admins). The browser can never write the admin list
 // (firestore.rules only lets an admin change maxCurators), so adding and removing admins goes through here, where the rules that
 // matter are checked: only an admin may change it, only an approved member can become one, and the last admin can never go.
 // Also the per-member activity (which app they use, when they were last seen) for the admin Members list. Only sees ports, so it is tested with fakes.

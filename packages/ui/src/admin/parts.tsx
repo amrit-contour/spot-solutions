@@ -46,7 +46,7 @@ export function AppChips({ activity }: { activity?: Activity }) {
   if (!activity.curating && !activity.comedy) return <span>No activity yet</span>;
   return (
     <>
-      {activity.curating && <Chip tone="primary" className="h-6 px-2">Curating</Chip>}
+      {activity.curating && <Chip tone="primary" className="h-6 px-2">Curate</Chip>}
       {activity.comedy && <Chip tone="tertiary" className="h-6 px-2">Comedy</Chip>}
     </>
   );

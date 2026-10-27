@@ -24,7 +24,7 @@ export function AdminsPanel({ ctx }: { ctx: AdminCtx }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Group title="Admins" count={admins.length} hint="Admins decide who gets in, add other admins and run the data tools. They work the same in Curating and Comedy.">
+      <Group title="Admins" count={admins.length} hint="Admins decide who gets in, add other admins and run the data tools. They work the same in Curate and Comedy.">
         <Rows>
           {admins.map((email) => {
             const r = byEmail.get(email);

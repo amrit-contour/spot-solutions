@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Nothing BOT Curating",
-  "short_name": "NBot Curate",
+  "name": "Nothing BOT Curate",
+  "short_name": "nBOT Curate",
   "description": "Open-mic lineups sorted from your WhatsApp by a Gemma model on your own laptop.",
   "start_url": "/",
   "scope": "/",

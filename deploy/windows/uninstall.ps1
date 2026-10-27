@@ -38,7 +38,7 @@ Start-Sleep 2
 Step "Firewall rules and shortcuts"
 foreach ($r in "Nothing BOT Server Console", "Spot Solutions Console") { Remove-NetFirewallRule -DisplayName $r -ErrorAction SilentlyContinue }
 $desktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
-foreach ($l in "Nothing BOT Server Console.lnk", "Spot Server Console.lnk", "Spot Solutions.lnk", "Nothing BOT Curating.lnk") { Remove-Item -Force -ErrorAction SilentlyContinue "$desktop\$l" }
+foreach ($l in "Nothing BOT Server Console.lnk", "Spot Server Console.lnk", "Spot Solutions.lnk", "Nothing BOT Curate.lnk", "Nothing BOT Curating.lnk") { Remove-Item -Force -ErrorAction SilentlyContinue "$desktop\$l" }
 foreach ($f in "Nothing BOT Server", "Spot Solutions") { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\$f" }
 Ok "Done"
 

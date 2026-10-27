@@ -21,7 +21,7 @@ const row = { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity:
 
 /**
  * Members: who asked to join (approve / decline), who is in (search, which app they use, last seen, make admin, remove)
- * and who was removed (restore). `approveLimit` is Curating's cap on approved people: each one gets a WhatsApp session on the server.
+ * and who was removed (restore). `approveLimit` is Curate's cap on approved people: each one gets a WhatsApp session on the server.
  */
 export function MembersPanel({ ctx, approveLimit }: { ctx: AdminCtx; approveLimit?: number }) {
   const { me, records, admins, activity } = ctx;
@@ -165,7 +165,7 @@ export function MembersPanel({ ctx, approveLimit }: { ctx: AdminCtx; approveLimi
           toast.success("Access removed");
         }}
       >
-        <p>They lose access to Curating and Comedy right away, and any WhatsApp session of theirs on the server stops.</p>
+        <p>They lose access to Curate and Comedy right away, and any WhatsApp session of theirs on the server stops.</p>
         <p>Their data stays where it is. You can restore them from the Removed list.</p>
       </ConfirmDialog>
 

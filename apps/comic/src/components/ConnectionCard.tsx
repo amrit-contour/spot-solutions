@@ -7,7 +7,7 @@ import { useClock } from "../lib/alerts";
 import { Card } from "./ui";
 import { ago } from "../lib/time";
 
-const CURATING = "Nothing BOT Curating";
+const CURATING = "Nothing BOT Curate";
 
 function Out({ href, children }: { href: string; children: ReactNode }) {
   return (
@@ -18,7 +18,7 @@ function Out({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-/** Settings: the WhatsApp link, the server and the agent number, shared with Nothing BOT Curating. Read only. */
+/** Settings: the WhatsApp link, the server and the agent number, shared with Nothing BOT Curate. Read only. */
 export function ConnectionCard({ uid }: { uid: string }) {
   const c = useConnection(uid);
   const now = useClock(15_000);

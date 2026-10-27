@@ -110,9 +110,9 @@ describe("AI models helpers", () => {
 });
 
 describe("connect flow", () => {
-  const link = (code, base = "https://nothingbotcurating.web.app") => connectLink(code, base);
+  const link = (code, base = "https://nothingbotcurate.web.app") => connectLink(code, base);
   it("builds the link and a QR", () => {
-    expect(link("K7QF3XM9PT2R")).toBe("https://nothingbotcurating.web.app/connect-server?c=K7QF3XM9PT2R");
+    expect(link("K7QF3XM9PT2R")).toBe("https://nothingbotcurate.web.app/connect-server?c=K7QF3XM9PT2R");
     expect(qrSvg(link("K7QF3XM9PT2R"))).toMatch(/^<svg/);
   });
   it("sends only a hash of its secret, installs the key once approved, and keeps the secret out of its state", async () => {

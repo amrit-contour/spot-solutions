@@ -1,4 +1,4 @@
-// Nothing BOT Curating Cloud Functions (2nd gen, asia-south1). Join codes and server removal: docs/multi-server.md.
+// Nothing BOT Curate Cloud Functions (2nd gen, asia-south1). Join codes and server removal: docs/multi-server.md.
 import { initializeApp } from "firebase-admin/app";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
@@ -54,7 +54,7 @@ export const createJoinCode = onCall(async (req) => {
   }
 });
 
-/** Admin: remove a server, revoke its key if Nothing BOT Curating made it. */
+/** Admin: remove a server, revoke its key if Nothing BOT Curate made it. */
 export const removeServer = onCall({ timeoutSeconds: 120 }, async (req) => {
   try {
     return await removeOne(deps(), caller(req.auth), (req.data ?? {}) as { serverId?: unknown; force?: unknown });
@@ -286,7 +286,7 @@ export const listMembers = onCall(async (req) => {
   }
 });
 
-// ---------- Admins (functions/src/admins.ts): shared by Curating and Comedy ----------
+// ---------- Admins (functions/src/admins.ts): shared by Curate and Comedy ----------
 
 const callerOf = (a: { uid: string; token: { email?: string; email_verified?: boolean; firebase?: { sign_in_provider?: string } } } | undefined) => ({ uid: a?.uid, email: a?.token.email, verified: a?.token.email_verified === true, anonymous: !a || a.token.firebase?.sign_in_provider === "anonymous" });
 

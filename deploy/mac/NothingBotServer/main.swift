@@ -12,7 +12,7 @@ let brand = Color(nsColor: NSColor(name: nil) { appearance in
         : NSColor(red: 0x2A / 255, green: 0x6F / 255, blue: 0x13 / 255, alpha: 1)
 })
 let consoleURL = URL(string: "http://127.0.0.1:7420/")!
-let webAppURL = URL(string: "https://nothingbotcurating.web.app")!
+let webAppURL = URL(string: "https://nothingbotcurate.web.app")!
 let supportDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NothingBotServer")
 
 // MARK: - Model
@@ -276,7 +276,7 @@ struct DashboardView: View {
         }
         .toolbar {
             ToolbarItemGroup {
-                Button { NSWorkspace.shared.open(webAppURL) } label: { Label("Open Nothing BOT Curating", systemImage: "safari") }
+                Button { NSWorkspace.shared.open(webAppURL) } label: { Label("Open Nothing BOT Curate", systemImage: "safari") }
                 Button { NSWorkspace.shared.open(consoleURL) } label: { Label("Console in browser", systemImage: "rectangle.on.rectangle") }
                 Button { NSWorkspace.shared.open(supportDir.appendingPathComponent("logs")) } label: { Label("Logs folder", systemImage: "doc.text.magnifyingglass") }
                 Menu {
@@ -400,7 +400,7 @@ struct MenuContent: View {
             else { Button("Start server") { server.perform("Starting", ["start"]) } }
         }
         Button("Open Nothing BOT Server…") { openWindow(id: "main"); NSApp.activate(ignoringOtherApps: true) }
-        Button("Open Nothing BOT Curating") { NSWorkspace.shared.open(webAppURL) }
+        Button("Open Nothing BOT Curate") { NSWorkspace.shared.open(webAppURL) }
         Divider()
         Button("Quit (server keeps running)") { NSApp.terminate(nil) }
     }

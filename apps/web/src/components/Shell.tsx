@@ -47,7 +47,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
   return (
     <AppShell
       nav={nav}
-      appName="Nothing BOT Curating"
+      appName="Nothing BOT Curate"
       logo={<CuratingLogo className="size-11" />}
       accountMenu={(align) => <AccountMenu align={align} />}
       phoneStatus={
