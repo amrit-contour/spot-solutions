@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cooldownWeeks, cooldownWords, onYes, recentSpot, roundFilled } from "./adhoc.ts";
+import { cooldownWeeks, cooldownWords, directNotice, directPlan, onYes, recentSpot, roundFilled } from "./adhoc.ts";
 import { formatDate } from "./week.ts";
 
 const round = (size: number, slots: number, autoAdd: boolean) => ({ round: { id: "r1", size, slots, autoAdd } });
@@ -47,5 +47,18 @@ describe("cooldown", () => {
     const w = cooldownWords("2026-10-12", week, 4, formatDate);
     expect(w.lastWhen).toBe(`on ${formatDate("2026-10-12")}`);
     expect(w.askAgain).toBe(`from the week of ${formatDate("2026-11-16")}`);
+  });
+});
+
+describe("direct add (already agreed)", () => {
+  it("writes the Updates entry for one or several", () => {
+    expect(directNotice(["Rahul"], "Monday Mic")).toBe("Added Rahul to Monday Mic directly");
+    expect(directNotice(["Rahul", "Priya"], "Monday Mic")).toBe("Added Rahul and Priya to Monday Mic directly");
+    expect(directNotice(["Rahul", "Priya", "Sam"], "Monday Mic")).toBe("Added Rahul, Priya and Sam to Monday Mic directly");
+  });
+  it("adds everyone not already on it and counts how far over the show goes", () => {
+    expect(directPlan(["a", "b"], ["c", "d"], 6)).toEqual({ add: ["c", "d"], already: [], over: 0 });
+    expect(directPlan(["a", "b"], ["b", "c", "c"], 3)).toEqual({ add: ["c"], already: ["b"], over: 0 });
+    expect(directPlan(["a", "b", "c"], ["d", "e"], 4)).toEqual({ add: ["d", "e"], already: [], over: 1 });
   });
 });

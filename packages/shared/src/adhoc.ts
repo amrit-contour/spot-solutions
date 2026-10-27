@@ -47,3 +47,17 @@ const mondayOf = (iso: string) => {
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
   return d.toISOString().slice(0, 10);
 };
+
+/** "Added Rahul to Monday Mic directly": the Updates entry for comics added without an offer. */
+export function directNotice(names: string[], showName: string): string {
+  const who = names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Added ${who} to ${showName} directly`;
+}
+
+/** Who a direct add puts on the lineup, who is already there, and how far over the show's slot count it goes. Cooldown never applies. */
+export function directPlan(onLineup: string[], picks: string[], slotCount: number): { add: string[]; already: string[]; over: number } {
+  const on = new Set(onLineup);
+  const unique = [...new Set(picks)];
+  const add = unique.filter((id) => !on.has(id));
+  return { add, already: unique.filter((id) => on.has(id)), over: Math.max(0, onLineup.length + add.length - slotCount) };
+}

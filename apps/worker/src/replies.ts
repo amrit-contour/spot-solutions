@@ -3,6 +3,7 @@ import type WAWebJS from "whatsapp-web.js";
 import {
   confirmPending,
   dateInWeek,
+  directNotice,
   formatDate,
   onYes,
   localNow,
@@ -17,6 +18,7 @@ import {
   type HostPoll,
   type Lineup,
   type SpotOffer,
+  type Show,
   type SpotRequest,
 } from "@spot/shared";
 import { col, db } from "./firebase.ts";
@@ -95,18 +97,18 @@ async function tellFull(uid: string, client: WAWebJS.Client, offerRef: FirebaseF
   if (!quiet) await notice(uid, "info", `${offer.comicName} said yes, but the ${showName(uid, offer.showId)} spot was already filled. They've been told.`, "offer");
 }
 
-/** Book an offer: slot (ad hoc), confirmation, group. Returns false when the show was full or called off (they're told). */
-export async function bookOffer(uid: string, client: WAWebJS.Client, offerRef: FirebaseFirestore.DocumentReference, offer: SpotOffer, reply: string | null): Promise<boolean> {
-  const comicId = offer.comicId;
-  const { shows, settings } = watchUser(uid);
-  const show = shows.find((s) => s.id === offer.showId);
-  const lineupRef = col(uid, "lineups").doc(offer.lineupId);
+/**
+ * Put one comic on a show's lineup as an ad hoc spot (in their history, never counted by the cooldown).
+ * Returns the lineup, or null when the show is full (unless `overfill`) or called off.
+ */
+async function placeAdhoc(uid: string, show: Show | undefined, lineupId: string, comicId: string, overfill = false): Promise<Lineup | null> {
+  const lineupRef = col(uid, "lineups").doc(lineupId);
   const comicRef = col(uid, "comics").doc(comicId);
-  const booked = await db.runTransaction(async (tx) => {
+  return db.runTransaction(async (tx) => {
     const lineup = (await tx.get(lineupRef)).data() as Lineup | undefined;
     if (!show || !lineup || lineup.status === "cancelled" || lineup.status === "canned") return null;
     if (lineup.slots.some((s) => s.comicId === comicId)) return lineup;
-    if (lineup.slots.length >= show.slotCount) return null;
+    if (!overfill && lineup.slots.length >= show.slotCount) return null;
     const comic = (await tx.get(comicRef)).data() as Comic | undefined;
     const date = dateInWeek(lineup.weekOf, show.weekday);
     tx.update(lineupRef, { slots: [...lineup.slots, { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null, adhoc: true }] });
@@ -117,6 +119,31 @@ export async function bookOffer(uid: string, client: WAWebJS.Client, offerRef: F
     if (req) tx.update(reqRef, { status: "confirmed", updatedAt: Date.now() });
     return lineup;
   });
+}
+
+/** After they're on the lineup: the confirmation, counted as told, and into the show's group when it's today. */
+async function finishPlaced(uid: string, client: WAWebJS.Client, show: Show, lineupId: string, comicId: string, weekOf: string, status: Lineup["status"]) {
+  const { settings } = watchUser(uid);
+  const lineupRef = col(uid, "lineups").doc(lineupId);
+  const comic = (await col(uid, "comics").doc(comicId).get()).data() as Comic;
+  await sendConfirmation(uid, client, show, comic, weekOf);
+  // On a confirmed lineup this counts as told, so "Send updates" doesn't confirm them a second time.
+  if (status === "confirmed") {
+    const fresh = (await lineupRef.get()).data() as Lineup;
+    await lineupRef.update({ sent: sentWith(fresh.sent, fresh.slots, show, comicId, Date.now()) });
+  }
+  // Show is today and its group is managed: add them now (ad hoc comics join the group like everyone else).
+  if (show.groupId && localNow(new Date(), settings.timezone).date === dateInWeek(weekOf, show.weekday)) {
+    const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;
+    await group.addParticipants([comicId], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) }).catch(() => undefined);
+  }
+}
+
+/** Book an offer: slot (ad hoc), confirmation, group. Returns false when the show was full or called off (they're told). */
+export async function bookOffer(uid: string, client: WAWebJS.Client, offerRef: FirebaseFirestore.DocumentReference, offer: SpotOffer, reply: string | null): Promise<boolean> {
+  const { shows } = watchUser(uid);
+  const show = shows.find((s) => s.id === offer.showId);
+  const booked = await placeAdhoc(uid, show, offer.lineupId, offer.comicId);
 
   if (!booked || !show) {
     await tellFull(uid, client, offerRef, offer, reply, true);
@@ -125,20 +152,43 @@ export async function bookOffer(uid: string, client: WAWebJS.Client, offerRef: F
   }
 
   await offerRef.update({ status: "accepted", ...(reply !== null && { reply }) });
-  const comic = (await comicRef.get()).data() as Comic;
-  await sendConfirmation(uid, client, show, comic, booked.weekOf);
-  // On a confirmed lineup this counts as told, so "Send updates" doesn't confirm them a second time.
-  if (booked.status === "confirmed") {
-    const fresh = (await lineupRef.get()).data() as Lineup;
-    await lineupRef.update({ sent: sentWith(fresh.sent, fresh.slots, show, comicId, Date.now()) });
-  }
-  // Show is today and its group is managed: add them now (ad hoc comics join the group like everyone else).
-  if (show.groupId && localNow(new Date(), settings.timezone).date === dateInWeek(booked.weekOf, show.weekday)) {
-    const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;
-    await group.addParticipants([comicId], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) }).catch(() => undefined);
-  }
+  await finishPlaced(uid, client, show, offer.lineupId, offer.comicId, booked.weekOf, booked.status);
   await notice(uid, "info", `${offer.comicName} took the ${show.name} spot and got the confirmation.`, "offer");
   return true;
+}
+
+/**
+ * "Already agreed": the curator adds comics straight onto the lineup, no offer and no waiting for a yes. Same placing,
+ * confirmation message and group add as a booked offer. The cooldown never applies and a full show doesn't block it
+ * (the sheet warns). Returns who was added and who was already on it.
+ */
+export async function addDirect(uid: string, client: WAWebJS.Client, lineupId: string, comicIds: string[]) {
+  const { shows } = watchUser(uid);
+  const lineup = (await col(uid, "lineups").doc(lineupId).get()).data() as Lineup | undefined;
+  const show = shows.find((s) => s.id === lineup?.showId);
+  if (!lineup || !show) throw new Error("Lineup not found");
+  if (lineup.status === "cancelled" || lineup.status === "canned") throw new Error(`${show.name} is called off.`);
+  const added: string[] = [];
+  const already: string[] = [];
+  const names: string[] = [];
+  for (const id of comicIds) {
+    const comicRef = col(uid, "comics").doc(id);
+    const comic = (await comicRef.get()).data() as Comic | undefined;
+    if (!comic) continue;
+    const placed = await placeAdhoc(uid, show, lineupId, id, true);
+    if (!placed) continue;
+    if (lineup.slots.some((s) => s.comicId === id)) {
+      already.push(id);
+      continue;
+    }
+    // A direct add replaces any offer still waiting on them.
+    for (const d of (await col(uid, "offers").where("comicId", "==", id).where("status", "==", "pending").get()).docs) await d.ref.update({ status: "expired" });
+    await finishPlaced(uid, client, show, lineupId, id, placed.weekOf, placed.status);
+    added.push(id);
+    names.push(comic.name);
+  }
+  if (names.length) await notice(uid, "info", directNotice(names, show.name), "offer");
+  return { added: added.length, already: already.length, ids: added };
 }
 
 /**

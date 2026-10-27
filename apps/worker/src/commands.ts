@@ -62,7 +62,7 @@ import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
 import { getMedia, getThread, listThreads, summarizeThread } from "./chats.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
-import { settleRound } from "./replies.ts";
+import { addDirect, settleRound } from "./replies.ts";
 import { askForSpot } from "./groupWatch.ts";
 import { sendAsk } from "./asks.ts";
 
@@ -375,7 +375,7 @@ const handlers: Record<Command["type"], Handler> = {
    * Offer open slot(s) to one comic (comicId, message already filled in) or to several at once (comicIds, the template:
    * {{name}} is filled per comic). Several make one ad hoc round that fills `slots`; autoAdd books the first yeses.
    */
-  async send_offer(uid, { comicId, comicIds, lineupId, body, rich, slots, autoAdd }) {
+  async send_offer(uid, { comicId, comicIds, lineupId, body, rich, slots, autoAdd, direct }) {
     const client = sessions.require(uid);
     const { settings, shows, venues } = watchUser(uid);
     const lineup = (await col(uid, "lineups").doc(String(lineupId)).get()).data() as Lineup | undefined;
@@ -384,6 +384,8 @@ const handlers: Record<Command["type"], Handler> = {
     if (!show) throw new Error("Show not found");
     const ids = [...new Set((Array.isArray(comicIds) ? comicIds : [comicId]).map(String).filter(Boolean))];
     if (!ids.length) throw new Error("Pick someone to offer the spot to.");
+    // Already agreed: no offer, no waiting for a yes. They go straight on the lineup, get the confirmation and join the group.
+    if (direct === true) return addDirect(uid, client, String(lineupId), ids);
     const open = show.slotCount - lineup.slots.length;
     if (open <= 0) throw new Error(`${show.name} is full.`);
     const comics = await loadComics(uid, ids);
