@@ -189,6 +189,9 @@ class SessionManager {
       authStrategy: new LocalAuth({ clientId: uid, dataPath: DATA_DIR }),
       puppeteer: {
         headless: true,
+        // Reading a big account (every chat for Learn my voice, Messages, history scans) can take minutes in WhatsApp Web;
+        // puppeteer's default 3-minute limit per browser call failed those with "Runtime.callFunctionOn timed out".
+        protocolTimeout: 10 * 60_000,
         executablePath: process.env.CHROME_PATH || undefined,
         args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-zygote"],
         // Our own shutdown drain (index.ts) must run first: puppeteer's handlers would close Chromium before the final upload.
