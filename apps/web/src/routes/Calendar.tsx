@@ -235,7 +235,7 @@ function Calendar() {
                     animate={{ opacity: 1, transform: "translateX(0px)", transition: { duration: reduce ? 0.12 : 0.24, ease: [0.23, 1, 0.32, 1] } }}
                     exit={{ opacity: 0, transition: { duration: 0.08 } }}
                   >
-                    {view === "week" ? (phone ? <Agenda week dates={weekDates(mondayOf(date))} label="This week by day" /> : <WeekGrid monday={mondayOf(date)} />) : null}
+                    {view === "week" ? (phone ? <Agenda dates={weekDates(mondayOf(date))} label="This week by day" /> : <WeekGrid monday={mondayOf(date)} />) : null}
                     {view === "month" ? (phone ? <MonthCompact date={date} setDate={(d) => go(d, "month", "none")} /> : <MonthGrid date={date} />) : null}
                     {view === "day" ? <DayView date={date} /> : null}
                   </motion.div>

@@ -16,8 +16,8 @@ import {
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { IconClose } from "./icons";
-
 import { useSheetKeyboard } from "./sheetKeyboard";
+
 export type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
 export const initials = (name: string) =>
@@ -226,7 +226,7 @@ const fieldBase =
 
 export function Field({ label, hint, info, children, htmlFor }: { label: string; hint?: ReactNode; info?: ReactNode; children: ReactNode; htmlFor?: string }) {
   return (
-    <label className="flex flex-col gap-1.5" htmlFor={htmlFor}>
+    <label className="flex min-w-0 flex-col gap-1.5" htmlFor={htmlFor}>
       <span className="flex items-center gap-1 type-label-l text-on-surface-variant">
         {label}
         {info && <Info>{info}</Info>}
@@ -316,11 +316,11 @@ export function Empty({ icon: I, title, children, action }: { icon: Icon; title:
  * in the top bar on desktop, in a bottom bar on phones.
  */
 export function Sheet({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
-  useEffect(() => {
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   // The keyboard shrinks what is visible, not the layout: size to it and keep the focused field above it.
   useSheetKeyboard(root, scroller, open);
+  useEffect(() => {
     if (!open) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
@@ -335,8 +335,8 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
     <AnimatePresence>
       {open && (
         <motion.div
-          role="dialog"
           ref={root}
+          role="dialog"
           aria-modal
           className="fixed inset-0 z-50 flex flex-col bg-surface sm:left-24"
           initial={{ opacity: 0, transform: "translateY(12px)" }}
