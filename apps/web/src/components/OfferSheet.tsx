@@ -6,6 +6,7 @@ import { where } from "firebase/firestore";
 import { DAY_NAMES, dateInWeek, directPlan, formatDate, formatTime, greetName, lineupId, messageRich, renderRich, searchPeople, OFFER_POLL_OPTIONS, type SpotRequest, type RichMessage, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { SnippetMenu } from "./SnippetMenu";
+import { askOverfill, whoLabel } from "../lib/overfill";
 import { runCommand, useCollection } from "../lib/data";
 import { ComicAvatar } from "../lib/photos";
 import { RecentRow, SearchField, SearchHint } from "./PeopleSearch";
@@ -23,6 +24,16 @@ const readDirect = (uid: string) => {
   }
 };
 
+// The two switches under "Already agreed": remembered per curator, in this browser. Both default on.
+const switchKey = (uid: string, name: "confirm" | "group") => `nbot.adhoc.${name}.${uid}`;
+const readSwitch = (uid: string, name: "confirm" | "group") => {
+  try {
+    return localStorage.getItem(switchKey(uid, name)) !== "0";
+  } catch {
+    return true;
+  }
+};
+
 export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { open: boolean; onClose: () => void; show: Show; exclude: string[]; onDirectAdded?: () => void }) {
   const { uid, week, comics, settings, venues } = useApp();
   const [q, setQ] = useState("");
@@ -33,6 +44,16 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
   const [slots, setSlots] = useState(1);
   const [autoAdd, setAutoAdd] = useState(settings.offers.autoAdd !== false);
   const [direct, setDirect] = useState(() => readDirect(uid));
+  const [confirmMsg, setConfirmMsg] = useState(() => readSwitch(uid, "confirm"));
+  const [toGroup, setToGroup] = useState(() => readSwitch(uid, "group"));
+  const choose = (name: "confirm" | "group", v: boolean) => {
+    (name === "confirm" ? setConfirmMsg : setToGroup)(v);
+    try {
+      localStorage.setItem(switchKey(uid, name), v ? "1" : "0");
+    } catch {
+      /* not remembered */
+    }
+  };
   const many = picks.length > 1;
   const plan = directPlan(exclude, picks, show.slotCount);
   const chooseDirect = (v: boolean) => {
@@ -82,10 +103,15 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
   };
   const send = async () => {
     if (!picks.length) return;
+    // The slot count is a soft limit: a full show asks first ("Add anyway"), and the command carries the yes.
+    const names = picks.map((id) => (comics.find((c) => c.id === id)?.name ?? "them").split(/\s+/)[0]);
+    const adding = direct ? plan.add.length : 1;
+    const over = exclude.length + adding > show.slotCount;
+    if (over && !(await askOverfill(show, exclude.length, whoLabel(direct ? names : names.slice(0, 1)), adding))) return;
     setBusy(true);
     try {
       if (direct) {
-        await runCommand(uid, "send_offer", { comicIds: picks, lineupId: lineupId(week, show.id), direct: true }, 180_000);
+        await runCommand(uid, "send_offer", { comicIds: picks, lineupId: lineupId(week, show.id), direct: true, ...(over && { overfill: true }), confirm: confirmMsg, addToGroup: toGroup }, 180_000);
         toast.success(comic ? `Added ${comic.name.split(" ")[0]} to ${show.name}` : `Added ${picks.length} comics to ${show.name}`);
         setPicks([]);
         setMsg({ kind: "text", body: "" });
@@ -93,7 +119,7 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
         onClose();
         return;
       }
-      await runCommand(uid, "send_offer", { comicIds: picks, lineupId: lineupId(week, show.id), body: msg.body, rich: { kind: msg.kind, body: msg.body, ...(msg.kind === "poll" && { poll: { question: msg.poll?.question ?? "", options: [...OFFER_POLL_OPTIONS], multi: false } }) }, slots: fill, autoAdd }, 180_000);
+      await runCommand(uid, "send_offer", { comicIds: picks, lineupId: lineupId(week, show.id), body: msg.body, rich: { kind: msg.kind, body: msg.body, ...(msg.kind === "poll" && { poll: { question: msg.poll?.question ?? "", options: [...OFFER_POLL_OPTIONS], multi: false } }) }, slots: fill, autoAdd, ...(over && { overfill: true }) }, 180_000);
       toast.success(comic ? `Offer sent to ${comic.name.split(" ")[0]}` : `Offer sent to ${picks.length} comics`);
       setPicks([]);
       setMsg({ kind: "text", body: "" });
@@ -124,7 +150,7 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
       <p className="type-body-m text-on-surface-variant">
         {`${vars.show}, ${vars.day} ${vars.date} at ${vars.time}`}.{" "}
         {direct
-          ? "Pick who's already agreed. They go straight onto the lineup and into the show's WhatsApp group, and get your confirmation message. No offer is sent."
+          ? `Pick who's already agreed. They go straight onto the lineup${toGroup ? " and into the show's WhatsApp group" : ""}${confirmMsg ? ", and get your confirmation message" : ""}. No offer is sent.`
           : `Pick one comic or several. If they say yes within ${settings.offers.expiryHours} h, by poll or by typing, they're added to the lineup and get your confirmation message. If it fills up first, they're told it's gone.`}
       </p>
       <label className="mt-4 flex items-center gap-3 rounded-lg bg-surface-container p-3">
@@ -134,6 +160,24 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
         </span>
         <Switch checked={direct} onChange={chooseDirect} label="Already agreed: add directly" />
       </label>
+      {direct && (
+        <div className="mt-2 flex flex-col gap-2">
+          <label className="flex items-center gap-3 rounded-lg bg-surface-container p-3">
+            <span className="min-w-0 flex-1">
+              <span className="block type-body-m">Send them a confirmation</span>
+              <span className="block type-body-s text-on-surface-variant">{confirmMsg ? "Your confirmation message goes out now." : "No message. They show as Not told until Send updates or Confirm names them."}</span>
+            </span>
+            <Switch checked={confirmMsg} onChange={(v) => choose("confirm", v)} label="Send them a confirmation" />
+          </label>
+          <label className="flex items-center gap-3 rounded-lg bg-surface-container p-3">
+            <span className="min-w-0 flex-1">
+              <span className="block type-body-m">Add them to the show's group</span>
+              <span className="block type-body-s text-on-surface-variant">{toGroup ? "Joins the group like everyone else (on show day)." : "Not added. Automatic syncs leave them out; a sync you press adds them."}</span>
+            </span>
+            <Switch checked={toGroup} onChange={(v) => choose("group", v)} label="Add them to the show's group" />
+          </label>
+        </div>
+      )}
       <div className="mt-5 flex flex-col gap-4">
         <SearchField value={q} onChange={setQ} />
         {!q.trim() && <RecentRow people={recent} onPick={toggle} selected={picks} label="Asked this week" />}
@@ -164,7 +208,7 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
         )}
         {direct && plan.over > 0 && (
           <p role="status" className="rounded-lg bg-tertiary-container px-3 py-2 type-body-s text-on-tertiary-container">
-            {show.name} has {show.slotCount} {show.slotCount === 1 ? "spot" : "spots"} and {exclude.length} {exclude.length === 1 ? "is" : "are"} filled. Adding {plan.add.length} puts it {plan.over} over.
+            {show.name} has {show.slotCount} {show.slotCount === 1 ? "spot" : "spots"} and {exclude.length} {exclude.length === 1 ? "is" : "are"} filled. Adding {plan.add.length} puts it {plan.over} over; you'll be asked to confirm.
           </p>
         )}
         {!direct && many && (

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { ComicAvatar } from "../lib/photos";
 import { doc, getDoc, where } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { askOverfill } from "../lib/overfill";
 import { createPortal } from "react-dom";
 import { LayoutGroup, motion } from "motion/react";
 import { toast } from "sonner";
@@ -148,12 +149,12 @@ export function LineupBoard() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const addTo = async (cid: string, show: Show, seed?: { name: string }) => {
-    await placeComic(uid, week, show, cid, lineups.data, shows, seed);
+    if (!(await placeComic(uid, week, show, cid, lineups.data, shows, seed))) return;
     toast.success(`${(comicsById.get(cid)?.name ?? requestByComic.get(cid)?.comicName ?? seed?.name ?? "Comic").split(" ")[0]} → ${show.name}`);
   };
   const addTold = (cid: string, show: Show, name: string) =>
     void placeAsTold(uid, week, show, cid, lineups.data, name)
-      .then(() => toast.success(`${name.split(" ")[0]} → ${show.name}`, { description: "Marked as already told, so they won't get a confirmation." }))
+      .then((ok) => ok && toast.success(`${name.split(" ")[0]} → ${show.name}`, { description: "Marked as already told, so they won't get a confirmation." }))
       .catch((e: Error) => toast.error(e.message));
   /** A group member's name from any show's cached member list. */
   const memberName = (showId: string, id: string) => shows.find((s) => s.id === showId)?.groupMembers?.members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
@@ -207,7 +208,6 @@ export function LineupBoard() {
       const target = over && !String(over.id).startsWith(LEAVE) ? containerOf(String(over.id)) : null;
       const show = target && target !== BENCH ? activeShows.find((s) => s.id === target) : undefined;
       if (show && !closed(show.id) && !(cols[show.id] ?? []).includes(memberId)) {
-        if ((cols[show.id] ?? []).length >= show.slotCount) return void toast.error(`${show.name} is full`);
         // From the group: you already gave them this spot, so they count as told (no confirmation goes out).
         addTold(memberId, show, memberName(showId, memberId));
       }
@@ -222,6 +222,12 @@ export function LineupBoard() {
       const newIdx = cols[to].indexOf(String(over.id));
       if (newIdx >= 0 && oldIdx !== newIdx) next = { ...cols, [to]: arrayMove(cols[to], oldIdx, newIdx) };
       setCols(next);
+    }
+    // The slot count is a soft limit: dropping onto a full show asks first (and puts them back when the answer is no).
+    const dest = to !== BENCH ? activeShows.find((sh) => sh.id === to) : undefined;
+    if (origin !== to && dest && !closed(dest.id) && !(remote[to] ?? []).includes(id)) {
+      const who = (comicsById.get(id)?.name ?? requestByComic.get(id)?.comicName ?? "them").split(/\s+/)[0];
+      if (!(await askOverfill(dest, (remote[to] ?? []).length, who))) return setCols(remote);
     }
     const touched = new Set([origin, to].filter((k) => k !== BENCH));
     const keepMinutes = (show: Show, ids: string[]): Slot[] => {
@@ -512,7 +518,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
       const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
       const people = [...new Set([...(show.pocs ?? []), ...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
       const n = await addDefaults(uid, week, show, people.map((id) => ({ id, name: nameOf(id) })));
-      toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on, or the lineup is full");
+      toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on (or you chose not to go over)");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -523,7 +529,17 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
   // What the comics were last told. Lineups confirmed before that was recorded start from how they stand now.
   const baseline = confirmed && lineup && !lineup.backfilled ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
   const changes = baseline && lineup ? diffLineup(lineup.slots, baseline, show) : null;
+  // Added directly with a switch off: not told yet (until a send names them) and/or kept out of the group's automatic syncs.
   const statesFor = (cid: string): TellState[] => {
+    const slot = lineup?.slots.find((x) => x.comicId === cid);
+    const core = tellStates(cid);
+    const extra: TellState[] = [
+      ...(slot?.notTold && !lineup?.sent?.[cid] && !core.some((x) => x.kind === "new") ? [{ kind: "new" as const, text: "Not told" }] : []),
+      ...(slot?.noGroup ? [{ kind: "new" as const, text: "Not in group" }] : []),
+    ];
+    return [...extra, ...core];
+  };
+  const tellStates = (cid: string): TellState[] => {
     if (lineup?.backfilled) return []; // recorded afterwards: nobody was told, and nobody needs to be
     if (changes?.added.includes(cid)) return [{ kind: "new", text: "Not told yet" }];
     if (changes) {
@@ -578,13 +594,43 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
     }
   };
 
-  const menu = record || cancelled ? null : confirmed ? (
+  // The show's group: its thread in Messages, WhatsApp itself (when the invite link is known), and the show's group settings
+  // (scheduled posts, templates, cleanup) on the Shows page.
+  const navigate = useNavigate();
+  const inviteCode = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.inviteCode : undefined;
+  const groupItems = (close: () => void) =>
+    show.groupId ? (
+      <>
+        <MenuItem onClick={() => (close(), navigate(`/messages?g=${encodeURIComponent(show.groupId!)}`))}>
+          Open group chat
+          <span className="block type-body-s text-on-surface-variant">The group's thread in Messages</span>
+        </MenuItem>
+        {inviteCode && (
+          <MenuItem onClick={() => (close(), void window.open(`https://chat.whatsapp.com/${inviteCode}`, "_blank", "noopener"))}>
+            Open in WhatsApp
+            <span className="block type-body-s text-on-surface-variant">Scheduled messages and other group options</span>
+          </MenuItem>
+        )}
+        <MenuItem onClick={() => (close(), navigate(`/shows?edit=${show.id}`))}>
+          Group settings
+          <span className="block type-body-s text-on-surface-variant">Scheduled posts, templates, cleanup</span>
+        </MenuItem>
+      </>
+    ) : (
+      <MenuItem onClick={() => (close(), navigate(`/shows?edit=${show.id}`))}>Link a WhatsApp group…</MenuItem>
+    );
+  const menu = record || cancelled ? (
+    <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}>
+      {(close) => groupItems(close)}
+    </Menu>
+  ) : confirmed ? (
     <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}>
               {(close) => (
                 <>
-                <MenuItem disabled={past || ids.length >= show.slotCount} hint={ids.length >= show.slotCount ? "full" : undefined} onClick={() => (close(), setOfferOpen(true))}>
+                <MenuItem disabled={past} hint={ids.length >= show.slotCount ? "full: asks first" : undefined} onClick={() => (close(), setOfferOpen(true))}>
                   Offer a spot…
                 </MenuItem>
+                {groupItems(close)}
                 <MenuItem
                   disabled={!past}
                   hint={past ? undefined : "after the show"}
@@ -609,12 +655,13 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
             >
               {(close) => (
                 <>
-                  <MenuItem disabled={syncingRegulars || ids.length >= show.slotCount} onClick={() => (close(), void addRegulars())}>
+                  <MenuItem disabled={syncingRegulars} onClick={() => (close(), void addRegulars())}>
                     Add POCs, regulars and co-hosts
                     <span className="block type-body-s text-on-surface-variant">Reads the group again, adds anyone missing</span>
                   </MenuItem>
                   <MenuItem onClick={() => (close(), void repeat())}>Repeat last week's lineup</MenuItem>
-                  <MenuItem disabled={ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>Offer a spot…</MenuItem>
+                  {groupItems(close)}
+                  <MenuItem onClick={() => (close(), setOfferOpen(true))}>Offer a spot…</MenuItem>
                   <MenuItem disabled={!resetPlan} onClick={() => (close(), setResetOpen(true))}>Reset lineup…</MenuItem>
                   <MenuItem onClick={() => (close(), void setLineupStatus(uid, week, show, "cancelled"))}>Mark mic cancelled</MenuItem>
                 </>
@@ -648,7 +695,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-highest">
               <motion.div className={cx("h-full rounded-full", fill >= 1 ? "bg-tertiary" : "bg-primary")} animate={{ width: `${fill * 100}%` }} transition={{ type: "spring", duration: 0.5, bounce: 0.1 }} />
             </div>
-            <span className="type-label-m tabular text-on-surface-variant">
+            <span className={cx("type-label-m tabular", ids.length > show.slotCount ? "rounded-sm bg-tertiary-container px-1.5 text-on-tertiary-container" : "text-on-surface-variant")} title={ids.length > show.slotCount ? `${ids.length - show.slotCount} over the slot count` : undefined}>
               {ids.length}/{show.slotCount}
             </span>
           </div>
@@ -692,9 +739,9 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                 action={cancelled || record ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />}
               />
             ))}
-            {!record && ids.length < show.slotCount && (
+            {!record && (ids.length < show.slotCount || dragKind) && (
               <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant px-4 py-2.5 text-center type-body-s text-balance text-on-surface-variant/70 transition-colors", ids.length ? "min-h-11" : "min-h-20", dragKind && "border-primary/60 text-primary")}>
-                {!ids.length ? "Drop comics or group members here" : `${show.slotCount - ids.length} open slot${show.slotCount - ids.length === 1 ? "" : "s"}`}
+                {!ids.length ? "Drop comics or group members here" : ids.length >= show.slotCount ? "Full: drop to add anyway (asks first)" : `${show.slotCount - ids.length} open slot${show.slotCount - ids.length === 1 ? "" : "s"}`}
               </li>
             )}
           </ol>
@@ -757,7 +804,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                       <ul className="flex flex-col">
                         {pendingOffers.map((o) => <NoteRow key={o.id} name={o.comicName} pill={<Pill tone="reading">Waiting for a reply</Pill>} />)}
                       </ul>
-                      <Button size="sm" variant="tonal" icon={IconUserPlus} className="mt-2" disabled={past || cancelled || ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>
+                      <Button size="sm" variant="tonal" icon={IconUserPlus} className="mt-2" disabled={past || cancelled} onClick={() => (close(), setOfferOpen(true))}>
                         Offer another spot…
                       </Button>
                     </div>
@@ -781,7 +828,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                               <ComicAvatar id={h.id} name={h.name} size={28} tone="secondary" />
                               <span className="min-w-0 flex-1 truncate type-label-l">{h.name}</span>
                               {onLineup ? <Pill tone="told" icon={IconCheck}>On lineup</Pill> : (
-                                <Button size="sm" variant="tonal" disabled={!known || cancelled || ids.length >= show.slotCount} onClick={() => (close(), void onAdd(h.id))}>
+                                <Button size="sm" variant="tonal" disabled={!known || cancelled} onClick={() => (close(), void onAdd(h.id))}>
                                   Add
                                 </Button>
                               )}
@@ -794,7 +841,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                 </Popover>
               )}
               {!cancelled && !record && (
-                <GroupPopover show={show} lineup={lineup} ids={ids} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? onAddTold : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />
+                <GroupPopover show={show} lineup={lineup} ids={ids} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={onAddTold} onSync={syncGroup} onReview={() => setSyncOpen(true)} />
               )}
                   </div>
           {record ? (

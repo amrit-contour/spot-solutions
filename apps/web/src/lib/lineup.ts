@@ -2,6 +2,7 @@ import { arrayRemove, arrayUnion, doc, getDoc, runTransaction, setDoc, updateDoc
 import { dateInWeek, lineupId, movesOffOtherShows, planReconcilePlace, type RuleSettings, sentSnapshot, shiftWeek, withHistory, type Comic, type GroupMember, type Lineup, type Show, type Slot, type SpotRequest } from "@spot/shared";
 import { db } from "@spot/ui/firebase";
 import { userDoc } from "./data";
+import { askOverfill, whoLabel } from "./overfill";
 
 const lineupRef = (uid: string, week: string, showId: string) => userDoc(uid, "lineups", lineupId(week, showId));
 const requestRef = (uid: string, week: string, comicId: string) => userDoc(uid, "requests", `${week}_${comicId}`);
@@ -55,7 +56,16 @@ async function readRules(uid: string): Promise<Pick<RuleSettings, "onePerWeek">>
   return { onePerWeek: Boolean((await getDoc(doc(db, "users", uid))).data()?.settings?.rules?.onePerWeek) };
 }
 
-export async function placeComic(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], shows: Show[] = [], seed?: { name: string }) {
+/** A first name for "Add Rahul anyway?" from the roster (or the seed). */
+async function firstNameOf(uid: string, comicId: string, seed?: { name: string }) {
+  const name = seed?.name || ((await getDoc(userDoc(uid, "comics", comicId))).data() as Comic | undefined)?.name || "them";
+  return name.split(/\s+/)[0];
+}
+
+/** Puts them on the lineup. Resolves false when the show is full and the curator said no to going over. */
+export async function placeComic(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], shows: Show[] = [], seed?: { name: string }): Promise<boolean> {
+  const here = lineups.find((l) => l.showId === show.id);
+  if (!here?.slots.some((s) => s.comicId === comicId) && !(await askOverfill(show, here?.slots.length ?? 0, await firstNameOf(uid, comicId, seed)))) return false;
   await ensureComic(uid, week, comicId, seed);
   // With "One show per week" on (Request rules), placing someone moves them off their other show; POCs, regulars and
   // co-hosts never move. Off (the default): they can be on several shows.
@@ -69,11 +79,12 @@ export async function placeComic(uid: string, week: string, show: Show, comicId:
     }
   }
   const cur = lineups.find((l) => l.showId === show.id);
-  if (cur?.slots.some((s) => s.comicId === comicId)) return;
+  if (cur?.slots.some((s) => s.comicId === comicId)) return true;
   // Added after the lineup was confirmed: a last-minute (ad hoc) spot. Kept in history, never counted for the cooldown.
   const adhoc = cur?.status === "confirmed";
   await setSlots(uid, week, show, [...(cur?.slots ?? []), { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null, ...(adhoc && { adhoc: true }) }]);
   await markRequest(uid, week, comicId, true);
+  return true;
 }
 
 export async function unplaceComic(uid: string, week: string, show: Show, comicId: string, lineup: Lineup | undefined) {
@@ -111,8 +122,9 @@ export async function repeatLastWeek(uid: string, week: string, show: Show) {
   // Added to whoever is already on (regulars, people you placed), never replacing them.
   const cur = (await getDoc(lineupRef(uid, week, show.id))).data() as Lineup | undefined;
   const have = new Set((cur?.slots ?? []).map((s) => s.comicId));
-  const add = prev.slots.filter((s) => !have.has(s.comicId)).slice(0, Math.max(0, show.slotCount - have.size));
+  const add = prev.slots.filter((s) => !have.has(s.comicId));
   if (!add.length) return 0;
+  if (!(await askOverfill(show, have.size, add.length === 1 ? "them" : `${add.length} comics`, add.length))) return 0;
   await setSlots(uid, week, show, [...(cur?.slots ?? []), ...add]);
   await Promise.all(add.map((s) => markRequest(uid, week, s.comicId, true)));
   return add.length;
@@ -162,7 +174,9 @@ export async function seedDefaults(uid: string, week: string, show: Show, people
  * Put someone on a lineup as already told: you gave them the spot yourself (and added them to the group),
  * so Confirm & send and Send updates won't message them. Records the spot in their history like a confirmation.
  */
-export async function placeAsTold(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], name: string) {
+export async function placeAsTold(uid: string, week: string, show: Show, comicId: string, lineups: Lineup[], name: string): Promise<boolean> {
+  const here = lineups.find((l) => l.showId === show.id);
+  if (!here?.slots.some((s) => s.comicId === comicId) && !(await askOverfill(show, here?.slots.length ?? 0, name.split(/\s+/)[0]))) return false;
   // Off any other show this week first, when the rules say one show a week (same as placeComic).
   const moveOff = movesOffOtherShows(await readRules(uid), show, comicId);
   for (const l of moveOff ? lineups : []) {
@@ -177,7 +191,7 @@ export async function placeAsTold(uid: string, week: string, show: Show, comicId
     const comicRef = userDoc(uid, "comics", comicId);
     const cur = (await tx.get(ref)).data() as Lineup | undefined;
     const comic = (await tx.get(comicRef)).data() as Comic | undefined;
-    const plan = planReconcilePlace({ lineup: cur ?? null, show, comicId, markTold: true, now: Date.now() });
+    const plan = planReconcilePlace({ lineup: cur ?? null, show, comicId, markTold: true, now: Date.now(), overfill: true });
     if (plan.outcome === "full" || plan.outcome === "called_off") return plan.outcome;
     const adhoc = cur?.status === "confirmed" && !cur.slots.some((x) => x.comicId === comicId);
     const slots = adhoc ? plan.slots.map((x) => (x.comicId === comicId ? { ...x, adhoc: true } : x)) : plan.slots;
@@ -190,17 +204,23 @@ export async function placeAsTold(uid: string, week: string, show: Show, comicId
   // Their request (if any) is settled: you already told them.
   const req = await getDoc(requestRef(uid, week, comicId));
   if (req.exists() && ["new", "acked", "assigned"].includes((req.data() as SpotRequest).status)) await updateDoc(req.ref, { status: "confirmed", updatedAt: Date.now() });
+  return true;
 }
 
 /** Add the show's regulars, co-hosts and group admins who aren't on yet, up to the slot count. Any time, on request. */
 export async function addDefaults(uid: string, week: string, show: Show, people: { id: string; name: string }[]) {
   if (!people.length) return 0;
   const ref = lineupRef(uid, week, show.id);
+  // The slot count is a soft limit: going over takes an "Add anyway".
+  const before = (await getDoc(ref)).data() as Lineup | undefined;
+  const have0 = new Set((before?.slots ?? []).map((s) => s.comicId));
+  const fresh = people.filter((p) => !have0.has(p.id));
+  if (fresh.length && !(await askOverfill(show, have0.size, fresh.length === 1 ? fresh[0].name.split(/\s+/)[0] : whoLabel(fresh.map((p) => p.name.split(/\s+/)[0])), fresh.length))) return 0;
   const added = await runTransaction(db, async (tx) => {
     const cur = (await tx.get(ref)).data() as Lineup | undefined;
     if (cur && (cur.status === "cancelled" || cur.status === "canned")) throw new Error(`${show.name} is called off this week`);
     const have = new Set((cur?.slots ?? []).map((s) => s.comicId));
-    const pick = people.filter((p) => !have.has(p.id)).slice(0, Math.max(0, show.slotCount - have.size));
+    const pick = people.filter((p) => !have.has(p.id));
     if (!pick.length) return [];
     tx.set(ref, { ...(cur ?? blank(week, show)), defaultsSeeded: true, slots: [...(cur?.slots ?? []), ...pick.map((p) => ({ comicId: p.id, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null }))] });
     return pick;

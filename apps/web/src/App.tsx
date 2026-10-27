@@ -22,6 +22,7 @@ import { AdminArea } from "./routes/Admin";
 import { AdminOnly } from "./components/AdminOnly";
 import { ConnectServer } from "./routes/ConnectServer";
 import { InstallPage } from "./routes/InstallPage";
+import { OverfillHost } from "./lib/overfill";
 
 export default function App() {
   const user = useAuthUser();
@@ -32,6 +33,7 @@ export default function App() {
   const standalone = pathname === "/connect-server" ? <ConnectServer user={user} /> : pathname === "/install" ? <InstallPage /> : null;
   return (
     <>
+      <OverfillHost />
       <Toaster
         position="bottom-center"
         toastOptions={{

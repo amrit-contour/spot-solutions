@@ -300,7 +300,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
   const pills = requestPills({ r, comic, shows: allShows, today, venueName });
 
   const assign = async (show: Show) => {
-    await placeComic(uid, week, show, r.comicId, lineups);
+    if (!(await placeComic(uid, week, show, r.comicId, lineups))) return;
     toast.success(`${r.comicName.split(" ")[0]} → ${show.name}`);
   };
   const nr = useNeverRead();

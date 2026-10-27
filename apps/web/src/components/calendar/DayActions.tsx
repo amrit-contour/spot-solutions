@@ -70,7 +70,7 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
       const nameOf = (id: string) => comicsById.get(id)?.name ?? members.find((m) => m.id === id)?.name ?? `+${id.split("@")[0]}`;
       const people = [...new Set([...(show.pocs ?? []), ...(show.regulars ?? []), ...(show.protected ?? []), ...members.filter((m) => m.isAdmin).map((m) => m.id)])];
       const n = await addDefaults(uid, week, show, people.map((id) => ({ id, name: nameOf(id) })));
-      toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on, or the lineup is full");
+      toast.success(n ? `Added ${n} to ${show.name}` : "Everyone's already on (or you chose not to go over)");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -86,8 +86,8 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
         {mic && <li><ActionRow icon={IconCheck} label="Mark happened" hint="It already took place" onClick={() => answerMicCheck(uid, mic, "happened")} /></li>}
         {!off && !past && pending > 0 && baseline && <li><ActionRow icon={IconSend} label="Send updates" hint={`${pending} change${pending > 1 ? "s" : ""} not told yet`} onClick={() => setUpdates(true)} accent /></li>}
         <li><ActionRow icon={IconMic} label="Open lineup" hint={`${lineup?.slots.length ?? 0}/${show.slotCount} slots filled`} to="/lineup" /></li>
-        {!off && !past && <li><ActionRow icon={IconUserPlus} label="Offer a spot" hint={full ? "Lineup is full" : "Ask someone to take a slot"} onClick={() => setOffer(true)} disabled={full} /></li>}
-        {!off && !past && <li><ActionRow icon={IconRefresh} label="Add POCs, regulars and co-hosts" hint="Reads the group again, adds anyone missing" onClick={() => void addRegulars()} busy={busy} disabled={full} /></li>}
+        {!off && !past && <li><ActionRow icon={IconUserPlus} label="Offer a spot" hint={full ? "Lineup is full: asks before going over" : "Ask someone to take a slot"} onClick={() => setOffer(true)} /></li>}
+        {!off && !past && <li><ActionRow icon={IconRefresh} label="Add POCs, regulars and co-hosts" hint="Reads the group again, adds anyone missing" onClick={() => void addRegulars()} busy={busy} /></li>}
       </ul>
       <BackfillSheet open={backfill} onClose={() => setBackfill(false)} show={show} week={week} />
       <OfferSheet open={offer} onClose={() => setOffer(false)} show={show} exclude={lineup?.slots.map((s) => s.comicId) ?? []} />
@@ -105,7 +105,7 @@ function PlaceButton({ r, evs }: { r: SpotRequest; evs: CalEvent[] }) {
   const place = async (ev: CalEvent) => {
     setBusy(true);
     try {
-      await placeComic(uid, ev.week, ev.show, r.comicId, cal.lineups.filter((l) => l.weekOf === ev.week), shows, { name: r.comicName });
+      if (!(await placeComic(uid, ev.week, ev.show, r.comicId, cal.lineups.filter((l) => l.weekOf === ev.week), shows, { name: r.comicName }))) return;
       toast.success(`${r.comicName} placed in ${ev.show.name}`);
     } catch (e) {
       toast.error((e as Error).message);

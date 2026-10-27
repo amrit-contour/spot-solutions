@@ -84,7 +84,9 @@ export async function listGroupMembers(uid: string, { showId }: Record<string, u
   // The same person can show up twice (@lid and @c.us); keep one entry.
   const unique = [...new Map(members.map((m) => [m.id, m])).values()];
   const at = Date.now();
-  await showRef.set({ groupMembers: { groupId: show.groupId, at, members: unique } }, { merge: true });
+  // The invite link lets the app open the group in WhatsApp. Only admins can read it; without it the app just skips the link.
+  const inviteCode = await group.getInviteCode().catch(() => "");
+  await showRef.set({ groupMembers: { groupId: show.groupId, at, members: unique, ...(inviteCode && { inviteCode }) } }, { merge: true });
   return { count: unique.length, at };
 }
 

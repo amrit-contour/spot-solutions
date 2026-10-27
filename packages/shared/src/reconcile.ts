@@ -145,12 +145,12 @@ type LineupLite = Pick<Lineup, "slots" | "status"> & Partial<Pick<Lineup, "sent"
  * records them in `sent` when they were already told, so Send updates won't message them. On a confirmed lineup the
  * existing slots become the baseline first, so the new comic shows up as told rather than as a pending change.
  */
-export function planReconcilePlace(input: { lineup?: LineupLite | null; show: Pick<Show, "slotCount" | "includeSlotTime" | "defaultMinutes">; comicId: string; markTold: boolean; now: number }) {
+export function planReconcilePlace(input: { lineup?: LineupLite | null; show: Pick<Show, "slotCount" | "includeSlotTime" | "defaultMinutes">; comicId: string; markTold: boolean; now: number; /** Going over the slot count is allowed (the curator said "Add anyway"). */ overfill?: boolean }) {
   const { lineup, show, comicId, markTold, now } = input;
   const prev = lineup?.slots ?? [];
   if (lineup && (lineup.status === "cancelled" || lineup.status === "canned")) return { outcome: "called_off" as const, slots: prev, sent: lineup.sent ?? null };
   const already = prev.some((s) => s.comicId === comicId);
-  if (!already && prev.length >= show.slotCount) return { outcome: "full" as const, slots: prev, sent: lineup?.sent ?? null };
+  if (!already && !input.overfill && prev.length >= show.slotCount) return { outcome: "full" as const, slots: prev, sent: lineup?.sent ?? null };
   const slots: Slot[] = already ? prev : [...prev, { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null }];
   const confirmed = lineup?.status === "confirmed";
   const base: SentMap | null = lineup?.sent ?? (confirmed ? sentSnapshot(prev, show, lineup?.sentAt ?? now) : null);

@@ -917,7 +917,7 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
 
   const place = async (show: Show) => {
     try {
-      await placeComic(uid, week, show, comic.id, lineups, shows);
+      if (!(await placeComic(uid, week, show, comic.id, lineups, shows))) return;
       toast.success(`${comic.name.split(/\s+/)[0]} → ${show.name}`);
     } catch (e) {
       toast.error((e as Error).message);
@@ -1095,8 +1095,8 @@ function ActionRow({ act, comic, request, lineups, week }: { act: ThreadAction; 
     setBusy(true);
     try {
       if (place && show) {
-        if (act.told) await placeAsTold(uid, week, show, comic.id, lineups, comic.name);
-        else await placeComic(uid, week, show, comic.id, lineups, shows);
+        const placed = act.told ? await placeAsTold(uid, week, show, comic.id, lineups, comic.name) : await placeComic(uid, week, show, comic.id, lineups, shows);
+        if (!placed) return;
         toast.success(`${comic.name.split(/\s+/)[0]} → ${show.name}`);
       } else if (request) {
         await updateDoc(userDoc(uid, "requests", request.id), { status: "dismissed", updatedAt: Date.now() });
