@@ -58,7 +58,7 @@ Step "Removing the program files"
 foreach ($r in $Roots) {
   if (-not (Test-Path $r)) { continue }
   foreach ($sub in "app", "node", "chrome", "ollama-app") { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$r\$sub" }
-  foreach ($f in "run-worker.ps1", "run-console.ps1", "update.ps1", "update-core.run.ps1", "spot.ico", "nbs.ico", "nbs-server.ico") { Remove-Item -Force -ErrorAction SilentlyContinue "$r\$f" }
+  foreach ($f in "run-worker.ps1", "run-console.ps1", "update.ps1", "update-core.run.ps1", "spot.ico", "nbs.ico", "nbs-server.ico", "nbc-curating.ico") { Remove-Item -Force -ErrorAction SilentlyContinue "$r\$f" }
   Ok "Removed the program files in $r"
 }
 

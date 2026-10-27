@@ -60,6 +60,145 @@ $NoLocalFlag = if ($NoLocal) { "1" } else { "0" }
 function Step($msg) { Write-Host "`n> $msg" -ForegroundColor Yellow }
 function Ok($msg) { Write-Host "  $msg" -ForegroundColor Green }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Older installs ("Spot Solutions" / "Spot Server", folder C:\SpotSolutions) and the shortcuts we leave behind.
+# Shared by install.ps1 and update-core.ps1 (keep the two copies identical). Only things that are ours are touched:
+# matched by the old install folder, old task names, old shortcut names/targets. The old data folder is never deleted.
+# ---------------------------------------------------------------------------------------------------------------------
+$LegacyRoot = "C:\SpotSolutions"
+$LegacyPattern = 'SpotSolutions|spot-solutions\.web\.app|spot\.ico|Spot Solutions|Spot Server'
+function Log([string]$m) { Write-Host "  $m" }
+
+function Remove-LegacyInstall {
+  $found = $false
+  # Startup tasks (also any task whose action runs something from the old folder).
+  foreach ($t in @(Get-ScheduledTask -ErrorAction SilentlyContinue)) {
+    $txt = (@($t.Actions) | ForEach-Object { "$($_.Execute) $($_.Arguments)" }) -join ' '
+    if ($t.TaskName -match '^(SpotSolutions|Spot Solutions|Spot Server|SpotServer)' -or $txt -match 'SpotSolutions') {
+      $found = $true
+      Stop-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath -ErrorAction SilentlyContinue
+      Unregister-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath -Confirm:$false -ErrorAction SilentlyContinue
+      Log "Removed old startup task $($t.TaskName)"
+    }
+  }
+  # Startup entries in the registry.
+  foreach ($k in 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run') {
+    $p = Get-ItemProperty $k -ErrorAction SilentlyContinue
+    if (-not $p) { continue }
+    foreach ($n in @($p.PSObject.Properties.Name)) {
+      if ($n -like 'PS*') { continue }
+      if ($n -match 'Spot' -or "$($p.$n)" -match $LegacyPattern) {
+        $found = $true
+        Remove-ItemProperty -Path $k -Name $n -ErrorAction SilentlyContinue
+        Log "Removed old startup entry '$n'"
+      }
+    }
+  }
+  # Running processes from the old folder: the launcher loops first (or they restart the rest), then node and the browser.
+  $mine = @($PID)
+  $parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction SilentlyContinue).ParentProcessId
+  if ($parent) { $mine += $parent }
+  $procs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $mine -notcontains $_.ProcessId -and (($_.CommandLine -and $_.CommandLine -match 'SpotSolutions') -or ($_.ExecutablePath -and $_.ExecutablePath -like "$LegacyRoot\*"))
+  })
+  foreach ($order in 'powershell.exe', 'pwsh.exe', 'cmd.exe', 'node.exe', 'chrome.exe') {
+    foreach ($p in ($procs | Where-Object { $_.Name -eq $order })) {
+      $found = $true
+      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+      Log "Stopped old $($p.Name) (process $($p.ProcessId))"
+    }
+  }
+  Remove-NetFirewallRule -DisplayName "Spot Solutions Console" -ErrorAction SilentlyContinue
+  # Shortcuts (desktops, Start menus, taskbar and Start pins, Startup folders) for every user on this PC.
+  $dirs = @([Environment]::GetFolderPath('CommonDesktopDirectory'), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Startup")
+  foreach ($u in @(Get-ChildItem "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue)) {
+    $h = $u.FullName
+    $dirs += "$h\Desktop", "$h\OneDrive\Desktop", "$h\AppData\Roaming\Microsoft\Windows\Start Menu\Programs", "$h\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup",
+             "$h\AppData\Roaming\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar", "$h\AppData\Roaming\Microsoft\Internet Explorer\Quick Launch\User Pinned\StartMenu"
+  }
+  $shell = New-Object -ComObject WScript.Shell
+  $removedPin = $false
+  foreach ($d in ($dirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique)) {
+    foreach ($f in @(Get-ChildItem $d -Recurse -Depth 2 -Include *.lnk, *.url -ErrorAction SilentlyContinue)) {
+      $txt = $f.BaseName
+      try {
+        if ($f.Extension -eq '.lnk') { $l = $shell.CreateShortcut($f.FullName); $txt = "$($f.BaseName) $($l.TargetPath) $($l.Arguments) $($l.IconLocation)" }
+        else { $txt = "$($f.BaseName) $(Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue)" }
+      } catch { }
+      if ($txt -match $LegacyPattern) {
+        $found = $true
+        Remove-Item -Force -ErrorAction SilentlyContinue $f.FullName
+        if ($d -like '*User Pinned*') { $removedPin = $true }
+        Log "Removed old shortcut $($f.FullName)"
+      }
+    }
+    foreach ($sub in 'Spot Solutions', 'Spot Server') {
+      if (Test-Path "$d\$sub") { $found = $true; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$d\$sub"; Log "Removed old Start menu folder $d\$sub" }
+    }
+  }
+  if ($removedPin) { Log "An old taskbar/Start pin was removed. It disappears after signing out and in again; pin 'Nothing BOT Server Console' from the desktop to replace it." }
+  if ($found) { Log "Old Spot Solutions server cleaned up. Its data in $LegacyRoot\data is kept." }
+  return $found
+}
+
+# Port 7420 must belong to this server's console. A console left from an older install (or an old copy that was never
+# stopped) would keep serving the old page, so stop it; the console task's loop then starts the new one.
+function Release-ConsolePort {
+  $freed = $false
+  foreach ($c in @(Get-NetTCPConnection -LocalPort 7420 -State Listen -ErrorAction SilentlyContinue)) {
+    $p = Get-CimInstance Win32_Process -Filter "ProcessId=$($c.OwningProcess)" -ErrorAction SilentlyContinue
+    if (-not $p) { continue }
+    if ("$($p.CommandLine) $($p.ExecutablePath)" -match 'SpotSolutions') {
+      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+      Log "Port 7420 was held by the old Spot Solutions console (process $($p.ProcessId)); stopped it."
+      $freed = $true
+    } elseif ("$($p.CommandLine)" -notmatch 'NothingBotServer') {
+      Write-Host "  Port 7420 is used by another program ($($p.Name), process $($p.ProcessId)), so the Server Console can't open. Close it and run this again." -ForegroundColor Yellow
+    }
+  }
+  return $freed
+}
+
+# Waits until the console answers on port 7420 and the listener is ours.
+function Wait-Console([int]$Seconds = 40) {
+  for ($i = 0; $i -lt $Seconds; $i++) {
+    Release-ConsolePort | Out-Null
+    try { Invoke-WebRequest "http://127.0.0.1:7420/" -UseBasicParsing -TimeoutSec 2 | Out-Null; return $true } catch { Start-Sleep 1 }
+  }
+  return $false
+}
+
+# Desktop + Start menu shortcuts, always rewritten so icons and addresses are current: the console uses the Nothing BOT
+# Server icon, the Curating web app uses the Curating icon (both ship in the code download, no downloading at install time).
+function Install-Shortcuts {
+  try {
+    $shell = New-Object -ComObject WScript.Shell
+    $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+    if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
+    $serverIcon = $null; $curatingIcon = $null
+    foreach ($src in @("$AppDir\deploy\windows\nbs-server.ico", "$PSScriptRoot\nbs-server.ico")) { if ($src -and (Test-Path $src)) { Copy-Item $src "$Root\nbs-server.ico" -Force; $serverIcon = "$Root\nbs-server.ico"; break } }
+    foreach ($src in @("$AppDir\deploy\windows\nbc-curating.ico", "$PSScriptRoot\nbc-curating.ico", "$AppDir\apps\web\public\favicon.ico")) { if ($src -and (Test-Path $src)) { Copy-Item $src "$Root\nbc-curating.ico" -Force; $curatingIcon = "$Root\nbc-curating.ico"; break } }
+    Remove-Item -Force -ErrorAction SilentlyContinue "$Root\nbs.ico", "$Root\spot.ico"
+    $places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT Server")
+    New-Item -ItemType Directory -Force -Path $places[1] | Out-Null
+    foreach ($dir in $places) {
+      foreach ($sc in @(
+        @{ Name = "Nothing BOT Server Console"; Url = "http://localhost:7420"; Icon = $serverIcon },
+        @{ Name = "Nothing BOT Curating"; Url = "https://nothingbotcurating.web.app"; Icon = $curatingIcon }
+      )) {
+        $lnk = $shell.CreateShortcut("$dir\$($sc.Name).lnk")
+        if (Test-Path $edge) { $lnk.TargetPath = $edge; $lnk.Arguments = "--app=$($sc.Url)" } else { $lnk.TargetPath = $sc.Url; $lnk.Arguments = "" }
+        if ($sc.Icon) { $lnk.IconLocation = "$($sc.Icon),0" }
+        $lnk.Save()
+      }
+    }
+    # Windows keeps showing a shortcut's old picture from its icon cache; ask it to rebuild.
+    try { Start-Process -FilePath "$env:SystemRoot\System32\ie4uinit.exe" -ArgumentList "-show" -WindowStyle Hidden -ErrorAction SilentlyContinue } catch { }
+    Log "Shortcuts refreshed: 'Nothing BOT Server Console' and 'Nothing BOT Curating' (desktop and Start menu)"
+  } catch { Write-Host "  Couldn't refresh the shortcuts: $($_.Exception.Message)" -ForegroundColor Yellow }
+}
+
+
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw "Run this as Administrator (double-click 'Install Nothing BOT Server.cmd')." }
 
@@ -199,28 +338,10 @@ icacls $EnvFile /inheritance:r /grant:r "SYSTEM:F" "Administrators:F" | Out-Null
 Ok "Config at $EnvFile"
 
 Step "Checking for an older install"
-# An old Spot Solutions server (C:\SpotSolutions, tasks SpotSolutions*) would fight this one for the same WhatsApp login and
-# port 7420. Stop it and remove its startup tasks, shortcuts and firewall rule. Its data folder is kept.
-$legacyFound = $false
-foreach ($t in "SpotSolutionsWorker", "SpotSolutionsConsole", "SpotSolutionsUpdate") {
-  if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
-    $legacyFound = $true
-    Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
-    Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
-  }
-}
-Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -like '*C:\SpotSolutions*' } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.ExecutablePath -and $_.ExecutablePath -like 'C:\SpotSolutions\chrome\*' } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Remove-NetFirewallRule -DisplayName "Spot Solutions Console" -ErrorAction SilentlyContinue
-Remove-Item -Force -ErrorAction SilentlyContinue "$([Environment]::GetFolderPath('CommonDesktopDirectory'))\Spot Server Console.lnk"
-Remove-Item -Force -ErrorAction SilentlyContinue "$([Environment]::GetFolderPath('CommonDesktopDirectory'))\Spot Solutions.lnk"
-Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Spot Solutions"
-if ($legacyFound) {
-  Ok "Stopped the old Spot Solutions server. Its data in C:\SpotSolutions\data is kept."
+# An old Spot Solutions server (C:\SpotSolutions, tasks SpotSolutions*, shortcuts "Spot Solutions" / "Spot Server") would fight
+# this one for the same WhatsApp login and port 7420, and its shortcuts would keep opening the old page. Stop it and remove its
+# startup tasks, startup entries, shortcuts and firewall rule. Its data folder is kept.
+if (Remove-LegacyInstall) {
   Ok "This server restores your WhatsApp login from the cloud vault by itself once it is connected to the same account."
 } else { Ok "Nothing old found" }
 
@@ -315,35 +436,12 @@ Register-ScheduledTask -TaskName $UpdateTask -Action $uAction -Principal $princi
 # Reachable from phones/laptops on your home network (private profile only).
 Remove-NetFirewallRule -DisplayName "Nothing BOT Server Console" -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName "Nothing BOT Server Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private | Out-Null
-Ok "Console running, port 7420 open on private networks"
+if (Wait-Console) { Ok "Console running on port 7420, open on private networks" } else { Write-Host "  The console didn't answer on port 7420 yet. It keeps retrying; if the page doesn't open, run Open Server Console.cmd in a minute." -ForegroundColor Yellow }
 
 Step "Desktop and Start Menu shortcuts"
-$shell = New-Object -ComObject WScript.Shell
+Install-Shortcuts
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 if (-not (Test-Path $edge)) { $edge = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
-# Curating keeps its own icon (downloaded). The server console uses the Nothing BOT Server icon, which ships in the code
-# download (deploy\windows\nbs-server.ico, also inside the Windows zip next to this script).
-$icon = "$Root\nbs.ico"
-try { Invoke-WebRequest "https://spot-solutions.web.app/icons/spot.ico" -OutFile $icon } catch { $icon = $null }
-$serverIcon = "$Root\nbs-server.ico"
-foreach ($src in @("$PSScriptRoot\nbs-server.ico", "$AppDir\deploy\windows\nbs-server.ico")) {
-  if ($src -and (Test-Path $src)) { Copy-Item $src $serverIcon -Force; break }
-}
-if (-not (Test-Path $serverIcon)) { $serverIcon = $null }
-$places = @([Environment]::GetFolderPath("CommonDesktopDirectory"), "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Nothing BOT Server")
-New-Item -ItemType Directory -Force -Path $places[1] | Out-Null
-foreach ($dir in $places) {
-  foreach ($sc in @(
-    @{ Name = "Nothing BOT Server Console"; Url = "http://localhost:7420"; Icon = $serverIcon },
-    @{ Name = "Nothing BOT Curating"; Url = "https://spot-solutions.web.app"; Icon = $icon }
-  )) {
-    $lnk = $shell.CreateShortcut("$dir\$($sc.Name).lnk")
-    if (Test-Path $edge) { $lnk.TargetPath = $edge; $lnk.Arguments = "--app=$($sc.Url)" } else { $lnk.TargetPath = $sc.Url }
-    if ($sc.Icon) { $lnk.IconLocation = $sc.Icon }
-    $lnk.Save()
-  }
-}
-Ok "Shortcuts: 'Nothing BOT Server Console' and 'Nothing BOT Curating' on the desktop and in Start"
 
 Step "Keep the laptop awake on power"
 powercfg /change standby-timeout-ac 0
@@ -368,7 +466,7 @@ Write-Host "  1. Click Connect with Nothing BOT Curating and sign in with Google
 Write-Host "     No admin yet (a brand-new project)? Use 'First server ever? Use a key file' in the same card."
 if ($NoLocal) { Write-Host "     This server uses Gemini: add a Gemini key under AI models (or each curator in the app). A local model can be turned on there too." }
 else { Write-Host "     Local or Gemini only, and which models, is under AI models in the console." }
-Write-Host "  2. Link WhatsApp at https://spot-solutions.web.app -> Settings."
+Write-Host "  2. Link WhatsApp at https://nothingbotcurating.web.app -> Settings."
 Write-Host "  The server updates itself; the console has an Update now button."
 if ($token -and $ip) {
   $phoneUrl = "http://${ip}:7420/?token=$token"
@@ -383,5 +481,6 @@ if ($token -and $ip) {
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.CommandLine -like '*NothingBotServer*console*server.mjs*' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Start-Sleep 6
+Start-Sleep 4
+Wait-Console 30 | Out-Null
 if (Test-Path $edge) { Start-Process $edge "--app=http://localhost:7420" } else { Start-Process "http://localhost:7420" }

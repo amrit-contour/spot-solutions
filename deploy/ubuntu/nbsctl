@@ -163,6 +163,8 @@ OLD_LOCK="$(sha256_of "$APP_DIR/pnpm-lock.yaml" 2>/dev/null || echo none)"
 install_helper "$TMP/stage/apps/worker/console"   # root-owned, from the verified release; before the stage is handed to nbs
 write_sudoers
 [[ "$NO_SYSTEMD" == 1 ]] || chown -R "$SVC_USER:$SVC_USER" "$TMP/stage"
+# VERSION is written last, once everything below worked: a half-finished update is retried instead of "already up to date".
+mv "$TMP/stage/VERSION" "$TMP/VERSION.new"
 cp -a "$TMP/stage/." "$APP_DIR/" || fail "Copying the new files failed."
 # This script updates itself too (root-owned, from the verified release), effective next time.
 if [[ -f "$TMP/stage/deploy/ubuntu/nbsctl" && "$NO_SYSTEMD" != 1 ]]; then
@@ -187,6 +189,7 @@ if ! no_local; then
   # The worker is already back on the new code; now the local model (a no-op when it's current).
   pull_model "$(model_name "${LMODEL:-gemma3:4b}")"
 fi
+cp "$TMP/VERSION.new" "$APP_DIR/VERSION"
 progress done "Updated to $LATEST"
 # The console goes last: it restarts itself, and the page reloads on the new version.
 sysctl_ restart nothing-bot-server-console || true

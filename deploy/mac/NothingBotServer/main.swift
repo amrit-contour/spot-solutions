@@ -12,7 +12,7 @@ let brand = Color(nsColor: NSColor(name: nil) { appearance in
         : NSColor(red: 0x2A / 255, green: 0x6F / 255, blue: 0x13 / 255, alpha: 1)
 })
 let consoleURL = URL(string: "http://127.0.0.1:7420/")!
-let webAppURL = URL(string: "https://spot-solutions.web.app")!
+let webAppURL = URL(string: "https://nothingbotcurating.web.app")!
 let supportDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NothingBotServer")
 
 // MARK: - Model
