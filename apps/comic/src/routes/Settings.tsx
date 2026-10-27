@@ -44,7 +44,7 @@ export function Settings({ uid }: { uid: string }) {
               {user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-12 flex-none rounded-full object-cover" /> : <Avatar name={name} size={48} />}
               <div className="min-w-0 flex-1">
                 <p className="truncate type-title-m">{name}</p>
-                {user?.email && <p className="truncate type-body-s text-on-surface-variant">{user.email}</p>}
+                {user?.email && user.displayName && <p className="truncate type-body-s text-on-surface-variant">{user.email}</p>}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">

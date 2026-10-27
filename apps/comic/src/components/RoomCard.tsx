@@ -17,7 +17,6 @@ export function RoomCard({ room, curators, date, onOpen, readOnly }: { room: Roo
         <IconTile icon={IconBuilding} />
         <span className="min-w-0 flex-1">
           <span className="block truncate type-title-m">{room.name}</span>
-          <span className="block truncate type-body-s text-on-surface-variant">{[room.area, room.city].filter(Boolean).join(" · ")}</span>
         </span>
         <span className="flex flex-none flex-wrap justify-end gap-1">
           {paused && <Chip tone="reading">Paused</Chip>}

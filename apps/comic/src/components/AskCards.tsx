@@ -39,7 +39,7 @@ export function AskOpenCard({ a, template, now, today, busy, onSend, onSkip, onE
           </Chip>
         )}
         {a.standIn && <Chip>Stand-in</Chip>}
-        {missed ? <Chip tone="tertiary">Was due {today ? askDayLabel(a.askOn, today).toLowerCase() : a.askOn} · show is {a.weekday != null ? DAY_NAMES[a.weekday].slice(0, 3) : a.showDate}</Chip> : <Chip>{a.ruleLabel}</Chip>}
+        {missed ? <Chip tone="tertiary">Was due {today ? askDayLabel(a.askOn, today).toLowerCase() : a.askOn} · show is {a.weekday != null ? DAY_NAMES[a.weekday].slice(0, 3) : a.showDate}</Chip> : null}
         <Chip tone={a.mode === "auto" ? "primary" : "neutral"}>{a.mode === "auto" ? (waitingForNine ? "Sends by itself soon" : "Sends by itself") : "Draft for you"}</Chip>
         {a.blocked && (
           <Chip tone="error" icon={IconWarn}>

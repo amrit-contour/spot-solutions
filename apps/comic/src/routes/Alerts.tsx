@@ -85,7 +85,7 @@ function AlertsPage({ uid }: { uid: string }) {
 
   return (
     <div className="w-full">
-      <PageHeader width="narrow" title="Alerts" subtitle="Spots offered in your groups, as they happen." />
+      <PageHeader width="narrow" title="Alerts" />
       <Page>
         <PushPrompt uid={uid} />
 

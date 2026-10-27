@@ -27,7 +27,7 @@ export function RosterCard({ roster, follow, followers, uid }: { roster: Publish
         <IconTile icon={IconBuilding} />
         <span className="min-w-0 flex-1">
           <span className="block truncate type-title-m">{roster.title}</span>
-          <span className="block truncate type-body-s text-on-surface-variant">{roster.city} · by {roster.ownerName ?? "a member"}</span>
+          <span className="block truncate type-body-s text-on-surface-variant">By {roster.ownerName ?? "a member"}</span>
         </span>
       </span>
       {(update || follow || mine) && (
