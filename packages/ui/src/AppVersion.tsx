@@ -13,15 +13,16 @@ export function AppVersionRow() {
     : u.status === "current" ? <>Up to date</>
     : <>Couldn't check. Offline?</>;
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-3">
-      <div className="min-w-0 flex-1 basis-48">
-        <p className="type-title-s" data-testid="app-version">{versionLabel(u.running)}</p>
+    // One row at every width: the version on the left, the action on its right (shorter label on phones, so it never wraps).
+    <div className="flex min-w-0 items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate type-title-s" data-testid="app-version">{versionLabel(u.running)}</p>
         <p className={u.status === "available" ? "type-body-s text-primary" : "type-body-s text-on-surface-variant"} aria-live="polite">{status}</p>
       </div>
       {u.status === "available" ? (
-        <Button size="sm" icon={IconRefresh} onClick={() => void u.updateNow()}>Update now</Button>
+        <Button size="sm" icon={IconRefresh} className="flex-none" onClick={() => void u.updateNow()}>Update<span className="max-sm:hidden">&nbsp;now</span></Button>
       ) : (
-        <Button size="sm" variant="tonal" icon={IconRefresh} loading={u.checking} onClick={() => void u.check()}>Check for updates</Button>
+        <Button size="sm" variant="tonal" icon={IconRefresh} loading={u.checking} className="flex-none" aria-label="Check for updates" onClick={() => void u.check()}>Check<span className="max-sm:hidden">&nbsp;for updates</span></Button>
       )}
     </div>
   );
