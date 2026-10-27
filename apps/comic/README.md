@@ -14,3 +14,9 @@ On the sign-in page tap "Sign in as the emulator test user" (creates a throwaway
 Bangalore starter" > Apply fills it. Emulator data is wiped when the emulators stop. The switch only works in `vite dev`.
 
 Without any sign-in: `pnpm dev`, then open `/dev/rooms` (Bangalore seed) or `/dev/rooms?empty=1`. In memory, nothing is saved.
+
+## Group spot alerts (emulator)
+
+With the emulators and `pnpm dev:emulator` running and the test user signed in once:
+`node --experimental-strip-types scripts/seed-alerts.mjs` fills watched groups, spot alerts, review items and the Bangalore rooms
+(see /alerts, /groups, /settings). Push and "Ask for it" sending need a real worker, WhatsApp and `VITE_FIREBASE_VAPID_KEY`.

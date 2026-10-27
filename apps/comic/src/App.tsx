@@ -1,15 +1,19 @@
-import { lazy, Suspense, useEffect, useState } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { ComicLogo } from "./components/ComicLogo";
-import { AccountMenu, AppShell, Spinner, IconAdd, IconCalendarMark, IconMic, IconBuilding, IconSettings, type NavEntry } from "@spot/ui";
+import { AccountMenu, AppShell, Spinner, IconAdd, IconBell, IconCalendarMark, IconMic, IconBuilding, IconSettings, type NavEntry } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { Landing } from "./routes/Landing";
 import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/install";
 import { Placeholder } from "./routes/Placeholder";
 import { Rooms } from "./routes/Rooms";
+import { Alerts } from "./routes/Alerts";
+import { Groups } from "./routes/Groups";
+import { Settings } from "./routes/Settings";
+import { useForegroundPush } from "./lib/push";
 import { RosterProvider, useFirestoreRoster } from "./lib/roster";
 
 // Dev only: the Rooms page on the Bangalore seed with no sign-in (/dev/rooms, or /dev/rooms?empty=1). Dropped from production builds.
@@ -25,6 +29,13 @@ function RosterRoutes({ uid }: { uid: string }) {
   );
 }
 
+/** While the app is open, a spot alert push shows as a toast with "Ask for it" (see lib/push.ts). */
+function PushBridge() {
+  const nav = useNavigate();
+  useForegroundPush(useCallback((id: string) => nav(`/alerts?alert=${encodeURIComponent(id)}&ask=1`), [nav]));
+  return null;
+}
+
 // Same Firebase project and Google account as Nothing BOT Curating. Undefined while Firebase is still working it out.
 function useAuthUser() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
@@ -35,6 +46,7 @@ function useAuthUser() {
 const NAV: NavEntry[] = [
   { to: "/", label: "Today", short: "Home", icon: IconCalendarMark },
   { to: "/rooms", label: "Rooms", icon: IconBuilding },
+  { to: "/alerts", label: "Alerts", icon: IconBell },
   { to: "/asks", label: "Asks", icon: IconAdd },
   { to: "/spots", label: "My spots", short: "Spots", icon: IconMic },
   // Settings lives in the account menu on phones.
@@ -62,12 +74,15 @@ export default function App() {
         isStandalone() ? <SignIn /> : <Landing />
       ) : (
         <AppShell nav={NAV} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={(align) => <AccountMenu user={user} align={align} onSignOut={() => void signOut(auth)} />}>
+          <PushBridge />
           <Routes>
             <Route path="/" element={<Placeholder icon={IconCalendarMark} title="Today" subtitle="Your day at a glance." empty="Today is coming" text="A calendar of the spots you're on and the rooms you're watching will live here." />} />
             <Route path="/rooms/*" element={<RosterRoutes uid={user.uid} />} />
             <Route path="/asks" element={<Placeholder icon={IconAdd} title="Asks" subtitle="Ask a room for a spot." empty="Asks are coming" text="Ask rooms for a spot in one tap, and see their replies here." />} />
             <Route path="/spots" element={<Placeholder icon={IconMic} title="My spots" subtitle="Everything you're booked for." empty="My spots are coming" text="Your confirmed and pending spots across every room will list here." />} />
-            <Route path="/settings" element={<Placeholder icon={IconSettings} title="Settings" subtitle="Alerts and account." empty="Settings are coming" text="Group spot alerts and your preferences will be set here." />} />
+            <Route path="/alerts" element={<Alerts uid={user.uid} />} />
+            <Route path="/groups" element={<Groups uid={user.uid} />} />
+            <Route path="/settings" element={<Settings uid={user.uid} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppShell>

@@ -44,6 +44,10 @@ export default defineConfig({
         // App shell only. Firestore traffic is live data and must never be served stale.
         navigateFallback: "/index.html",
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // Push (FCM) handlers live in public/fcm-sw.js and run inside this same service worker (spot alerts). Loaded with
+        // importScripts, so it stays out of the precache and the browser re-checks it on its own.
+        importScripts: ["fcm-sw.js"],
+        globIgnores: ["fcm-sw.js"],
         runtimeCaching: [{ urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, handler: "StaleWhileRevalidate", options: { cacheName: "fonts" } }],
       },
     }),

@@ -54,3 +54,4 @@ export { default as IconFlag } from "~icons/solar/flag-bold-duotone";
 export { default as IconTemplate } from "~icons/solar/document-text-bold-duotone";
 export { default as IconPalette } from "~icons/solar/pallete-2-bold-duotone";
 export { default as IconSort } from "~icons/solar/sort-vertical-bold-duotone";
+export { default as IconBell } from "~icons/solar/bell-bold-duotone";
