@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { DEFAULT_SETTINGS, RosterFormatError, fromCsv, fromRosterJson, groupByArea, localDate, roomMatches, toCsv, toRosterJson, type Room } from "@spot/shared";
-import { Button, CompactButton, IconPlus, IconBuilding, IconImport, IconMenuDots, IconButton, IconSearch, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { Button, CompactButton, IconPlus, IconRoom, IconImport, IconMenuDots, IconButton, IconSearch, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
 import { EmptyState, Page, SearchField, Section } from "../components/ui";
 import { useRoster } from "../lib/roster";
 import { blankRoom } from "../lib/rooms";
@@ -125,7 +125,7 @@ export function Rooms({ base = "/rooms" }: { base?: string }) {
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : empty ? (
           <EmptyState
-            icon={IconBuilding}
+            icon={IconRoom}
             title="No rooms yet"
             action={
               <div className="flex flex-wrap justify-center gap-2">

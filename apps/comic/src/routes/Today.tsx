@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { askDayLabel, closesLabel, isoAddDays, openNow, spotState, suggestRegulars, upcomingGroups, type Ask, type CalendarSpot, type PlannedAsk } from "@spot/shared";
-import { Button, Chip, IconBuilding, IconCalendarMark, IconChat, IconClock, IconRepeat, PageHeader, Spinner } from "@spot/ui";
+import { Button, Chip, IconRoom, IconCalendarMark, IconChat, IconClock, IconRepeat, PageHeader, Spinner } from "@spot/ui";
 import { CardButton, EmptyState, IconTile, Page, Section } from "../components/ui";
 import { useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
@@ -21,7 +21,7 @@ const RECENT_MS = 3 * 86_400_000;
 function OpenRow({ a, now }: { a: PlannedAsk; now: number }) {
   return (
     <CardButton to="/asks" className="flex items-center gap-3">
-      <IconTile icon={IconBuilding} />
+      <IconTile icon={IconRoom} />
       <span className="min-w-0 flex-1">
         <span className="block truncate type-title-s">{a.label}</span>
         <span className="block truncate type-body-s text-on-surface-variant">
@@ -89,8 +89,8 @@ export function Today({ uid }: { uid?: string }) {
   const nothing = !loading && roster.rooms.length === 0 && store.spots.length === 0 && store.regulars.length === 0;
   return (
     <div className="w-full">
-      <PageHeader width="narrow" title="Today" subtitle="Your day at a glance." actions={<Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full text-primary"><IconRepeat className="icon size-5" /></Link>} />
-      <Page>
+      <PageHeader title="Today" subtitle="Your day at a glance." actions={<Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full text-primary"><IconRepeat className="icon size-5" /></Link>} />
+      <Page wide>
         {uid && <ConnectionBanner uid={uid} />}
         {loading ? (
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
@@ -102,8 +102,10 @@ export function Today({ uid }: { uid?: string }) {
                 <span className="type-label-l">See</span>
               </CardButton>
             )}
-            <CalendarView spots={calSpots} today={today} selected={selected} onSelect={setSelected} mode={mode} onMode={setMode} />
-            <DayPanel date={selected} today={today} spots={calSpots} allSpots={all} onAdd={(d) => setEditing(blankSpot(d))} onOpen={setEditing} />
+            <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start">
+              <div className="min-w-0 lg:sticky lg:top-24"><CalendarView spots={calSpots} today={today} selected={selected} onSelect={setSelected} mode={mode} onMode={setMode} /></div>
+              <DayPanel date={selected} today={today} spots={calSpots} allSpots={all} asks={plan} agenda={mode === "day"} onAdd={(d) => setEditing(blankSpot(d))} onOpen={setEditing} />
+            </div>
             {suggestions.length > 0 && (
               <CardButton to="/spots/regulars" className="flex items-center gap-3">
                 <IconTile icon={IconRepeat} />
@@ -119,7 +121,7 @@ export function Today({ uid }: { uid?: string }) {
                 Add the rooms you go to. Then the asks to make and the replies show up here as well.
               </EmptyState>
             ) : (
-              <>
+              <div className="grid min-w-0 gap-6 lg:grid-cols-2 lg:items-start">
             <Section title="Ask now" label="Asks open now" action={open.length > 0 ? <SectionLink to="/asks">Open Asks</SectionLink> : undefined}>
               {open.length > 0 ? (
                 <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
@@ -150,7 +152,7 @@ export function Today({ uid }: { uid?: string }) {
                 </p>
               )}
             </Section>
-              </>
+              </div>
             )}
           </>
         )}

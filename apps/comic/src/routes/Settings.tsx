@@ -140,7 +140,7 @@ export function Settings({ uid }: { uid: string }) {
             </div>
             <div className="flex min-w-0 flex-col gap-2">
               <span className="type-label-l text-on-surface-variant">Look</span>
-              <Segmented full value={brand === "nbc" || brand === "classic" ? brand : savedBrand()} onChange={(b: Brand) => setBrand(b, { animate: true })} options={[{ value: "nbc", label: "Nothing BOT" }, { value: "classic", label: "Classic" }]} />
+              <Segmented full value={brand === "nbc" || brand === "classic" ? brand : savedBrand()} onChange={(b: Brand) => setBrand(b, { animate: true })} options={[{ value: "nbc", label: "NBC" }, { value: "classic", label: "Classic" }]} />
             </div>
           </div>
         </Section>

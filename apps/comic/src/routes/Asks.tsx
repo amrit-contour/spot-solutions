@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { askDayLabel, openNow, upcomingGroups, type Ask, type PlannedAsk } from "@spot/shared";
-import { Button, IconPlus, IconBuilding, IconChat, IconClock, IconMenuDots, IconButton, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { Button, IconPlus, IconRoom, IconChat, IconClock, IconMenuDots, IconButton, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
 import { EmptyState, Page, Section } from "../components/ui";
 import { useAskPrefs, useShowMissedAsks } from "../lib/alerts";
 import { draftFor, useAsks, useAskPlan, useNowMs } from "../lib/asks";
@@ -120,7 +120,7 @@ export function Asks() {
         {store.loading || roster.loading ? (
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : noRooms ? (
-          <EmptyState icon={IconBuilding} title="Add your rooms first" action={<Link to="/rooms"><Button icon={IconPlus}>Go to Rooms</Button></Link>}>
+          <EmptyState icon={IconRoom} title="Add your rooms first" action={<Link to="/rooms"><Button icon={IconPlus}>Go to Rooms</Button></Link>}>
             Asks come from your rooms: which shows, who curates them and when to ask. Add them, or load the Bangalore starter.
           </EmptyState>
         ) : tab === "open" ? (

@@ -1059,6 +1059,7 @@ export function regexProblem(src: string): string | null {
   if (src.length > MAX_REGEX_LEN) return `Longer than ${MAX_REGEX_LEN} characters`;
   if (/\\[1-9]/.test(src)) return "Backreferences aren't allowed";
   if (/\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*[+*{]/.test(src)) return "A repeat inside a repeat can hang the app";
+  if (/\((?:[^()\\]|\\.)*\|(?:[^()\\]|\\.)*\)\s*[+*{]/.test(src)) return "A repeated choice (a|b)+ can hang the app";
   try {
     new RegExp(src, "i");
   } catch {
@@ -1068,10 +1069,20 @@ export function regexProblem(src: string): string | null {
 }
 
 /** Applies stored overrides and custom rules over the defaults. Anything invalid is dropped or falls back, never thrown. */
-export function resolveAlertRules(raw: AlertRulesInput): ResolvedAlertRules {
+export function resolveAlertRules(input: AlertRulesInput): ResolvedAlertRules {
+  // Whatever was stored (nothing, a string, an array, a shape from an older version) is read as an object or ignored.
+  const raw: StoredAlertRules | undefined = input && typeof input === "object" && !Array.isArray(input) ? input : undefined;
   const problems: Record<string, string> = {};
   const rules: AlertRule[] = DEFAULT_ALERT_RULES.map((r) => ({ ...r, patterns: r.patterns ? [...r.patterns] : undefined }));
   const byId = new Map(rules.map((r) => [r.id, r]));
+  // The first scoring version stored { threshold, weights: { ruleId: points } }: the weights of rules that still exist carry over.
+  const legacy = raw && (raw as { weights?: unknown }).weights;
+  if (legacy && typeof legacy === "object" && !Array.isArray(legacy)) {
+    for (const [id, w] of Object.entries(legacy)) {
+      const base = Object.hasOwn(Object.fromEntries(byId), id) ? byId.get(id) : undefined;
+      if (base && validWeight(w)) base.weight = Math.round(w);
+    }
+  }
   const stored = Array.isArray(raw?.rules) ? (raw.rules as StoredAlertRule[]).slice(0, MAX_ALERT_RULES) : [];
   for (const s of stored) {
     if (!s || typeof s.id !== "string") continue;
@@ -1216,7 +1227,7 @@ export interface FastRead {
  * are never confident whatever the rules say: the model reads those.
  */
 export function classifyFast(text: string, opts: { rooms?: RoomLike[]; rules?: AlertRulesInput } = {}): FastRead {
-  const cfg = opts.rules && "problems" in opts.rules ? opts.rules : resolveAlertRules(opts.rules);
+  const cfg = opts.rules && typeof opts.rules === "object" && "problems" in opts.rules && Array.isArray(opts.rules.rules) ? opts.rules : resolveAlertRules(opts.rules);
   const t = text.trim().replace(/\s+/g, " ").slice(0, MAX_INPUT);
   const offer = sumRules(cfg.rules.filter((r) => r.appliesTo === "offer"), t, opts.rooms);
   const closure = sumRules(cfg.rules.filter((r) => r.appliesTo === "closure"), t, opts.rooms);

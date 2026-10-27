@@ -1,5 +1,5 @@
 import { alertDayLabel, alertState, formatTime, givenName, timeLeft, timesShort, type SpotAlert } from "@spot/shared";
-import { Button, Chip, IconBuilding, IconCheck, IconClock, IconSend, IconUserCheck, IconWarn } from "@spot/ui";
+import { Button, Chip, IconRoom, IconCheck, IconClock, IconSend, IconUserCheck, IconWarn } from "@spot/ui";
 import { Card, CardActions, Chips, IconTile } from "./ui";
 import { ago } from "../lib/time";
 
@@ -52,7 +52,7 @@ export function AlertCard({
   return (
     <Card id={`alert-${a.id}`} highlight={highlight} dim={!live} className="flex flex-col gap-3">
       <div className="flex min-w-0 items-center gap-3">
-        <IconTile icon={IconBuilding} />
+        <IconTile icon={IconRoom} />
         <div className="min-w-0 flex-1">
           <p className="truncate type-title-m">{a.roomName ?? "A room (not named)"}</p>
           <p className="truncate type-body-s text-on-surface-variant">{when}</p>

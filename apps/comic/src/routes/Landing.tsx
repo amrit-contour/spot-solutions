@@ -1,7 +1,7 @@
 // Signed-out front page: what Nothing BOT Comedy is, an animated demo of the flow, and the ways in.
 import { motion, MotionConfig } from "motion/react";
 import {
-  IconBuilding,
+  IconRoom,
   IconCalendarMark,
   IconChatCheck,
   IconCpu,
@@ -23,7 +23,7 @@ import { Button, cx } from "@spot/ui";
 const CURATING = "https://nothingbotcurate.web.app";
 
 const FEATURES = [
-  { icon: IconBuilding, title: "Every open mic, in one roster", body: "Rooms, shows, who curates which day, and when to ask: the morning of, the day before, “ping Mondays”, or “they'll reach out”. Instagram-only and walk-in rooms are notes, not tasks." },
+  { icon: IconRoom, title: "Every open mic, in one roster", body: "Rooms, shows, who curates which day, and when to ask: the morning of, the day before, “ping Mondays”, or “they'll reach out”. Instagram-only and walk-in rooms are notes, not tasks." },
   { icon: IconSend, title: "Asks that go out on time", body: "Each room has its own ask rule. The message goes from your own WhatsApp, in your words, at the right hour. Review it first or let it fly, per room." },
   { icon: IconChatCheck, title: "Replies, read for you", body: "“Yes bro, 9 pm” becomes Got it. “Thursday's full” becomes Declined. No reply stays No reply, so you know who to chase. Every status quotes the message it came from." },
   { icon: IconCalendarMark, title: "Spots on your calendar", body: "Every booked spot lands in My spots with the room, time and curator. Add notes after: the crowd, a rating, what worked, the set list. Stats by week, month and room." },
@@ -124,7 +124,7 @@ export function Landing() {
           <SectionHead kicker="How it works" title="Three steps, and the middle one isn't yours." />
           <div className="mt-12 grid gap-4 md:grid-cols-3">
             {[
-              { icon: IconBuilding, t: "Build your roster", b: "Add your rooms, or follow your city's roster and take what you want. Set each room's ask rule once: morning of, day before, a weekday, or they reach out." },
+              { icon: IconRoom, t: "Build your roster", b: "Add your rooms, or follow your city's roster and take what you want. Set each room's ask rule once: morning of, day before, a weekday, or they reach out." },
               { icon: IconCpu, t: "Asks go out, replies get read", b: "On the day, the ask goes from your WhatsApp. A model on your laptop reads what comes back and marks it Got it, Declined or No reply." },
               { icon: IconCalendarMark, t: "Show up, then write it down", b: "Spots sit in My spots. After the set, add a few lines: the crowd, what worked, what didn't. Your stats build themselves." },
             ].map((s, i) => (

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { SPOT_SOURCE_LABEL, SPOT_STATE_LABEL, bySpotTime, formatTime, regularFromSpot, spotClashes, spotDateLabel, spotState, type CalendarSpot, type RegularSpot } from "@spot/shared";
-import { Button, Chip, IconPlus, IconCheck, IconRepeat, IconSkip } from "@spot/ui";
+import { Link } from "react-router-dom";
+import { SPOT_SOURCE_LABEL, SPOT_STATE_LABEL, bySpotTime, formatTime, regularFromSpot, spotClashes, spotDateLabel, spotState, type CalendarSpot, type PlannedAsk, type RegularSpot } from "@spot/shared";
+import { Button, Chip, IconPlus, IconCheck, IconRepeat, IconSend, IconSkip } from "@spot/ui";
 import { Card, Notice, Section } from "../ui";
 import { useRoster } from "../../lib/roster";
 import { newRegularId, useSpotActions } from "../../lib/regulars";
@@ -12,7 +13,7 @@ import { RegularEditor } from "./RegularEditor";
 const TONE = { upcoming: "neutral", tonight: "primary", to_check: "error", happened: "success", didnt: "neutral", cancelled: "neutral" } as const;
 
 /** One day of the calendar: its spots (time, room, show, where it stands, did it happen?) and what to do with them. */
-export function DayPanel({ date, today, spots, allSpots, onAdd, onOpen }: { date: string; today: string; spots: CalendarSpot[]; allSpots: CalendarSpot[]; onAdd: (date: string) => void; onOpen: (s: CalendarSpot) => void }) {
+export function DayPanel({ date, today, spots, allSpots, asks = [], agenda, onAdd, onOpen }: { date: string; today: string; spots: CalendarSpot[]; allSpots: CalendarSpot[]; /** Asks for shows on this day. */ asks?: PlannedAsk[]; /** The Day view: asks sit in the timeline at their show's time. */ agenda?: boolean; onAdd: (date: string) => void; onOpen: (s: CalendarSpot) => void }) {
   const roster = useRoster();
   const act = useSpotActions();
   const [making, setMaking] = useState<RegularSpot | null>(null);
@@ -23,6 +24,20 @@ export function DayPanel({ date, today, spots, allSpots, onAdd, onOpen }: { date
     return show?.name ?? act.rule(s.regularId)?.showName;
   };
   const run = (p: Promise<unknown>, ok: string) => p.then(() => toast.success(ok), () => toast.error("Couldn't save that. Try again."));
+  const dayAsks = asks.filter((a) => a.showDate === date).sort((a, b) => (a.time ?? "99:99").localeCompare(b.time ?? "99:99"));
+  const askRow = (a: PlannedAsk) => (
+    <Link to="/asks" className="state-layer pressable flex min-h-14 min-w-0 items-center gap-3 rounded-lg border border-dashed border-outline-variant px-3 py-2">
+      <span className="w-14 flex-none type-title-s tabular">{a.time ? formatTime(a.time) : <span className="type-label-m text-on-surface-variant">No time</span>}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate type-title-s">{a.label}</span>
+        <span className="block truncate type-body-s text-on-surface-variant">Ask {a.curatorName?.split(/\s+/)[0] ?? "no one yet"}</span>
+      </span>
+      <IconSend aria-hidden className="icon size-4 flex-none text-on-surface-variant" />
+    </Link>
+  );
+  // Day view: spots and asks in one timeline, earliest first. Elsewhere the asks follow the spots.
+  type Item = { at: string; spot?: CalendarSpot; ask?: PlannedAsk };
+  const items: Item[] = agenda ? [...list.map((s): Item => ({ at: s.time ?? "99:99", spot: s })), ...dayAsks.map((a): Item => ({ at: a.time ?? "99:99", ask: a }))].sort((a, b) => a.at.localeCompare(b.at) || Number(Boolean(a.ask)) - Number(Boolean(b.ask))) : list.map((s): Item => ({ at: s.time ?? "", spot: s }));
   const title = date === today ? "Today" : spotDateLabel(date);
   return (
     <Section
@@ -34,11 +49,13 @@ export function DayPanel({ date, today, spots, allSpots, onAdd, onOpen }: { date
         </Button>
       }
     >
-      {list.length === 0 ? (
+      {items.length === 0 ? (
         <p className="rounded-lg border border-dashed border-outline-variant px-4 py-6 text-center type-body-m text-on-surface-variant">{date < today ? "Nothing on this day." : "Nothing booked this day yet."}</p>
       ) : (
-        <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
-          {list.map((s) => {
+        <ul className={`grid grid-cols-[minmax(0,1fr)] gap-2 ${agenda ? "border-l-2 border-outline-variant pl-3" : ""}`}>
+          {items.map((it) => {
+            if (!it.spot) return <li key={`ask-${it.ask!.id}`} className="min-w-0">{askRow(it.ask!)}</li>;
+            const s = it.spot;
             const state = spotState(s, today);
             const clash = s.status === "cancelled" ? [] : spotClashes(allSpots, s);
             const regular = s.source === "regular";
@@ -90,6 +107,12 @@ export function DayPanel({ date, today, spots, allSpots, onAdd, onOpen }: { date
             );
           })}
         </ul>
+      )}
+      {!agenda && dayAsks.length > 0 && (
+        <div className="mt-2 flex min-w-0 flex-col gap-2">
+          <p className="px-1 type-label-l text-on-surface-variant">To ask for this day</p>
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">{dayAsks.map((a) => <li key={a.id} className="min-w-0">{askRow(a)}</li>)}</ul>
+        </div>
       )}
       <RegularEditor value={making} onClose={() => setMaking(null)} today={today} />
     </Section>

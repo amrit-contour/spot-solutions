@@ -1,5 +1,5 @@
 import { canMaintain, type PublishedRosterDoc, type RosterFollow } from "@spot/shared";
-import { Chip, IconBuilding, IconGroup } from "@spot/ui";
+import { Chip, IconRoom, IconGroup } from "@spot/ui";
 import { hasUpdate } from "../../lib/rosters";
 import { CardButton, Chips, IconTile } from "../ui";
 
@@ -24,7 +24,7 @@ export function RosterCard({ roster, follow, followers, uid }: { roster: Publish
   return (
     <CardButton to={`/rosters/${roster.id}`} className="flex flex-col gap-3">
       <span className="flex min-w-0 items-center gap-3">
-        <IconTile icon={IconBuilding} />
+        <IconTile icon={IconRoom} />
         <span className="min-w-0 flex-1">
           <span className="block truncate type-title-m">{roster.title}</span>
           <span className="block truncate type-body-s text-on-surface-variant">By {roster.ownerName ?? "a member"}</span>

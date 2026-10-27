@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import type { Roster } from "@spot/shared";
-import { Button, CompactButton, IconBuilding, IconSearch, IconSend, IconShield, IconUserPlus, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { Button, CompactButton, IconRoom, IconSearch, IconSend, IconShield, IconUserPlus, PageHeader, Segmented, Spinner } from "@spot/ui";
 import { EmptyState, ListGroup, ListRow, IconTile, Page, SearchField, Section } from "../components/ui";
 import { ImportSheet, type Incoming } from "../components/ImportSheet";
 import { PublishSheet } from "../components/rosters/PublishSheet";
@@ -98,7 +98,7 @@ export function Rosters({ user, canPublish, admin }: { user: User; canPublish: b
         {all.loading ? (
           <div className="grid place-items-center py-16 text-primary"><Spinner className="size-8" /></div>
         ) : empty ? (
-          <EmptyState icon={IconBuilding} title="No community rosters yet" action={canPublish ? <Button onClick={() => setPublishing(true)}>Publish your rooms</Button> : undefined}>
+          <EmptyState icon={IconRoom} title="No community rosters yet" action={canPublish ? <Button onClick={() => setPublishing(true)}>Publish your rooms</Button> : undefined}>
             {canPublish ? "Be the first. Publish your rooms and other comics can follow them." : "When someone publishes their rooms for a city, you will find it here. You can also ask an admin if you can publish."}
           </EmptyState>
         ) : cities.length === 0 ? (

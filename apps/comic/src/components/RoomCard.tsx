@@ -1,5 +1,5 @@
 import { askHints, roomFullToday, roomPaused, showSummary, todayAt, type Curator, type Room } from "@spot/shared";
-import { Chip, IconBuilding, IconCalendarMark, IconMic, IconClock } from "@spot/ui";
+import { Chip, IconRoom, IconCalendarMark, IconMic, IconClock } from "@spot/ui";
 import { CardButton, Chips, IconTile } from "./ui";
 
 const TAG_LABEL = (t: string) => t.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -14,7 +14,7 @@ export function RoomCard({ room, curators, date, onOpen, readOnly }: { room: Roo
   return (
     <CardButton onClick={onOpen} dim={paused} label={readOnly ? undefined : `Edit ${room.name}`} className="flex flex-col gap-3">
       <span className="flex min-w-0 items-center gap-3">
-        <IconTile icon={IconBuilding} />
+        <IconTile icon={IconRoom} />
         <span className="min-w-0 flex-1">
           <span className="block truncate type-title-m">{room.name}</span>
         </span>

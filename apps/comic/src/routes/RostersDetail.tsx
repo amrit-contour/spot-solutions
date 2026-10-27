@@ -4,7 +4,7 @@ import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import { DEFAULT_SETTINGS, canMaintain, diffRosters, groupByArea, localDate, roomMatches, toSharedRoster, type Curator, type Room, type RoomShared, type Roster } from "@spot/shared";
 import {
-  Button, ConfirmDialog, IconPlus, IconArrowLeft, IconBuilding, IconButton, IconImport, IconMenuDots, IconPen, IconSearch, IconUserCheck, Menu, MenuItem, PageHeader, Spinner,
+  Button, ConfirmDialog, IconPlus, IconArrowLeft, IconRoom, IconButton, IconImport, IconMenuDots, IconPen, IconSearch, IconUserCheck, Menu, MenuItem, PageHeader, Spinner,
 } from "@spot/ui";
 import { Card, EmptyState, Page, SearchField, Section } from "../components/ui";
 import { ImportSheet } from "../components/ImportSheet";
@@ -54,7 +54,7 @@ export function RostersDetail({ user }: { user: User }) {
   if (loading) return <div className="grid min-h-[50dvh] place-items-center text-primary"><Spinner className="size-8" /></div>;
   if (!roster) {
     return (
-      <EmptyState icon={IconBuilding} title="That roster isn't here" action={<Button onClick={() => nav("/rosters")}>Back to Community</Button>}>
+      <EmptyState icon={IconRoom} title="That roster isn't here" action={<Button onClick={() => nav("/rosters")}>Back to Community</Button>}>
         It may have been unpublished, or the link is wrong.
       </EmptyState>
     );

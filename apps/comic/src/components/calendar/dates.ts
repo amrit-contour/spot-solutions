@@ -41,3 +41,29 @@ export function sourcesByDate(spots: CalendarSpot[]): Map<string, SpotSource[]> 
 export const SOURCE_DOT: Record<SpotSource, string> = { ask: "bg-primary", adhoc: "bg-outline", group_offer: "bg-on-surface", regular: "border-[1.5px] border-primary" };
 export const SOURCE_DOT_ON_FILL: Record<SpotSource, string> = { ask: "bg-on-primary", adhoc: "bg-on-primary/60", group_offer: "bg-on-primary", regular: "border-[1.5px] border-on-primary" };
 export const SOURCE_ORDER: SpotSource[] = ["regular", "ask", "group_offer", "adhoc"];
+
+const DAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export const dayLong = (date: string) => `${DAYS_LONG[new Date(`${date}T00:00:00Z`).getUTCDay()]!} ${dayNum(date)} ${monthName(date)}`;
+/** "27 Oct – 2 Nov" (or "27 – 31 Oct" inside one month). */
+export const weekRange = (date: string) => {
+  const w = weekDates(date);
+  const [a, b] = [w[0]!, w[6]!];
+  const m = (d: string) => monthName(d).slice(0, 3);
+  return a.slice(0, 7) === b.slice(0, 7) ? `${dayNum(a)} – ${dayNum(b)} ${m(b)}` : `${dayNum(a)} ${m(a)} – ${dayNum(b)} ${m(b)}`;
+};
+/** "9:30p", "7p", "10a": a time that fits under a day number. */
+export const shortTime = (hhmm: string) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return `${(h ?? 0) % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""}${(h ?? 0) >= 12 ? "p" : "a"}`;
+};
+
+/** Spots still on, per date, earliest first, for the week columns. */
+export function spotsByDate(spots: CalendarSpot[]): Map<string, CalendarSpot[]> {
+  const out = new Map<string, CalendarSpot[]>();
+  for (const s of spots) {
+    if (s.status === "cancelled" || s.happened === false || s.skippedRegular) continue;
+    out.set(s.date, [...(out.get(s.date) ?? []), s]);
+  }
+  for (const l of out.values()) l.sort((a, b) => (a.time ?? "99:99").localeCompare(b.time ?? "99:99"));
+  return out;
+}

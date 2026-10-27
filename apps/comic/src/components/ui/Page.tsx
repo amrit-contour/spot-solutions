@@ -6,11 +6,12 @@ import { cx } from "@spot/ui";
  * sections 24px apart, and room at the bottom for the phone tab bar. Pair with <PageHeader width="narrow" />
  * so the title and the content share the same left edge.
  */
-export function Page({ children, className, gap = 6 }: { children: ReactNode; className?: string; gap?: 4 | 6 | 8 }) {
+export function Page({ children, className, gap = 6, wide }: { children: ReactNode; className?: string; gap?: 4 | 6 | 8; /** Room for two columns on a laptop (still one column below lg). */ wide?: boolean }) {
   return (
     <div
       className={cx(
-        "mx-auto flex w-full max-w-3xl min-w-0 flex-col px-4 pt-4 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-16",
+        "mx-auto flex w-full min-w-0 flex-col px-4 pt-4 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-16",
+        wide ? "max-w-3xl lg:max-w-6xl" : "max-w-3xl",
         gap === 4 ? "gap-4" : gap === 8 ? "gap-8" : "gap-6",
         className,
       )}

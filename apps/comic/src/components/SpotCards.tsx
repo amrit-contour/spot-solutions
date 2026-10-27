@@ -1,5 +1,5 @@
 import { SPOT_SOURCE_LABEL, SPOT_STATE_LABEL, formatTime, spotHasNotes, spotState, type MySpot } from "@spot/shared";
-import { Button, Chip, IconBuilding, IconCheck, IconStar, IconWarn } from "@spot/ui";
+import { Button, Chip, IconRoom, IconCheck, IconStar, IconWarn } from "@spot/ui";
 import { Card, CardActions, Chips, IconTile } from "./ui";
 
 /** Five stars, filled up to `value`. */
@@ -24,7 +24,7 @@ export function SpotCard({ spot, today, clash, onOpen, onMark }: { spot: MySpot;
     <Card dim={state === "didnt" || state === "cancelled"} className="flex flex-col gap-3">
       <button onClick={onOpen} className="state-layer pressable -m-2 flex min-w-0 flex-col gap-3 rounded-md p-2 text-left" aria-label={`Open ${spot.roomName ?? "spot"}`}>
         <span className="flex min-w-0 items-center gap-3">
-          <IconTile icon={IconBuilding} />
+          <IconTile icon={IconRoom} />
           <span className="min-w-0 flex-1">
             <span className="block truncate type-title-m">{spot.roomName || "Somewhere"}</span>
             <span className="block truncate type-body-s text-on-surface-variant">{spot.time ? formatTime(spot.time) : "No time set"}</span>

@@ -7,6 +7,8 @@ export * from "./icons";
 export * from "./Popover";
 export * from "./Menu";
 export * from "./Collapsible";
+export * from "./RoomIcon";
+export * from "./ErrorBoundary";
 export * from "./ConfirmDialog";
 export * from "./Logo";
 export * from "./StickyBar";

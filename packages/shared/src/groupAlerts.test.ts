@@ -563,3 +563,48 @@ describe("one name, several locations (Comedy Theatre)", () => {
     expect(r.kind === "opening_notice" && r.opening.roomId).toBe(INDI.id);
   });
 });
+
+describe("alert rules saved by an older version or damaged", () => {
+  const msg = "Spots at 7 and 9 today at Banter, DM";
+  const shapes: [string, unknown][] = [
+    ["missing", undefined],
+    ["null", null],
+    ["a string", "x"],
+    ["a number", 5],
+    ["an array", []],
+    ["empty", {}],
+    ["first version { threshold, weights }", { threshold: 70, weights: { "offer-time": 10, nope: 5, "offer-short": "lots" } }],
+    ["threshold as text", { threshold: "70" }],
+    ["rules as an object", { rules: { a: 1 } }],
+    ["rules as text", { rules: "x" }],
+    ["entries that aren't rules", { rules: [null, 5, "x", { id: 7 }] }],
+    ["weight as text", { rules: [{ id: "offer-time", weight: "5" }] }],
+    ["default regex overridden with a number", { rules: [{ id: "offer-wording", regex: 5 }] }],
+    ["default phrases overridden with text", { rules: [{ id: "offer-spot-word", patterns: "x" }] }],
+    ["custom rule with a bad regex", { rules: [{ id: "c-1", kind: "regex", regex: "[", weight: 5, appliesTo: "offer" }] }],
+    ["custom rule that hangs", { rules: [{ id: "c-2", kind: "regex", regex: "(a|aa)+$", weight: 5, appliesTo: "offer" }] }],
+    ["custom rule with odd patterns and label", { rules: [{ id: "c-3", kind: "phrase", patterns: [1, null, "ok"], label: 5, weight: 5, appliesTo: "offer" }] }],
+    ["ids that are object keys", { rules: [{ id: "__proto__", weight: 1 }, { id: "constructor", weight: 1 }] }],
+  ];
+  for (const [name, raw] of shapes) {
+    it(`reads ${name} without throwing and still scores`, () => {
+      const cfg = resolveAlertRules(raw as never);
+      expect(cfg.rules.length).toBeGreaterThanOrEqual(DEFAULT_ALERT_RULES.length);
+      expect(cfg.threshold).toBeGreaterThanOrEqual(0);
+      expect(() => classifyFast(msg, { rules: raw as never })).not.toThrow();
+      expect(() => toStoredAlertRules(resolveAlertRules(toStoredAlertRules(cfg)))).not.toThrow();
+    });
+  }
+  it("carries over the weights of the first version for rules that still exist", () => {
+    const cfg = resolveAlertRules({ threshold: 70, weights: { "offer-time": 10, nope: 5 } } as never);
+    expect(cfg.threshold).toBe(70);
+    expect(cfg.rules.find((r) => r.id === "offer-time")?.weight).toBe(10);
+    expect(cfg.rules.some((r) => r.id === "nope")).toBe(false);
+  });
+  it("skips a regex that can hang and a bad one, and says why", () => {
+    const cfg = resolveAlertRules({ rules: [{ id: "c-1", kind: "regex", regex: "(a|aa)+$", weight: 5, appliesTo: "offer" }, { id: "c-2", kind: "regex", regex: "[", weight: 5, appliesTo: "offer" }] });
+    expect(cfg.problems["c-1"]).toMatch(/hang/);
+    expect(cfg.problems["c-2"]).toBeTruthy();
+    expect(classifyFast("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!", { rules: cfg }).offer.parts["c-1"]).toBeUndefined();
+  });
+});

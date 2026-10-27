@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppProvider, useAuthUser } from "./lib/app";
 import { Shell } from "./components/Shell";
-import { Spinner } from "@spot/ui";
+import { ErrorBoundary, Spinner } from "@spot/ui";
 import { Landing } from "./routes/Landing";
 import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/standalone";
@@ -62,6 +62,7 @@ export default function App() {
       ) : (
         <AppProvider user={user}>
           <Shell>
+            <ErrorBoundary resetKey={pathname}>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/requests" element={<Requests />} />
@@ -75,6 +76,7 @@ export default function App() {
               <Route path="/help" element={<AdminOnly><HelpPage /></AdminOnly>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </ErrorBoundary>
           </Shell>
         </AppProvider>
       )}

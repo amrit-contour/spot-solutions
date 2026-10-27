@@ -16,8 +16,10 @@ export function Groups({ uid }: { uid: string }) {
   const on = useMemo(() => new Set(watched.data.map((g) => g.id)), [watched.data]);
   // A watched group that has since vanished from the list still shows, so it can be switched off.
   const rows = useMemo(() => {
-    const known = new Map(all.data.map((g) => [g.id, { id: g.id, name: g.name, participants: g.participants as number | undefined }]));
-    for (const w of watched.data) if (!known.has(w.id)) known.set(w.id, { id: w.id, name: w.name, participants: undefined });
+    // A WhatsApp group can come back with no name at all: it still lists (as "Unnamed group") instead of breaking the page.
+    const nameOf = (n: unknown) => (typeof n === "string" && n.trim() ? n : "Unnamed group");
+    const known = new Map(all.data.map((g) => [g.id, { id: g.id, name: nameOf(g.name), participants: typeof g.participants === "number" ? g.participants : undefined }]));
+    for (const w of watched.data) if (!known.has(w.id)) known.set(w.id, { id: w.id, name: nameOf(w.name), participants: undefined });
     return [...known.values()].filter((g) => g.name.toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => Number(on.has(b.id)) - Number(on.has(a.id)) || a.name.localeCompare(b.name));
   }, [all.data, watched.data, q, on]);
 

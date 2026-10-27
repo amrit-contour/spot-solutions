@@ -1,5 +1,5 @@
 import { askDayLabel, closesLabel, limitsText, opensLabel, type Ask, type PlannedAsk } from "@spot/shared";
-import { Bubble, Button, Chip, IconBuilding, IconClock, IconPen, IconPhone, IconSend, IconWarn, IconUserCheck } from "@spot/ui";
+import { Bubble, Button, Chip, IconRoom, IconClock, IconPen, IconPhone, IconSend, IconWarn, IconUserCheck } from "@spot/ui";
 import { Card, CardActions, Chips, IconTile } from "./ui";
 import { DAY_NAMES } from "@spot/shared";
 import { ago, dateTime } from "../lib/time";
@@ -18,7 +18,7 @@ export function AskOpenCard({ a, template, now, today, busy, onSend, onSkip, onE
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex min-w-0 items-center gap-3">
-        <IconTile icon={IconBuilding} />
+        <IconTile icon={IconRoom} />
         <div className="min-w-0 flex-1">
           <p className="truncate type-title-m">{a.label}</p>
           <p className="truncate type-body-s text-on-surface-variant">{dateTime(a.showDate, a.time)}</p>
