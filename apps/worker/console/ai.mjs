@@ -37,9 +37,67 @@ export function pickModels(models) {
     .sort((a, b) => Number(b.startsWith("gemini")) - Number(a.startsWith("gemini")) || b.localeCompare(a, undefined, { numeric: true }));
 }
 
-export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaInfo, noLocalModel, fetchImpl = fetch }) {
+/** The model the worker uses for local answers when none is chosen (apps/worker/src/serverAi.ts DEFAULT_LOCAL_MODEL). */
+export const DEFAULT_LOCAL_MODEL = "gemma3:4b";
+
+/** Installed models for the page: Ollama's /api/tags joined with /api/ps (what is loaded in memory right now). Pure, for tests. */
+export function shapeModels(tags, ps, selected) {
+  const loaded = new Map((ps ?? []).map((m) => [m.name ?? m.model, m]));
+  const list = (tags ?? []).map((m) => {
+    const l = loaded.get(m.name);
+    return {
+      name: String(m.name),
+      size: Number(m.size) || 0,
+      modifiedAt: m.modified_at ? Date.parse(m.modified_at) || null : null,
+      inUse: m.name === selected,
+      loaded: Boolean(l),
+      loadedBytes: l ? Number(l.size) || null : null,
+      unloadsAt: l?.expires_at ? Date.parse(l.expires_at) || null : null,
+    };
+  });
+  return { list, totalBytes: list.reduce((n, m) => n + m.size, 0) };
+}
+
+export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaInfo, noLocalModel, diskFree = () => null, fetchImpl = fetch }) {
   const geminiKey = (override) => (validKey(override) ? override : readEnv().GEMINI_API_KEY || "");
   let pull = null; // { model, status, completed, total, done, error, startedAt }
+
+  /** The model the server answers with locally: the one chosen in the console, or the built-in default. */
+  const selectedModel = () => readEnv().NBS_LOCAL_MODEL || DEFAULT_LOCAL_MODEL;
+
+  async function localModels() {
+    if (noLocalModel()) return null;
+    try {
+      const [t, p] = await Promise.all([
+        fetchImpl(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(2500) }).then((r) => r.json()),
+        fetchImpl(`${ollamaUrl}/api/ps`, { signal: AbortSignal.timeout(2500) }).then((r) => r.json()).catch(() => ({})),
+      ]);
+      return { ...shapeModels(t.models, p.models, selectedModel()), selected: selectedModel(), free: diskFree() };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Removes a model from Ollama. Never the one the server uses, never a name that isn't a model. Returns the bytes freed. */
+  async function deleteModel(name) {
+    if (!validModel(name)) throw new Error("That isn't a model name.");
+    if (noLocalModel()) throw new Error("This server runs without a local model.");
+    if (name === selectedModel()) throw new Error(`${name} is the model this server uses. Pick another model first, then delete this one.`);
+    const m = await localModels();
+    const have = m?.list.find((x) => x.name === name);
+    if (!have) throw new Error(`${name} isn't installed.`);
+    const r = await fetchImpl(`${ollamaUrl}/api/delete`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: name }), signal: AbortSignal.timeout(30_000) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `Ollama said ${r.status}`);
+    return { freed: have.size };
+  }
+
+  /** Frees a loaded model's memory right now (keep_alive 0). It loads again on the next question. */
+  async function unloadModel(name) {
+    if (!validModel(name)) throw new Error("That isn't a model name.");
+    if (noLocalModel()) throw new Error("This server runs without a local model.");
+    const r = await fetchImpl(`${ollamaUrl}/api/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: name, keep_alive: 0 }), signal: AbortSignal.timeout(30_000) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `Ollama said ${r.status}`);
+  }
 
   async function view() {
     const env = readEnv();
@@ -52,6 +110,7 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
       geminiModel: env.NBS_GEMINI_MODEL || null,
       localEnabled: !noLocalModel(),
       ollama: o,
+      local: await localModels(),
       pull,
     };
   }
@@ -170,5 +229,5 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     await restartWorker();
   }
 
-  return { view, listModels, test, startPull, setKey, setDefaults, pullState: () => pull };
+  return { view, localModels, deleteModel, unloadModel, listModels, test, startPull, setKey, setDefaults, pullState: () => pull };
 }

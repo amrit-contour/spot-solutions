@@ -16,6 +16,18 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,300..800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <script>try { var b = localStorage.getItem("nbs-console-brand"); if (b === "classic") document.documentElement.setAttribute("data-brand", "classic"); } catch (e) {}</script>
+<script>
+// The Mac app shows this page in a WKWebView under its own native header (icon, state, Stop server), so the page leaves out what that header already
+// has. Detected without needing a new app build: ?app=mac, the app's user agent token, or WKWebView's own user agent (a Mac browser that has no
+// Safari/Chrome/Firefox/Edge token). ?app=0 forces the full page, for testing.
+(function () {
+  try {
+    var ua = navigator.userAgent, q = new URLSearchParams(location.search).get("app");
+    var mac = q === "mac" || /NothingBotServerApp/.test(ua) || (q !== "0" && /Macintosh/.test(ua) && /AppleWebKit/.test(ua) && !/(Safari|Chrome|CriOS|Firefox|FxiOS|Edg|OPR)\//.test(ua));
+    if (mac) document.documentElement.setAttribute("data-app", "mac");
+  } catch (e) {}
+})();
+</script>
 <style>
   /* Brand: NBC (black, white, lime) is the default; Classic is the warm brown palette. data-brand is set on <html> by the page. */
   :root {
@@ -66,6 +78,34 @@
     --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950; --chart-2: #6fcfc8;
     color-scheme: dark;
   }
+
+  /* ---- server bar: the Mac app's header for every other browser (state, services, Stop/Start server) ---- */
+  .srvbar { position: sticky; top: 8px; z-index: 25; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 8px 8px 16px; margin: 0 0 16px; background: var(--s-high); border-radius: 999px; box-shadow: 0 1px 0 color-mix(in srgb, var(--outline-v) 60%, transparent), 0 6px 18px rgb(0 0 0 / .08); }
+  .srvbar .st { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .srvbar .st .v { font: 400 12px "Roboto Mono", monospace; color: var(--on-surface-v); }
+  .srvbar .svc { display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--on-surface-v); }
+  .srvbar .svc > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .srvbar .svc .dot { width: 8px; height: 8px; }
+  .srvbar .auto { font-size: 12px; color: var(--on-surface-v); white-space: nowrap; }
+  .srvbar .push { margin-left: auto; }
+  .srvbar button { height: 36px; }
+  .srvbar button.stop { background: var(--error-c); color: var(--on-error-c); }
+  .dot.warn { background: var(--m-warn); }
+  @media (max-width: 640px) {
+    .srvbar { border-radius: 20px; padding: 10px 10px 10px 14px; top: 6px; gap: 6px 10px; }
+    .srvbar .svc { order: 3; flex: 1 0 100%; gap: 6px 12px; }
+    .srvbar .auto { order: 4; flex: 1 0 100%; }
+    .srvbar .svc .long { display: none; }
+  }
+  /* inside the Mac app the native header already shows the icon, state and controls */
+  :root[data-app="mac"] .srvbar, :root[data-app="mac"] header .logo, :root[data-app="mac"] header .chip.state { display: none !important; }
+  /* local models list */
+  .mdl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .mdl .grow { flex: 1 1 200px; }
+  .mdl .btns { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .diskline { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
+  button.danger { background: var(--error-c); color: var(--on-error-c); }
+  button.text.danger { background: transparent; color: var(--error); }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--surface); color: var(--on-surface); font: 400 15px/1.45 "Roboto Flex", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
   main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
@@ -466,6 +506,7 @@ const logo = classicTile + `<svg class="logo lg-d" viewBox="0 0 512 512" aria-hi
 
 // Health card: the server doctor's checks (GET /api/doctor) and repairs (POST /api/doctor/repair).
 let hl = { data: null, loading: false, busy: null, t0: 0, err: null, note: null };
+let modelBusy = {};
 let state = null, aiv = null, conn = null, editing = false, phone = null, bootId = null, restarting = false, ctlBusy = null;
 // Collapsible sections: open state per section, remembered on this machine.
 let secs = {};
@@ -589,6 +630,24 @@ function updateBanner(s) {
 // Ollama has its own Stop/Start: "running" | "stopping" | "stopped" | "starting" | "down" (workerControl.model in /api/status).
 const mstate = (s) => ctlBusy === "model-stop" ? "stopping" : ctlBusy === "model-start" ? "starting" : (s.workerControl?.model?.state ?? (s.services.ollama ? "running" : "down"));
 const wstate = (s) => ctlBusy === "stop" ? "stopping" : ctlBusy === "start" ? "starting" : (s.workerControl?.state ?? (s.services.worker ? "running" : "down"));
+
+// The server bar (same content as the Mac app's header): overall state, version, the three services, and one Stop server / Start server button.
+function serverBar(s, { ws, ms, allUp, wStopped, mOff }) {
+  const k = s.config.key, a = s.autostart;
+  const busy = ctlBusy === "stop" || ctlBusy === "start" || ws === "stopping" || ws === "starting";
+  const overall = ws === "stopping" ? ["Stopping…", "warn"] : ws === "starting" ? ["Starting…", "warn"] : wStopped ? ["Stopped", "off"] : allUp ? ["Running", "ok"] : ["Needs attention", "bad"];
+  const dotFor = (st) => st === "running" ? "ok" : st === "stopped" ? "off" : st === "stopping" || st === "starting" ? "warn" : "bad";
+  const svc = [
+    s.localModel ? `<span><i class="dot ${dotFor(ms)}"></i>Ollama<span class="long"> (Gemma)</span></span>` : `<span><i class="dot off"></i>Gemini only</span>`,
+    `<span><i class="dot ${dotFor(ws)}"></i>WhatsApp<span class="long"> worker</span></span>`,
+    `<span><i class="dot ok"></i>Server<span class="long"> console</span></span>`,
+  ].join("");
+  const btn = !k ? "" : wStopped && ws === "stopped" ? `<button type="button" data-worker="start" data-models="1">Start server</button>`
+    : `<button type="button" class="stop" data-worker="stop" data-models="1" ${busy ? "disabled" : ""}>${busy ? `${spin} ${ws === "starting" ? "Starting…" : "Stopping…"}` : "Stop server"}</button>`;
+  return `<div class="srvbar" role="region" aria-label="Server"><span class="st"><i class="dot ${overall[1]}" aria-hidden="true"></i><span role="status">${overall[0]}</span>${s.version ? `<span class="v">v${esc(shortV(s.version))}</span>` : ""}</span>
+    <span class="svc">${svc}</span>${a ? `<span class="auto" title="${a.on ? "Comes back by itself after a restart or power cut." : "Stays off after a restart until you press Start server."}">${esc(a.label)}: ${a.on ? "on" : "off"}</span>` : ""}
+    <span class="push">${btn}</span></div>`;
+}
 // ---------- Health: check and repair ----------
 // The banner shows when the doctor says the browser is missing; before the first check, when the worker log says so.
 function browserMissing(s) {
@@ -746,6 +805,21 @@ function setupInner(s) {
   return `${connectBlock(s)}${alt}`;
 }
 
+// Installed local models: size, which one the server uses, what is loaded in memory, and Use / Delete / Unload.
+function modelsList(a, s) {
+  const L = a.local, list = L?.list ?? a.ollama.models.map((m) => ({ name: m.name, size: m.size })), sel = L?.selected ?? (a.localModel || "gemma3:4b");
+  const rows = list.map((m) => {
+    const inUse = m.name === sel, k = "ollama:" + m.name, mb = modelBusy[m.name];
+    const meta = [fmt(m.size), m.modifiedAt ? `added ${new Date(m.modifiedAt).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })}` : "", m.loaded ? `in memory${m.unloadsAt ? `, unloads about ${new Date(m.unloadsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}` : (L ? "not in memory" : "")].filter(Boolean).join(" · ");
+    return `<div class="li"><div class="mdl"><div class="grow"><span class="mono">${esc(m.name)}</span> ${inUse ? `<span class="chip ok">In use</span>` : ""}<div class="muted small">${esc(meta)}</div></div>
+      <div class="btns">${testChip(k)}<button class="tonal sm" data-test="ollama" data-model="${esc(m.name)}" ${testBusy[k] ? "disabled" : ""}>Test</button>
+      ${m.loaded ? `<button class="text sm" data-mdl-unload="${esc(m.name)}" ${mb ? "disabled" : ""} title="Free the memory this model is holding. It loads again on the next question.">Unload</button>` : ""}
+      ${inUse ? "" : `<button class="tonal sm" data-mdl-use="${esc(m.name)}" ${mb ? "disabled" : ""}>Use this model</button><button class="text sm danger" data-mdl-del="${esc(m.name)}" data-size="${m.size}" ${mb ? "disabled" : ""}>${mb === "del" ? "Deleting…" : "Delete"}</button>`}</div></div>${testErr(k)}</div>`;
+  }).join("");
+  const used = L?.totalBytes ?? list.reduce((n, m) => n + (m.size || 0), 0);
+  return `<div class="list">${rows}</div><div class="diskline small muted"><span>Models use <b>${fmt(used)}</b> on disk</span>${L?.free != null ? `<span>${fmt(L.free)} free on this drive</span>` : ""}</div>`;
+}
+
 function aiCard(s) {
   const a = aiv;
   if (!a) return sec("ai", "AI models", "Loading…", `<div class="muted">Loading…</div>`, { open: false });
@@ -791,7 +865,7 @@ function aiCard(s) {
     
     ${local ? `<div class="sub"><b class="lbl">Installed models</b>
       <div class="muted small">Installed in Ollama on this computer. The default is what the server uses for curators without their own choice.</div>
-      ${installed.length ? `<div class="list">${a.ollama.models.map((m) => `<div class="row2 li"><div class="grow"><span class="mono">${esc(m.name)}</span> <span class="muted small">· ${fmt(m.size)}</span></div>${testChip("ollama:" + m.name)}<button class="tonal sm" data-test="ollama" data-model="${esc(m.name)}" ${testBusy["ollama:" + m.name] ? "disabled" : ""}>Test</button>${defLocal === m.name ? `<span class="chip ok">Default</span>` : `<button class="text sm" data-local-default="${esc(m.name)}">Make default</button>`}</div>${testErr("ollama:" + m.name)}`).join("")}</div>` : `<div class="muted small" style="margin-top:8px">${a.ollama.up ? "No models yet." : "Ollama isn't answering."}</div>`}
+      ${installed.length ? modelsList(a, s) : `<div class="muted small" style="margin-top:8px">${a.ollama.up ? "No models yet." : "Ollama isn't answering."}</div>`}
       <form id="pull" autocomplete="off" class="fieldrow" style="margin-top:12px"><input type="text" id="pullname" class="mono" placeholder="gemma3:4b" spellcheck="false" value="${esc(pullName)}"><button type="submit" class="tonal" ${pull && !pull.done ? "disabled" : ""}>Download</button></form>
       ${pull ? `<div style="margin-top:10px"><div class="stat"><span class="mono">${esc(pull.model)}</span><span class="muted">${pull.error ? "" : pull.done ? "Ready" : `${esc(pull.status)}${pull.total ? ` · ${pct}%` : ""}`}</span></div>${pull.error ? `<div class="small err-text" style="margin-top:6px">${esc(pull.error)}</div>` : `<div class="meter"><i style="width:${pull.done ? 100 : pct}%"></i></div>`}</div>` : ""}
     </div>` : ""}
@@ -1112,9 +1186,10 @@ function render() {
       <div class="actions"><button type="button" class="tonal" data-layout-reset>Reset layout</button><button type="button" data-cust-done>Done</button></div></div>` : "";
   const at = typing() ? document.activeElement : null, keep = at?.id ? { id: at.id, from: at.selectionStart, to: at.selectionEnd } : null;
   $("#app").innerHTML = `
+  ${serverBar(s, { ws, ms, allUp, wStopped, mOff })}
   <header>${logo}
     <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Nothing BOT Server <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
-    <span class="chip ${allUp ? "ok" : "bad"}">${wStopped ? "Server stopped" : allUp ? "All services running" : "Needs attention"}</span>
+    <span class="chip state ${allUp ? "ok" : "bad"}">${wStopped ? "Server stopped" : allUp ? "All services running" : "Needs attention"}</span>
     <span class="menuwrap"><button type="button" class="menubtn dispbtn" data-menu-display aria-haspopup="menu" aria-expanded="${menuFor === "display"}" aria-label="Display options" title="Display options">${slidersSvg}</button>${menuFor === "display" ? `<div class="menu dispmenu" role="menu" aria-label="Display options">
       <div class="menugroup" role="group" aria-label="Theme"><div class="menulabel">Theme</div><div class="theme">${["system", "light", "dark"].map((t) => `<button type="button" role="menuitemradio" aria-checked="${theme === t}" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div></div>
       <div class="menugroup" role="group" aria-label="Brand"><div class="menulabel">Brand</div><div class="theme">${[["nbc", "NBC"], ["classic", "Classic"]].map(([k, n]) => `<button type="button" role="menuitemradio" aria-checked="${brand === k}" data-brand-set="${k}" aria-pressed="${brand === k}">${n}</button>`).join("")}</div></div>
@@ -1460,13 +1535,13 @@ function wire() {
   const logs = $("#logs"); if (logs) logs.scrollTop = logs.scrollHeight;
   document.querySelectorAll("[data-worker]").forEach((b) => b.onclick = async () => {
     const act = b.dataset.worker;
-    if (act === "stop" && !confirm("Stop the worker?\n\nWhatsApp is saved and closed, and your messages are not read until you press Start. It stays stopped after a restart or an update. The local model keeps running.")) return;
+    if (act === "stop" && !confirm(b.dataset.models === "1" ? "Stop the server?\n\nWhatsApp is saved and closed and the local model stops too, so your messages are not read until you press Start server. It stays stopped after a restart or an update. This page stays up." : "Stop the worker?\n\nWhatsApp is saved and closed, and your messages are not read until you press Start. It stays stopped after a restart or an update. The local model keeps running.")) return;
     ctlBusy = act; render();
-    try { const r = await api("/api/worker", { action: act, models: b.dataset.models === "1" }); toast(act === "stop" ? "Worker stopped" : r.state === "running" ? "Worker running" : "Starting the worker…"); }
+    try { const r = await api("/api/worker", { action: act, models: b.dataset.models === "1" }); toast(act === "stop" ? (b.dataset.models === "1" ? "Server stopped" : "Worker stopped") : r.state === "running" ? "Server running" : "Starting the server…"); }
     catch (e) { toast(e.message); }
     ctlBusy = null; refresh(true);
   });
-  document.querySelectorAll("[data-model]").forEach((b) => b.onclick = async () => {
+  document.querySelectorAll('[data-model="stop"],[data-model="start"]').forEach((b) => b.onclick = async () => {
     const act = b.dataset.model;
     if (act === "stop" && !confirm("Stop Ollama?\n\nLocal AI turns off and the server uses Gemini if you've added a key. It stays stopped after a restart or an update until you press Start.")) return;
     ctlBusy = "model-" + act; render();
@@ -1595,6 +1670,26 @@ function wire() {
     try { const r = await post("/api/ai/test", { provider: b.dataset.test, model: b.dataset.model, key: b.dataset.test === "gemini" ? gKeyInput.trim() || undefined : undefined }); testRes[key] = { ok: true, ...r }; }
     catch (e) { testRes[key] = { ok: false, error: e.message }; }
     delete testBusy[key]; render();
+  });
+  document.querySelectorAll("[data-mdl-use]").forEach((b) => b.onclick = async () => {
+    const name = b.dataset.mdlUse;
+    if (!confirm(`Use ${name}?\n\nThe server answers with it from now on. The worker restarts for a moment.`)) return;
+    modelBusy[name] = "use"; render();
+    try { await post("/api/ai/defaults", { localModel: name }); if (draft) draft.localModel = name; toast(`Using ${name}. Worker restarting.`); } catch (e) { toast(e.message); }
+    delete modelBusy[name]; refresh(true);
+  });
+  document.querySelectorAll("[data-mdl-del]").forEach((b) => b.onclick = async () => {
+    const name = b.dataset.mdlDel;
+    if (!confirm(`Delete ${name}?\n\nThis frees ${fmt(Number(b.dataset.size) || 0)} on this computer. You can download it again later.`)) return;
+    modelBusy[name] = "del"; render();
+    try { const r = await post("/api/ai/delete-model", { model: name }); toast(`Deleted ${name}, freed ${fmt(r.freed || 0)}.`); } catch (e) { toast(e.message); }
+    delete modelBusy[name]; refresh(true);
+  });
+  document.querySelectorAll("[data-mdl-unload]").forEach((b) => b.onclick = async () => {
+    const name = b.dataset.mdlUnload;
+    modelBusy[name] = "unload"; render();
+    try { await post("/api/ai/unload-model", { model: name }); toast(`${name} unloaded from memory.`); } catch (e) { toast(e.message); }
+    delete modelBusy[name]; refresh(true);
   });
   document.querySelectorAll("[data-local-default]").forEach((b) => b.onclick = () => { draft.localModel = b.dataset.localDefault; render(); });
   document.querySelectorAll('input[name="mode"]').forEach((r) => r.onchange = () => { draft.mode = r.value; render(); });

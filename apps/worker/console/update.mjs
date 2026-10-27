@@ -13,7 +13,14 @@ import { promisify } from "node:util";
 const exec = promisify(execFile);
 export const DIST_BASE = process.env.NBS_DIST_URL ?? "https://nothingbotcurating.web.app";
 export const CHECK_EVERY_MS = 30 * 60_000;
-const FIRST_CHECK_MS = 45_000;
+const FIRST_CHECK_MS = 5_000;
+/** The timer wakes this often (cheap, no network); it checks for a release only when one is due. A computer that slept catches up within a minute of waking. */
+export const TICK_MS = 60_000;
+/** After a failed check (no internet yet, a hiccup), look again sooner than the normal 30 minutes. */
+export const RETRY_CHECK_MS = 5 * 60_000;
+
+/** Is it time to ask the update site again? Every 30 minutes, or every 5 after a failed check. */
+export const checkIsDue = ({ now, checkedAt, checkError }) => now - checkedAt >= (checkError ? RETRY_CHECK_MS : CHECK_EVERY_MS) - 1000;
 /** After a failed update, automatic updates wait this long (a manual Update now still works). */
 const FAILURE_BACKOFF_MS = 6 * 3_600_000;
 const STALE_RUNNING_MS = 60 * 60_000;
@@ -158,7 +165,7 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
   // ---- automatic updates ----
   let autoTimer = null;
   async function autoTick() {
-    if (now() - checkedAt >= CHECK_EVERY_MS - 1000) await check();
+    if (checkIsDue({ now: now(), checkedAt, checkError })) await check();
     const s = settings(), v = view();
     if (!v.available || !s.autoUpdate || v.running) return;
     if (now() - (s.lastFailure ?? 0) < FAILURE_BACKOFF_MS) return;
@@ -167,8 +174,8 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
   }
   function schedule() {
     clearTimeout(autoTimer);
-    // While a release is waiting for this server's turn, look again every minute (no network: the check itself is every 30 min).
-    autoTimer = setTimeout(async () => { await autoTick().catch(() => undefined); schedule(); }, isUpdateAvailable(version, latest) && !running() ? 60_000 : CHECK_EVERY_MS);
+    // Wake every minute; autoTick decides whether a check (every 30 min) or this server's staggered turn has come.
+    autoTimer = setTimeout(async () => { await autoTick().catch(() => undefined); schedule(); }, TICK_MS);
     autoTimer.unref?.();
   }
   function begin() {

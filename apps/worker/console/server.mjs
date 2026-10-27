@@ -223,6 +223,19 @@ function keyInfo() {
 
 const memory = readMemory;
 
+// "Starts when the computer starts", for the server bar. Mac has the app's own toggle (the bar is hidden there).
+// Windows: the worker is a scheduled task with a boot trigger, disabled while the owner has it stopped. Ubuntu: the systemd unit's enabled state.
+let autostartCache = { at: 0, v: null };
+async function autostart() {
+  if (MAC) return null;
+  if (Date.now() - autostartCache.at < 60_000) return autostartCache.v;
+  let on = null;
+  if (WIN) { const st = await ps("(Get-ScheduledTask -TaskName NothingBotServerWorker -ErrorAction SilentlyContinue).State"); on = st ? st.trim() !== "Disabled" : null; }
+  else { const st = await sh("systemctl", ["is-enabled", "nothing-bot-server-worker"]); on = st === "enabled" ? true : st === "disabled" ? false : null; }
+  autostartCache = { at: Date.now(), v: on === null ? null : { on, label: WIN ? "Start when Windows starts" : "Start at boot" } };
+  return autostartCache.v;
+}
+
 async function status() {
   const env = readEnv();
   const [worker, ollamaSvc, o, d, logs] = await Promise.all([
@@ -251,6 +264,7 @@ async function status() {
     services: { worker, ollama: ollamaSvc },
     // "running" | "stopping" | "stopped" | "starting" | "down" (should be running and isn't); stopped means the owner pressed Stop.
     workerControl: await workerCtl.view(),
+    autostart: await autostart(),
     localModel: !noLocalModel(),
     ollama: o,
     config: {
@@ -325,6 +339,7 @@ const ai = createAi({
   ollamaUrl: OLLAMA,
   ollamaInfo: ollama,
   noLocalModel,
+  diskFree: () => { try { return freeBytes(DATA).free; } catch { return null; } },
 });
 
 const isLocal = (req) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "");
@@ -445,6 +460,8 @@ createServer(async (req, res) => {
         if (act === "models") return json(res, 200, { models: await ai.listModels(b.key) });
         if (act === "test") return json(res, 200, await ai.test({ provider: b.provider, model: b.model, key: b.key }));
         if (act === "pull") { await ai.startPull(String(b.model ?? "").trim()); return json(res, 200, { ok: true }); }
+        if (act === "delete-model") return json(res, 200, { ok: true, ...(await ai.deleteModel(String(b.model ?? "").trim())) });
+        if (act === "unload-model") { await ai.unloadModel(String(b.model ?? "").trim()); return json(res, 200, { ok: true }); }
         if (act === "defaults") { await ai.setDefaults(b); return json(res, 200, { ok: true }); }
       } catch (e) {
         return json(res, 400, { error: e.message });
