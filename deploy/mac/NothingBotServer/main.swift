@@ -5,7 +5,12 @@ import AppKit
 import SwiftUI
 import WebKit
 
-let brand = Color(red: 0.91, green: 0.64, blue: 0.24)
+// NBC accent for the native chrome: the brand lime on dark windows, a darker green on light ones (contrast). Matches the console's NBC theme.
+let brand = Color(nsColor: NSColor(name: nil) { appearance in
+    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(red: 0x7E / 255, green: 0xD9 / 255, blue: 0x57 / 255, alpha: 1)
+        : NSColor(red: 0x2A / 255, green: 0x6F / 255, blue: 0x13 / 255, alpha: 1)
+})
 let consoleURL = URL(string: "http://127.0.0.1:7420/")!
 let webAppURL = URL(string: "https://spot-solutions.web.app")!
 let supportDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/NothingBotServer")

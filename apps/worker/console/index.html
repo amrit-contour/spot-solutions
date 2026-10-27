@@ -13,8 +13,34 @@
 <title>Nothing BOT Server</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,300..800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script>try { var b = localStorage.getItem("nbs-console-brand"); if (b === "classic") document.documentElement.setAttribute("data-brand", "classic"); } catch (e) {}</script>
 <style>
+  /* Brand: NBC (black, white, lime) is the default; Classic is the warm brown palette. data-brand is set on <html> by the page. */
   :root {
+    --primary: #2a6f13; --on-primary: #fff; --primary-c: #7ed957; --on-primary-c: #000;
+    --tertiary-c: #7ed957; --on-tertiary-c: #000;
+    --error: #b3261e; --error-c: #f9dedc; --on-error-c: #410e0b;
+    --surface: #fff; --s-low: #f7f7f7; --s-cont: #f1f1f1; --s-high: #ebebeb; --s-highest: #e5e5e5;
+    --on-surface: #0a0a0a; --on-surface-v: #5c5c5c; --outline-v: #d6d6d6; --ok: #3da32a; --chart-2: #3f3f3f;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --primary: #7ed957; --on-primary: #000; --primary-c: #1f4a12; --on-primary-c: #b4f28e;
+    --tertiary-c: #1f4a12; --on-tertiary-c: #b4f28e;
+    --error: #f2b8b5; --error-c: #8c1d18; --on-error-c: #f9dedc;
+    --surface: #0a0a0a; --s-low: #101010; --s-cont: #161616; --s-high: #1e1e1e; --s-highest: #272727;
+    --on-surface: #f2f2f2; --on-surface-v: #a8a8a8; --outline-v: #2e2e2e; --ok: #7ed957; --chart-2: #c8c8c8;
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --primary: #7ed957; --on-primary: #000; --primary-c: #1f4a12; --on-primary-c: #b4f28e;
+    --tertiary-c: #1f4a12; --on-tertiary-c: #b4f28e;
+    --error: #f2b8b5; --error-c: #8c1d18; --on-error-c: #f9dedc;
+    --surface: #0a0a0a; --s-low: #101010; --s-cont: #161616; --s-high: #1e1e1e; --s-highest: #272727;
+    --on-surface: #f2f2f2; --on-surface-v: #a8a8a8; --outline-v: #2e2e2e; --ok: #7ed957; --chart-2: #c8c8c8;
+    color-scheme: dark;
+  }
+  :root[data-brand="classic"] {
     --primary: #7a5416; --on-primary: #fff; --primary-c: #ffddb0; --on-primary-c: #2a1800;
     --tertiary-c: #d7e8cd; --on-tertiary-c: #121f0e;
     --error: #ba1a1a; --error-c: #ffdad6; --on-error-c: #410002;
@@ -22,7 +48,7 @@
     --on-surface: #201a14; --on-surface-v: #51453a; --outline-v: #d5c4b5; --ok: #2f9a46; --chart-2: #2b7a78;
     color-scheme: light;
   }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) { :root[data-brand="classic"]:not([data-theme="light"]) {
     --primary: #f2bc6e; --on-primary: #432c00; --primary-c: #5f4100; --on-primary-c: #ffddb0;
     --tertiary-c: #3a4b33; --on-tertiary-c: #d7e8cd;
     --error: #ffb4ab; --error-c: #93000a; --on-error-c: #ffdad6;
@@ -30,7 +56,7 @@
     --on-surface: #ede0d5; --on-surface-v: #d5c4b5; --outline-v: #51453a; --ok: #3fb950; --chart-2: #6fcfc8;
     color-scheme: dark;
   } }
-  :root[data-theme="dark"] {
+  :root[data-brand="classic"][data-theme="dark"] {
     --primary: #f2bc6e; --on-primary: #432c00; --primary-c: #5f4100; --on-primary-c: #ffddb0;
     --tertiary-c: #3a4b33; --on-tertiary-c: #d7e8cd;
     --error: #ffb4ab; --error-c: #93000a; --on-error-c: #ffdad6;
@@ -53,6 +79,9 @@
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo.lg-d { display: none; } :root:not([data-theme="light"]) .logo.lg-l { display: block; } }
   :root[data-theme="dark"] .logo.lg-d { display: none; }
   :root[data-theme="dark"] .logo.lg-l { display: block; }
+  .logo.lg-c { display: none; }
+  :root[data-brand="classic"] .logo.lg-d, :root[data-brand="classic"] .logo.lg-l { display: none !important; }
+  :root[data-brand="classic"] .logo.lg-c { display: block; }
   .grow { flex: 1; min-width: 0; }
   header > .grow { flex: 1 1 240px; }
   .grid { display: grid; gap: 16px; }
@@ -350,7 +379,8 @@ const meter = (label, used, total, detail) => {
   const p = total ? Math.min(1, used / total) : 0;
   return `<div class="mrow"><div class="stat"><span>${label}</span><span class="muted">${detail}</span></div><div class="meter"><i class="${p > .9 ? "warn" : ""}" style="width:${(p * 100).toFixed(1)}%"></i></div></div>`;
 };
-const logo = `<svg class="logo lg-d" viewBox="0 0 512 512" aria-hidden="true"><clipPath id="lgd"><rect width="512" height="512" rx="112"/></clipPath><g clip-path="url(#lgd)"><rect width="512" height="512" fill="#000000"/><g transform="translate(0 15)"><g fill="none" stroke="#FFFFFF" stroke-width="26"><rect x="112" y="110" width="288" height="110" rx="26"/><rect x="112" y="262" width="288" height="110" rx="26"/></g><circle cx="340" cy="165" r="18" fill="#7ED957"/><circle cx="340" cy="317" r="18" fill="#FFFFFF"/></g></g></svg><svg class="logo lg-l" viewBox="0 0 512 512" aria-hidden="true"><clipPath id="lgl"><rect width="512" height="512" rx="112"/></clipPath><g clip-path="url(#lgl)"><rect width="512" height="512" fill="#FFFFFF"/><g transform="translate(0 15)"><g fill="none" stroke="#000000" stroke-width="26"><rect x="112" y="110" width="288" height="110" rx="26"/><rect x="112" y="262" width="288" height="110" rx="26"/></g><circle cx="340" cy="165" r="18" fill="#7ED957"/><circle cx="340" cy="317" r="18" fill="#000000"/></g><rect x="2" y="2" width="508" height="508" fill="none" stroke="#000" stroke-opacity=".14" stroke-width="4"/></g></svg>`;
+const classicTile = `<svg class="logo lg-c" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="14" fill="var(--primary)"/><path d="M19 0h10l9 42H10z" fill="var(--on-primary)" opacity=".13"/><ellipse cx="24" cy="40.5" rx="12" ry="2.6" fill="var(--on-primary)" opacity=".25"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="var(--on-primary)"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="var(--primary)"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="var(--primary)"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="var(--on-primary)" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="var(--on-primary)"/></svg>`;
+const logo = classicTile + `<svg class="logo lg-d" viewBox="0 0 512 512" aria-hidden="true"><clipPath id="lgd"><rect width="512" height="512" rx="112"/></clipPath><g clip-path="url(#lgd)"><rect width="512" height="512" fill="#000000"/><g transform="translate(0 15)"><g fill="none" stroke="#FFFFFF" stroke-width="26"><rect x="112" y="110" width="288" height="110" rx="26"/><rect x="112" y="262" width="288" height="110" rx="26"/></g><circle cx="340" cy="165" r="18" fill="#7ED957"/><circle cx="340" cy="317" r="18" fill="#FFFFFF"/></g></g></svg><svg class="logo lg-l" viewBox="0 0 512 512" aria-hidden="true"><clipPath id="lgl"><rect width="512" height="512" rx="112"/></clipPath><g clip-path="url(#lgl)"><rect width="512" height="512" fill="#FFFFFF"/><g transform="translate(0 15)"><g fill="none" stroke="#000000" stroke-width="26"><rect x="112" y="110" width="288" height="110" rx="26"/><rect x="112" y="262" width="288" height="110" rx="26"/></g><circle cx="340" cy="165" r="18" fill="#7ED957"/><circle cx="340" cy="317" r="18" fill="#000000"/></g><rect x="2" y="2" width="508" height="508" fill="none" stroke="#000" stroke-opacity=".14" stroke-width="4"/></g></svg>`;
 
 let state = null, aiv = null, conn = null, editing = false, phone = null, bootId = null, restarting = false, stopModel = false, ctlBusy = null;
 // Collapsible sections: open state per section, remembered on this machine.
@@ -404,6 +434,19 @@ let theme = "system";
 try { theme = localStorage.getItem("nbs-console-theme") || "system"; } catch {}
 const applyTheme = () => (theme === "system" ? document.documentElement.removeAttribute("data-theme") : document.documentElement.setAttribute("data-theme", theme));
 applyTheme();
+// Brand: NBC (default) or Classic (brown), remembered on this machine like the theme.
+let brand = "nbc";
+try { const b = localStorage.getItem("nbs-console-brand"); if (b === "classic" || b === "nbc") brand = b; } catch {}
+const iconLinks = [...document.querySelectorAll('link[rel="icon"],link[rel="apple-touch-icon"]')];
+const classicIcon = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="14" fill="#7A5416"/><path d="M19 0h10l9 42H10z" fill="#fff" opacity=".13"/><rect x="18.5" y="9" width="11" height="17" rx="5.5" fill="#fff"/><rect x="21" y="14" width="6" height="1.8" rx=".9" fill="#7A5416"/><rect x="21" y="17.6" width="6" height="1.8" rx=".9" fill="#7A5416"/><path d="M15 21a9 9 0 0 0 18 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><rect x="22.8" y="30" width="2.4" height="9" rx="1.2" fill="#fff"/></svg>');
+const applyBrand = () => {
+  document.documentElement.setAttribute("data-brand", brand);
+  document.querySelectorAll("link[data-classic-icon]").forEach((l) => l.remove());
+  iconLinks.forEach((l) => l.remove());
+  if (brand === "classic") { const l = document.createElement("link"); l.rel = "icon"; l.type = "image/svg+xml"; l.href = classicIcon; l.dataset.classicIcon = "1"; document.head.appendChild(l); }
+  else iconLinks.forEach((l) => document.head.appendChild(l));
+};
+applyBrand();
 fetch("/api/phone").then((r) => (r.ok ? r.json() : null)).then((p) => { phone = p; if (state) render(); }).catch(() => {});
 
 const shortV = (v) => (v && v.length > 12 ? v.slice(0, 7) : v);
@@ -847,6 +890,7 @@ function render() {
     <span class="chip ${allUp ? "ok" : "bad"}">${wStopped ? "Server stopped" : allUp ? "All services running" : "Needs attention"}</span>
     <button type="button" class="tonal sm" data-cust-toggle aria-pressed="${custMode}">${custMode ? "Done customizing" : "Customize"}</button>
     <div class="theme" role="group" aria-label="Theme">${["system", "light", "dark"].map((t) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
+    <div class="theme" role="group" aria-label="Brand">${[["nbc", "NBC"], ["classic", "Classic"]].map(([k, n]) => `<button type="button" data-brand-set="${k}" aria-pressed="${brand === k}">${n}</button>`).join("")}</div>
   </header>
   ${alerts(s)}
   ${custBar}
@@ -1150,6 +1194,11 @@ function wire() {
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.onclick = () => {
     theme = b.dataset.themeSet; applyTheme();
     try { localStorage.setItem("nbs-console-theme", theme); } catch {}
+    render();
+  });
+  document.querySelectorAll("[data-brand-set]").forEach((b) => b.onclick = () => {
+    brand = b.dataset.brandSet; applyBrand();
+    try { localStorage.setItem("nbs-console-brand", brand); } catch {}
     render();
   });
   document.querySelectorAll("details.sec").forEach((d) => d.ontoggle = () => {

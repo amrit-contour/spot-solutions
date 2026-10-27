@@ -12,6 +12,13 @@ echo "▸ Downloading Nothing BOT Server"
 curl -fSL --progress-bar "$BASE/dl/NothingBotServer-mac.zip" -o "$TMP/NothingBotServer.zip"
 echo "▸ Installing to /Applications"
 ditto -x -k "$TMP/NothingBotServer.zip" "$TMP"
+# Quit a running copy first. A running app keeps its old Dock icon and window images in memory, and `open` at the end
+# would only bring that old process forward instead of starting the new build (the stale-icon bug).
+if pgrep -f "/Nothing BOT Server.app/Contents/MacOS/" >/dev/null 2>&1; then
+  osascript -e 'tell application id "app.nothingbot.server" to quit' >/dev/null 2>&1 || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -f "/Nothing BOT Server.app/Contents/MacOS/" >/dev/null 2>&1 || break; sleep 1; done
+  pkill -f "/Nothing BOT Server.app/Contents/MacOS/" >/dev/null 2>&1 || true
+fi
 rm -rf "/Applications/Nothing BOT Server.app"
 mv "$TMP/Nothing BOT Server.app" /Applications/
 rm -rf "$TMP"
@@ -22,6 +29,10 @@ if [[ -d "/Applications/Spot Server.app" ]]; then
   rm -rf "/Applications/Spot Server.app"
   echo "  Removed the old Spot Server app (its data is kept)."
 fi
+# Make macOS re-read the bundle's icon (Launch Services, Finder and the Dock cache icons by path).
+touch "/Applications/Nothing BOT Server.app"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/Nothing BOT Server.app" >/dev/null 2>&1 || true
+killall Dock >/dev/null 2>&1 || true
 echo "✓ App installed."
 # One command does it all: set the Mac up now (a few minutes the first time: Node.js and, on a Mac with about 8 GB or
 # more, a local Gemma model). Skip with NBS_SKIP_SETUP=1 and click "Set up this Mac" in the app instead.
