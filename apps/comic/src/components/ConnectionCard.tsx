@@ -4,13 +4,14 @@ import { maskPhoneTail } from "@spot/shared";
 import { Chip, IconArrowRight, IconChatCheck, IconCheck, IconPhone, IconQr, IconServer, IconWarn, Spinner, cx } from "@spot/ui";
 import { CURATING_AGENT, CURATING_SERVER, CURATING_WHATSAPP, useConnection, type Connection } from "../lib/connection";
 import { useClock } from "../lib/alerts";
+import { Card } from "./ui";
 import { ago } from "../lib/time";
 
 const CURATING = "Nothing BOT Curating";
 
 function Out({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="state-layer pressable inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 type-label-l text-primary">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="state-layer pressable -ml-3 inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 type-label-l text-primary">
       {children}
       <IconArrowRight aria-hidden className="icon size-4" />
     </a>
@@ -43,7 +44,7 @@ export function ConnectionCard({ uid }: { uid: string }) {
           : `Link your WhatsApp in ${CURATING}. Once, for both apps.`;
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <div className="min-w-0 rounded-lg bg-surface-low p-4">
+      <Card>
         <div className="flex min-w-0 items-start gap-3">
           <span className={cx("grid size-10 flex-none place-items-center rounded-md", ok ? "bg-secondary-container text-on-secondary-container" : bad ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary")}>
             {ok ? <IconCheck aria-hidden className="icon size-5" /> : bad ? <IconServer aria-hidden className="icon size-5" /> : c.whatsapp === "qr" ? <IconQr aria-hidden className="icon size-5" /> : <IconPhone aria-hidden className="icon size-5" />}
@@ -66,18 +67,18 @@ export function ConnectionCard({ uid }: { uid: string }) {
           </div>
         </div>
         {!ok && !bad && (
-          <div className="mt-2 flex flex-wrap">
+          <div className="mt-1 -mb-2 flex flex-wrap">
             <Out href={CURATING_WHATSAPP}>{c.whatsapp === "qr" ? "Scan in" : "Link in"} {CURATING}</Out>
           </div>
         )}
         {bad && (
-          <div className="mt-2 flex flex-wrap">
+          <div className="mt-1 -mb-2 flex flex-wrap">
             <Out href={CURATING_SERVER}>Server page in {CURATING}</Out>
           </div>
         )}
-      </div>
+      </Card>
 
-      <div className="min-w-0 rounded-lg bg-surface-low p-4">
+      <Card>
         <div className="flex min-w-0 items-start gap-3">
           <span className={cx("grid size-10 flex-none place-items-center rounded-md", c.agent === "connected" && !bad ? "bg-secondary-container text-on-secondary-container" : "bg-surface-high text-primary")}>
             <IconChatCheck aria-hidden className="icon size-5" />
@@ -93,12 +94,12 @@ export function ConnectionCard({ uid }: { uid: string }) {
           </div>
         </div>
         {c.agent !== "connected" && c.agent !== "offline" && (
-          <div className="mt-2 flex flex-wrap">
+          <div className="mt-1 -mb-2 flex flex-wrap">
             <Out href={CURATING_AGENT}>Set up in {CURATING}</Out>
           </div>
         )}
-      </div>
-      <p className="flex items-start gap-2 type-body-s text-on-surface-variant">
+      </Card>
+      <p className="flex items-start gap-2 px-1 type-body-s text-on-surface-variant">
         <IconServer aria-hidden className="icon mt-0.5 size-4 flex-none" />
         Your WhatsApp and server are shared with {CURATING}.
       </p>

@@ -13,7 +13,8 @@ import {
   type AlertRule,
   type ResolvedAlertRules,
 } from "@spot/shared";
-import { Button, Chip, Collapsible, IconAdd, IconClose, IconRefresh, IconTrash, SectionTitle, Switch, TextInput } from "@spot/ui";
+import { Button, Chip, Collapsible, IconAdd, IconClose, IconRefresh, IconTrash, Switch, TextInput } from "@spot/ui";
+import { Card, Section } from "./ui";
 import { saveAlertRules, useComicSettings } from "../lib/alerts";
 
 const defaultOf = (id: string) => DEFAULT_ALERT_RULES.find((d) => d.id === id);
@@ -65,18 +66,17 @@ export function AlertRulesPanel({ uid }: { uid: string }) {
   const customCount = cfg.rules.filter((r) => r.custom).length;
 
   return (
-    <section aria-label="Alert rules" className="flex min-w-0 flex-col gap-3">
-      <SectionTitle>Alert rules</SectionTitle>
-      <p className="type-body-m text-on-surface-variant">
+    <Section title="Alert rules" className="gap-3">
+      <p className="px-1 type-body-m text-on-surface-variant">
         Each group post gets a score from 0 to 100 for how sure your server is that it is a spot offer. At or above the bar, you are notified straight away. Below it, the AI reads the post first, which takes longer.
       </p>
 
-      <div className="min-w-0 rounded-lg bg-surface-low p-4">
+      <Card>
         <Slider label="Notify straight away at" value={cfg.threshold} min={0} max={100} step={5} onChange={(v) => update({ ...cfg, threshold: v })} text={`${cfg.threshold}`} hint={cfg.threshold === DEFAULT_ALERT_THRESHOLD ? "Default" : `Default ${DEFAULT_ALERT_THRESHOLD}`} />
         <p className="mt-1 type-body-s text-on-surface-variant">Lower: faster, but more posts that aren't offers slip through. Higher: fewer mistakes, but more posts wait for the AI.</p>
-      </div>
+      </Card>
 
-      <div className="min-w-0 rounded-lg bg-surface-low p-4">
+      <Card>
         <label className="block type-title-s" htmlFor="try-msg">Try a message</label>
         <TextInput id="try-msg" value={msg} onChange={(e) => setMsg(e.target.value)} className="mt-2" placeholder="Paste a post from a group" />
         <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
@@ -99,7 +99,7 @@ export function AlertRulesPanel({ uid }: { uid: string }) {
           </ul>
         )}
         <p className="mt-2 type-body-s text-on-surface-variant">Which of your rooms a post names isn't tried here.</p>
-      </div>
+      </Card>
 
       <Collapsible id="alert-rules-advanced" title="Advanced" subtitle="Switch rules on or off, change their weight, add your own" defaultOpen={false} persist={false}>
         <div className="flex min-w-0 flex-col gap-5 p-4">
@@ -116,11 +116,11 @@ export function AlertRulesPanel({ uid }: { uid: string }) {
           ))}
           <AddRule disabled={customCount >= MAX_ALERT_RULES} onAdd={(r) => update({ ...cfg, rules: [...cfg.rules, r] })} />
           <div>
-            <Button variant="tonal" size="sm" icon={IconRefresh} onClick={resetAll}>Reset all to defaults</Button>
+            <Button variant="tonal" icon={IconRefresh} onClick={resetAll}>Reset all to defaults</Button>
           </div>
         </div>
       </Collapsible>
-    </section>
+    </Section>
   );
 }
 

@@ -1,5 +1,6 @@
 import { alertDayLabel, alertState, formatTime, givenName, timeLeft, timesShort, type SpotAlert } from "@spot/shared";
-import { Button, Chip, IconBuilding, IconCheck, IconClock, IconClose, IconGroup, IconSend, IconUserCheck, IconWarn } from "@spot/ui";
+import { Button, Chip, IconBuilding, IconCheck, IconClock, IconSend, IconUserCheck, IconWarn } from "@spot/ui";
+import { Card, CardActions, Chips, IconTile } from "./ui";
 import { ago } from "../lib/time";
 
 /** One offer read from a group: where, when, who to DM, how long is left, and Ask for it. */
@@ -33,33 +34,33 @@ export function AlertCard({
   const clashWith = clash?.with ?? a.clash?.with;
   const when = [alertDayLabel(a.date, today), a.times.length ? timesShort(a.times) : "time not said"].join(" · ");
   const urgent = live && a.expiresAt - now < 30 * 60_000;
+  const stateChip =
+    state === "open" ? (
+      <Chip tone={urgent ? "error" : "neutral"} icon={IconClock}>{timeLeft(a.expiresAt, now)}</Chip>
+    ) : state === "asked" ? (
+      <Chip tone="primary" icon={IconSend}>Asked</Chip>
+    ) : state === "got" ? (
+      <Chip tone="success" icon={IconCheck}>Got it</Chip>
+    ) : state === "declined" ? (
+      <Chip tone="error">Said no</Chip>
+    ) : state === "closed" ? (
+      <Chip tone="error">Closed</Chip>
+    ) : (
+      <Chip>Ended</Chip>
+    );
+  const meta = [a.groupName, a.score != null ? `${a.score}% sure` : null].filter(Boolean).join(" · ");
   return (
-    <div id={`alert-${a.id}`} className={`flex min-w-0 flex-col gap-3 rounded-lg bg-surface-low p-4 ${live ? "" : "opacity-70"} ${highlight ? "ring-2 ring-primary" : ""}`}>
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
-          <IconBuilding className="icon size-5" />
-        </span>
+    <Card id={`alert-${a.id}`} highlight={highlight} dim={!live} className="flex flex-col gap-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <IconTile icon={IconBuilding} />
         <div className="min-w-0 flex-1">
           <p className="truncate type-title-m">{a.roomName ?? "A room (not named)"}</p>
-          <p className="truncate type-body-m text-on-surface-variant">{when}</p>
+          <p className="truncate type-body-s text-on-surface-variant">{when}</p>
         </div>
-        {state === "open" && (
-          <Chip tone={urgent ? "error" : "neutral"} icon={IconClock} className="flex-none">
-            {timeLeft(a.expiresAt, now)}
-          </Chip>
-        )}
-        {state === "asked" && (
-          <Chip tone="primary" icon={IconSend} className="flex-none">
-            Asked
-          </Chip>
-        )}
-        {state === "got" && <Chip tone="success" icon={IconCheck} className="flex-none">Got it</Chip>}
-        {state === "declined" && <Chip tone="error" className="flex-none">Said no</Chip>}
-        {state === "closed" && <Chip tone="error" className="flex-none">Closed</Chip>}
-        {state === "expired" && <Chip className="flex-none">Ended</Chip>}
       </div>
 
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <Chips>
+        {stateChip}
         <Chip tone="fact" icon={IconUserCheck}>
           DM {givenName(a.contact.name) || "them"}
           {a.contact.kind === "mentioned" ? " (tagged)" : ""}
@@ -67,10 +68,8 @@ export function AlertCard({
         {a.reachBy && <Chip tone={urgent ? "error" : "neutral"} icon={IconClock}>Reach by {formatTime(a.reachBy)}</Chip>}
         {a.busking && <Chip tone="tertiary">Busking</Chip>}
         {a.long && <Chip tone="tertiary">Long spot</Chip>}
-        {a.groupName && <Chip icon={IconGroup}>{a.groupName}</Chip>}
-        {a.score != null && <Chip title="How sure your alert rules were that this is a spot offer">{a.score}% sure</Chip>}
         {!a.roomId && a.roomName && <Chip tone="reading" title="Couldn't tell which of your rooms this is">Room not matched</Chip>}
-      </div>
+      </Chips>
 
       {live && !a.roomId && a.roomCandidates && a.roomCandidates.length > 1 && onPickRoom && (
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -91,6 +90,7 @@ export function AlertCard({
       )}
 
       {!compact && a.text && <p className="line-clamp-2 type-body-s text-on-surface-variant">“{a.text}”</p>}
+      {meta && <p className="truncate type-label-m text-on-surface-variant" title="How sure your alert rules were that this is a spot offer">{meta}</p>}
       {state === "asked" && a.askedAt && !a.reply && <p className="type-body-s text-on-surface-variant">You asked {ago(a.askedAt, now)}. Waiting for {givenName(a.contact.name) || "them"} to reply on WhatsApp.</p>}
       {a.reply && (
         <p className="type-body-s text-on-surface-variant">
@@ -99,19 +99,21 @@ export function AlertCard({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button variant="text" size="sm" icon={IconClose} onClick={onDismiss}>
+      <CardActions spread>
+        <Button variant="text" size="sm" onClick={onDismiss} className="-ml-2">
           {live ? "Dismiss" : "Clear"}
         </Button>
-        {state === "asked" && onGotIt && (
-          <Button variant="tonal" size="sm" icon={IconCheck} onClick={onGotIt}>
-            I got it
+        <span className="flex items-center gap-2">
+          {state === "asked" && onGotIt && (
+            <Button variant="tonal" size="sm" icon={IconCheck} onClick={onGotIt}>
+              I got it
+            </Button>
+          )}
+          <Button size="sm" variant={live ? "filled" : "tonal"} icon={IconSend} onClick={onAsk}>
+            {state === "asked" ? "Ask again" : live ? "Ask for it" : "Ask anyway"}
           </Button>
-        )}
-        <Button size="sm" variant={live ? "filled" : "tonal"} icon={IconSend} onClick={onAsk}>
-          {state === "asked" ? "Ask again" : live ? "Ask for it" : "Ask anyway"}
-        </Button>
-      </div>
-    </div>
+        </span>
+      </CardActions>
+    </Card>
   );
 }

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { clashNote, localDate, type GroupUpdate, type SpotAlert } from "@spot/shared";
-import { Button, Chip, Empty, IconBell, IconCheck, IconClose, IconGroup, IconInbox, IconWarn, PageHeader, SectionTitle, Spinner } from "@spot/ui";
+import { Button, Chip, IconBell, IconCheck, IconGroup, IconInbox, IconWarn, PageHeader, Spinner } from "@spot/ui";
+import { Card, CardActions, EmptyState, IconTile, ListGroup, ListRow, Page, Section } from "../components/ui";
 import { TZ, applyUpdate, dismissAlert, dismissUpdate, gotTheSpot, pickAlertRoom, splitAlerts, useClock, useGroupUpdates, useMySpotList, useSpotAlerts, useWatchedGroups } from "../lib/alerts";
 import { RosterProvider, useFirestoreRoster, useRoster } from "../lib/roster";
 import { ago } from "../lib/time";
@@ -84,23 +85,21 @@ function AlertsPage({ uid }: { uid: string }) {
 
   return (
     <div className="w-full">
-      <PageHeader title="Alerts" subtitle="Spots offered in your groups, as they happen." />
-      <div className="flex min-w-0 flex-col gap-6 px-4 pt-4 pb-[calc(var(--nav-h)+2rem)] sm:px-8 sm:pb-12">
+      <PageHeader width="narrow" title="Alerts" subtitle="Spots offered in your groups, as they happen." />
+      <Page>
         <PushPrompt uid={uid} />
 
         {!groups.loading && groups.data.length === 0 && (
-          <div className="flex min-w-0 items-start gap-3 rounded-lg bg-surface-low p-4">
-            <span className="grid size-10 flex-none place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
-              <IconGroup className="icon size-5" />
-            </span>
+          <Card className="flex items-start gap-3">
+            <IconTile icon={IconGroup} />
             <div className="min-w-0 flex-1">
               <p className="type-title-m">No groups watched yet</p>
               <p className="mt-0.5 type-body-m text-on-surface-variant">Pick the WhatsApp groups where spots get posted. Only those are read.</p>
-              <Link to="/groups" className="mt-3 inline-block type-label-l text-primary">
+              <Link to="/groups" className="mt-1 -mb-2 -ml-3 flex min-h-11 w-fit items-center rounded-full px-3 type-label-l text-primary state-layer">
                 Choose groups
               </Link>
             </div>
-          </div>
+          </Card>
         )}
 
         {loading && (
@@ -110,77 +109,66 @@ function AlertsPage({ uid }: { uid: string }) {
         )}
 
         {!loading && open.length > 0 && (
-          <section aria-label="Open spots">
-            <SectionTitle>Open now</SectionTitle>
-            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">{open.map(card)}</ul>
-          </section>
+          <Section title="Open now" count={open.length}>
+            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">{open.map(card)}</ul>
+          </Section>
         )}
 
         {!loading && pending.length > 0 && (
-          <section aria-label="To review">
-            <SectionTitle>To review</SectionTitle>
-            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
+          <Section title="To review" count={pending.length}>
+            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
               {pending.map((u) => (
                 <li key={u.id} className="min-w-0">
                   <UpdateCard u={u} now={now} onApply={() => applyUpdate(uid, u, roster).then(() => toast.success("Applied to your rooms"), (e: Error) => void toast.error(e.message))} onDismiss={() => void dismissUpdate(uid, u.id)} />
                 </li>
               ))}
             </ul>
-          </section>
+          </Section>
         )}
 
         {!loading && heads.length > 0 && (
-          <section aria-label="Heads up">
-            <SectionTitle>Heads up</SectionTitle>
-            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
+          <Section title="Heads up" count={heads.length}>
+            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
               {heads.map((u) => (
                 <li key={u.id} className="min-w-0">
                   <UpdateCard u={u} now={now} onDismiss={() => void dismissUpdate(uid, u.id)} />
                 </li>
               ))}
             </ul>
-          </section>
+          </Section>
         )}
 
         {nothing && (
-          <Empty icon={IconBell} title="Nothing on offer right now">
+          <EmptyState icon={IconBell} title="Nothing on offer right now">
             When someone posts spots in a group you watch, it shows up here and on your phone straight away.
-          </Empty>
+          </EmptyState>
         )}
         {!loading && !nothing && !open.length && !pending.length && (
-          <p className="type-body-m text-on-surface-variant">No spots on offer right now. You'll be notified when one comes up.</p>
+          <p className="px-1 type-body-m text-on-surface-variant">No spots on offer right now. You'll be notified when one comes up.</p>
         )}
 
         {!loading && done.length > 0 && (
-          <section aria-label="Applied">
-            <SectionTitle>Applied by itself</SectionTitle>
-            <ul className="flex flex-col gap-2">
+          <Section title="Applied by itself">
+            <ListGroup>
               {done.map((u) => (
-                <li key={u.id} className="flex min-w-0 items-center gap-3 rounded-lg bg-surface-low p-3 pl-4">
-                  <IconCheck aria-hidden className="icon size-5 flex-none text-primary" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate type-body-m">{u.summary}</span>
-                    <span className="block truncate type-body-s text-on-surface-variant">
-                      {u.groupName ? `${u.groupName} · ` : ""}
-                      {ago(u.receivedAt, now)}
-                    </span>
-                  </span>
-                  <Button variant="text" size="sm" onClick={() => void dismissUpdate(uid, u.id)}>
-                    Clear
-                  </Button>
-                </li>
+                <ListRow
+                  key={u.id}
+                  leading={<IconCheck aria-hidden className="icon size-5 flex-none text-primary" />}
+                  title={<span className="type-body-m font-normal">{u.summary}</span>}
+                  subtitle={`${u.groupName ? `${u.groupName} · ` : ""}${ago(u.receivedAt, now)}`}
+                  trailing={<Button variant="text" size="sm" onClick={() => void dismissUpdate(uid, u.id)}>Clear</Button>}
+                />
               ))}
-            </ul>
-          </section>
+            </ListGroup>
+          </Section>
         )}
 
         {!loading && earlier.length > 0 && (
-          <section aria-label="Earlier">
-            <SectionTitle>Earlier</SectionTitle>
-            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">{earlier.map(card)}</ul>
-          </section>
+          <Section title="Earlier" count={earlier.length}>
+            <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">{earlier.map(card)}</ul>
+          </Section>
         )}
-      </div>
+      </Page>
 
       <AlertAskSheet uid={uid} alert={asked} spots={spots.data} today={today} now={now} onClose={() => setAsking(null)} onSent={() => undefined} />
     </div>
@@ -193,11 +181,9 @@ const KIND_LABEL: Record<GroupUpdate["kind"], string> = { closure: "Full", sched
 function UpdateCard({ u, now, onApply, onDismiss }: { u: GroupUpdate; now: number; onApply?: () => Promise<unknown> | void; onDismiss: () => void }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className="flex min-w-0 flex-col gap-3 rounded-lg bg-surface-low p-4">
+    <Card className="flex flex-col gap-3">
       <div className="flex min-w-0 items-start gap-3">
-        <span className="grid size-10 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
-          {u.kind === "closure" ? <IconWarn className="icon size-5" /> : <IconInbox className="icon size-5" />}
-        </span>
+        <IconTile tone="neutral" icon={u.kind === "closure" ? IconWarn : IconInbox} />
         <div className="min-w-0 flex-1">
           <p className="type-title-m">{u.summary}</p>
           <p className="truncate type-body-s text-on-surface-variant">
@@ -210,8 +196,8 @@ function UpdateCard({ u, now, onApply, onDismiss }: { u: GroupUpdate; now: numbe
         </Chip>
       </div>
       {u.text && <p className="line-clamp-2 type-body-s text-on-surface-variant">“{u.text}”</p>}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button variant="text" size="sm" icon={IconClose} onClick={onDismiss}>
+      <CardActions spread={Boolean(onApply)}>
+        <Button variant="text" size="sm" onClick={onDismiss} className={onApply ? "-ml-2" : undefined}>
           {onApply ? "Not now" : "Clear"}
         </Button>
         {onApply && (
@@ -227,7 +213,7 @@ function UpdateCard({ u, now, onApply, onDismiss }: { u: GroupUpdate; now: numbe
             {u.kind === "closure" ? "Mark full" : u.kind === "opening" ? "Set opening time" : "Update curators"}
           </Button>
         )}
-      </div>
-    </div>
+      </CardActions>
+    </Card>
   );
 }

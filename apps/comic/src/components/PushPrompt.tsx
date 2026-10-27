@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button, IconBell, IconPhone } from "@spot/ui";
+import { Card, IconTile } from "./ui";
 import { disablePush, enablePush, usePushState } from "../lib/push";
 
 /** The card that turns spot alerts on for this device. Hidden once they are on. */
@@ -41,24 +42,22 @@ export function PushPrompt({ uid, always }: { uid: string; /** Show the "on" sta
             : "Get a notification the moment a spot is offered in a group you watch, with an Ask for it button.";
 
   return (
-    <div className="flex min-w-0 items-start gap-3 rounded-lg bg-surface-low p-4">
-      <span className="grid size-10 flex-none place-items-center rounded-md bg-primary-container text-on-primary-container">
-        {state === "ios-install" ? <IconPhone className="icon size-5" /> : <IconBell className="icon size-5" />}
-      </span>
+    <Card className="flex items-start gap-3">
+      <IconTile tone="primary" icon={state === "ios-install" ? IconPhone : IconBell} />
       <div className="min-w-0 flex-1">
         <p className="type-title-m">{state === "on" ? "Spot alerts are on" : "Turn on spot alerts"}</p>
         <p className="mt-0.5 type-body-m text-on-surface-variant">{text}</p>
         {state === "off" && (
-          <Button className="mt-3" size="sm" icon={IconBell} loading={busy} onClick={() => void turnOn()}>
+          <Button className="mt-4" icon={IconBell} loading={busy} onClick={() => void turnOn()}>
             Turn on
           </Button>
         )}
         {state === "on" && always && (
-          <Button className="mt-3" size="sm" variant="outlined" loading={busy} onClick={() => void turnOff()}>
+          <Button className="mt-4" variant="outlined" loading={busy} onClick={() => void turnOff()}>
             Turn off on this device
           </Button>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
