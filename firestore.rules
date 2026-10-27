@@ -240,6 +240,8 @@ service cloud.firestore {
         // Nothing BOT Comedy (the comic's own data, owner only; shows are embedded in the room doc): rooms, curators, asks,
         // mySpots, spotAlerts (the worker writes new ones; the comic clears them), watchedGroups, rosterFollows.
         allow read, write: if isOwner(uid) && coll in ['rooms', 'curators', 'asks', 'mySpots', 'regularSpots', 'spotAlerts', 'roomPicks', 'groupUpdates', 'watchedGroups', 'rosterFollows'];
+        // What the agent number did for the comic (the worker writes it; the comic reads it).
+        allow read: if isOwner(uid) && coll == 'agentLog';
       }
     }
   }

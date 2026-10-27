@@ -35,3 +35,5 @@ export * from "./regulars.ts";
 export * from "./groupAlerts.ts";
 export * from "./groupOpenings.ts";
 export * from "./connection.ts";
+export * from "./comicAgent.ts";
+export * from "./memberSearch.ts";

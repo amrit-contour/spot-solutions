@@ -21,6 +21,7 @@ import { recordOutcome, settleRound } from "./replies.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { sessions } from "./sessions.ts";
 import { sendQueued } from "./sendQueue.ts";
+import { comicFor, hasShows } from "./comicAgent.ts";
 
 // ---------------------------------------------------------------- incoming messages
 
@@ -72,6 +73,10 @@ async function converse(uid: string, text: string) {
   const mem = await readMemory(uid);
   const now = Date.now();
 
+  // 0. Nothing BOT Comedy: a comic's own question waiting for an answer (comicAgent.ts). Accounts without rooms skip this.
+  const comic = await comicFor(uid);
+  if (comic && (await comic.answerPending(text))) return;
+
   // 1. Something is waiting for a yes, a number or a no.
   const step = stepPending(mem.pending, text, now);
   if (step.type !== "none") await writeMemory(uid, { pending: step.type === "chosen" ? step.pending : null });
@@ -106,10 +111,16 @@ async function converse(uid: string, text: string) {
     }
   }
 
-  // 3. Anything else: what do they mean?
+  // 3. Anything else: what do they mean? A comic's commands first; the model reads them too when the account has no shows.
+  if (comic && (await comic.byRules(text))) return;
+  const alsoCurator = !comic || (await hasShows(uid));
+  if (comic && !alsoCurator && (await comic.byModel(text))) return;
   const intent = parseIntentByRules(text) ?? (A.answer || A.actions ? await modelIntent(uid, settings, text) : { name: "unknown" as const });
   if (intent.name === "help") return void (await say(uid, HELP_TEXT));
-  if (intent.name === "unknown") return void (await say(uid, `I didn't get that.\n\n${HELP_TEXT}`));
+  if (intent.name === "unknown") {
+    if (comic && (await comic.byModel(text))) return;
+    return void (await say(uid, `I didn't get that.\n\n${HELP_TEXT}`));
+  }
   if (QUESTION_INTENTS.includes(intent.name)) {
     if (!A.answer) return void (await say(uid, "Answering questions is switched off in Settings."));
     return void (await say(uid, await answer(uid, intent)));
@@ -117,7 +128,7 @@ async function converse(uid: string, text: string) {
   if (ACTION_INTENTS.includes(intent.name)) {
     if (!A.actions) return void (await say(uid, "Doing things for you is switched off in Settings, so I didn't touch anything."));
     const r = await plan(uid, intent);
-    if (r.pending) await writeMemory(uid, { pending: r.pending });
+    if (r.pending) await writeMemory(uid, { pending: r.pending, comicPending: null });
     return void (await say(uid, r.pending ? askText(r.pending) : (r.reply ?? "I couldn't work that out.")));
   }
 }

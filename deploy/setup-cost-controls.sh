@@ -23,7 +23,7 @@ for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}"
 
 PROJECT="${NBS_PROJECT:-spot-solutions}"
 BUCKET="${NBS_BUCKET:-spot-solutions.firebasestorage.app}"
-GROUPS_TTL=(commands notices contactsImport invites)
+GROUPS_TTL=(commands notices contactsImport invites agentLog)
 
 DRY=0
 for a in "$@"; do
