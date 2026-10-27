@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { SPOT_SOURCE_LABEL, formatTime, spotClashes, validateSpot, type MySpot, type SpotNotes } from "@spot/shared";
-import { Button, ConfirmDialog, Field, IconStar, IconTrash, Segmented, Select, Sheet, Switch, TextArea, TextInput, TimePicker } from "@spot/ui";
+import { DAY_NAMES, SPOT_SOURCE_LABEL, formatTime, materializeRegular, mergeRegulars, regularFromSpot, regularLabel, regularWindow, spotClashes, validateSpot, type MySpot, type RegularSpot, type SpotNotes } from "@spot/shared";
+import { Button, ConfirmDialog, Field, IconRepeat, IconStar, IconTrash, Segmented, Select, Sheet, Switch, TextArea, TextInput, TimePicker } from "@spot/ui";
 import { useAsks } from "../lib/asks";
 import { useRoster } from "../lib/roster";
+import { newRegularId, useSpotActions } from "../lib/regulars";
+import { RegularEditor } from "./calendar/RegularEditor";
 
 const OTHER = "__other";
 
@@ -16,6 +18,8 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [last, setLast] = useState<MySpot | null>(null);
+  const [making, setMaking] = useState<RegularSpot | null>(null);
+  const act = useSpotActions();
   if (value !== last) {
     setLast(value);
     if (value) {
@@ -23,8 +27,13 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
       setProblems([]);
     }
   }
-  const isNew = value !== null && !store.spots.some((s) => s.id === value.id);
-  const clash = useMemo(() => (draft ? spotClashes(store.spots, draft) : []), [draft, store.spots]);
+  // A regular's occurrence is not "new" even before anything is stored for it: saving materialises it.
+  const isNew = value !== null && !value.regularId && !store.spots.some((s) => s.id === value.id);
+  const clash = useMemo(() => {
+    if (!draft) return [];
+    const w = regularWindow(draft.date, 0, 0);
+    return spotClashes(mergeRegulars(store.spots, store.regulars, w.from, w.to), draft);
+  }, [draft, store.spots, store.regulars]);
   if (!value || !draft) return <Sheet open={false} onClose={onClose} title="" children={null} />;
 
   const set = (patch: Partial<MySpot>) => setDraft((d) => (d ? { ...d, ...patch } : d));
@@ -40,7 +49,7 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
     if (list.length) return;
     setSaving(true);
     try {
-      await store.saveSpot({ ...draft, roomName });
+      await store.saveSpot({ ...materializeRegular(draft), roomName });
       toast.success(isNew ? "Spot added." : "Spot saved.");
       onClose();
     } catch {
@@ -50,8 +59,9 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
     }
   };
   const remove = async () => {
-    await store.deleteSpot(draft.id);
-    toast("Spot removed.");
+    if (draft.regularId) await act.skip(draft);
+    else await store.deleteSpot(draft.id);
+    toast(draft.regularId ? "Skipped that date." : "Spot removed.");
     setConfirmDelete(false);
     onClose();
   };
@@ -65,7 +75,7 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
         <>
           {!isNew && (
             <Button variant="text" icon={IconTrash} onClick={() => setConfirmDelete(true)}>
-              Remove
+              {draft.regularId ? "Skip this date" : "Remove"}
             </Button>
           )}
           <Button loading={saving} onClick={() => void save()}>
@@ -88,7 +98,7 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
 
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
           <Field label="Date" htmlFor="spot-date">
-            <TextInput id="spot-date" type="date" value={draft.date} onChange={(e) => set({ date: e.target.value })} />
+            <TextInput id="spot-date" type="date" disabled={Boolean(draft.regularId)} value={draft.date} onChange={(e) => set({ date: e.target.value })} />
           </Field>
           <div className="flex min-w-0 flex-col gap-2">
             <Switch label="Start time" checked={Boolean(draft.time)} onChange={(on) => set({ time: on ? "20:00" : undefined })} />
@@ -120,7 +130,16 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
           </p>
         )}
 
-        {!isNew && <p className="type-body-m text-on-surface-variant">{SPOT_SOURCE_LABEL[draft.source]}</p>}
+        {!isNew && (
+          <p className="type-body-m text-on-surface-variant">
+            {draft.regularId && store.regulars.find((r) => r.id === draft.regularId) ? `Regular: ${regularLabel(store.regulars.find((r) => r.id === draft.regularId)!, DAY_NAMES)}` : SPOT_SOURCE_LABEL[draft.source]}
+          </p>
+        )}
+        {!isNew && !draft.regularId && draft.status !== "cancelled" && (
+          <Button variant="tonal" icon={IconRepeat} onClick={() => setMaking(regularFromSpot(draft, newRegularId(), Date.now()))}>
+            Make this a regular
+          </Button>
+        )}
 
         {past && (
           <Field label="Did it happen?">
@@ -166,8 +185,9 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
           </Field>
         </div>
       </div>
-      <ConfirmDialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Remove this spot?" confirmLabel="Remove" onConfirm={remove}>
-        It goes from your spots and your stats. This can't be undone.
+      <RegularEditor value={making} onClose={() => setMaking(null)} today={today} />
+      <ConfirmDialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title={draft.regularId ? "Skip this date?" : "Remove this spot?"} confirmLabel={draft.regularId ? "Skip" : "Remove"} onConfirm={remove}>
+        {draft.regularId ? "It comes off your calendar for this date only. The regular carries on." : "It goes from your spots and your stats. This can't be undone."}
       </ConfirmDialog>
     </Sheet>
   );

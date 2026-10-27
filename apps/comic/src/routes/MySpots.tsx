@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { clashingIds, spotClashes, spotStats, spotsByDay, type MySpot } from "@spot/shared";
-import { CompactButton, Empty, IconAdd, IconMic, PageHeader, Segmented, Spinner } from "@spot/ui";
+import { CompactButton, Empty, IconAdd, IconMic, IconRepeat, PageHeader, Segmented, Spinner } from "@spot/ui";
 import { useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { monthLabel, shortDate } from "../lib/time";
 import { SpotCard } from "../components/SpotCards";
 import { SpotEditor } from "../components/SpotEditor";
 import { blankSpot } from "../lib/newSpot";
 import { SpotStatsHeader } from "../components/SpotStats";
+import { useAllSpots, useSpotActions } from "../lib/regulars";
 
 type Tab = "coming" | "past";
 
@@ -21,17 +23,19 @@ export function MySpots() {
   const { today } = useAskPlan(now);
   const [tab, setTab] = useState<Tab>("coming");
   const [editing, setEditing] = useState<MySpot | null>(null);
+  const all = useAllSpots(today); // stored spots plus the regulars' occurrences
+  const act = useSpotActions();
 
-  const stats = useMemo(() => spotStats(store.spots, store.asks, today), [store.spots, store.asks, today]);
-  const clashes = useMemo(() => clashingIds(store.spots), [store.spots]);
-  const live = store.spots.filter((s) => s.status !== "cancelled");
+  const stats = useMemo(() => spotStats(all, store.asks, today), [all, store.asks, today]);
+  const clashes = useMemo(() => clashingIds(all), [all]);
+  const live = all.filter((s) => s.status !== "cancelled");
   const coming = useMemo(() => spotsByDay(live.filter((s) => s.date >= today && s.happened !== false)), [live, today]);
   const toCheck = useMemo(() => live.filter((s) => s.date < today && s.happened == null), [live, today]);
   const past = useMemo(() => spotsByDay(live.filter((s) => s.date < today && s.happened != null), true), [live, today]);
   const toCheckDays = useMemo(() => spotsByDay(toCheck, true), [toCheck]);
 
   const mark = (s: MySpot, happened: boolean) =>
-    store.saveSpot({ ...s, happened }).then(
+    act.mark(s, happened).then(
       () => toast.success(happened ? "Marked as done. Add notes while it's fresh." : "Marked as didn't happen."),
       () => toast.error("Couldn't save that. Try again."),
     );
@@ -42,7 +46,12 @@ export function MySpots() {
       <PageHeader
         title="My spots"
         subtitle="Everything you're booked for, and how it went."
-        actions={<CompactButton icon={IconAdd} label="Add a spot" variant="filled" onClick={() => setEditing(blankSpot(today))} />}
+        actions={
+          <>
+            <Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full text-primary"><IconRepeat className="icon size-5" /></Link>
+            <CompactButton icon={IconAdd} label="Add a spot" variant="filled" onClick={() => setEditing(blankSpot(today))} />
+          </>
+        }
         bar={
           <Segmented
             full
@@ -88,7 +97,7 @@ export function MySpots() {
                         <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
                           {d.spots.map((s) => (
                             <li key={s.id} className="min-w-0">
-                              <SpotCard spot={s} today={today} clash={clashes.has(s.id) ? spotClashes(store.spots, s) : undefined} onOpen={() => setEditing(s)} onMark={(h) => void mark(s, h)} />
+                              <SpotCard spot={s} today={today} clash={clashes.has(s.id) ? spotClashes(all, s) : undefined} onOpen={() => setEditing(s)} onMark={(h) => void mark(s, h)} />
                             </li>
                           ))}
                         </ul>

@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { deleteDoc, deleteField, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
-import { DEFAULT_ASK_TEMPLATE, DEFAULT_SETTINGS, cleanNotes, isoAddDays, localDate, planAsks, spotFromAsk, spotIdForAsk, type Ask, type MySpot, type PlannedAsk, type Room } from "@spot/shared";
+import { DEFAULT_ASK_TEMPLATE, DEFAULT_SETTINGS, cleanNotes, isoAddDays, localDate, mergeRegulars, planAsks, spotFromAsk, spotIdForAsk, type Ask, type MySpot, type PlannedAsk, type RegularSpot, type Room } from "@spot/shared";
 import { useCollection, userDoc } from "./data";
 import { plain, useRoster } from "./roster";
 import { runCommand } from "./commands";
@@ -26,6 +26,10 @@ export interface AsksStore {
   answerAsk(ask: Ask, decision: "got_it" | "declined" | "waiting", room?: Pick<Room, "name">): Promise<void>;
   saveSpot(spot: MySpot): Promise<void>;
   deleteSpot(id: string): Promise<void>;
+  /** Regular spots (rules, not one doc per date): the occurrences are computed, see lib/regulars.tsx. */
+  regulars: RegularSpot[];
+  saveRegular(rule: RegularSpot): Promise<void>;
+  deleteRegular(id: string): Promise<void>;
   saveTemplate(template: string): Promise<void>;
 }
 
@@ -52,6 +56,7 @@ function decide(ask: Ask, decision: "got_it" | "declined" | "waiting", now: numb
 export function useFirestoreAsks(uid: string): AsksStore {
   const asks = useCollection<Ask>(uid, "asks");
   const spots = useCollection<MySpot>(uid, "mySpots");
+  const regulars = useCollection<RegularSpot>(uid, "regularSpots");
   const [template, setTemplate] = useState<string>(DEFAULT_ASK_TEMPLATE);
   const [userLoaded, setUserLoaded] = useState(false);
   useEffect(
@@ -72,7 +77,10 @@ export function useFirestoreAsks(uid: string): AsksStore {
       asks: asks.data,
       spots: spots.data,
       template,
-      loading: asks.loading || spots.loading || !userLoaded,
+      loading: asks.loading || spots.loading || regulars.loading || !userLoaded,
+      regulars: regulars.data,
+      saveRegular: (r) => setDoc(userDoc(uid, "regularSpots", r.id), withoutId(r), { merge: false }),
+      deleteRegular: (id) => deleteDoc(userDoc(uid, "regularSpots", id)),
       saveAsk: (ask) => setDoc(userDoc(uid, "asks", ask.id), withoutId(ask), { merge: true }),
       async sendAsk(ask) {
         await setDoc(userDoc(uid, "asks", ask.id), withoutId(ask), { merge: true });
@@ -94,14 +102,15 @@ export function useFirestoreAsks(uid: string): AsksStore {
       deleteSpot: (id) => deleteDoc(userDoc(uid, "mySpots", id)),
       saveTemplate: (t) => setDoc(doc(db, "users", uid), { comic: { askTemplate: t.trim() === DEFAULT_ASK_TEMPLATE ? deleteField() : t.trim() } }, { merge: true }),
     }),
-    [uid, asks.data, asks.loading, spots.data, spots.loading, template, userLoaded],
+    [uid, asks.data, asks.loading, spots.data, spots.loading, regulars.data, regulars.loading, template, userLoaded],
   );
 }
 
 /** Asks and spots held in memory (the dev-only demo routes). Nothing is saved anywhere; "send" just marks the ask sent. */
-export function useMemoryAsks(initial: { asks: Ask[]; spots: MySpot[] }): AsksStore {
+export function useMemoryAsks(initial: { asks: Ask[]; spots: MySpot[]; regulars?: RegularSpot[] }): AsksStore {
   const [asks, setAsks] = useState(initial.asks);
   const [spots, setSpots] = useState(initial.spots);
+  const [regulars, setRegulars] = useState<RegularSpot[]>(initial.regulars ?? []);
   const [template, setTemplate] = useState(DEFAULT_ASK_TEMPLATE);
   const upsert = <T extends { id: string }>(list: T[], x: T) => (list.some((y) => y.id === x.id) ? list.map((y) => (y.id === x.id ? x : y)) : [...list, x]);
   const patch = useCallback((id: string, p: Partial<Ask>) => setAsks((l) => l.map((a) => (a.id === id ? { ...a, ...p } : a))), []);
@@ -111,6 +120,9 @@ export function useMemoryAsks(initial: { asks: Ask[]; spots: MySpot[] }): AsksSt
       spots,
       template,
       loading: false,
+      regulars,
+      saveRegular: async (r) => setRegulars((l) => upsert(l, plain(r))),
+      deleteRegular: async (id) => setRegulars((l) => l.filter((x) => x.id !== id)),
       saveAsk: async (ask) => setAsks((l) => upsert(l, plain(ask))),
       async sendAsk(ask) {
         setAsks((l) => upsert(l, plain(ask)));
@@ -132,7 +144,7 @@ export function useMemoryAsks(initial: { asks: Ask[]; spots: MySpot[] }): AsksSt
       deleteSpot: async (id) => setSpots((l) => l.filter((s) => s.id !== id)),
       saveTemplate: async (t) => setTemplate(t.trim() || DEFAULT_ASK_TEMPLATE),
     }),
-    [asks, spots, template, patch],
+    [asks, spots, regulars, template, patch],
   );
 }
 
@@ -151,13 +163,14 @@ export function useNowMs(everyMs = 30_000) {
 /** The asks to make over the next two weeks, from the comic's rooms, asks and spots. */
 export function useAskPlan(now: number) {
   const roster = useRoster();
-  const { asks, spots } = useAsks();
+  const { asks, spots, regulars } = useAsks();
   const today = localDate(new Date(now), TZ);
   // `now` moves every 30 s; the plan only changes on the minute, which is plenty.
   const minute = Math.floor(now / 60_000);
+  // A show where the comic has a regular spot that date is not one to ask for.
   const plan = useMemo(
-    () => planAsks(roster.rooms, roster.curators, { from: today, to: isoAddDays(today, 7) }, new Date(minute * 60_000), TZ, { asks, mySpots: spots }),
-    [roster.rooms, roster.curators, asks, spots, today, minute],
+    () => planAsks(roster.rooms, roster.curators, { from: today, to: isoAddDays(today, 7) }, new Date(minute * 60_000), TZ, { asks, mySpots: mergeRegulars(spots, regulars, today, isoAddDays(today, 7)) }),
+    [roster.rooms, roster.curators, asks, spots, regulars, today, minute],
   );
   return { plan, today };
 }

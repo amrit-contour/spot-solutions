@@ -137,7 +137,8 @@ export function regularLabel(r: Pick<RegularSpot, "cadence" | "weekdays" | "nth"
   const list = days.length > 1 ? `${days.slice(0, -1).join(", ")} and ${days.at(-1)}` : days[0]!;
   if (r.cadence === "monthly") {
     const n = (r.nth?.length ? r.nth : [nthWeekdayOf(r.startDate)]).map((x) => NTH_LABEL[x] ?? String(x));
-    return `${n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n.at(-1)}` : n[0]} ${list} of the month`;
+    const text = `${n.length > 1 ? `${n.slice(0, -1).join(", ")} and ${n.at(-1)}` : n[0]} ${list} of the month`;
+    return text[0]!.toUpperCase() + text.slice(1);
   }
   if (r.cadence === "biweekly") return `Every other ${list}`;
   return `Every ${list}`;

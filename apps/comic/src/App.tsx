@@ -17,6 +17,7 @@ import { ComicStores } from "./routes/Stores";
 import { Today } from "./routes/Today";
 import { Asks } from "./routes/Asks";
 import { MySpots } from "./routes/MySpots";
+import { Regulars } from "./routes/Regulars";
 import { RostersApp } from "./routes/RostersApp";
 import { RosterProvider, useFirestoreRoster } from "./lib/roster";
 
@@ -86,6 +87,7 @@ export default function App() {
               <Route path="/" element={<Today uid={user.uid} />} />
               <Route path="/asks" element={<Asks />} />
               <Route path="/spots" element={<MySpots />} />
+              <Route path="/spots/regulars" element={<Regulars />} />
             </Route>
             <Route path="/alerts" element={<Alerts uid={user.uid} />} />
             <Route path="/groups" element={<Groups uid={user.uid} />} />
