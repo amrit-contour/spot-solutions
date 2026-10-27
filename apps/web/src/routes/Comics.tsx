@@ -125,6 +125,7 @@ export function Comics() {
     />
 
       <div className={cx("px-4 sm:px-8", selecting ? "pb-6" : "pb-12")}>
+        <DuplicateComics />
         <StickyBar className="mb-1">
         <div className="flex flex-wrap items-center gap-2 py-2 sm:gap-3 sm:py-3">
           <div className="relative min-w-60 flex-1">
@@ -138,7 +139,6 @@ export function Comics() {
           <Empty icon={IconComics} title={comics.length ? "No matches" : "No comics yet"}>
             {comics.length ? "Try a different search." : "Once someone asks for a spot, they're added here automatically. You can also add people by hand."}
           </Empty>
-        <DuplicateComics />
         ) : (
           <>
           {selecting && (
