@@ -211,7 +211,7 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       setStuck(y > Math.max(2, d - 1));
     };
     const measure = () => {
-      d = subRef.current?.offsetHeight ?? 0;
+      d = 0; // nothing collapses any more (see the header markup); kept for the stuck shadow and --page-header-h
       el.style.setProperty("--d", `${d}px`);
       el.style.setProperty("--hh", `${Math.max(0, inner.offsetHeight - d)}px`);
       apply();
@@ -228,9 +228,6 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       if (frame) cancelAnimationFrame(frame);
     };
   }, [collapsible]);
-  // Everything that moves is a transform or opacity of --p (set on the header), so scrolling never triggers layout.
-  // 2D translate and no will-change: a 3D/hinted layer makes iOS rasterize the header, and the title and avatar look blurred.
-  const lift = (v: string): React.CSSProperties => ({ transform: `translateY(calc(var(--p, 0) * ${v} * -1))` });
   return (
     <>
     {/* Desktop breathing room above the title. Outside the sticky bar, so the bar itself never changes height. */}
@@ -239,16 +236,14 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       ref={ref}
       data-stuck={stuck || undefined}
       data-collapsible={collapsible || undefined}
-      style={{ height: "var(--hh, auto)", marginBottom: "var(--d, 0px)" }}
-      className="group/hdr sticky top-0 z-30 sm:mb-0! sm:h-auto!"
+      className="group/hdr sticky top-0 z-30"
     >
       {/* Solid surface (no backdrop-filter: iOS repaints it every scroll frame, which flickers) that rides up with the scroll,
           so its bottom edge is always exactly where the page content begins. Only the hairline/shadow changes when stuck. */}
       <div
         aria-hidden
-        style={{ ...lift("var(--d, 0px)"), height: "calc(var(--hh, 100%) + var(--d, 0px))" }}
         className={cx(
-          "absolute inset-x-0 top-0 -z-10 bg-surface transition-shadow duration-200 motion-reduce:transition-none sm:h-full! sm:transform-none!",
+          "absolute inset-0 -z-10 bg-surface transition-shadow duration-200 motion-reduce:transition-none",
           stuck ? "shadow-[0_1px_0_var(--color-outline-variant),0_6px_12px_-8px_rgb(0_0_0/0.5)]" : "shadow-[0_1px_0_transparent]",
         )}
       />
@@ -268,21 +263,18 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
         {trailing && <div className="flex flex-none items-center">{trailing}</div>}
         {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
       </div>
-      {subtitle && (
-        <div ref={subRef} style={{ ...lift("var(--d, 0px)"), opacity: "clamp(0, calc(1 - var(--p, 0) * 2), 1)" }} className="pt-0.5 pb-1.5 group-data-[collapsed=1]/hdr:pointer-events-none sm:hidden">
-          <p className="min-w-0 max-w-full type-body-m text-on-surface-variant">{subtitle}</p>
-        </div>
-      )}
-      <div style={lift("var(--d, 0px)")} className="sm:transform-none!">
+      {/* No scroll-linked transforms anywhere in the header: iOS drew a transformed header as a blurry bitmap (title and avatar).
+          The subtitle sits below the pinned header on every width and simply scrolls away with the page. */}
+      <div>
         {children}
         {bar && <div className="mt-2 sm:mt-3">{bar}</div>}
       </div>
       </div>
       </div>
     </header>
-    {/* Desktop and tablets: the subtitle sits under the pinned title bar and scrolls away with the page. */}
+    {/* The subtitle sits under the pinned title bar and scrolls away with the page (phones and desktop alike). */}
     {subtitle && (
-      <div className="hidden px-4 pt-0.5 pb-3 sm:block sm:px-8">
+      <div ref={subRef} className="px-4 pt-0.5 pb-3 sm:px-8">
         <p className={cx("min-w-0 max-w-full type-body-m text-on-surface-variant", width === "narrow" && "mx-auto w-full max-w-[44rem]")}>{subtitle}</p>
       </div>
     )}
