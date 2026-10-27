@@ -2,38 +2,15 @@
 # Adds the installers and a source tarball to the web build, so servers install from
 # nothingbotcurating.web.app with no GitHub dependency. Run after `vite build`, before deploying.
 #
-# Two sets of files land in dl/, and they never share a name:
-#   NEW  (Nothing BOT Server):  dl/nothing-bot-server.json, dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip,
-#                               dl/NothingBotServer-mac.zip, plus install.sh, install.ps1, install-mac.sh, uninstall.sh at the root (never the admin key scripts).
-#   LEGACY (frozen at 3c43570): dl/version.json, dl/spot-solutions.tar.gz, dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip,
-#                               copied unchanged from deploy/legacy-dl/ (gitignored). Servers installed before the rename
-#                               poll /dl/version.json and download /dl/spot-solutions.tar.gz; they must never be offered the
-#                               renamed release (it would run against their old folders and services). See docs/migrate-to-nothing-bot-server.md.
-# Every hosting site but spot-solutions.web.app (retired, see apps/web/dist-retired below) serves apps/web/dist, so both sets are served from all of them.
+# Files in dl/: nothing-bot-server.json, nothing-bot-server.tar.gz, NothingBotServer-Windows.zip, NothingBotServer-mac.zip,
+# plus install.sh, install.ps1, install-mac.sh, uninstall.sh at the root (never the admin key scripts). Every hosting site but
+# spot-solutions.web.app serves apps/web/dist. The frozen pre-rename release (dl/version.json, spot-solutions.tar.gz, …) was
+# shut down on 27 Oct 2026, once the last old server was reinstalled.
 set -euo pipefail
 # Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
 for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}" ]] || export "$_n=${!_v}"; done
 cd "$(dirname "$0")/.."
 DIST="${NBS_DIST_DIR:-apps/web/dist}"
-LEGACY_DIR="deploy/legacy-dl"
-LEGACY_FILES=(version.json spot-solutions.tar.gz SpotSolutions-Windows.zip SpotServer-mac.zip)
-
-# Fail loudly (before building anything) if the frozen files are missing: without them old servers would 404 or,
-# worse, be handed the new release.
-missing=()
-for f in "${LEGACY_FILES[@]}"; do [[ -s "$LEGACY_DIR/$f" ]] || missing+=("$f"); done
-if (( ${#missing[@]} )); then
-  echo "ERROR: $LEGACY_DIR is missing: ${missing[*]}" >&2
-  echo "These are the frozen files for servers installed before the rename (release 3c43570). Download them again with:" >&2
-  echo "  mkdir -p $LEGACY_DIR && cd $LEGACY_DIR && for f in version.json spot-solutions.tar.gz SpotSolutions-Windows.zip SpotServer-mac.zip; do curl -fsSLO https://spot-solutions.web.app/dl/\$f; done" >&2
-  echo "(only while the live site still serves the frozen versions; otherwise restore them from a backup)." >&2
-  exit 1
-fi
-node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); if(!/^[0-9a-f]{7,40}$/.test(j.version)||!/^[0-9a-f]{64}$/.test(j.sha256)) process.exit(1)' "$LEGACY_DIR/version.json" \
-  || { echo "ERROR: $LEGACY_DIR/version.json is not a valid release file." >&2; exit 1; }
-LEGACY_SHA=$( (sha256sum "$LEGACY_DIR/spot-solutions.tar.gz" 2>/dev/null || shasum -a 256 "$LEGACY_DIR/spot-solutions.tar.gz") | cut -d' ' -f1)
-WANT_SHA=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).sha256)' "$LEGACY_DIR/version.json")
-[[ "$LEGACY_SHA" == "$WANT_SHA" ]] || { echo "ERROR: $LEGACY_DIR/spot-solutions.tar.gz doesn't match the sha256 in $LEGACY_DIR/version.json (old servers would refuse it)." >&2; exit 1; }
 
 mkdir -p "$DIST/dl"
 SHA=$(git rev-parse --short HEAD)
@@ -76,19 +53,12 @@ fi
 cp deploy/mac/install-mac.sh "$DIST/install-mac.sh"
 rm -rf "$TMP"
 
-# The frozen legacy files, byte for byte, every build.
-for f in "${LEGACY_FILES[@]}"; do cp "$LEGACY_DIR/$f" "$DIST/dl/$f"; done
-
-# spot-solutions.web.app is retired (hosting target `curating`): its own public dir, apps/web/dist-retired. It serves the
-# same dl/ and installer files as the new site (old install commands and servers on the frozen release keep working,
-# byte for byte) and, for everything else, a page that clears the old PWA and forwards to nothingbotcurating.web.app.
+# spot-solutions.web.app is retired (hosting target `curating`): its own public dir, apps/web/dist-retired, with only a page
+# that clears the old PWA and forwards to nothingbotcurating.web.app (and a self-unregistering sw.js). No downloads.
 RETIRED="${NBS_RETIRED_DIR:-apps/web/dist-retired}"
 rm -rf "$RETIRED"
 mkdir -p "$RETIRED"
-cp -R "$DIST/dl" "$RETIRED/dl"
-for f in install.sh install.ps1 install-mac.sh uninstall.sh uninstall.ps1 migrate-mac.sh restore-backup.sh; do cp "$DIST/$f" "$RETIRED/$f"; done
 cp deploy/retired/index.html deploy/retired/sw.js "$RETIRED/"
-for f in "${LEGACY_FILES[@]}"; do cmp -s "$LEGACY_DIR/$f" "$RETIRED/dl/$f" || { echo "ERROR: $RETIRED/dl/$f differs from $LEGACY_DIR/$f" >&2; exit 1; }; done
 
 echo "dist (new):    dl/nothing-bot-server.json ($SHA), dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip, dl/NothingBotServer-mac.zip, install.sh, install.ps1, install-mac.sh, uninstall.sh, uninstall.ps1, migrate-mac.sh, restore-backup.sh"
-echo "dist (legacy): dl/version.json, dl/spot-solutions.tar.gz, dl/SpotSolutions-Windows.zip, dl/SpotServer-mac.zip (frozen at $(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version)' "$LEGACY_DIR/version.json"))"
+echo "retired:       spot-solutions.web.app serves only the forwarding page"
