@@ -5,7 +5,7 @@ import type WAWebJS from "whatsapp-web.js";
 import { addDays, cleanupRemovals, cleanupStep, confirmPending, groupPostVars, localNow, messageRich, normalizeMessage, renderRich, shiftWeek, type Lineup, type LineupCleanup, type Show } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { lidMap, loadComics, normaliseParticipants, notice } from "./commands.ts";
-import { agentOn, readMemory, sendToCurator, writeMemory } from "./agentOutbox.ts";
+import { askCurator } from "./agentOutbox.ts";
 import { deliverableId, enqueueTask } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
 import { watchUser } from "./userData.ts";
@@ -29,7 +29,7 @@ export async function pocTags(uid: string, client: WAWebJS.Client, show: Pick<Sh
   return { text: mentions.map((m) => `@${m.split("@")[0]}`).join(", "), mentions };
 }
 
-export async function runCleanups(uid: string, client: WAWebJS.Client) {
+export async function runCleanups(uid: string, client: WAWebJS.Client | undefined) {
   const { settings, shows } = watchUser(uid);
   if (!shows.some((s) => s.cleanup?.enabled && s.groupId)) return;
   const now = localNow(new Date(), settings.timezone);
@@ -39,14 +39,14 @@ export async function runCleanups(uid: string, client: WAWebJS.Client) {
     const show = shows.find((s) => s.id === lineup.showId);
     if (!show) continue;
     const step = cleanupStep(show, lineup, now, settings.micCheck.enabled);
-    if (!step) continue;
+    if (!step || (step === "run" && !client)) continue; // clearing needs the main WhatsApp; asking does not
     const key = `${uid}|${doc.id}`;
     if (running.has(key)) continue;
     running.add(key);
     try {
       if (step === "skip") await doc.ref.update({ cleanup: { status: "skipped", at: Date.now() } satisfies LineupCleanup });
       else if (step === "ask") await ask(uid, show, lineup);
-      else await clearGroup(uid, client, show, lineup);
+      else if (client) await clearGroup(uid, client, show, lineup);
     } catch (e) {
       console.error(`[cleanup] ${uid} ${show.name}`, e);
       await doc.ref.update({ cleanup: { status: "skipped", at: Date.now() } satisfies LineupCleanup });
@@ -57,19 +57,17 @@ export async function runCleanups(uid: string, client: WAWebJS.Client) {
   }
 }
 
-async function ask(uid: string, show: Show, lineup: Lineup & { id: string }) {
+export async function ask(uid: string, show: Show, lineup: Lineup & { id: string }) {
   const reason = lineup.outcome === "canned" || lineup.status === "canned" ? "canned" : "ask";
   await col(uid, "lineups").doc(lineup.id).update({ cleanup: { status: "asked", at: Date.now(), reason } satisfies LineupCleanup });
   const question =
     reason === "canned"
       ? `${show.name} on ${lineup.date} didn't happen. Should I still clear the group, or are the same comics repeating next week?`
       : `${show.name} on ${lineup.date} is done. Clear the group for next week?`;
-  // On the agent number too, as a yes/no it can act on. Never over something else it's waiting on.
-  if (!(await agentOn(uid, "notify"))) return;
-  const mem = await readMemory(uid);
-  if (mem.pending && mem.pending.expiresAt > Date.now()) return;
+  // The card above is the question. On the agent number too, as a yes/no it can act on (only when linked and on; a failed send
+  // leaves the card standing). Never over something else it's waiting on.
   const pending = { ...confirmPending({ type: "cleanup", showId: show.id, lineupId: lineup.id }, question, Date.now()), expiresAt: Date.now() + ASK_TTL_MS };
-  if (await sendToCurator(uid, `🧹 ${question}\nReply *yes* to clear it (POCs, regulars, co-hosts and admins stay), or *no* to keep everyone.`, { unprompted: true })) await writeMemory(uid, { pending });
+  await askCurator(uid, `🧹 ${question}\nReply *yes* to clear it (POCs, regulars, co-hosts and admins stay), or *no* to keep everyone.`, pending);
 }
 
 /** Keep everyone: nothing changes in the group; the scheduled posts carry on for next week as usual. */

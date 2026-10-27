@@ -29,7 +29,7 @@ import { sendRich } from "./sendRich.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
-import { agentOn, readMemory, sendMicCheck, sendToCurator, writeMemory } from "./agentOutbox.ts";
+import { askCurator, sendMicCheck } from "./agentOutbox.ts";
 
 /** A pending offer's yes/no. Returns true when the messages were an answer to it. */
 export async function handleOfferReply(uid: string, client: WAWebJS.Client, comicId: string, texts: string[]) {
@@ -79,12 +79,9 @@ async function settleOffer(uid: string, client: WAWebJS.Client, offerRef: Fireba
 
 /** With the agent number linked: "Rohan said yes. Add them?" A yes there books them (see agent.ts, adhoc_pick). */
 async function askAgentToPick(uid: string, offer: SpotOffer, show: string) {
-  if (!(await agentOn(uid, "notify"))) return;
-  const mem = await readMemory(uid);
-  if (mem.pending && mem.pending.expiresAt > Date.now()) return;
   const summary = `${offer.comicName} said yes to the ${show} ad hoc spot. Add them to the lineup?`;
   const pending = { ...confirmPending({ type: "adhoc_pick", showId: offer.showId, roundId: offer.round!.id, comicId: offer.comicId, comicName: offer.comicName }, summary, Date.now()), expiresAt: offer.expiresAt };
-  if (await sendToCurator(uid, `🎤 ${summary}\nReply *yes* to add them (they get the confirmation), or pick in Updates.`, { unprompted: true })) await writeMemory(uid, { pending });
+  await askCurator(uid, `🎤 ${summary}\nReply *yes* to add them (they get the confirmation), or pick in Updates.`, pending);
 }
 
 /** Tell someone who said yes that the spot is gone. */
@@ -292,8 +289,12 @@ export async function recordOutcome(uid: string, lineupId: string, outcome: "hap
   }
 }
 
-/** Morning after a confirmed show: ask (in the app always, on WhatsApp if enabled). */
-export async function sendMicChecks(uid: string, client: WAWebJS.Client) {
+/**
+ * Morning after a confirmed show: ask. The app's "Did it happen?" card comes from the lineup itself (confirmed, past, no outcome),
+ * so it exists whether or not any WhatsApp is up; this marks it asked and also asks on the agent number (or, failing that, in the
+ * curator's own chat). Runs without the main WhatsApp too, so the agent still asks when only it is linked.
+ */
+export async function sendMicChecks(uid: string, client: WAWebJS.Client | undefined) {
   const { settings, shows } = watchUser(uid);
   if (!settings.micCheck.enabled) return;
   const now = localNow(new Date(), settings.timezone);
@@ -307,8 +308,8 @@ export async function sendMicChecks(uid: string, client: WAWebJS.Client) {
     // With the agent number linked (and its notices on), it asks you there and reads your yes/no; no "Message yourself" chat.
     if (await sendMicCheck(uid, `🎤 Did *${show?.name ?? "the show"}* on ${formatDate(l.date)} happen? Reply *yes* or *no* here.`)) continue;
     if (!settings.micCheck.whatsapp) continue;
-    const self = client.info?.wid?._serialized;
-    if (!self) continue;
+    const self = client?.info?.wid?._serialized;
+    if (!client || !self) continue;
     await sendQueued(client, self, `🎤 Did *${show?.name ?? "the show"}* on ${formatDate(l.date)} happen? Reply *yes* or *no* here.`);
   }
 }

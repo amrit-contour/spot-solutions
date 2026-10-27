@@ -1,6 +1,6 @@
 // Everything the agent number sends goes through here: one place that checks it is linked, switched on, has the curator's number,
 // stays inside the rate limits, and uses the send queue (typing, jitter). It only ever addresses the curator's own number.
-import { AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyBatch, rateCheck, type AgentSettings, type NotifyItem, type PendingAction, type Settings } from "@spot/shared";
+import { AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyBatch, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type Settings } from "@spot/shared";
 import { sessionRef, userRef } from "./firebase.ts";
 import { agentRef, agentSessions } from "./agentSession.ts";
 import { sendQueued } from "./sendQueue.ts";
@@ -121,4 +121,46 @@ export async function flushNotify(uid: string, force = false): Promise<"none" | 
 export async function sendMicCheck(uid: string, text: string): Promise<boolean> {
   if (!(await agentOn(uid, "notify"))) return false;
   return sendToCurator(uid, text, { unprompted: true }).catch(() => false);
+}
+
+// ---- questions: the app's Updates item is the source of truth, the agent just asks the same thing ----
+
+/**
+ * Ask the curator a question on the agent number as well. The Updates item (state in Firestore) is written by the caller FIRST and
+ * never depends on this: it does nothing when the agent isn't linked or is off, never throws when the send fails, and never talks
+ * over a question the agent is already waiting on. `pending` is stored only once the message actually went out.
+ */
+export async function askCurator(uid: string, text: string, pending?: PendingAction): Promise<boolean> {
+  try {
+    if (!(await agentOn(uid, "notify"))) return false;
+    if (pending) {
+      const mem = await readMemory(uid);
+      if (mem.pending && mem.pending.expiresAt > Date.now()) return false;
+    }
+    if (!(await sendToCurator(uid, text, { unprompted: true }))) return false;
+    if (pending) await writeMemory(uid, { pending });
+    return true;
+  } catch (e) {
+    console.warn(`[agent] ${uid} couldn't ask on WhatsApp (the question stays in Updates):`, (e as Error).message);
+    return false;
+  }
+}
+
+const plansOf = (p: PendingAction) => (p.stage === "confirm" ? [p.plan] : p.choices.map((c) => c.plan));
+
+/**
+ * The curator answered in the app. If the agent was waiting on exactly that question, clear it (a later "yes" must not redo it) and,
+ * only then, say so in the agent chat. Anything else the agent is waiting on is left alone. Never throws.
+ */
+export async function resolvedInApp(uid: string, matches: (plan: ActionPlan) => boolean, text = "Done in the app, so I'm no longer waiting on that one."): Promise<boolean> {
+  try {
+    const p = (await readMemory(uid)).pending;
+    if (!p || !plansOf(p).some(matches)) return false;
+    await writeMemory(uid, { pending: null });
+    if (p.expiresAt > Date.now() && (await agentOn(uid, "notify"))) await sendToCurator(uid, text, { unprompted: true }).catch(() => false);
+    return true;
+  } catch (e) {
+    console.warn(`[agent] ${uid} couldn't clear a pending question:`, (e as Error).message);
+    return false;
+  }
 }

@@ -6,6 +6,7 @@ import { notice, runShowDaySync } from "./commands.ts";
 import { sessions } from "./sessions.ts";
 import { agentSessions } from "./agentSession.ts";
 import { agentTick } from "./agent.ts";
+import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
 import { expireOffers, sendMicChecks } from "./replies.ts";
 import { maybeCheckFollowUps } from "./followUp.ts";
@@ -50,13 +51,17 @@ export function startScheduler(uids: () => Iterable<string>) {
       // The agent number's own notices and morning digest (it runs wherever the account's lease is held).
       if (agentSessions.get(uid)) void agentTick(uid).catch((e) => console.error("[agent]", e));
       const client = sessions.get(uid);
+      // Questions for the curator (mic check, day-after cleanup ask) go to Updates and the agent even when the main WhatsApp is down.
+      // Only on the server that holds the account, so two servers never ask twice.
+      if (client || fleet.holds(uid)) {
+        void sendMicChecks(uid, client).catch((e) => console.error("[mic-check]", e));
+        void runCleanups(uid, client).catch((e) => console.error("[cleanup]", e));
+      }
       if (!client) continue;
       void tick(uid).catch((e) => console.error("[scheduler]", e));
       void expireOffers(uid).catch((e) => console.error("[offers]", e));
-      void sendMicChecks(uid, client).catch((e) => console.error("[mic-check]", e));
       void maybeCheckFollowUps(uid, client).catch((e) => console.error("[follow-up]", e));
       void sendGroupPosts(uid, client).catch((e) => console.error("[group-post]", e));
-      void runCleanups(uid, client).catch((e) => console.error("[cleanup]", e));
       void maybeTickAsks(uid, client).catch((e) => console.error("[asks]", e));
     }
   }, TICK_MS).unref();

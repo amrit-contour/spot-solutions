@@ -44,7 +44,7 @@ import {
 import { col, db, expireAt, userRef } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { agentSessions } from "./agentSession.ts";
-import { curatorPhone, forgetSettings, sendToCurator } from "./agentOutbox.ts";
+import { curatorPhone, forgetSettings, resolvedInApp, sendToCurator } from "./agentOutbox.ts";
 import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
 import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
@@ -103,7 +103,7 @@ const handlers: Record<Command["type"], Handler> = {
   async test_agent(uid) {
     if (!agentSessions.get(uid)) throw new Error("The agent number isn't connected yet");
     if (!(await curatorPhone(uid))) throw new Error("Your own WhatsApp isn't linked, so the agent doesn't know your number");
-    const ok = await sendToCurator(uid, "Hello from your Nothing BOT Curating agent. I'm linked and I only talk to you. Send *help* to see what I can do.", { ignoreSwitch: true });
+    const ok = await sendToCurator(uid, "Hello from your Nothing BOT Curate agent. I'm linked and I only talk to you. Send *help* to see what I can do.", { ignoreSwitch: true });
     if (!ok) throw new Error("Couldn't send: the agent hit its hourly limit, try again later");
   },
 
@@ -444,7 +444,10 @@ const handlers: Record<Command["type"], Handler> = {
 
   /** Pick from an ad hoc round's yeses (Updates). close: tell the rest it's filled. */
   async settle_round(uid, { roundId, pick, close }) {
-    return settleRound(uid, sessions.require(uid), String(roundId), Array.isArray(pick) ? pick.map(String) : [], close !== false);
+    const r = await settleRound(uid, sessions.require(uid), String(roundId), Array.isArray(pick) ? pick.map(String) : [], close !== false);
+    // Answered here: the agent must stop waiting on its "add them?" for this round.
+    await resolvedInApp(uid, (p) => p.type === "adhoc_pick" && p.roundId === String(roundId));
+    return r;
   },
 
   /** WhatsApp poll to the hosts group: which of this week's shows can you take? */
@@ -516,7 +519,7 @@ const handlers: Record<Command["type"], Handler> = {
         out[name] = `failed: ${(e as Error).message.slice(0, 120)}`;
       }
     };
-    await tryOne("text", "🧪 Nothing BOT Curating format test (only you see this)\n\n*bold* _italic_ ~strike~ ```mono```\n> a quote\n* a bullet\n1. a numbered line\n`inline code`");
+    await tryOne("text", "🧪 Nothing BOT Curate format test (only you see this)\n\n*bold* _italic_ ~strike~ ```mono```\n> a quote\n* a bullet\n1. a numbered line\n`inline code`");
     await tryOne("poll", new WAWebJS.Poll("🧪 Poll test: want the Monday 8:30 PM spot?", ["Yes, I'll take it", "Pass"], { allowMultipleAnswers: false, messageSecret: undefined }));
     await tryOne("location", new WAWebJS.Location(12.9784, 77.6408, { name: "Test venue pin", address: "Indiranagar, Bengaluru" }));
     await tryOne("buttons", new WAWebJS.Buttons("🧪 Buttons test: do you see two buttons below?", [{ body: "Yes" }, { body: "No" }], "Buttons", "Deprecated by WhatsApp"));
@@ -567,11 +570,20 @@ const handlers: Record<Command["type"], Handler> = {
     const lineup = (await ref.get()).data() as Lineup | undefined;
     if (!lineup) throw new Error("That lineup isn't there any more.");
     assertNotBackfilled(lineup);
-    if (lineup.cleanup?.status === "done") return { already: true };
-    if (keep) return void (await keepGroup(uid, String(lineupId)));
+    const answered = () => resolvedInApp(uid, (p) => p.type === "cleanup" && p.lineupId === String(lineupId));
+    if (lineup.cleanup?.status === "done") {
+      await answered();
+      return { already: true };
+    }
+    if (keep) {
+      await keepGroup(uid, String(lineupId));
+      return void (await answered());
+    }
     const show = watchUser(uid).shows.find((s) => s.id === lineup.showId);
     if (!show?.groupId) throw new Error("This show has no WhatsApp group linked.");
-    return clearGroup(uid, sessions.require(uid), show, { ...lineup, id: String(lineupId) });
+    const r = await clearGroup(uid, sessions.require(uid), show, { ...lineup, id: String(lineupId) });
+    await answered();
+    return r;
   },
 
   // Messages page: read live from WhatsApp, returned as the (short-lived) command result, never stored elsewhere.
