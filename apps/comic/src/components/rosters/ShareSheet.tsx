@@ -2,13 +2,15 @@ import { useState } from "react";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
 import { Button, Field, Sheet, TextArea, TextInput } from "@spot/ui";
+import type { MemberEntry } from "../../lib/members";
+import { MemberPicker } from "../MemberPicker";
 import { useRoster } from "../../lib/roster";
-import { lookupMember, sendShare } from "../../lib/rosters";
+import { sendShare } from "../../lib/rosters";
 
 /** Send a copy of some of my rooms to one other member. They find it in Community, review it and take what they want. */
 export function ShareSheet({ open, onClose, user }: { open: boolean; onClose: () => void; user: User }) {
   const store = useRoster();
-  const [email, setEmail] = useState("");
+  const [to, setTo] = useState<MemberEntry | null>(null);
   const [title, setTitle] = useState("My rooms");
   const [note, setNote] = useState("");
   const [skip, setSkip] = useState<Set<string>>(new Set());
@@ -19,7 +21,7 @@ export function ShareSheet({ open, onClose, user }: { open: boolean; onClose: ()
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
-      setEmail("");
+      setTo(null);
       setNote("");
       setSkip(new Set());
       setError("");
@@ -36,15 +38,13 @@ export function ShareSheet({ open, onClose, user }: { open: boolean; onClose: ()
 
   const send = async () => {
     setError("");
-    if (!email.trim()) return setError("Enter their email address.");
+    if (!to) return setError("Pick who to share with.");
     if (!title.trim()) return setError("Give it a short title.");
     if (picked.length === 0) return setError("Pick at least one room.");
     setBusy(true);
     try {
-      const to = await lookupMember(email);
-      if (to.uid === user.uid) throw new Error("That's your own address. Enter the person you want to share with.");
       await sendShare(to, user, { title, note, roster: { rooms: picked, curators: store.curators } });
-      toast.success(`Sent to ${to.name ?? to.email}`);
+      toast.success(`Sent to ${to.name}`);
       onClose();
     } catch (e) {
       setError(e instanceof Error && !/permission|insufficient/i.test(e.message) ? e.message : "Couldn't send it. Check your connection and try again.");
@@ -69,9 +69,7 @@ export function ShareSheet({ open, onClose, user }: { open: boolean; onClose: ()
         <p className="type-body-l text-on-surface-variant">
           They get a copy in Community and choose what to take. It is a snapshot: later changes to your rooms aren't sent. Your notes, role and spots stay private.
         </p>
-        <Field label="Their email" hint="They need to be using the app already.">
-          <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@gmail.com" autoCapitalize="none" autoCorrect="off" inputMode="email" autoComplete="off" />
-        </Field>
+        <MemberPicker label="Share with" hint="Anyone approved in the app. Type a name or email." value={to} onChange={setTo} exclude={[user.uid]} />
         <Field label="Title">
           <TextInput value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} />
         </Field>

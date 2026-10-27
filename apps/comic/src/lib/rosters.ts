@@ -1,11 +1,9 @@
 // Community rosters, the Firestore side: published rosters, follows, suggestions, publishers, shares, and the one callable.
 // The pure rules (what a push changes, applying a suggestion) are in @spot/shared (rosterCommunity.ts).
-import { getApp } from "firebase/app";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   collection, deleteDoc, doc, getCountFromServer, onSnapshot, query, runTransaction, setDoc, updateDoc, where, writeBatch,
 } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useMemo, useState } from "react";
 import {
   CHANGELOG_KEEP, applySuggestion, buildPushDoc, describeSuggestion, hasUpdate, shareableRoster, toSharedRoster,
@@ -263,23 +261,14 @@ export const rejectSuggestion = (rosterId: string, suggestionId: string, user: U
 export const withdrawSuggestion = (rosterId: string, suggestionId: string) => deleteDoc(doc(db, "publishedRosters", rosterId, "suggestions", suggestionId));
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// People: lookups by email, co-maintainers, publishers, shares
+// People: co-maintainers, publishers, shares (who to pick: lib/members.ts)
 // ---------------------------------------------------------------------------------------------------------------------------
 
 export interface Member {
   uid: string;
   email: string;
   name?: string;
-}
-
-/** Another approved member by email (a callable: the app can't read other people's access records). Throws with a message to show. */
-export async function lookupMember(email: string): Promise<Member> {
-  try {
-    return (await httpsCallable<{ email: string }, Member>(getFunctions(getApp(), "asia-south1"), "lookupRosterUser")({ email })).data;
-  } catch (e) {
-    const msg = (e as { message?: string }).message;
-    throw new Error(msg && !/^internal$/i.test(msg) ? msg : "Couldn't look that up. Check your connection and try again.");
-  }
+  photoURL?: string | null;
 }
 
 /** Owner only (the rules): who else approves suggestions. */

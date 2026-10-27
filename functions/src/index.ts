@@ -17,8 +17,8 @@ import { parseKey } from "./gcrypto";
 import { connect as gcConnect, disconnect as gcDisconnect, onComicWritten as gcOnComic, planContacts as gcPlan, listContacts as gcList, processDue as gcProcess, processUser as gcProcessUser, runContacts as gcRun, type Caller as GcCaller, type GcDeps } from "./googleContacts";
 import { firestoreGcStore } from "./googleStore";
 import type { ComicBits } from "./googleLogic";
-import { lookupRosterUser as lookupUser } from "./rosterUsers";
-import { firestoreDirectory } from "./rosterUsersStore";
+import { memberLister } from "./members";
+import { firestoreMembers } from "./membersStore";
 
 initializeApp();
 // A dedicated identity (deploy/setup-functions-iam.sh), not the default compute account.
@@ -269,13 +269,16 @@ export const syncGoogleContacts = onSchedule({ schedule: "every 6 hours", secret
   if (r.users) console.log(`[google-contacts] ${r.users} curators, ${r.saved} contacts saved`);
 });
 
-// ---------- Community rosters (functions/src/rosterUsers.ts) ----------
+// ---------- Community rosters (functions/src/members.ts) ----------
 
-/** Comic app: who is this email? Another approved member's uid and name, for co-maintainers, publishers and sharing a roster. */
-export const lookupRosterUser = onCall(async (req) => {
+let listMembersImpl: ReturnType<typeof memberLister> | undefined;
+
+/** Comic app: every approved member (uid, name, email, photo) for the member picker. Approved callers only; cached ~5 minutes per instance. */
+export const listMembers = onCall(async (req) => {
   try {
     const a = req.auth;
-    return await lookupUser(firestoreDirectory(), { uid: a?.uid, email: a?.token.email, verified: a?.token.email_verified === true, anonymous: !a || a.token.firebase?.sign_in_provider === "anonymous" }, (req.data ?? {}) as { email?: unknown });
+    listMembersImpl ??= memberLister(firestoreMembers());
+    return await listMembersImpl({ uid: a?.uid, email: a?.token.email, verified: a?.token.email_verified === true, anonymous: !a || a.token.firebase?.sign_in_provider === "anonymous" });
   } catch (e) {
     return rethrow(e);
   }

@@ -2,14 +2,16 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import type { User } from "firebase/auth";
 import { toast } from "sonner";
-import { Button, Field, IconArrowLeft, IconButton, IconShield, IconTrash, PageHeader, TextInput } from "@spot/ui";
-import { addPublisher, lookupMember, removePublisher, usePublishers } from "../lib/rosters";
+import { Button, IconArrowLeft, IconButton, IconShield, IconTrash, PageHeader } from "@spot/ui";
+import { MemberPicker } from "../components/MemberPicker";
+import type { MemberEntry } from "../lib/members";
+import { addPublisher, removePublisher, usePublishers } from "../lib/rosters";
 
 /** Admins only: who may publish community rosters. Admins can always publish, so they aren't listed. */
 export function RostersPublishers({ user, admin }: { user: User; admin: boolean }) {
   const nav = useNavigate();
   const list = usePublishers(admin);
-  const [email, setEmail] = useState("");
+  const [picked, setPicked] = useState<MemberEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   if (!admin) return <Navigate to="/rosters" replace />;
@@ -18,11 +20,12 @@ export function RostersPublishers({ user, admin }: { user: User; admin: boolean 
     setError("");
     setBusy(true);
     try {
-      const m = await lookupMember(email);
+      const m = picked;
+      if (!m) return;
       if (list.data.some((p) => p.uid === m.uid)) throw new Error("They can publish already.");
       await addPublisher(m, user.uid);
       toast.success(`${m.name ?? m.email} can now publish`);
-      setEmail("");
+      setPicked(null);
     } catch (e) {
       setError(e instanceof Error && !/permission|insufficient/i.test(e.message) ? e.message : "Couldn't add them. Check your connection and try again.");
     } finally {
@@ -52,12 +55,10 @@ export function RostersPublishers({ user, admin }: { user: User; admin: boolean 
           ))}
           {!list.loading && list.data.length === 0 && <li className="px-3 py-4 type-body-m text-on-surface-variant">No one else yet.</li>}
         </ul>
-        <Field label="Add by email" hint="They need to be using the app and approved.">
-          <div className="flex min-w-0 gap-2">
-            <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && email.trim() && void add()} className="min-w-0 flex-1" placeholder="name@gmail.com" autoCapitalize="none" autoCorrect="off" inputMode="email" autoComplete="off" />
-            <Button onClick={() => void add()} loading={busy} disabled={!email.trim()} className="h-12">Add</Button>
-          </div>
-        </Field>
+        <div className="flex min-w-0 flex-col gap-3">
+          <MemberPicker label="Add a publisher" hint="Anyone approved in the app. Type a name or email." value={picked} onChange={setPicked} exclude={[user.uid, ...list.data.map((p) => p.uid)]} />
+          {picked && <Button onClick={() => void add()} loading={busy} className="h-12 self-start">Add {picked.name}</Button>}
+        </div>
         {error && <p role="alert" className="rounded-md bg-error-container p-4 type-body-m text-on-error-container">{error}</p>}
       </div>
     </div>

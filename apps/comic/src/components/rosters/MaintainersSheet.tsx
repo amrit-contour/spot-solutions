@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import type { PublishedRosterDoc } from "@spot/shared";
-import { Button, Field, IconButton, IconTrash, Sheet, TextInput } from "@spot/ui";
-import { lookupMember, setCoMaintainers } from "../../lib/rosters";
+import { Button, IconButton, IconTrash, Sheet } from "@spot/ui";
+import { setCoMaintainers } from "../../lib/rosters";
+import type { MemberEntry } from "../../lib/members";
+import { MemberPicker } from "../MemberPicker";
 
 /** Owner only: who else approves suggestions. They don't need to be publishers. */
 export function MaintainersSheet({ roster, open, onClose }: { roster: PublishedRosterDoc; open: boolean; onClose: () => void }) {
-  const [email, setEmail] = useState("");
+  const [picked, setPicked] = useState<MemberEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const names = roster.maintainerNames ?? {};
@@ -19,12 +21,13 @@ export function MaintainersSheet({ roster, open, onClose }: { roster: PublishedR
     setError("");
     setBusy(true);
     try {
-      const m = await lookupMember(email);
+      const m = picked;
+      if (!m) return;
       if (m.uid === roster.ownerUid) throw new Error("They own this roster already.");
       if (roster.coMaintainers.includes(m.uid)) throw new Error("They are a co-maintainer already.");
       await save([...roster.coMaintainers, m.uid], { ...names, [m.uid]: m.name ?? m.email });
       toast.success(`${m.name ?? m.email} can now approve suggestions`);
-      setEmail("");
+      setPicked(null);
     } catch (e) {
       setError(e instanceof Error && !/permission|insufficient/i.test(e.message) ? e.message : "Couldn't add them. Check your connection and try again.");
     } finally {
@@ -56,12 +59,10 @@ export function MaintainersSheet({ roster, open, onClose }: { roster: PublishedR
             </li>
           ))}
         </ul>
-        <Field label="Add by email" hint="They need to be using the app already.">
-          <div className="flex min-w-0 gap-2">
-            <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && email.trim() && void add()} className="min-w-0 flex-1" placeholder="name@gmail.com" autoCapitalize="none" autoCorrect="off" inputMode="email" autoComplete="off" />
-            <Button onClick={() => void add()} loading={busy} disabled={!email.trim()} className="h-12">Add</Button>
-          </div>
-        </Field>
+        <div className="flex min-w-0 flex-col gap-3">
+          <MemberPicker label="Add a co-maintainer" hint="Anyone approved in the app. Type a name or email." value={picked} onChange={setPicked} exclude={[roster.ownerUid, ...roster.coMaintainers]} />
+          {picked && <Button onClick={() => void add()} loading={busy} className="h-12 self-start">Add {picked.name}</Button>}
+        </div>
         {error && <p role="alert" className="rounded-md bg-error-container p-4 type-body-m text-on-error-container">{error}</p>}
       </div>
     </Sheet>
