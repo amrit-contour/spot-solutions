@@ -1,5 +1,10 @@
 User-agent: *
 Allow: /
 Disallow: /dl/
+Disallow: /install
+Disallow: /uninstall
+Disallow: /migrate-mac.sh
+Disallow: /restore-backup.sh
+Disallow: /install-mac.sh
 
-Sitemap: https://spot-solutions.web.app/sitemap.xml
+Sitemap: https://nothingbotcurating.web.app/sitemap.xml

@@ -1,4 +1,4 @@
-// Public server guide: spot-solutions.web.app/help. No sign-in needed.
+// Public server guide: nothingbotcurating.web.app/help. No sign-in needed.
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { toast } from "sonner";

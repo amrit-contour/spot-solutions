@@ -14,7 +14,7 @@ import { Menu, MenuItem } from "@spot/ui";
 import { DeleteDataDialog, RemoveUserDialog } from "./AdminDataTools";
 import { IconArrowDown, IconCheck, IconClose, IconComics, IconMenuDots, IconUserPlus } from "@spot/ui";
 
-const APP_URL = "https://spot-solutions.web.app";
+const APP_URL = "https://nothingbotcurating.web.app";
 const EMAIL = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
 
 /** Ready-to-send message for an invite. */

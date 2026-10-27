@@ -6,7 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-export const WEB_BASE = process.env.NBS_WEB_URL ?? "https://spot-solutions.web.app";
+export const WEB_BASE = process.env.NBS_WEB_URL ?? "https://nothingbotcurating.web.app";
 const FN_BASE = process.env.NBS_FUNCTIONS_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net";
 const POLL_MS = Number(process.env.NBS_CONNECT_POLL_MS ?? 3000);
 

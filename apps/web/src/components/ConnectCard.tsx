@@ -58,7 +58,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
               )}
               {(view === "idle" || view === "starting" || view === "qr") && (
                 <p className="mt-3 rounded-md bg-surface-container px-3 py-2 type-body-s text-on-surface-variant md:hidden">
-                  Linking needs a second screen. Open spot-solutions.web.app on a laptop and scan the code there with this phone.
+                  Linking needs a second screen. Open nothingbotcurating.web.app on a laptop and scan the code there with this phone.
                 </p>
               )}
               {(view === "idle" || view === "starting" || view === "qr") && (

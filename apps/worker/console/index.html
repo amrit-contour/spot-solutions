@@ -924,7 +924,7 @@ function render() {
   const ws = wstate(s), wStopped = ws === "stopped" || ws === "stopping";
   const allUp = !wStopped && s.services.worker && (s.services.ollama || !s.localModel); // Gemini-only servers have no Ollama
   const steps = [
-    { done: !!(k && k.projectId), title: "Connected to Nothing BOT Curating", body: k && k.projectId ? `Project <b>${esc(k.projectId)}</b> · <span class="mono">${esc(k.clientEmail)}</span>` : "Sign in with your Nothing BOT Curating account below, or use a join code. <a href=\"https://spot-solutions.web.app/help#several-servers\" target=\"_blank\" rel=\"noreferrer\">How ↗</a>" },
+    { done: !!(k && k.projectId), title: "Connected to Nothing BOT Curating", body: k && k.projectId ? `Project <b>${esc(k.projectId)}</b> · <span class="mono">${esc(k.clientEmail)}</span>` : "Sign in with your Nothing BOT Curating account below, or use a join code. <a href=\"https://nothingbotcurating.web.app/help#several-servers\" target=\"_blank\" rel=\"noreferrer\">How ↗</a>" },
     { done: c.admins.length > 0, title: "Admins", body: c.admins.length ? c.admins.map(esc).join(", ") : "Emails that can see this server's page in the Nothing BOT Curating app. Connecting with your account adds yours." },
     { done: !!c.geminiServerKey, optional: s.localModel, title: s.localModel ? "Server Gemini key (optional)" : "Gemini key (this server has no local model)", body: c.geminiServerKey ? `Set · <span class="mono">${esc(c.geminiServerKey)}</span>. Manage it under AI models.` : "Curators add their own key in the app (Settings → AI models), or set a shared one under AI models below." },
   ];
@@ -935,7 +935,7 @@ function render() {
     <form id="cfg" style="margin-top:8px">
       <label for="admins">Admin emails (comma separated)</label>
       <input type="text" id="admins" value="${esc(c.admins.join(", "))}" placeholder="you@gmail.com">
-      <div class="actions"><button type="submit">Save &amp; restart worker</button><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app" target="_blank" rel="noreferrer">Open Nothing BOT Curating ↗</a><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://spot-solutions.web.app/help" target="_blank" rel="noreferrer">Server guide ↗</a></div>
+      <div class="actions"><button type="submit">Save &amp; restart worker</button><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://nothingbotcurating.web.app" target="_blank" rel="noreferrer">Open Nothing BOT Curating ↗</a><a class="btn text" style="text-decoration:none;display:inline-flex" href="https://nothingbotcurating.web.app/help" target="_blank" rel="noreferrer">Server guide ↗</a></div>
     </form>`;
   const cpuPct = Math.round(s.cpu.usage * 100), memPct = Math.round((1 - s.memory.free / s.memory.total) * 100);
   const lowDisk = s.storage?.low;

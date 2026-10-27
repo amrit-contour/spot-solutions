@@ -19,6 +19,18 @@
         ],
         "comedy-hyphen": [
           "nothing-bot-comedy"
+        ],
+        "curating-but": [
+          "nothingbutcurating"
+        ],
+        "curating-but-hyphen": [
+          "nothing-but-curating"
+        ],
+        "comedy-but": [
+          "nothingbutcomedy"
+        ],
+        "comedy-but-hyphen": [
+          "nothing-but-comedy"
         ]
       }
     }

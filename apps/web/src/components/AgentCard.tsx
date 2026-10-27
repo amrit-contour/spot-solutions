@@ -76,7 +76,7 @@ export function AgentCard() {
                       ))}
                     </ol>
                   )}
-                  <p className="mt-3 rounded-md bg-surface-container px-3 py-2 type-body-s text-on-surface-variant md:hidden">Linking needs a second screen. Open spot-solutions.web.app on a laptop and scan the code there.</p>
+                  <p className="mt-3 rounded-md bg-surface-container px-3 py-2 type-body-s text-on-surface-variant md:hidden">Linking needs a second screen. Open nothingbotcurating.web.app on a laptop and scan the code there.</p>
                 </>
               )}
             </motion.div>
