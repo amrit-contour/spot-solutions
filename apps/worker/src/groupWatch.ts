@@ -40,12 +40,14 @@ import { lidToPhoneIds, resolveNames } from "./chatNames.ts";
 import { asMessageLike } from "./chats.ts";
 import { deliverDraft } from "./deliver.ts";
 import { notifyComic } from "./notify.ts";
-import { buildGroupPrompt, GROUP_SCHEMA, readWithFallback } from "./groupRead.ts";
+import { buildGroupPrompt, GROUP_SCHEMA, readWithFallback, readGroupMessage } from "./groupRead.ts";
 
 /** A message older than this isn't news (a catch-up after a restart): an offer from an hour ago is gone. */
 const STALE_MS = 15 * 60_000;
 /** How long the model gets before the rules read the message instead. An offer can't wait minutes. */
 const AI_BUDGET_MS = Number(process.env.NBS_GROUP_AI_BUDGET_MS ?? 20_000);
+/** The background room lookup after a fast push can take as long as the model needs. */
+const ENRICH_BUDGET_MS = Number(process.env.NBS_GROUP_ENRICH_MS ?? 90_000);
 const ATTACH_EVERY_MS = 10_000;
 const SWEEP_EVERY_MS = 60_000;
 const KEEP_ALERTS_DAYS = 3;
@@ -166,18 +168,34 @@ async function handle(uid: string, client: WAWebJS.Client, wa: WAWebJS.Message, 
   const directory: Person[] = comics.map((c) => ({ id: c.chatId ?? c.id, name: c.name }));
   const ctx = { rooms, curators, directory, selfId, tz, now };
 
-  // The model says what it is; the rules read the details. If the model is slow or down, the rules decide so an offer isn't lost.
-  const { read, by, why } = await readWithFallback(
-    async () => (await generateJson(uid, settings.ai, buildGroupPrompt(msg, rooms, parts), GROUP_SCHEMA)).text,
-    msg,
-    AI_BUDGET_MS,
-  );
-  const reading = interpret(read, msg, ctx);
-  console.log(`[groups] ${uid} ${group.name}: ${reading.kind} (${by}${why ? `: ${why}` : ""})`);
+  const ask = async () => (await generateJson(uid, settings.ai, buildGroupPrompt(msg, rooms, parts), GROUP_SCHEMA)).text;
+  // Rules first: a message that is plainly an offer (or a closure) is applied and pushed at once, with no model in the way.
+  // Anything doubtful (schedules, opening notices, odd wording) goes to the model, with the rules as the slow-model fallback.
+  const { reading, path, why } = await readGroupMessage(ask, msg, ctx, AI_BUDGET_MS);
+  console.log(`[groups] ${uid} ${group.name}: ${reading.kind} (${path}${why ? `: ${why}` : ""})`);
   if (reading.kind === "other") return; // not stored, not logged beyond the kind
 
   const auto = group.autoApply ?? Boolean(user.comicSettings?.autoApplyGroupUpdates);
   await apply(uid, msg, reading, { auto, rooms, curators, tz, now });
+  // Pushed on the rules alone but the room wasn't matched: let the model fill it in on the stored alert, later and quietly (no second push).
+  if (path === "rules-fast" && reading.kind === "spot_offer" && !reading.offer.roomId) void enrichRoom(uid, msg, rooms, parts, ask, ctx);
+}
+
+/** Background: ask the model which room a fast-pushed alert is about and update the stored alert. Never pushes, never throws. */
+async function enrichRoom(uid: string, msg: GroupMsg, rooms: Room[], parts: ReturnType<typeof localParts>, ask: () => Promise<string>, ctx: Parameters<typeof interpret>[2]) {
+  try {
+    const { read, by } = await readWithFallback(ask, msg, ENRICH_BUDGET_MS);
+    if (by !== "model" || read.kind !== "spot_offer") return;
+    const r = interpret(read, msg, ctx);
+    if (r.kind !== "spot_offer" || (!r.offer.roomId && !r.offer.roomName)) return;
+    const ref = col(uid, "spotAlerts").doc(alertIdFor(msg.groupId, msg.id));
+    const cur = (await ref.get()).data() as SpotAlert | undefined;
+    if (!cur || cur.roomId) return;
+    await ref.update(stripUndefined({ roomId: r.offer.roomId, roomName: r.offer.roomName, showId: r.offer.showId }));
+    console.log(`[groups] ${uid} alert room filled in by the model: ${r.offer.roomName}`);
+  } catch (e) {
+    console.error(`[groups] ${uid} room enrichment failed`, (e as Error).message);
+  }
 }
 
 interface ApplyCtx {

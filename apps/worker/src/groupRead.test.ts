@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BLR_ROSTER } from "@spot/shared/fixtures/blrRooms";
 import { interpret, zonedToMs, type GroupMsg } from "@spot/shared";
-import { buildGroupPrompt, parseAiRead, readWithFallback, roomLines } from "./groupRead.ts";
+import { buildGroupPrompt, parseAiRead, readGroupMessage, readWithFallback, roomLines } from "./groupRead.ts";
 
 const TZ = "Asia/Kolkata";
 const NOW = zonedToMs("2026-10-27", "17:00", TZ);
@@ -58,5 +58,35 @@ describe("when the model can't answer", () => {
     const slow = await readWithFallback(() => new Promise<string>(() => undefined), m, 20);
     expect(slow).toMatchObject({ by: "rules", read: { kind: "spot_offer" } });
     expect(slow.why).toMatch(/no answer/);
+  });
+});
+
+describe("readGroupMessage: rules first", () => {
+  const boom = () => {
+    throw new Error("the model must not be called");
+  };
+  it("a confident offer never calls the model, even if the room isn't matched", async () => {
+    let calls = 0;
+    const ask = async () => (calls++, "{}");
+    for (const t of ["Spots at 7 and 9 today at Banter, DM", "Spots at 7 today, DM"]) {
+      const r = await readGroupMessage(ask, msg(t), ctx, 20_000);
+      expect(r.path).toBe("rules-fast");
+      expect(r.reading.kind).toBe("spot_offer");
+    }
+    expect(calls).toBe(0);
+  });
+  it("a confident closure never calls the model", async () => {
+    const r = await readGroupMessage(boom as never, msg("Closed Thank you"), ctx, 20_000);
+    expect(r.path).toBe("rules-fast");
+    expect(r.reading.kind).toBe("closure");
+  });
+  it("doubtful messages go to the model; a dead model falls back to the rules", async () => {
+    let calls = 0;
+    const model = await readGroupMessage(async () => (calls++, '{"kind":"opening_notice","room":"ministry"}'), msg("ministry spots will open by 3:15pm"), ctx, 20_000);
+    expect(calls).toBe(1);
+    expect(model.path).toBe("model");
+    expect(model.reading.kind).toBe("opening_notice");
+    const down = await readGroupMessage(async () => { throw new Error("offline"); }, msg("Any spots available today?"), ctx, 20_000);
+    expect(down.path).toBe("rules-fallback");
   });
 });

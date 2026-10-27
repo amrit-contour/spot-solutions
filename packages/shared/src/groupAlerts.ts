@@ -761,6 +761,13 @@ const OFFER_RE = /\b(spots?|slots?)\b[^.\n]*\b(available|avail|open|free|left|va
 const OPENING_RE = /\b(will open|opens?\s+(?:at|by|in|from)|open by|opening (?:at|by)|website\b[^.\n]*\bopen|registrations?\b[^.\n]*\bopen)\b/i;
 const CLOSURE_RE = /\b(closed?|over|full|filled|houseful|sold out|no more (?:spots?|slots?)|done|finished|booked)\b/i;
 
+/** Who to DM, by the rules: a tagged person ("PM @x"), someone named ("DM Dhruv"), or the sender. */
+export function contactHint(text: string, mentioned: Person[] = []): Pick<AiRead, "contactKind" | "contactName"> {
+  const t = text.trim();
+  const named = namedContact(t);
+  return mentioned.length && /\b(dm|pm|ping|message|msg|contact|whatsapp|call|text)\s+@/i.test(t) ? { contactKind: "mentioned" } : named ? { contactKind: "named", contactName: named } : { contactKind: "sender" };
+}
+
 /**
  * The model's job done by rules: what kind of message it is, and the room or person it names. Used when no model answers
  * (too slow, offline, no key) so an urgent offer still gets through, and in tests.
@@ -768,9 +775,7 @@ const CLOSURE_RE = /\b(closed?|over|full|filled|houseful|sold out|no more (?:spo
 export function heuristicRead(text: string, mentioned: Person[] = []): AiRead {
   const t = text.trim();
   if (parseSchedule(t).length >= 2 && /\b(schedule|curat\w*|roster|lineup)\b/i.test(t)) return { kind: "schedule_update" };
-  const named = namedContact(t);
-  const contact: Pick<AiRead, "contactKind" | "contactName"> =
-    mentioned.length && /\b(dm|pm|ping|message|msg|contact|whatsapp|call|text)\s+@/i.test(t) ? { contactKind: "mentioned" } : named ? { contactKind: "named", contactName: named } : { contactKind: "sender" };
+  const contact = contactHint(t, mentioned);
   if (OPENING_RE.test(t) && /\b(spots?|slots?|website|registrations?|mics?)\b/i.test(t)) return { kind: "opening_notice" };
   const short = t.length <= 70;
   if (OFFER_RE.test(t) && !(short && /^\W*(closed?|over|full|done)\b/i.test(t))) return { kind: "spot_offer", ...contact };
@@ -779,6 +784,43 @@ export function heuristicRead(text: string, mentioned: Person[] = []): AiRead {
 }
 
 const SPOT_WORD = /\b(spots?|slots?|busk\w*|mics?|sets?)\b/i;
+
+// Fast path: only strong signals count, so a push can go out without waiting for a model. Anything doubtful is "not confident"
+// and goes to the model. Missing a real offer here costs seconds (the model still gets it); a false one costs a wrong push.
+const OFFER_SIGNAL = new RegExp(
+  `${OFFER_RE.source}|\\bbusk\\w*\\b|\\bneeds?\\s+(?:\\d+\\s+)?(?:comics?|comedians?|performers?)\\b|\\banyone\\s+(?:free|up for|available)\\b`,
+  "i",
+);
+const TIME_SIGNAL = /\b(today|tonight|now|tomorrow|tmrw|asap|immediately|this (?:evening|afternoon|morning)|reach by|in\s+\d{1,3}\s*(?:mins?|minutes?))\b/i;
+/** A comic asking for a spot, not offering one. */
+const REQUEST_RE = /\b(can|could|may) i (?:get|have|take|do)\b|\bany\s+(?:spots?|slots?)\b|\b(?:looking|searching|need|want|wanting|req(?:uire)?)\s+(?:for\s+)?(?:a\s+|an\s+|one\s+)?(?:spots?|slots?)\b|\bdoes anyone have\b|\banyone (?:has|have|got|having) (?:a |any )?(?:spots?|slots?)\b|\bis there (?:any|a)\s+(?:spots?|slots?)\b|\bi (?:need|want) (?:a )?(?:spot|slot)\b|\b(?:spot|slot)s? (?:pls|plz|please)\b|\bplease (?:give|add|keep)\b/i;
+const CLOSURE_WORDS = /\b(closed?|over|full|filled|houseful|sold out|no more|no (?:spots?|slots?)|done|finished|booked|taken|gone|cancel\w*)\b/i;
+const CLOSURE_LEAD = /^\W*(closed?|over|full|filled|houseful|sold out)\b/i;
+const CONTACT_SIGNAL = /\b(dm|pm|ping|message|msg|whatsapp)\b|@\S/i;
+
+/**
+ * Is this message certainly an offer (or a closure), judged by the rules alone? `confident: true` means act now without the model.
+ * Schedules, opening notices ("will open by 3:15"), questions, requests and anything mixed are never confident: the model reads those.
+ */
+export function classifyFast(text: string): { kind: GroupReadKind; confident: boolean } {
+  const t = text.trim().replace(/\s+/g, " ");
+  const unsure = (kind: GroupReadKind = "other") => ({ kind, confident: false });
+  if (!t || t.length > 400) return unsure();
+  if (parseSchedule(t).length >= 2 && /\b(schedule|curat\w*|roster|lineup)\b/i.test(t)) return unsure("schedule_update");
+  if (OPENING_RE.test(t)) return unsure("opening_notice");
+  const offerish = OFFER_SIGNAL.test(t);
+  // Closures: a short "Closed" / "Over, thanks", or spots named as over/full with nothing offering any.
+  if (!offerish && !t.includes("?") && !TIME_SIGNAL.test(t) && parseTimes(t).length === 0) {
+    if (t.length <= 40 && CLOSURE_LEAD.test(t)) return { kind: "closure", confident: true };
+    if (/\b(spots?|slots?)\b/i.test(t) && /\b(closed?|over|full|filled|houseful|sold out|no more)\b/i.test(t) && t.length <= 160) return { kind: "closure", confident: true };
+  }
+  if (!offerish) return unsure(CLOSURE_WORDS.test(t) ? "closure" : "other");
+  if (CLOSURE_WORDS.test(t) || REQUEST_RE.test(t) || /\bno\s+(?:spots?|slots?)\b/i.test(t)) return unsure();
+  if (t.includes("?") && !CONTACT_SIGNAL.test(t)) return unsure();
+  if (!SPOT_WORD.test(t)) return unsure("spot_offer");
+  const timed = TIME_SIGNAL.test(t) || parseTimes(t).length > 0;
+  return timed ? { kind: "spot_offer", confident: true } : unsure("spot_offer");
+}
 
 /**
  * Turn the model's (or the rules') answer into validated fields. A kind the text can't back up becomes "other": a model that says

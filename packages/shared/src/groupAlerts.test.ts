@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  alertExpiry, alertIdFor, alertPush, alertState, alertToClose, alertsClosedByRanges, applyClosureToRoom, applyScheduleToRoom, clashNote, closureRanges, heuristicRead, interpret, localParts,
+  alertExpiry, alertIdFor, alertPush, alertState, alertToClose, alertsClosedByRanges, applyClosureToRoom, applyScheduleToRoom, classifyFast, clashNote, closureRanges, contactHint, heuristicRead, interpret, localParts,
   matchCurator, mentionsAsNames, namedContact, parseClosureScope, parseOfferTimes, parseReachBy, parseSchedule, parseTimes, parseWeekdays, renderAlertAsk, resolveContact, resolveDate,
   resolveRoom, scheduleSummary, timeLeft, timesShort, worthReading, zonedToMs,
   type GroupMsg, type ReadCtx, type Reading,
@@ -375,5 +375,54 @@ describe("alerts", () => {
     expect(timesShort(["21:30", "23:00"])).toBe("9:30 / 11 PM");
     expect(timesShort(["11:00", "21:00"])).toBe("11 AM / 9 PM");
     expect(timesShort(["15:00", "17:00", "19:00"])).toBe("3 / 5 / 7 PM");
+  });
+});
+
+describe("classifyFast: the rules-first path", () => {
+  const confident = (t: string) => classifyFast(t);
+  it("real offers are confident offers", () => {
+    for (const t of [
+      "Spots at 7 and 9 today at Banter, DM",
+      "Spots available for both 9:30 and 11 pm today at TAG. DM",
+      "Busking at 6 at Comedy Theatre, reach by 5:40",
+      "Busking spot available at 6pm today at comedy theatre. DM if you can reach by 5.40pm.",
+      "Spot at Banter tonight at 9, PM @Akhil",
+      "2 slots open tonight at Ministry, ping me",
+      "Open mic spots available in 30 mins at UGC",
+    ]) expect(confident(t), t).toEqual({ kind: "spot_offer", confident: true });
+  });
+  it("comics asking, questions and mixed messages are not confident offers", () => {
+    for (const t of [
+      "Any spots today?",
+      "any spots available today at banter?",
+      "Can I get a spot tonight at 9?",
+      "looking for a spot today",
+      "Does anyone have a spot tonight?",
+      "Is there a spot at 9 today?",
+      "No spots left today at 9",
+      "Spots at 7 today are full",
+      "Spots available at Banter",
+      "Great spot last night, 9 pm show today was fun",
+    ]) expect(confident(t).confident && confident(t).kind === "spot_offer", t).toBe(false);
+  });
+  it("closures: short and clear ones are confident", () => {
+    for (const t of ["Closed", "Closed Thank you", "Over, thanks", "Spots full Square Sunday", "Wednesday, Thursday, Friday, and Saturday spots are over for this week at Comedy Square."])
+      expect(confident(t), t).toEqual({ kind: "closure", confident: true });
+    expect(confident("Done, sent you a DM").confident).toBe(false);
+  });
+  it("schedules, opening notices and chit-chat go to the model", () => {
+    for (const t of [
+      "Comedy Square – Curation Schedule: Monday: @Vishal, Tuesday: @Varun, Wednesday to Saturday: Akhil",
+      "ministry spots will open by 3:15pm",
+      "website is open for spots now",
+      "Great set last night everyone!",
+      "see you at 9",
+      "Anyone going to the show tonight?",
+    ]) expect(confident(t).confident, t).toBe(false);
+  });
+  it("a confident offer that misses the room still reads, with no room", () => {
+    const r = interpret({ kind: "spot_offer", ...contactHint("Spots at 7 today, DM") }, msg("Spots at 7 today, DM"), ctx());
+    expect(r.kind).toBe("spot_offer");
+    expect(offer(r).roomId).toBeUndefined();
   });
 });

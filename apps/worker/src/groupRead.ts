@@ -1,7 +1,7 @@
 // Reading a message from a group the comic chose to watch: what to ask the model, and how to take its answer. The model only
 // says what KIND of message it is and which room / person it names; dates, times and flags come from the rules in
 // @spot/shared (groupAlerts.ts), which don't make things up. Pure, so it is tested without a model (groupRead.test.ts).
-import { heuristicRead, type AiRead, type GroupMsg, type GroupReadKind, type Room } from "@spot/shared";
+import { classifyFast, contactHint, heuristicRead, interpret, type AiRead, type GroupMsg, type GroupReadKind, type ReadCtx, type Reading, type Room } from "@spot/shared";
 
 const KINDS: GroupReadKind[] = ["spot_offer", "closure", "opening_notice", "schedule_update", "other"];
 
@@ -92,4 +92,23 @@ export async function readWithFallback(
   } catch (e) {
     return { read: heuristicRead(msg.text, msg.mentioned), by: "rules", why: (e as Error).message };
   }
+}
+
+/**
+ * Rules first. If the rules are confident it is an offer or a closure, read it with the rules and never call the model (path
+ * "rules-fast"). Otherwise ask the model, with the rules as the slow/failed-model fallback (path "model" or "rules-fallback").
+ */
+export async function readGroupMessage(
+  ask: () => Promise<string>,
+  msg: GroupMsg,
+  ctx: ReadCtx,
+  budgetMs: number,
+): Promise<{ reading: Reading; path: "rules-fast" | "model" | "rules-fallback"; why?: string }> {
+  const fast = classifyFast(msg.text);
+  if (fast.confident) {
+    const reading = interpret({ kind: fast.kind, ...contactHint(msg.text, msg.mentioned) }, msg, ctx);
+    if (reading.kind !== "other") return { reading, path: "rules-fast" };
+  }
+  const { read, by, why } = await readWithFallback(ask, msg, budgetMs);
+  return { reading: interpret(read, msg, ctx), path: by === "model" ? "model" : "rules-fallback", why };
 }
