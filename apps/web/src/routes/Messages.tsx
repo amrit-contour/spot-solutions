@@ -151,7 +151,7 @@ const listTime = (at: number, now: number, tz: string) => {
 };
 
 export function Messages() {
-  const { uid, week, session, workerOnline, comics, comicsById, shows, settings } = useApp();
+  const { uid, week, session, workerOnline, server, comics, comicsById, shows, settings } = useApp();
   const demo = isDemoUser();
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
@@ -234,7 +234,7 @@ export function Messages() {
       <div className={cx("px-4 sm:px-8 lg:grid lg:h-[calc(100dvh-var(--page-header-h,0px)-1.5rem)] lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] lg:gap-6", anyOpen ? "pb-0 lg:pb-6" : "pb-6")}>
         <section aria-label="Chats" className={cx("min-h-0 flex-col lg:flex", anyOpen ? "hidden" : "flex")}>
           {!ready ? (
-            <Unavailable offline={!workerOnline} />
+            <Unavailable offline={!workerOnline} cantTell={server.reach === "unknown"} />
           ) : (
             <>
               {!sync.ok && !sync.syncing && list.data && <div className="-mx-4 sm:-mx-8 lg:mx-0 lg:overflow-hidden lg:rounded-lg"><SyncBanner savedAt={list.data.at} now={now} tz={tz} onRetry={() => void list.refresh(true)} /></div>}
@@ -356,8 +356,12 @@ export function Messages() {
   );
 }
 
-function Unavailable({ offline }: { offline: boolean }) {
-  return offline ? (
+function Unavailable({ offline, cantTell }: { offline: boolean; cantTell?: boolean }) {
+  return cantTell ? (
+    <Empty icon={IconServer} title="You're offline, so chats can't be read right now">
+      Chats are read from your server when you open this page. They'll appear here once your phone is back online.
+    </Empty>
+  ) : offline ? (
     <Empty icon={IconServer} title="Your server is offline, so chats can't be read right now" action={<Link to="/server" className="state-layer inline-flex h-10 items-center rounded-full bg-secondary-container px-5 type-label-l text-on-secondary-container">Check the server</Link>}>
       Chats stay on your own computer and are read when you open this page. Start your server and they'll appear here.
     </Empty>

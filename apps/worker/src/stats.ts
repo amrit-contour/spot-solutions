@@ -12,8 +12,13 @@ import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
 import { recentLogs } from "./logbuf.ts";
 import { ADMIN_DATA_COMMANDS, runAdminDataCommand } from "./adminData.ts";
 import { createLiveStats } from "./liveStats.ts";
+import { createNetWatch } from "./netWatch.ts";
 
 const exec = promisify(execFile);
+
+/** Tracks Firestore failures from this machine's own network trouble (see netWatch.ts); index.ts reports every failed heartbeat here. */
+const netWatch = createNetWatch();
+export const noteNetFailure = (e: unknown) => netWatch.fail(e, Date.now());
 
 export const counters = { messagesIn: 0, classified: 0, sent: 0, errors: 0 };
 
@@ -202,10 +207,21 @@ export async function writeServerStatus(extra: Pick<ServerStatus, "ollama" | "se
   }
   // merge: fleet.ts also updates servers/{id}.fleet between heartbeats, and the app owns logsWanted; never wipe them.
   // A heartbeat means any planned-restart marker (index.ts shutdown) is over.
-  await db.collection("servers").doc(SERVER_ID).set({ ...status, ...logsPart, restarting: FieldValue.delete() }, { merge: true });
-  if (status.fleet) {
-    const summary: FleetServerSummary = { id: SERVER_ID, hostname: status.hostname, platform: status.platform, lastSeen: status.lastSeen, ...status.fleet };
-    await db.collection("fleetServers").doc(SERVER_ID).set(summary, { merge: true });
+  // Writes work again after failing: say how long this server's internet was down ("Server lost internet 03:30-03:36"). Stays until the next outage.
+  const outage = netWatch.pending(Date.now());
+  try {
+    await db.collection("servers").doc(SERVER_ID).set({ ...status, ...logsPart, ...(outage ? { net: outage } : {}), restarting: FieldValue.delete() }, { merge: true });
+    if (status.fleet) {
+      const summary: FleetServerSummary = { id: SERVER_ID, hostname: status.hostname, platform: status.platform, lastSeen: status.lastSeen, ...status.fleet };
+      await db.collection("fleetServers").doc(SERVER_ID).set(summary, { merge: true });
+    }
+  } catch (e) {
+    netWatch.fail(e, Date.now());
+    throw e;
+  }
+  if (outage) {
+    netWatch.clear();
+    await Promise.all(extra.sessions.map((x) => db.collection("users").doc(x.uid).collection("session").doc("state").set({ net: outage }, { merge: true }).catch(() => undefined)));
   }
 }
 

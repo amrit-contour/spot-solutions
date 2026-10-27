@@ -1,5 +1,5 @@
 // Settings → AI models: may chats ever leave the server? (AiPolicy in packages/shared/src/fleet.ts)
-import { DEFAULT_AI_POLICY, type AiPolicy } from "@spot/shared";
+import { DEFAULT_AI_POLICY, phoneState, type AiPolicy } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { serverOnline, useAllServers } from "../lib/fleet";
 import { useNow } from "../lib/data";
@@ -12,12 +12,12 @@ const OPTIONS: { value: AiPolicy; title: string; body: string }[] = [
 ];
 
 export function AiPolicyPicker() {
-  const { settings, saveSettings } = useApp();
+  const { settings, saveSettings, phone } = useApp();
   const now = useNow(15_000);
   const servers = useAllServers();
   const policy = settings.ai.policy ?? DEFAULT_AI_POLICY;
   const usesGemini = settings.ai.primary.provider === "gemini" || settings.ai.fallback?.provider === "gemini";
-  const noLocal = servers !== null && servers.length > 0 && !servers.some((s) => serverOnline(s, now) && s.localModel);
+  const noLocal = phoneState(phone, now) === "ok" && servers !== null && servers.length > 0 && !servers.some((s) => serverOnline(s, now) && s.localModel);
 
   return (
     <div className="rounded-lg bg-surface-container p-4">

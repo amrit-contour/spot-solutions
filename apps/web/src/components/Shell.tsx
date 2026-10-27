@@ -1,4 +1,4 @@
-import { restartLabel } from "@spot/shared";
+import { clock, deriveLink, restartLabel } from "@spot/shared";
 import { type ReactNode } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { toast } from "sonner";
@@ -30,10 +30,13 @@ function maskPhone(p?: string | null) {
 }
 
 export function useConnection(): { tone: "ok" | "wait" | "error" | "idle"; label: string; detail?: string; short: string } {
-  const { session, workerOnline, serverRestarting } = useApp();
+  const { session, server } = useApp();
   if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode", detail: "your own sandbox", short: "Demo" };
-  if (!workerOnline && serverRestarting) return { tone: "wait" as const, label: restartLabel(serverRestarting.reason), detail: "WhatsApp reconnects by itself", short: "Updating" };
-  if (!workerOnline) return { tone: "error" as const, label: "Server offline", short: "Offline" };
+  // Same derivation as every other page (shared deriveServer/deriveLink). A phone that can't tell is neutral, never "Server offline".
+  const link = deriveLink(session, server);
+  if (link === "unknown") return { tone: "idle" as const, label: server.phone === "offline" ? "You're offline" : "Reconnecting…", detail: `last known status${server.asOf ? `, as of ${clock(server.asOf)}` : ""}`, short: server.phone === "offline" ? "Offline" : "Syncing" };
+  if (link === "restarting") return { tone: "wait" as const, label: restartLabel(server.restarting?.reason), detail: "WhatsApp reconnects by itself", short: "Updating" };
+  if (link === "offline") return { tone: "error" as const, label: "Server offline", detail: server.lastSeen ? `not reachable since ${clock(server.lastSeen)}` : undefined, short: "Offline" };
   if (session?.status === "ready" && session.health && session.health !== "ok") return { tone: "wait" as const, label: "WhatsApp not responding", detail: "the server is restarting it", short: "Stuck" };
   if (session?.status === "ready") return { tone: "ok" as const, label: "WhatsApp connected", detail: maskPhone(session.phone), short: "Live" };
   if (session?.status === "qr" || session?.status === "starting" || session?.status === "authenticated") return { tone: "wait" as const, label: "Linking WhatsApp…", short: "Linking" };

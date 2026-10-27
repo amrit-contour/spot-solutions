@@ -3,7 +3,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from "firebase/firesto
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { TTL_DAYS, restartLabel, restartingNow, type ServerStatus } from "@spot/shared";
+import { TTL_DAYS, clock, deriveServer, netNotice, phoneNotice, restartLabel, unreachableNotice, type ServerStatus } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "@spot/ui/firebase";
 import { expireAt, timeAgo, useNow } from "../lib/data";
@@ -19,8 +19,6 @@ import { isAdmin, useAccessConfig } from "../lib/access";
 import { useServers } from "../lib/servers";
 import { Avatar, Card, Chip, CompactButton, Empty, cx } from "@spot/ui";
 import { IconArrowRight, IconComics, IconCpu, IconLightbulb, IconRefresh, IconServer, IconShield } from "@spot/ui";
-
-const ONLINE_MS = 90_000;
 
 const fmtBytes = (b: number) => (b >= 1e12 ? `${(b / 1e12).toFixed(1)} TB` : b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
 function fmtUptime(ms: number) {
@@ -45,13 +43,13 @@ function Meter({ label, used, total, detail }: { label: string; used: number; to
   );
 }
 
-function Service({ name, up, detail, action }: { name: string; up: boolean; detail?: string; action?: React.ReactNode }) {
+function Service({ name, up, detail, action, unknown }: { name: string; up: boolean; detail?: string; action?: React.ReactNode; unknown?: boolean }) {
   return (
     <li className="flex items-center gap-3 px-4 py-3">
-      <span className={cx("size-2.5 flex-none rounded-full", up ? "bg-ok" : "bg-error")} />
+      <span className={cx("size-2.5 flex-none rounded-full", unknown ? "bg-outline" : up ? "bg-ok" : "bg-error")} />
       <div className="min-w-0 flex-1">
         <div className="type-body-l">{name}</div>
-        <div className="truncate type-body-s text-on-surface-variant">{detail ?? (up ? "Running" : "Down")}</div>
+        <div className="truncate type-body-s text-on-surface-variant">{unknown ? "Can't tell while you're offline" : (detail ?? (up ? "Running" : "Down"))}</div>
       </div>
       {action}
     </li>
@@ -88,9 +86,13 @@ function RestartButton({ serverId, type, label, disabled }: { serverId: string; 
 
 function ServerCard({ s }: { s: ServerStatus }) {
   const now = useNow(5_000);
-  const online = now - s.lastSeen < ONLINE_MS;
-  // A planned restart or update (marker written at shutdown) reads as amber "back in a minute" until its grace passes, not red offline.
-  const restarting = !online ? restartingNow(s.restarting, s.lastSeen, now) : null;
+  const { phone } = useApp();
+  // One derivation everywhere (shared deriveServer): up, restarting (planned, amber), offline (silent, red) or can't tell (this phone is offline or on cached data).
+  const d = deriveServer(s, now, phone);
+  const online = d.reach === "up";
+  const restarting = d.restarting;
+  const unknown = d.reach === "unknown";
+  const outage = d.reach === "offline" ? netNotice(s.net, now) : null;
   const linked = s.sessions.filter((x) => x.status === "ready").length;
 
   // The worker sends its log only while someone is watching: say so while the log section is open, and keep saying it.
@@ -110,17 +112,22 @@ function ServerCard({ s }: { s: ServerStatus }) {
       icon={IconServer}
       title={s.hostname}
       subtitle={`${s.osRelease} · ${s.arch} · v${s.version}`}
-      summary={online ? `Online · up ${fmtUptime(now - s.startedAt)}` : restarting ? restartLabel(restarting.reason) : `Offline · last seen ${timeAgo(s.lastSeen, now)}`}
-      summaryTone={online ? "success" : restarting ? "tertiary" : "error"}
+      summary={online ? `Online · up ${fmtUptime(now - s.startedAt)}` : restarting ? restartLabel(restarting.reason) : unknown ? `Last known${d.lastSeen ? ` · ${clock(d.lastSeen)}` : ""}` : `Offline · last seen ${timeAgo(s.lastSeen, now)}`}
+      summaryTone={online ? "success" : restarting ? "tertiary" : unknown ? "neutral" : "error"}
     >
       <div className="flex flex-col gap-4 pb-1">
+      {(unknown || d.reach === "offline") && (
+        <p className={cx("rounded-md px-3 py-2 type-body-s", unknown ? "bg-surface-container text-on-surface-variant" : "bg-error-container text-on-error-container")}>
+          {unknown ? phoneNotice(d) : `${unreachableNotice(d)}${outage ? `. ${outage} earlier` : ""}`}
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-end gap-2 empty:hidden">
         <ServerUpdate server={s} online={online} now={now} />
         <ConsoleLinks server={s} />
         <RemoveServerButton server={s} />
       </div>
 
-      <Collapsible id={`server:${s.id}:health`} title="Health and services" icon={IconCpu} summary={online ? `${Math.round(s.cpu.usage * 100)}% CPU` : restarting ? "Restarting" : "Offline"} summaryTone={online ? "neutral" : restarting ? "tertiary" : "error"}>
+      <Collapsible id={`server:${s.id}:health`} title="Health and services" icon={IconCpu} summary={online ? `${Math.round(s.cpu.usage * 100)}% CPU` : restarting ? "Restarting" : unknown ? "Last known" : "Offline"} summaryTone={online ? "neutral" : restarting ? "tertiary" : unknown ? "neutral" : "error"}>
       <div className="grid gap-4 md:grid-cols-2">
         <Card tone="container" className="flex flex-col gap-4 p-5">
           <Meter label="CPU" used={s.cpu.usage} total={1} detail={`${Math.round(s.cpu.usage * 100)}% · ${s.cpu.cores} cores · load ${s.cpu.load1.toFixed(2)}`} />
@@ -134,9 +141,9 @@ function ServerCard({ s }: { s: ServerStatus }) {
         <Card tone="container" className="overflow-hidden">
           <h3 className="px-4 pt-4 pb-1 type-title-s">Services</h3>
           <ul className="divide-y divide-outline-variant/40">
-            <Service name="Nothing BOT worker" up={online} detail={online ? `Heartbeat ${timeAgo(s.lastSeen, now)}` : undefined} action={<RestartButton serverId={s.id} type="restart_worker" label="Restart" disabled={!online} />} />
-            <Service name="Ollama" up={online && s.ollama.up} action={<RestartButton serverId={s.id} type="restart_ollama" label="Restart" disabled={!online} />} detail={s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"}${s.ollama.loaded.length ? ` · ${s.ollama.loaded.join(", ")} loaded` : ""}` : undefined} />
-            <Service name="WhatsApp sessions" up={online && linked > 0} detail={`${linked} linked of ${s.sessions.length}`} />
+            <Service name="Nothing BOT worker" unknown={unknown} up={online} detail={online ? `Heartbeat ${timeAgo(s.lastSeen, now)}` : undefined} action={<RestartButton serverId={s.id} type="restart_worker" label="Restart" disabled={!online} />} />
+            <Service name="Ollama" unknown={unknown} up={online && s.ollama.up} action={<RestartButton serverId={s.id} type="restart_ollama" label="Restart" disabled={!online} />} detail={s.ollama.up ? `${s.ollama.models.length} model${s.ollama.models.length === 1 ? "" : "s"}${s.ollama.loaded.length ? ` · ${s.ollama.loaded.join(", ")} loaded` : ""}` : undefined} />
+            <Service name="WhatsApp sessions" unknown={unknown} up={online && linked > 0} detail={`${linked} linked of ${s.sessions.length}`} />
             <Service name="Server Gemini key" up={s.geminiServerKey} detail={s.geminiServerKey ? "Set (used when a curator has none)" : "Not set (curators use their own)"} />
           </ul>
         </Card>
@@ -191,7 +198,7 @@ function ServerCard({ s }: { s: ServerStatus }) {
             {s.logs.join("\n")}
           </pre>
         ) : (
-          <p className="bg-surface-container px-4 py-3 type-body-s text-on-surface-variant">{online ? "Asking the server for its log. This can take up to 30 seconds." : "The server is offline, so there is no log to show."}</p>
+          <p className="bg-surface-container px-4 py-3 type-body-s text-on-surface-variant">{online ? "Asking the server for its log. This can take up to 30 seconds." : unknown ? "You're offline, so there is no log to show." : "The server is offline, so there is no log to show."}</p>
         )}
       </Collapsible>
 

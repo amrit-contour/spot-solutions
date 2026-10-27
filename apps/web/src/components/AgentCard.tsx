@@ -4,20 +4,21 @@ import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { DEFAULT_SETTINGS, OTHER_APP_NOTE, restartLabel, type AgentSettings, type SessionState } from "@spot/shared";
+import { DEFAULT_SETTINGS, OTHER_APP_NOTE, deriveLink, phoneNotice, restartLabel, type AgentSettings, type SessionState } from "@spot/shared";
 import { useAgentScope } from "@spot/ui/agentScope";
 import { useApp } from "../lib/app";
 import { runCommand, useDocument } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
 import { Button, Collapsible, ConfirmDialog, Info, SettingRow, Switch, TimePicker, cx } from "@spot/ui";
 import { IconChatCheck, IconLogout, IconQr, IconSend, IconShield } from "@spot/ui";
-import { LinkStatusPill, type LinkView } from "./LinkStatusPill";
+import { LinkStatusPill, cardView, phoneLabel } from "./LinkStatusPill";
 
 const QR_SIZE = 216;
 const DEFAULTS = DEFAULT_SETTINGS.agent as AgentSettings;
 
 export function AgentCard() {
-  const { uid, session, workerOnline, serverRestarting, settings, saveSettings } = useApp();
+  const { uid, session, workerOnline, server, settings, saveSettings } = useApp();
+  const serverRestarting = server.restarting;
   const agent = useDocument<SessionState>(["users", uid, "session", "agent"]).data;
   const [busy, setBusy] = useState<"link" | "unlink" | "test" | null>(null);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
@@ -28,10 +29,10 @@ export function AgentCard() {
 
   const mainReady = session?.status === "ready";
   const status = agent?.status ?? "idle";
-  const view: LinkView = !workerOnline ? (serverRestarting ? "restarting" : "offline") : status === "ready" ? "ready" : status === "qr" ? "qr" : status === "starting" || status === "authenticated" || busy === "link" ? "starting" : "idle";
+  const view = cardView(deriveLink(agent, server), busy === "link");
 
   const showQr = view === "qr" && Boolean(agent?.qr);
-  const pillLabel = view === "ready" ? "Connected" : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "starting" ? "Starting the agent…" : view === "qr" ? "Waiting for scan" : "Not linked";
+  const pillLabel = view === "ready" ? "Connected" : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "unknown" ? phoneLabel(server.phone) : view === "starting" ? "Starting the agent…" : view === "qr" ? "Waiting for scan" : "Not linked";
 
   const run = async (kind: "link" | "unlink" | "test", type: "connect_agent" | "logout_agent" | "test_agent", done?: string) => {
     setBusy(kind);
@@ -110,13 +111,13 @@ export function AgentCard() {
                   Unlink
                 </Button>
               </>
-            ) : (view === "offline" || view === "restarting") && status === "ready" ? (
+            ) : (view === "offline" || view === "restarting" || view === "unknown") && status === "ready" ? (
               <div className="flex flex-col gap-1.5">
                 <Button variant="outlined" icon={IconLogout} disabled>
                   Unlink
                 </Button>
                 <p className="type-body-s text-on-surface-variant">
-                  {view === "restarting" ? `${restartLabel(serverRestarting?.reason)}. Unlink is off meanwhile; the agent comes back by itself.` : "Unlink is off while the server is offline."}
+                  {view === "restarting" ? `${restartLabel(serverRestarting?.reason)}. Unlink is off meanwhile; the agent comes back by itself.` : view === "unknown" ? `${phoneNotice(server)}. Unlink is off until your phone is back online.` : "Unlink is off while the server is offline."}
                 </p>
               </div>
             ) : view === "idle" ? (

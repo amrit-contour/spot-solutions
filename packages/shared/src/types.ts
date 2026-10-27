@@ -16,6 +16,15 @@ export interface RestartMarker {
   until: number;
 }
 
+/** A server's own internet was down and has just come back: Firestore writes failed from `downFrom` until `since`. The apps say "Server lost internet 03:30-03:36". */
+export interface NetOutage {
+  ok: boolean;
+  /** When the server was back online. */
+  since: number;
+  /** When its writes started failing. */
+  downFrom?: number;
+}
+
 export interface SessionState {
   status: SessionStatus;
   qr?: string | null;
@@ -24,6 +33,8 @@ export interface SessionState {
   lastSeen?: number; // epoch ms, worker heartbeat (0 after a clean shutdown)
   /** A planned restart or update is under way; cleared when the session is ready again. */
   restarting?: RestartMarker | null;
+  /** The server's most recent internet outage (written when it recovers; apps show it for a few hours). */
+  net?: NetOutage | null;
   aliveAt?: number; // last time the worker was processing messages; survives shutdown
   error?: string | null;
   /** The WhatsApp page answers ("ok", or missing), stopped answering and is being restarted, or kept failing and was given up. `error` says why. */
@@ -587,6 +598,8 @@ export interface ServerStatus {
   restarting?: RestartMarker | null;
   /** An update the server is running or just ran (written by the worker; see apps/worker/console/update.mjs). */
   update?: { state: "updating" | "error"; target: string | null; from: string; startedAt: number; error?: string };
+  /** This server's most recent internet outage, once it recovered (see NetOutage). */
+  net?: NetOutage | null;
 }
 
 /** servers/{id}/commands/{cmd}: admin actions from the app's Server page. */

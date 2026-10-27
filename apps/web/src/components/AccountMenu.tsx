@@ -1,5 +1,5 @@
 import { signOut } from "firebase/auth";
-import { restartingNow } from "@spot/shared";
+import { deriveServer } from "@spot/shared";
 import { AccountMenu as BaseAccountMenu, type AccountStatus, AccountMenuItem, IconLightbulb, IconServer, IconShield, cx } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { useApp } from "../lib/app";
@@ -9,9 +9,12 @@ import { clearChatCache } from "../lib/chatCache";
 
 /** The shared account menu plus the curator-only rows: Server and the admin Server guide. */
 export function AccountMenu({ align = "right", status }: { align?: "left" | "right"; status?: AccountStatus }) {
-  const { user } = useApp();
+  const { user, phone } = useApp();
   const servers = useServers();
-  const anyDown = servers?.some((s) => Date.now() - s.lastSeen > 90_000 && !restartingNow(s.restarting, s.lastSeen, Date.now()));
+  // Same derivation as the Server page: red only for a silent server that this phone can really see. Offline phone: neutral.
+  const reach = servers?.map((s) => deriveServer(s, Date.now(), phone).reach) ?? [];
+  const anyDown = reach.includes("offline");
+  const cantTell = !anyDown && reach.includes("unknown");
   const admin = isAdmin(useAccessConfig(), user.email);
   return (
     <BaseAccountMenu
@@ -30,7 +33,7 @@ export function AccountMenu({ align = "right", status }: { align?: "left" | "rig
               }}
             >
               <span className="flex-1">Server</span>
-              {servers && servers.length > 0 && <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : "bg-ok")} />}
+              {servers && servers.length > 0 && <span className={cx("size-2 rounded-full", anyDown ? "bg-error" : cantTell ? "bg-outline" : "bg-ok")} />}
             </AccountMenuItem>
           )}
           {admin && (

@@ -52,7 +52,7 @@ async function fetchWithKey(key: string) {
 type Lists = Record<AiProvider, { models: string[]; fetch: () => void; busy: boolean; canFetch: boolean; ready: boolean; why: string }>;
 
 export function AiModels() {
-  const { uid, settings, saveSettings, workerOnline } = useApp();
+  const { uid, settings, saveSettings, workerOnline, server } = useApp();
   const me = useDocument<UserAiDoc>(["users", uid]);
   const gemini = me.data?.aiKeys?.gemini;
   const geminiModels = me.data?.aiModels?.gemini ?? [];
@@ -94,7 +94,7 @@ export function AiModels() {
       busy: !!busy.ollama,
       canFetch: workerOnline,
       ready: workerOnline && !!ollama?.up,
-      why: !workerOnline ? "Server offline" : ollama && !ollama.up ? "Ollama isn't running on the server" : "Fetching models from your server…",
+      why: !workerOnline ? (server.reach === "unknown" ? "You're offline" : "Server offline") : ollama && !ollama.up ? "Ollama isn't running on the server" : "Fetching models from your server…",
     },
     gemini: {
       models: geminiModels,

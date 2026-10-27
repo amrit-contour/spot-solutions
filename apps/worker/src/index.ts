@@ -13,7 +13,7 @@ import { onAgentMessage, onAgentVote } from "./agent.ts";
 import { fleet } from "./fleet.ts";
 import { DEFAULT_AI_POLICY, restartMarker, type AiPolicy } from "@spot/shared";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
-import { SERVER_ID, adminConfigured, watchServerCommands, writeServerStatus } from "./stats.ts";
+import { SERVER_ID, adminConfigured, noteNetFailure, watchServerCommands, writeServerStatus } from "./stats.ts";
 import { startScheduler } from "./scheduler.ts";
 import { startRetention } from "./retention.ts";
 import { readFileSync } from "node:fs";
@@ -77,8 +77,13 @@ async function main() {
     );
     await writeServerStatus({ ollama: { ...ollama, url: OLLAMA_URL }, sessions: states, geminiServerKey: hasServerGeminiKey });
   };
-  setInterval(() => void pushStatus().catch((e) => console.error("[stats]", e.message)), HEARTBEAT_MS).unref();
-  await pushStatus().catch((e) => console.error("[stats]", e.message)); // peers need our capacity before ranking us
+  const beatStatus = () =>
+    pushStatus().catch((e) => {
+      noteNetFailure(e); // our own internet down? writeServerStatus reports the window once writes work again
+      console.error("[stats]", e.message);
+    });
+  setInterval(() => void beatStatus(), HEARTBEAT_MS).unref();
+  await beatStatus(); // peers need our capacity before ranking us
 
   checkBrowserAtStart(); // missing Chrome is installed in the background before the first session needs it
 

@@ -1,7 +1,7 @@
 // App-wide state: the signed-in curator, their config, WhatsApp session and the week being curated.
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import {
   DEFAULT_AI_POLICY,
@@ -9,7 +9,9 @@ import {
   aiFromLegacy,
   rolloverDayFor,
   weekOf,
-  restartingNow,
+  deriveServer,
+  type Derived,
+  type PhoneLink,
   type RestartMarker,
   type Comic,
   type SessionState,
@@ -19,6 +21,7 @@ import {
   type Venue,
 } from "@spot/shared";
 import { auth, db } from "@spot/ui/firebase";
+import { reportSnapshot, usePhoneLink } from "@spot/ui/phoneLink";
 import { useCollection, useDocument, useNow } from "./data";
 import { cloneDemo, needsDemoClone } from "./demo";
 import { useForegroundPush } from "./push";
@@ -36,7 +39,12 @@ interface AppState {
   uid: string;
   settings: Settings;
   session: SessionState | null;
+  /** The server is alive AND this phone can see it. False also when the phone is offline: check `server.reach` to tell "offline" from "can't tell". */
   workerOnline: boolean;
+  /** THE derivation (shared connection.ts deriveServer): up / restarting / offline / unknown. Every page that shows connection state reads this. */
+  server: Derived;
+  /** This phone's own connection: navigator.onLine and whether the status listeners are on cached data. */
+  phone: PhoneLink;
   /** The server announced a planned restart or update and hasn't been silent past its grace period: say "back in a minute", not "offline". */
   serverRestarting: RestartMarker | null;
   shows: Show[];
@@ -73,8 +81,6 @@ export function useAuthUser() {
   return user;
 }
 
-const WORKER_STALE_MS = 90_000;
-
 export function AppProvider({ user, children }: { user: User; children: ReactNode }) {
   const uid = user.uid;
   const userDoc = useDocument<UserDoc>(["users", uid]);
@@ -83,7 +89,20 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
   const venues = useCollection<Venue>(uid, "venues");
   const comics = useCollection<Comic>(uid, "comics");
   const now = useNow(10_000);
+  const phone = usePhoneLink();
   useForegroundPush();
+
+  // Tell phoneLink whether the session listener is getting server data or only the cache (metadata changes arrive when it flips).
+  useEffect(
+    () =>
+      onSnapshot(
+        doc(db, "users", uid, "session", "state"),
+        { includeMetadataChanges: true },
+        (snap) => reportSnapshot("session", snap.metadata.fromCache),
+        () => reportSnapshot("session", true),
+      ),
+    [uid],
+  );
 
   // First sign-in: create the user doc so the worker starts listening for this curator.
   useEffect(() => {
@@ -141,8 +160,9 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
     [shows.data],
   );
   const comicsById = useMemo(() => new Map(comics.data.map((c) => [c.id, c])), [comics.data]);
-  const workerOnline = Boolean(session.data?.lastSeen && now - session.data.lastSeen < WORKER_STALE_MS);
-  const serverRestarting = workerOnline ? null : restartingNow(session.data?.restarting, session.data?.lastSeen, now);
+  const server = useMemo(() => deriveServer(session.data, now, phone), [session.data, now, phone]);
+  const workerOnline = server.up;
+  const serverRestarting = server.restarting;
 
   const value = useMemo<AppState>(
     () => ({
@@ -151,6 +171,8 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       settings,
       session: session.data,
       workerOnline,
+      server,
+      phone,
       serverRestarting,
       shows: sortedShows,
       venues: venues.data,
@@ -162,7 +184,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       currentWeek,
       saveSettings: (patch) => setDoc(doc(db, "users", uid), { settings: { ...settings, ...patch } }, { merge: true }),
     }),
-    [user, uid, settings, session.data, workerOnline, serverRestarting, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, currentWeek],
+    [user, uid, settings, session.data, workerOnline, server, phone, serverRestarting, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, currentWeek],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

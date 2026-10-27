@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RESTART_GRACE_MS, isServerUp, linkView, maskPhoneTail, restartLabel, restartMarker, restartingNow, serverLastSeen, serverState } from "./connection.ts";
+import { CACHE_GRACE_MS, NET_NOTE_MS, RESTART_GRACE_MS, clock, deriveLink, deriveServer, isServerUp, linkView, maskPhoneTail, netNotice, phoneNotice, restartLabel, restartMarker, restartingNow, serverLastSeen, serverState, shouldNudge, unreachableNotice } from "./connection.ts";
 
 describe("linkView", () => {
   it("ready is connected, even if the heartbeat is old (the card says so separately)", () => {
@@ -85,5 +85,91 @@ describe("planned restarts", () => {
   it("words", () => {
     expect(restartLabel("update")).toBe("Updating server… back in a minute");
     expect(restartLabel("restart")).toBe("Restarting server… back in a minute");
+  });
+});
+
+describe("deriveServer: phone offline vs server silent vs restarting vs up", () => {
+  const T = 50_000_000;
+  const live = { online: true, fromCache: false, cachedSince: null, liveAt: T };
+  const fresh = { status: "ready" as const, lastSeen: T - 20_000 };
+  const silent = { status: "ready" as const, lastSeen: T - 10 * 60_000 };
+
+  it("fresh heartbeat on a live phone is up", () => {
+    const d = deriveServer(fresh, T, live);
+    expect([d.reach, d.up, d.phone]).toEqual(["up", true, "ok"]);
+    expect(deriveLink(fresh, d)).toBe("connected");
+  });
+  it("silent heartbeat on a live phone is offline, never connected", () => {
+    const d = deriveServer(silent, T, live);
+    expect([d.reach, d.up]).toEqual(["offline", false]);
+    expect(deriveLink(silent, d)).toBe("offline");
+    expect(unreachableNotice(d)).toBe(`Server not reachable since ${clock(silent.lastSeen)}`);
+  });
+  it("a planned restart on a live phone is restarting", () => {
+    const s = { status: "ready" as const, lastSeen: 0, restarting: restartMarker(T - 30_000, "update") };
+    const d = deriveServer(s, T, live);
+    expect(d.reach).toBe("restarting");
+    expect(d.restarting?.reason).toBe("update");
+    expect(deriveLink(s, d)).toBe("restarting");
+  });
+  it("no phone info behaves like a live phone", () => {
+    expect(deriveServer(silent, T).reach).toBe("offline");
+    expect(deriveServer(fresh, T, null).reach).toBe("up");
+  });
+  it("an offline phone says unknown, not server offline, whatever the heartbeat looks like", () => {
+    const off = { online: false, fromCache: true, cachedSince: T - 60_000, liveAt: T - 5 * 60_000 };
+    for (const s of [fresh, silent, null]) {
+      const d = deriveServer(s, T, off);
+      expect([d.reach, d.up, d.phone, d.restarting]).toEqual(["unknown", false, "offline", null]);
+      expect(deriveLink(s, d)).toBe("unknown");
+    }
+    expect(phoneNotice(deriveServer(silent, T, off))).toBe(`You're offline: showing the last known status (as of ${clock(T - 5 * 60_000)})`);
+  });
+  it("cached snapshots on a phone that is online read as reconnecting, after a short grace", () => {
+    const young = { online: true, fromCache: true, cachedSince: T - 2_000, liveAt: null };
+    expect(deriveServer(silent, T, young).reach).toBe("offline"); // a cold start from the cache is not a lost connection
+    const old = { online: true, fromCache: true, cachedSince: T - CACHE_GRACE_MS, liveAt: T - 90_000 };
+    const d = deriveServer(silent, T, old);
+    expect([d.reach, d.phone]).toEqual(["unknown", "reconnecting"]);
+    expect(phoneNotice(d)).toBe(`Reconnecting… showing the last known status (as of ${clock(T - 90_000)})`);
+  });
+  it("as-of falls back to the last heartbeat when the phone never had live data", () => {
+    const d = deriveServer(silent, T, { online: false, fromCache: true, cachedSince: T - 1, liveAt: null });
+    expect(d.asOf).toBe(silent.lastSeen);
+    expect(phoneNotice({ phone: "offline", asOf: null })).toBe("You're offline: showing the last known status");
+  });
+  it("works on a servers/{id} heartbeat too (same rules as a session doc)", () => {
+    const server = { lastSeen: T - 10 * 60_000, restarting: restartMarker(T - 20_000, "restart") };
+    expect(deriveServer(server, T, live).reach).toBe("restarting");
+    expect(deriveServer({ lastSeen: T - 1_000 }, T, live).reach).toBe("up");
+    expect(deriveServer({ lastSeen: T - 91_000 }, T, live).reach).toBe("offline");
+  });
+});
+
+describe("shouldNudge", () => {
+  const T = 9_000_000;
+  const stuck = { online: true, fromCache: true, cachedSince: T - 25_000, liveAt: null };
+  it("only when online and cached for 20 s or more", () => {
+    expect(shouldNudge(stuck, T, null)).toBe(true);
+    expect(shouldNudge({ ...stuck, cachedSince: T - 19_000 }, T, null)).toBe(false);
+    expect(shouldNudge({ ...stuck, online: false }, T, null)).toBe(false);
+    expect(shouldNudge({ ...stuck, fromCache: false, cachedSince: null }, T, null)).toBe(false);
+  });
+  it("not again within 20 s of the last nudge", () => {
+    expect(shouldNudge(stuck, T, T - 5_000)).toBe(false);
+    expect(shouldNudge(stuck, T, T - 20_000)).toBe(true);
+  });
+});
+
+describe("netNotice", () => {
+  const T = 70_000_000;
+  const net = { ok: true, since: T - 3 * 60_000, downFrom: T - 9 * 60_000 };
+  it("names the outage window", () => {
+    expect(netNotice(net, T)).toBe(`Server lost internet ${clock(net.downFrom)}–${clock(net.since)}`);
+  });
+  it("goes away after six hours, and ignores nothing-to-say shapes", () => {
+    expect(netNotice(net, net.since + NET_NOTE_MS + 1)).toBeNull();
+    expect(netNotice(null, T)).toBeNull();
+    expect(netNotice({ ok: true, since: T }, T)).toBeNull();
   });
 });
