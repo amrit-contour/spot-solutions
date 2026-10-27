@@ -2,9 +2,11 @@
 // scheduler on the curator's own server. When the mic didn't happen, or the show is set to ask, it asks first: in the app
 // (an Updates card) and, with the agent number linked, on WhatsApp ("yes" clears, "no" keeps them for next week).
 import type WAWebJS from "whatsapp-web.js";
-import { addDays, cleanupRemovals, cleanupStep, confirmPending, groupPostVars, localNow, messageRich, normalizeMessage, renderRich, shiftWeek, type Lineup, type LineupCleanup, type Show } from "@spot/shared";
+import { RETRY_WINDOW_MS, addDays, canClearNow, cleanupNotice, cleanupStep, confirmPending, groupPostVars, localNow, messageRich, nextRetryAt, normalizeMessage, planCleanup, renderRich, shiftWeek, type CleanupMember, type Lineup, type LineupCleanup, type Show } from "@spot/shared";
 import { col } from "./firebase.ts";
-import { lidMap, loadComics, normaliseParticipants, notice } from "./commands.ts";
+import { loadComics, notice } from "./commands.ts";
+import { removalPass, toPending, type GroupPort } from "./cleanupPass.ts";
+import { sessions } from "./sessions.ts";
 import { askCurator } from "./agentOutbox.ts";
 import { deliverableId, enqueueTask } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
@@ -39,18 +41,30 @@ export async function runCleanups(uid: string, client: WAWebJS.Client | undefine
     const show = shows.find((s) => s.id === lineup.showId);
     if (!show) continue;
     const step = cleanupStep(show, lineup, now, settings.micCheck.enabled);
-    if (!step || (step === "run" && !client)) continue; // clearing needs the main WhatsApp; asking does not
+    if (!step || ((step === "run" || step === "retry") && !client)) continue; // clearing needs the main WhatsApp; asking does not
+    // Only when WhatsApp answers (health watchdog) and has been up a couple of minutes: a page that just loaded may list a partial group.
+    if ((step === "run" || step === "retry") && !canClearNow({ healthy: sessions.healthy(uid), stableMs: sessions.stableMs(uid) })) continue;
     const key = `${uid}|${doc.id}`;
     if (running.has(key)) continue;
     running.add(key);
     try {
       if (step === "skip") await doc.ref.update({ cleanup: { status: "skipped", at: Date.now() } satisfies LineupCleanup });
       else if (step === "ask") await ask(uid, show, lineup);
-      else if (client) await clearGroup(uid, client, show, lineup);
+      else if (client) await clearGroup(uid, client, show, lineup, { retry: step === "retry" });
     } catch (e) {
       console.error(`[cleanup] ${uid} ${show.name}`, e);
-      await doc.ref.update({ cleanup: { status: "skipped", at: Date.now() } satisfies LineupCleanup });
-      await notice(uid, "warn", `${show.name}: couldn't clear the group (${(e as Error).message}). Check it by hand.`);
+      sessions.noteWaError(uid, e);
+      if (step === "retry") {
+        // A failed retry leaves the cleanup partial and tries again later; it never drops what is still pending.
+        const c = lineup.cleanup;
+        const attempts = (c?.attempts ?? 1) + 1;
+        const retryAt = nextRetryAt(attempts, Date.now(), c?.until ?? 0);
+        await doc.ref.update({ "cleanup.attempts": attempts, "cleanup.retryAt": retryAt });
+        if (retryAt === null) await notice(uid, "warn", `${show.name}: couldn't finish clearing the group (${(e as Error).message}). Remove the rest by hand in WhatsApp.`, "lineup");
+      } else {
+        await doc.ref.update({ cleanup: { status: "skipped", at: Date.now() } satisfies LineupCleanup });
+        await notice(uid, "warn", `${show.name}: couldn't clear the group (${(e as Error).message}). Check it by hand.`);
+      }
     } finally {
       running.delete(key);
     }
@@ -75,39 +89,94 @@ export async function keepGroup(uid: string, lineupId: string) {
   await col(uid, "lineups").doc(lineupId).update({ cleanup: { status: "kept", at: Date.now() } satisfies LineupCleanup });
 }
 
-/** Thank the group, then remove everyone who doesn't stay. Returns how many left and how many couldn't be removed. */
-export async function clearGroup(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }): Promise<{ removed: number; failed: number }> {
+const digitsOf = (id: string) => id.split("@")[0].split(":")[0].replace(/\D/g, "");
+
+/** Everyone in the group with every id form WhatsApp gives for them and their phone number where it can be resolved. */
+export async function readCleanupMembers(client: WAWebJS.Client, groupId: string): Promise<CleanupMember[]> {
+  const group = (await client.getChatById(groupId)) as WAWebJS.GroupChat;
+  const raw = group.participants.map((p) => ({ id: p.id._serialized, isLid: p.id.server === "lid", isAdmin: Boolean(p.isAdmin || p.isSuperAdmin) }));
+  const other = new Map<string, string>(); // lid <-> phone id, both directions
+  for (let i = 0; i < raw.length; i += 100) {
+    try {
+      for (const r of await client.getContactLidAndPhone(raw.slice(i, i + 100).map((p) => p.id))) {
+        if (r.lid && r.pn) {
+          other.set(r.lid, r.pn);
+          other.set(r.pn, r.lid);
+        }
+      }
+    } catch {
+      /* no mapping for this batch: those members stay unidentified unless they are phone ids */
+    }
+  }
+  return raw.map((p) => {
+    const mapped = other.get(p.id);
+    const lid = p.isLid ? p.id : mapped?.endsWith("@lid") ? mapped : undefined;
+    const pn = !p.isLid ? p.id : mapped?.endsWith("@c.us") ? mapped : undefined;
+    const ids = [lid, pn].filter((x): x is string => Boolean(x)); // @lid first: it is what current WhatsApp addresses members by
+    return { ids, phone: pn ? digitsOf(pn) || null : null, isAdmin: p.isAdmin };
+  });
+}
+
+/**
+ * Thank the group (first pass only), then remove everyone who doesn't stay. Returns how many left and how many couldn't be removed.
+ * People it couldn't remove are kept on the lineup's cleanup (`pending`, with why) and retried (2 min, 10 min, hourly, the rest of
+ * the day); `retry` is that later pass: no thank-you, a fresh read of the group.
+ */
+export async function clearGroup(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }, opts: { retry?: boolean } = {}): Promise<{ removed: number; failed: number }> {
   const { settings, venues } = watchUser(uid);
   const ref = col(uid, "lineups").doc(lineup.id);
-  // Claimed first, so a restart halfway can't post the thank-you twice.
-  await ref.update({ cleanup: { status: "done", at: Date.now() } satisfies LineupCleanup });
-  const group = (await client.getChatById(show.groupId!)) as WAWebJS.GroupChat;
+  const prior = lineup.cleanup;
+  const retry = Boolean(opts.retry);
+  const t0 = Date.now();
+  const until = retry ? (prior?.until ?? t0 + RETRY_WINDOW_MS) : t0 + RETRY_WINDOW_MS;
+  // Claimed first, so a restart halfway can't post the thank-you twice, and another server won't start a pass while this one runs.
+  // "partial" with a retryAt a few minutes out: if this server dies mid-pass, the retry picks it up (it never thanks the group again).
+  if (retry) await ref.update({ "cleanup.retryAt": t0 + 10 * 60_000 });
+  else await ref.set({ cleanup: { status: "partial", at: t0, attempts: 0, until, retryAt: t0 + 10 * 60_000, pending: [], removed: 0, failed: 0 } satisfies LineupCleanup }, { merge: true });
   const venue = venues.find((v) => v.id === show.venueId);
 
-  const msg = show.cleanup?.message === "" ? null : normalizeMessage(show.cleanup?.message, messageRich(settings, "groupCleanup"));
-  if (msg) await sendRich(client, show.groupId!, renderRich(msg, groupPostVars(show, venue, lineup.date)), {}, venue, { prerendered: true });
+  if (!retry) {
+    const msg = show.cleanup?.message === "" ? null : normalizeMessage(show.cleanup?.message, messageRich(settings, "groupCleanup"));
+    if (msg) await sendRich(client, show.groupId!, renderRich(msg, groupPostVars(show, venue, lineup.date)), {}, venue, { prerendered: true });
+  }
 
   // Anyone already placed on next week's show stays.
   const next = (await col(uid, "lineups").doc(`${shiftWeek(lineup.weekOf, 1)}_${show.id}`).get()).data() as Lineup | undefined;
   const nextWeek = next && next.status !== "cancelled" ? next.slots.map((s) => s.comicId) : [];
-  const participants = (await normaliseParticipants(client, group)).filter((p) => p.id.endsWith("@c.us")); // never remove who we can't identify
-  const toRemove = cleanupRemovals(participants, show, `${client.info.wid.user}@c.us`, nextWeek);
-  const lidOf = await lidMap(client, group);
-  let removed = 0;
-  let failed = 0;
-  for (const id of toRemove) {
-    await enqueueTask(client, async () => {
-      try {
-        await group.removeParticipants([lidOf.get(id) ?? id]);
-        removed++;
-      } catch {
-        failed++;
-      }
-    });
-  }
-  await ref.update({ cleanup: { status: "done", at: Date.now(), removed, failed } satisfies LineupCleanup });
+  const stay = [...new Set([...(show.regulars ?? []), ...(show.protected ?? []), ...(show.pocs ?? []), ...nextWeek])];
+  const comics = await loadComics(uid, stay);
+  const info = client.info as { wid: { user: string; _serialized: string }; lid?: { _serialized?: string } };
+  const self = [`${info.wid.user}@c.us`, info.wid._serialized, info.lid?._serialized ?? ""].filter(Boolean);
+
+  const members = await readCleanupMembers(client, show.groupId!);
+  const plan = planCleanup({ members, stay, comics: [...comics.entries()].map(([id, c]) => ({ id, chatId: c.chatId, phone: c.phone })), self });
+  for (const m of plan.unknown) console.log(`[cleanup] ${uid} ${show.name}: skipped: unknown id ${m.ids.join(",")}`);
+  const port: GroupPort = {
+    read: () => readCleanupMembers(client, show.groupId!),
+    remove: (id) =>
+      enqueueTask(client, async () => {
+        const group = (await client.getChatById(show.groupId!)) as WAWebJS.GroupChat;
+        await group.removeParticipants([id]);
+      }),
+  };
+  const pass = await removalPass(port, plan.remove, (m) => console.log(`[cleanup] ${uid} ${show.name}: ${m}`));
+  const removed = (prior?.removed ?? 0) + pass.removed.length;
+
+  const names = new Map<string, string>();
+  const leftIds = pass.left.map((l) => l.member.phone && `${l.member.phone}@c.us`).filter((x): x is string => Boolean(x));
+  for (const [id, c] of await loadComics(uid, leftIds)) names.set(id, c.name);
+  const pending = toPending(pass.left, names);
+  const attempts = (prior?.attempts ?? 0) + 1;
+  const retryAt = pending.length ? nextRetryAt(attempts, Date.now(), until) : null;
+  const state: LineupCleanup = pending.length
+    ? { status: "partial", at: t0, removed, failed: pending.length, pending, retryAt, attempts, until, skipped: plan.unknown.length }
+    : { status: "done", at: t0, removed, failed: 0, attempts, skipped: plan.unknown.length };
+  await ref.update({ cleanup: state });
   await listGroupMembers(uid, { showId: show.id }).catch(() => undefined);
-  await notice(uid, failed ? "warn" : "info", `${show.name}: cleared the group for next week (${removed} removed${failed ? `, ${failed} couldn't be removed` : ""}).`, "lineup");
-  console.log(`[cleanup] ${uid} ${show.name}: -${removed}${failed ? ` (${failed} failed)` : ""}`);
-  return { removed, failed };
+  const retryInMs = retryAt === null ? null : retryAt - Date.now();
+  // A retry that removed nobody new and still has the same people says nothing (the first notice already did), until it gives up.
+  const quiet = retry && !pass.removed.length && retryAt !== null;
+  if (!quiet) await notice(uid, pending.length ? "warn" : "info", cleanupNotice({ show: show.name, removed: pass.removed.length, pending, skipped: plan.unknown.length, retryInMs, retry }), "lineup");
+  console.log(`[cleanup] ${uid} ${show.name}: -${pass.removed.length}${pending.length ? ` (${pending.length} left: ${pending.map((p) => `${p.id} ${p.reason}`).join("; ")})` : ""}`);
+  return { removed: pass.removed.length, failed: pending.length };
 }

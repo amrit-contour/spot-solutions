@@ -52,6 +52,7 @@ vi.mock("./greet.ts", () => ({ greetFor: async () => "Rohan" }));
 vi.mock("./voice.ts", () => ({ inVoice: vi.fn() }));
 vi.mock("./people.ts", () => ({ listGroupMembers: vi.fn() }));
 vi.mock("./reconcile.ts", () => ({}));
+vi.mock("./sessions.ts", () => ({ sessions: { healthy: () => true, stableMs: () => 1e9, noteWaError: () => undefined } }));
 
 const { ask, keepGroup } = await import("./groupCleanup.ts");
 const { sendMicChecks, handleOfferReply } = await import("./replies.ts");

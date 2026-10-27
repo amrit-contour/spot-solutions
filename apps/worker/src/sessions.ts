@@ -147,6 +147,12 @@ class SessionManager {
     return this.ready.has(uid) && t !== undefined && now - t >= ms;
   }
 
+  /** How long this session has been ready (0 when it isn't). */
+  stableMs(uid: string, now = Date.now()) {
+    const t = this.readyAt.get(uid);
+    return this.ready.has(uid) && t !== undefined ? now - t : 0;
+  }
+
   /** Healthy: ready and not flagged by the watchdog. */
   healthy(uid: string) {
     return this.ready.has(uid) && (this.dogs.get(uid)?.health ?? "ok") === "ok";

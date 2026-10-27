@@ -275,6 +275,7 @@ async function runPlan(uid: string, p: ActionPlan) {
       }
       case "cleanup": {
         const l = (await col(uid, "lineups").doc(p.lineupId).get()).data() as Lineup | undefined;
+        if (l?.cleanup?.status === "partial") return void (await say(uid, `The ${show.name} group is mostly cleared; the ${l.cleanup.pending?.length ?? 0} still in are being retried.`));
         if (!l || l.cleanup?.status === "done") return void (await say(uid, `The ${show.name} group was already cleared.`));
         const client = sessions.get(uid);
         if (!client) return void (await say(uid, "Your own WhatsApp isn't connected right now, so I couldn't clear the group."));

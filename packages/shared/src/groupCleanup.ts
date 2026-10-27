@@ -2,9 +2,9 @@
 // co-hosts, admins, you, and anyone already on next week's lineup stay. If the mic didn't happen (or the curator wants to
 // decide each time), it asks first: the same comics may be repeating next week. Pure rules; the worker runs them.
 import { addDays } from "./groupPosts.ts";
-import { diffGroup } from "./groupSync.ts";
 import type { MessageOverride } from "./messages.ts";
-import type { Lineup, Show } from "./types.ts";
+import { comicChatKeys } from "./threads.ts";
+import type { Comic, Lineup, Show } from "./types.ts";
 
 export interface GroupCleanup {
   enabled: boolean;
@@ -18,20 +18,41 @@ export interface GroupCleanup {
 
 export const DEFAULT_CLEANUP: GroupCleanup = { enabled: false, mode: "auto", time: "11:00" };
 
-/** What happened with one lineup's cleanup. Written by the worker (and by the curator's answer). */
+/** Someone the cleanup couldn't remove (yet), and why. */
+export interface CleanupPending {
+  /** The id to remove them by (phone-based when known). */
+  id: string;
+  name?: string;
+  reason: string;
+}
+
+/**
+ * What happened with one lineup's cleanup. Written by the worker (and by the curator's answer).
+ * "partial": the pass ran but some people are still in; `pending` says who and why, `retryAt` when it tries again (missing:
+ * out of retries, the curator has to remove them by hand).
+ */
 export interface LineupCleanup {
-  status: "asked" | "done" | "kept" | "skipped";
+  status: "asked" | "done" | "partial" | "kept" | "skipped";
   at: number;
   removed?: number;
   failed?: number;
   /** Why it asked: the mic didn't happen, or the show is set to ask every time. */
   reason?: "canned" | "ask";
+  pending?: CleanupPending[];
+  /** Next automatic retry (epoch ms). Missing on a "partial" cleanup: gave up, or a retry is running. */
+  retryAt?: number | null;
+  /** Passes done so far (the first one counts). */
+  attempts?: number;
+  /** No automatic retry after this (epoch ms). */
+  until?: number;
+  /** Members left alone because they couldn't be identified (e.g. an @lid with no known number). */
+  skipped?: number;
 }
 
 /** Past this many days after the show, a cleanup that never ran is dropped (a server that was off for a week). */
 export const CLEANUP_WINDOW_DAYS = 3;
 
-export type CleanupStep = "run" | "ask" | "skip";
+export type CleanupStep = "run" | "ask" | "skip" | "retry";
 
 /**
  * What to do now for this lineup, or null for nothing yet. `micCheckOn`: without mic checks there's never an answer, so a
@@ -42,9 +63,12 @@ export function cleanupStep(
   lineup: Pick<Lineup, "date" | "status" | "outcome" | "cleanup"> & { backfilled?: boolean },
   now: { date: string; time: string },
   micCheckOn: boolean,
+  nowMs: number = Date.now(),
 ): CleanupStep | null {
   const c = show.cleanup;
   if (lineup.backfilled) return null; // a past show recorded afterwards: the group was never ours to clear
+  // A pass that left people behind: try again when it's time (retryAt is cleared while a retry runs, and when it gives up).
+  if (lineup.cleanup?.status === "partial") return lineup.cleanup.retryAt && lineup.cleanup.retryAt <= nowMs ? "retry" : null;
   if (!c?.enabled || !show.groupId || !lineup.date || lineup.cleanup) return null;
   if (lineup.status !== "confirmed" && lineup.status !== "canned") return null;
   const day = addDays(lineup.date, 1);
@@ -57,12 +81,93 @@ export function cleanupStep(
   return c.mode === "auto" ? "run" : "ask";
 }
 
-/** Who leaves the group: everyone except POCs, regulars, co-hosts, admins, you, and next week's lineup. */
-export function cleanupRemovals(
-  participants: { id: string; isAdmin: boolean }[],
-  show: Pick<Show, "regulars" | "protected" | "pocs">,
-  self: string,
-  nextWeek: string[],
-): string[] {
-  return diffGroup({ participants, confirmed: nextWeek, regulars: show.regulars ?? [], protected: [...(show.protected ?? []), ...(show.pocs ?? [])], self }).toRemove;
+/** Retry delays after the first pass: 2 min, 10 min, then hourly, until `until`. */
+export const RETRY_DELAYS_MS = [2 * 60_000, 10 * 60_000, 60 * 60_000];
+/** Automatic retries stop this long after the first pass (the rest of the day). */
+export const RETRY_WINDOW_MS = 10 * 3600_000;
+/** A fresh WhatsApp page needs this long before members are removed (the group list is complete by then). */
+export const STABLE_BEFORE_CLEANUP_MS = 2 * 60_000;
+
+/** When to retry after pass number `attempts` (1 = the first), or null once the window is over. */
+export function nextRetryAt(attempts: number, now: number, until: number): number | null {
+  const at = now + RETRY_DELAYS_MS[Math.min(attempts, RETRY_DELAYS_MS.length) - 1];
+  return at <= until ? at : null;
+}
+
+/** Clearing waits until WhatsApp answers (the health watchdog) and has been up a couple of minutes. */
+export const canClearNow = (s: { healthy: boolean; stableMs: number }) => s.healthy && s.stableMs >= STABLE_BEFORE_CLEANUP_MS;
+
+const digits = (id: string) => id.split("@")[0].split(":")[0].replace(/\D/g, "");
+
+/** A group member as the worker reads it: every id WhatsApp knows for them, and their phone number when it is known. */
+export interface CleanupMember {
+  /** Raw ids: the @lid and/or the @c.us. The first one is tried first when removing. */
+  ids: string[];
+  /** Digits of the phone number, null when it can't be resolved (an @lid WhatsApp won't map). */
+  phone: string | null;
+  isAdmin: boolean;
+}
+
+export interface CleanupPlan {
+  /** Positively identified, nobody keeps them: safe to remove. */
+  remove: CleanupMember[];
+  /** Members left alone because we can't tell who they are ("skipped: unknown id"). */
+  unknown: CleanupMember[];
+  kept: number;
+}
+
+/**
+ * Who leaves the group: everyone except POCs, regulars, co-hosts, admins, you, and next week's lineup. People are matched by
+ * phone digits across every id form (@c.us, @lid, comic ids, a comic's chat id), because the roster, the group and WhatsApp
+ * each use a different one. Anyone who can't be positively identified is never removed.
+ */
+export function planCleanup(input: {
+  members: CleanupMember[];
+  /** Comic ids that stay: regulars, co-hosts, POCs, next week's lineup. */
+  stay: string[];
+  /** The roster, so a stayer's phone and chat id count too. */
+  comics: Pick<Comic, "id" | "chatId" | "phone">[];
+  /** The curator's own ids (@c.us and @lid). */
+  self: string[];
+}): CleanupPlan {
+  const keys = new Set<string>();
+  const add = (x: string | undefined | null) => {
+    const d = digits(x ?? "");
+    if (d) keys.add(d);
+  };
+  const stay = new Set(input.stay);
+  for (const id of input.stay) add(id);
+  for (const c of input.comics) if (stay.has(c.id)) comicChatKeys(c).forEach(add);
+  input.self.forEach(add);
+  const out: CleanupPlan = { remove: [], unknown: [], kept: 0 };
+  for (const m of input.members) {
+    const mine = [...m.ids.map(digits), m.phone ?? ""].filter(Boolean);
+    if (m.isAdmin || mine.some((k) => keys.has(k))) out.kept++;
+    else if (!m.phone) out.unknown.push(m);
+    else out.remove.push(m);
+  }
+  return out;
+}
+
+/** Why a removal didn't work, in words for the curator. Codes are WhatsApp's per-participant results. */
+export function removeFailureReason(e: unknown): string {
+  const raw = e instanceof Error ? e.message : typeof e === "string" ? e : "";
+  const code = /\b(40[0-9]|50[0-9])\b/.exec(raw)?.[1] ?? (typeof (e as { code?: unknown })?.code === "number" ? String((e as { code: number }).code) : null);
+  if (code === "403" || /not[- ]authori[sz]ed|forbidden|admin/i.test(raw)) return "WhatsApp doesn't allow it (you may not be an admin of this group)";
+  if (code === "404" || /not[- ]found|not in (the )?group|not a participant/i.test(raw)) return "not found in the group";
+  if (code === "409" || /conflict/i.test(raw)) return "WhatsApp refused it (conflict)";
+  if (/lid/i.test(raw)) return "WhatsApp couldn't match their number";
+  if (/timed out|timeout|ProtocolError|Target closed/i.test(raw)) return "WhatsApp didn't answer in time";
+  return raw ? `WhatsApp said: ${raw.slice(0, 80)}` : "WhatsApp didn't remove them";
+}
+
+/** The Updates notice after a pass. `retryInMs`: the next automatic try, null when there won't be one. */
+export function cleanupNotice(x: { show: string; removed: number; pending: CleanupPending[]; skipped: number; retryInMs: number | null; retry: boolean }): string {
+  const label = (p: CleanupPending) => `${p.name ?? `+${digits(p.id)}`}: ${p.reason}`;
+  const skip = x.skipped ? ` ${x.skipped} member${x.skipped === 1 ? "" : "s"} I couldn't identify ${x.skipped === 1 ? "was" : "were"} left alone.` : "";
+  if (!x.pending.length) return x.retry ? `${x.show}: the rest are out now. The group is cleared for next week.${skip}` : `${x.show}: cleared the group for next week (${x.removed} removed).${skip}`;
+  const list = x.pending.length > 5 ? `${x.pending.slice(0, 5).map(label).join("; ")}; and ${x.pending.length - 5} more` : x.pending.map(label).join("; ");
+  const head = `${x.show}: ${x.retry ? `${x.removed} more removed, ` : `cleared the group for next week (${x.removed} removed), but `}${x.pending.length} couldn't be removed (${list}).`;
+  const when = x.retryInMs === null ? " Not retrying any more; remove them by hand in WhatsApp." : ` Trying again ${x.retryInMs < 90_000 ? "in a minute" : `in about ${Math.round(x.retryInMs / 60_000)} min`}.`;
+  return head + when + skip;
 }

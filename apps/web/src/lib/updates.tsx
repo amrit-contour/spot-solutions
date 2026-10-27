@@ -55,7 +55,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   const actions = useCollection<ComicAction>(uid, "actions", [where("weekOf", "==", week), where("status", "==", "pending"), orderBy("createdAt", "desc")], week);
   const notices = useCollection<AppNotice>(uid, "notices", [where("read", "==", false)]);
   const confirmed = useCollection<Lineup>(uid, "lineups", [where("status", "==", "confirmed")]);
-  const asked = useCollection<Lineup>(uid, "lineups", [where("cleanup.status", "==", "asked")]);
+  const asked = useCollection<Lineup>(uid, "lineups", [where("cleanup.status", "in", ["asked", "partial"])]);
   const interested = useCollection<SpotOffer>(uid, "offers", [where("status", "==", "interested")]);
   const today = localNow(new Date(), settings.timezone).date;
 
@@ -71,7 +71,8 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       else server.push(n);
     }
     const micChecks = settings.micCheck.enabled ? confirmed.data.filter((l) => !l.outcome && !l.backfilled && l.date && l.date < today && shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5) : [];
-    const cleanups = asked.data.filter((l) => shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date));
+    // "asked": waiting for an answer. "partial": a pass left people in the group (shown with who and why); one that is still running has nobody pending yet.
+    const cleanups = asked.data.filter((l) => shows.some((s) => s.id === l.showId) && (l.cleanup?.status === "asked" || Boolean(l.cleanup?.pending?.length))).sort((a, b) => b.date.localeCompare(a.date));
     const rounds = new Map<string, SpotOffer[]>();
     for (const o of interested.data) if (o.round) rounds.set(o.round.id, [...(rounds.get(o.round.id) ?? []), o]);
     const adhoc = [...rounds.values()].sort((a, b) => b[0].sentAt - a[0].sentAt);

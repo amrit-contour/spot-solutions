@@ -575,6 +575,12 @@ const handlers: Record<Command["type"], Handler> = {
       await answered();
       return { already: true };
     }
+    // "Retry now" on a cleanup that left people behind: another pass at once, no new thank-you.
+    if (lineup.cleanup?.status === "partial") {
+      const show = watchUser(uid).shows.find((s) => s.id === lineup.showId);
+      if (!show?.groupId) throw new Error("This show has no WhatsApp group linked.");
+      return clearGroup(uid, sessions.require(uid), show, { ...lineup, id: String(lineupId) }, { retry: true });
+    }
     if (keep) {
       await keepGroup(uid, String(lineupId));
       return void (await answered());

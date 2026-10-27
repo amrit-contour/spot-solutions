@@ -111,7 +111,7 @@ export function UpdatesPanel({ lineups }: { lineups: Lineup[] }) {
           </Section>
         )}
         {u.cleanups.length > 0 && (
-          <Section key="cleanup" icon={IconGroup} title="Clear the group?" count={u.cleanups.length} onExitComplete={restoreFocus}>
+          <Section key="cleanup" icon={IconGroup} title="Group cleanup" count={u.cleanups.length} onExitComplete={restoreFocus}>
             {u.cleanups.map((l) => {
               const show = shows.find((s) => s.id === l.showId);
               return show ? <CleanupCard key={l.id} lineup={l} show={show} /> : null;
