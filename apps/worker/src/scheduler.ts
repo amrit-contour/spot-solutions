@@ -15,6 +15,7 @@ import { sendGroupPosts } from "./groupPosts.ts";
 import { runCleanups } from "./groupCleanup.ts";
 import { startGroupWatch } from "./groupWatch.ts";
 import { maybeTickAsks } from "./asks.ts";
+import { askRatings } from "./ratings.ts";
 import { maybePhotoSweep } from "./profilePics.ts";
 
 const TICK_MS = 2 * 60_000;
@@ -59,6 +60,8 @@ export function startScheduler(uids: () => Iterable<string>) {
       if (client || fleet.holds(uid)) {
         void sendMicChecks(uid, client).catch((e) => console.error("[mic-check]", e));
         void runCleanups(uid, client).catch((e) => console.error("[cleanup]", e));
+        // After a yes (given in the app or on WhatsApp): ask how each comic did.
+        void askRatings(uid).catch((e) => console.error("[ratings]", e));
       }
       if (!client) continue;
       void tick(uid).catch((e) => console.error("[scheduler]", e));

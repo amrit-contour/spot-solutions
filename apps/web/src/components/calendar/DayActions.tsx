@@ -11,6 +11,7 @@ import { db } from "@spot/ui/firebase";
 import { weekdayOf } from "../../lib/calendarDates";
 import { addDefaults, placeComic, withSelf } from "../../lib/lineup";
 import { answerMicCheck } from "../../lib/updates";
+import { useMicDue } from "../../lib/micDue";
 import { BackfillSheet } from "../BackfillSheet";
 import { OfferSheet } from "../OfferSheet";
 import { Popover } from "@spot/ui";
@@ -54,7 +55,8 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
   const past = ev.date < cal.today;
   const full = (lineup?.slots.length ?? 0) >= show.slotCount;
   const pending = pendingCount(ev);
-  const mic = past && lineup?.status === "confirmed" && !lineup.outcome ? lineup : null;
+  const micDue = useMicDue();
+  const mic = lineup && micDue(lineup, show) ? lineup : null;
   const baseline = lineup?.status === "confirmed" ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
 
   // Same as Lineup > "Add POCs, regulars and co-hosts": read the group again, then add whoever is missing.

@@ -56,7 +56,10 @@ export const cancellations = (history: SpotHistoryEntry[] | undefined) => histor
 
 /** Insert or replace this show's entry, newest first, capped. */
 export function withHistory(history: SpotHistoryEntry[] | undefined, entry: SpotHistoryEntry, cap = 30) {
-  const rest = (history ?? []).filter((h) => !(h.date === entry.date && h.showId === entry.showId));
+  const prev = (history ?? []).find((h) => h.date === entry.date && h.showId === entry.showId);
+  const rest = (history ?? []).filter((h) => h !== prev);
+  // A rating belongs to the night: re-recording the spot keeps it (unless the night didn't happen).
+  if (prev?.rating != null && entry.rating === undefined && entry.status === "confirmed") entry = { ...entry, rating: prev.rating };
   return [entry, ...rest].sort((a, b) => b.date.localeCompare(a.date)).slice(0, cap);
 }
 

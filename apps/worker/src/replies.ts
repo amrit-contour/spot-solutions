@@ -8,6 +8,8 @@ import {
   onYes,
   localNow,
   messageRich,
+  micCheckDue,
+  micDelayHours,
   offerVote,
   OFFER_POLL_OPTIONS,
   parseYesNo,
@@ -305,21 +307,22 @@ export async function recordOutcome(uid: string, lineupId: string, outcome: "hap
 }
 
 /**
- * Morning after a confirmed show: ask. The app's "Did it happen?" card comes from the lineup itself (confirmed, past, no outcome),
- * so it exists whether or not any WhatsApp is up; this marks it asked and also asks on the agent number (or, failing that, in the
- * curator's own chat). Runs without the main WhatsApp too, so the agent still asks when only it is linked.
+ * A fixed time after a confirmed show STARTS (default 2 hours, micCheck.afterHours): ask. The app's "Did it happen?" card comes from
+ * the lineup itself (confirmed, due, no outcome), so it exists whether or not any WhatsApp is up and stays a pending update until
+ * answered; this marks it asked and also asks on the agent number (or, failing that, in the curator's own chat). Runs without the
+ * main WhatsApp too, so the agent still asks when only it is linked.
  */
 export async function sendMicChecks(uid: string, client: WAWebJS.Client | undefined) {
   const { settings, shows } = watchUser(uid);
   if (!settings.micCheck.enabled) return;
   const now = localNow(new Date(), settings.timezone);
-  if (now.time < settings.micCheck.time) return;
+  const hours = micDelayHours(settings.micCheck);
   const snap = await col(uid, "lineups").where("status", "==", "confirmed").get();
   for (const d of snap.docs) {
     const l = d.data() as Lineup;
-    if (l.outcome || l.micCheckSentOn || l.backfilled || !l.date || l.date >= now.date) continue;
-    await d.ref.update({ micCheckSentOn: now.date });
     const show = shows.find((s) => s.id === l.showId);
+    if (l.micCheckSentOn || !micCheckDue(l, show, now, hours)) continue;
+    await d.ref.update({ micCheckSentOn: now.date });
     // With the agent number linked (and its notices on), it asks you there and reads your yes/no; no "Message yourself" chat.
     if (await sendMicCheck(uid, `🎤 Did *${show?.name ?? "the show"}* on ${formatDate(l.date)} happen? Reply *yes* or *no* here.`)) continue;
     if (!settings.micCheck.whatsapp) continue;

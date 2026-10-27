@@ -20,6 +20,7 @@ import {
   MESSAGE_TYPES,
   messageRich,
   OFFER_POLL_OPTIONS,
+  micDelayHours,
   snippetRich,
   storeMessage,
   pollProblem,
@@ -478,13 +479,16 @@ function AfterShowSection() {
           <SettingRow label="Offers to several: add the first yeses" info="When you offer a spot to several comics at once, the first yeses fill it on their own. Off: everyone who says yes comes to Updates and you pick; the rest are told it's filled. An offer to one comic always books on yes.">
             <Switch checked={settings.offers.autoAdd !== false} onChange={(v) => saveSettings({ offers: { ...settings.offers, autoAdd: v } })} label="In an offer to several comics, add the first yeses automatically" />
           </SettingRow>
-          <SettingRow label="Did the mic happen?" info="The morning after each show, Requests asks you. “No” stops it counting as anyone's spot.">
+          <SettingRow label="Did the mic happen?" info="Some time after each show starts, it asks you: here in Updates, and on the agent number if it's linked. Until you answer it stays as a pending update. “No” stops it counting as anyone's spot.">
             <Switch checked={m.enabled} onChange={(v) => saveSettings({ micCheck: { ...m, enabled: v } })} label="Mic check" />
           </SettingRow>
           {m.enabled && (
             <>
-              <SettingRow label="Ask from">
-                <TimePicker value={m.time} onChange={(v) => saveSettings({ micCheck: { ...m, time: v } })} className="h-10" wrapperClassName="w-36" label="Ask from" />
+              <SettingRow label="Ask after the start" info="How long after the show's start time it asks if the mic happened. Two hours by default.">
+                <Stepper value={micDelayHours(m)} onChange={(v) => saveSettings({ micCheck: { ...m, afterHours: v } })} min={0} max={24} suffix={micDelayHours(m) === 1 ? "hour" : "hours"} />
+              </SettingRow>
+              <SettingRow label="Ask how each comic did" info="After a yes, the agent lists the lineup and you rate each comic 1 to 5 (reply like “1 4, 2 5, 3 3”). Ratings are kept with each comic's spot history. You can also rate in the app.">
+                <Switch checked={m.rate !== false} onChange={(v) => saveSettings({ micCheck: { ...m, rate: v } })} label="Ask how each comic did" />
               </SettingRow>
               <SettingRow label="Also ask on WhatsApp" info="In your “Message yourself” chat, or from the agent number when it's linked (see Agent number). Reply yes or no there.">
                 <Switch checked={m.whatsapp} onChange={(v) => saveSettings({ micCheck: { ...m, whatsapp: v } })} label="Ask on WhatsApp" />

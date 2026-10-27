@@ -15,7 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rules: { window: { enabled: false, startDay: 6, startTime: "15:00", endDay: 1, endTime: "10:00" }, skipLastWeek: false },
   selfService: { enabled: true, autoSend: false },
   onboarding: { enabled: true },
-  micCheck: { enabled: true, time: "10:00", whatsapp: false },
+  micCheck: { enabled: true, time: "10:00", whatsapp: false, afterHours: 2, rate: true },
   hostPoll: { groupId: null },
   offers: { expiryHours: 3 },
   googleContacts: { enabled: false },

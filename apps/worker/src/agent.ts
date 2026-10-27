@@ -20,6 +20,7 @@ import { loadComics, runHandler } from "./commands.ts";
 import { removeFromLineup, placeOnLineup, ensureComic, ensureLineup } from "./lineupOps.ts";
 import { adminEmail, membersWaitingText, planMemberChange, runMemberChange } from "./agentAdmin.ts";
 import { recordOutcome, settleRound } from "./replies.ts";
+import { answerRatings, askRatings } from "./ratings.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { sessions } from "./sessions.ts";
 import { sendQueued } from "./sendQueue.ts";
@@ -182,11 +183,16 @@ async function curatePending(uid: string, text: string, A: AgentSettings): Promi
 /** Curate: a plain yes/no answers the latest open mic check. */
 async function curateMic(uid: string, text: string, A: AgentSettings): Promise<boolean> {
   if (!A.notify) return false;
+  // "1 4, 2 5": ratings for the lineup the agent just asked about (only when it is waiting for them).
+  const rated = await answerRatings(uid, text);
+  if (rated) return void (await say(uid, rated)), true;
   const yn = micAnswer(text);
   if (yn === null) return false;
   const done = await answerMicCheck(uid, yn);
   if (done) await closeMicPolls({ readMemory: () => readMemory(uid), writeMemory: (p) => writeMemory(uid, p) });
   await say(uid, done ?? "Nothing is waiting on a yes or no right now.");
+  // It happened: ask how each comic did, right away (the scheduler also does this for a yes given in the app).
+  if (done && yn) await askRatings(uid).catch((e) => console.warn(`[agent] ${uid} rating question failed:`, (e as Error).message));
   return true;
 }
 

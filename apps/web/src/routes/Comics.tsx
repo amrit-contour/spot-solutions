@@ -3,7 +3,7 @@ import { ComicAvatar } from "../lib/photos";
 import { Link, useSearchParams } from "react-router-dom";
 import { deleteDoc, setDoc, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
-import { cancellations, formatDate, localNow, shiftWeek, type Comic, type ComicList, type Show, type Tier } from "@spot/shared";
+import { cancellations, formatDate, localNow, ratingSummary, shiftWeek, type Comic, type ComicList, type Show, type Tier } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
@@ -14,6 +14,8 @@ import { StickyBar } from "@spot/ui";
 import { ConfirmDialog } from "@spot/ui";
 import { Menu, MenuItem } from "@spot/ui";
 import { PastSpotSheet } from "../components/PastSpotSheet";
+import { RatingBadge, RatingPicker } from "../components/RatingPicker";
+import { rateSpot } from "../lib/ratings";
 import { DuplicateComics } from "../components/DuplicateComics";
 import { ImportContactsSheet, ImportFileSheet, ImportGoogleSheet } from "../components/ImportSheets";
 import { Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "@spot/ui";
@@ -230,6 +232,7 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
   const { uid, shows, settings, session, comicsById } = useApp();
   const today = localNow(new Date(), settings.timezone).date;
   const [pastOpen, setPastOpen] = useState(false);
+  const [rating, setRating] = useState<string | null>(null);
   const [d, setD] = useState<Partial<Comic>>({});
   const [last, setLast] = useState<Partial<Comic> | null>(null);
   // Read live, so a past spot recorded from here shows straight away.
@@ -342,7 +345,10 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
           <div>
             <div className="mb-2 flex items-center justify-between type-label-l text-on-surface-variant">
               <span>Spot history</span>
-              {cancellations(history) > 0 && <span className="text-error">{cancellations(history)} cancelled</span>}
+              <span className="flex items-center gap-3">
+                {ratingSummary(history) && <span className="inline-flex items-center gap-1 text-tertiary tabular" title={`Average of ${ratingSummary(history)!.count} rated spot${ratingSummary(history)!.count === 1 ? "" : "s"}`}><IconStar className="icon size-3.5" />{ratingSummary(history)!.avg} avg · {ratingSummary(history)!.count}</span>}
+                {cancellations(history) > 0 && <span className="text-error">{cancellations(history)} cancelled</span>}
+              </span>
             </div>
             {d.id && <Button size="sm" variant="tonal" icon={IconHistory} className="mb-2" onClick={() => setPastOpen(true)}>Add a past spot</Button>}
             {history?.length ? (
@@ -350,11 +356,36 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
                 {history.slice(0, 8).map((h) => {
                   // A confirmed spot is only "performed" once the show date has passed.
                   const label = h.status === "cancelled" ? "Cancelled" : h.status === "canned" ? "Mic didn't happen" : h.date > today ? "Booked" : h.date === today ? "Tonight" : h.adhoc ? "Performed · ad hoc" : "Performed";
+                  const key = `${h.date}-${h.showId}`;
+                  const rateable = h.status === "confirmed" && h.date <= today && Boolean(d.id);
                   return (
-                    <li key={`${h.date}-${h.showId}`} className="flex items-center gap-3 border-b border-outline-variant/40 px-3 py-2 last:border-0">
-                      <span className="w-16 type-label-m tabular text-on-surface-variant">{formatDate(h.date)}</span>
-                      <span className="flex-1 truncate type-body-m">{h.showName}</span>
-                      <span className={cx("type-label-m", label.startsWith("Performed") ? "text-primary" : label === "Cancelled" ? "text-error" : label === "Mic didn't happen" ? "text-on-surface-variant" : "text-tertiary")}>{label}</span>
+                    <li key={key} className="border-b border-outline-variant/40 px-3 py-2 last:border-0">
+                      <div className="flex items-center gap-3">
+                        <span className="w-16 type-label-m tabular text-on-surface-variant">{formatDate(h.date)}</span>
+                        <span className="flex-1 truncate type-body-m">{h.showName}</span>
+                        {rateable ? (
+                          <button
+                            type="button"
+                            onClick={() => setRating(rating === key ? null : key)}
+                            aria-expanded={rating === key}
+                            aria-label={`${h.rating ? `Rated ${h.rating} of 5. Change rating` : "Rate this spot"}, ${h.showName} ${formatDate(h.date)}`}
+                            className="-my-1 inline-flex min-h-9 items-center rounded-full px-2 hover:bg-surface-high focus-visible:outline-2 focus-visible:outline-primary"
+                          >
+                            {h.rating ? <RatingBadge value={h.rating} /> : <span className="type-label-m text-primary">Rate</span>}
+                          </button>
+                        ) : null}
+                        <span className={cx("type-label-m", label.startsWith("Performed") ? "text-primary" : label === "Cancelled" ? "text-error" : label === "Mic didn't happen" ? "text-on-surface-variant" : "text-tertiary")}>{label}</span>
+                      </div>
+                      {rateable && rating === key && (
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 pb-1">
+                          <span className="type-body-s text-on-surface-variant">How did they do? 1 rough, 5 killed it</span>
+                          <RatingPicker
+                            label={`How ${d.name || "they"} did on ${formatDate(h.date)}`}
+                            value={h.rating}
+                            onChange={(v) => void rateSpot(uid, { comicId: d.id!, showId: h.showId, date: h.date }, v).catch((e: Error) => toast.error(e.message))}
+                          />
+                        </div>
+                      )}
                     </li>
                   );
                 })}

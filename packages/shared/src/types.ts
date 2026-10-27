@@ -38,7 +38,9 @@ export interface Settings {
   /** Ask comics you haven't saved who they are (V1 new-contact flow). */
   onboarding: { enabled: boolean };
   /** Morning after a show, ask whether it happened. */
-  micCheck: { enabled: boolean; time: string; whatsapp: boolean };
+  /** afterHours: ask this long after the show starts (missing: 2). `time` is the old "ask from" clock time and is no longer used.
+   * rate: after a yes, ask how each comic did (missing: on). */
+  micCheck: { enabled: boolean; time: string; whatsapp: boolean; afterHours?: number; rate?: boolean };
   /** Group where hosts/POCs vote on which shows they can take. */
   hostPoll: { groupId: string | null };
   /** autoAdd: in an offer to several comics, the first yeses fill the slots. Off: yeses come to Updates and you pick. An offer
@@ -162,6 +164,8 @@ export interface SpotHistoryEntry {
   status: "confirmed" | "cancelled" | "canned";
   /** An ad hoc spot: shown in history, ignored by the cooldown. */
   adhoc?: boolean;
+  /** How they did, 1 (rough) to 5 (killed it), as the curator rated it after the show. Kept with the spot. */
+  rating?: number | null;
 }
 
 /** A comic asked something other than a spot: drafted reply waiting for the curator. */
@@ -382,6 +386,8 @@ export interface Slot {
   notTold?: boolean;
   /** Added directly with "Add them to the show's group" off: automatic group syncs leave them out; a sync you press adds them. */
   noGroup?: boolean;
+  /** How they did on the night, 1 to 5 (the curator's rating after the show). */
+  rating?: number | null;
 }
 
 export interface GroupSyncPlan {
@@ -434,6 +440,10 @@ export interface Lineup {
   /** POCs, regulars, co-hosts and group admins were put on this lineup when it was first opened. Not redone after you remove someone. */
   defaultsSeeded?: boolean;
   micCheckSentOn?: string | null;
+  /** Date the agent asked for ratings, so it asks once. */
+  ratingAskedOn?: string | null;
+  /** The curator said skip: nobody asks again for this show. */
+  ratingsSkipped?: boolean;
   /** A past show recorded after the fact. History only: the worker never messages, syncs, asks or posts for it. */
   backfilled?: boolean;
   /** What the worker did for this lineup that nothing else records (confirmations, updates, group update, group posts). Newest last, capped at 50. */

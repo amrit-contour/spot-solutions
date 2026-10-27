@@ -10,7 +10,7 @@ Code: `packages/shared/src/agent.ts` (pure: who it obeys, intents, the yes state
 
 | Part | Setting | How |
 | --- | --- | --- |
-| Tells you things | `settings.agent.notify` | Mic checks (replaces "Message yourself"), new spot requests (batched), follow-up suggestions, offer outcomes, dropped-out and moved-server notices, warnings. Push notifications are unchanged. |
+| Tells you things | `settings.agent.notify` | Mic checks (replaces "Message yourself"; asked `micCheck.afterHours` (default 2) after the show starts, and after a yes it lists the lineup so you rate each comic 1-5 by text: "1 4, 2 5, 3 3"; see `ratings.ts`), new spot requests (batched), follow-up suggestions, offer outcomes, dropped-out and moved-server notices, warnings. Push notifications are unchanged. |
 | Answers questions | `answer` | "Monday lineup?", "who's waiting?", "what's left to confirm?", "who asked for Tuesday?", "when did Rohan last perform?" |
 | Does things | `actions` | Add / remove someone, confirm a show, mark it happened or not, change a start time. Repeats what it understood, acts only on **yes** within 10 minutes. |
 | Morning digest | `digest`, `digestTime` (default 10:00, the account's timezone) | Today's show and who's on, who's waiting, what needs you, tomorrow's show. Skipped when there is nothing to say, and not sent at all if it is more than 4 hours past the time (late link, restart). |
