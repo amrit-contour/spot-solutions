@@ -59,6 +59,9 @@ RETIRED="${NBS_RETIRED_DIR:-apps/web/dist-retired}"
 rm -rf "$RETIRED"
 mkdir -p "$RETIRED"
 cp deploy/retired/index.html deploy/retired/sw.js "$RETIRED/"
+# The DEV post (Hacktoberfest week 3 entry) embeds spot-solutions.web.app/press/*: keep serving those images as they were
+# when it was judged (deploy/retired/press is the pre-rebrand set).
+cp -R deploy/retired/press "$RETIRED/press"
 
 echo "dist (new):    dl/nothing-bot-server.json ($SHA), dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip, dl/NothingBotServer-mac.zip, install.sh, install.ps1, install-mac.sh, uninstall.sh, uninstall.ps1, migrate-mac.sh, restore-backup.sh"
 echo "retired:       spot-solutions.web.app serves only the forwarding page"
