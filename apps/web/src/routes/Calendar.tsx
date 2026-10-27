@@ -198,15 +198,15 @@ function Calendar() {
       <PageHeader
         title={title}
         subtitle={subtitle}
-      />
-
-      {/* Same structure as Requests (whose header renders cleanly on iPhone): the date bar is its own sticky row under the header. */}
-      <div className="sticky top-[var(--page-header-h,0px)] z-20 mb-2 border-b border-outline-variant bg-surface px-4 pt-1 pb-2 sm:px-8">
+        // Part of the header's own sticky box: one element pins, so the date bar cannot lag, jump or scroll away.
+        bar={
 <div className="flex items-center gap-1.5 sm:gap-2" role="toolbar" aria-label="Calendar">
               <div className="flex items-center">
                 <IconButton icon={IconArrowLeft} label={`Previous ${view}`} onClick={() => step(-1)} className="size-10 sm:size-9" />
                 <IconButton icon={IconArrowRight} label={`Next ${view}`} onClick={() => step(1)} className="size-10 sm:size-9" />
-              </div>
+        }
+      />
+
               <Button size="sm" variant={atToday ? "text" : "outlined"} onClick={goToday} title="Go to today (T)" aria-label={`Today, ${fmtDayLong(today)}`} className={cx(atToday && "text-on-surface-variant")}>
                 Today
               </Button>
