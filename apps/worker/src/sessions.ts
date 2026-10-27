@@ -13,9 +13,11 @@ import { unwatchUser, watchUser } from "./userData.ts";
 import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
 import { live } from "./stats.ts";
 import { wipeLogin } from "./vault.ts";
+import { setWedgeHook } from "./sendQueue.ts";
 import { prepareLoginSafe } from "./vaultCalls.ts";
 import { BROWSER_MISSING_MESSAGE, healBrowser, isMissingBrowserError } from "./browserHeal.ts";
 import { launchDecision, orphanPids, shouldFlagAbort } from "./fleetPlan.ts";
+import { PROBE_EVERY_MS, WaWatchdog, dueOnce, isWedgeError } from "./health.ts";
 
 const { Client, LocalAuth } = WAWebJS;
 export { DATA_DIR };
@@ -83,6 +85,18 @@ export async function killOrphanChromium(uid: string) {
 
 const notice = (uid: string, level: "info" | "warn", text: string) => col(uid, "notices").add({ level, text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
 
+/** One notice per `key` per window, so a flapping page or a retry loop never floods Updates. */
+const noticed = new Map<string, number>();
+const NOTICE_WINDOW_MS = 30 * 60_000;
+export function noticeOnce(uid: string, key: string, level: "info" | "warn", text: string, windowMs = NOTICE_WINDOW_MS) {
+  if (!dueOnce(noticed, `${uid}|${key}`, windowMs, Date.now())) return false;
+  void notice(uid, level, text);
+  return true;
+}
+/** Start failures in a row before the app is told (one slow start is normal). */
+const START_NOTICE_AFTER = 2;
+const startRetryMs = (fails: number) => Math.min(5 * 60_000, 15_000 * 2 ** Math.max(0, fails - 1));
+
 // lastSeen drives the app's online dot (zeroed on shutdown); aliveAt is when we last processed messages (never zeroed).
 const setState = (uid: string, s: Partial<SessionState>) => {
   live.recordSession(uid, s); // the server console's live view
@@ -95,6 +109,8 @@ interface Hooks {
   onReady?: (uid: string, source: "local" | "cloud" | "fresh") => void;
   onScanNeeded?: (uid: string) => void;
   onLogout?: (uid: string) => void;
+  /** The WhatsApp page keeps failing after restarts: release the account so another server can take it (fleet.ts). */
+  onUnhealthy?: (uid: string) => void;
 }
 
 class SessionManager {
@@ -107,6 +123,12 @@ class SessionManager {
   /** Times in a row a session signed in but never became ready (see the watchdog on "authenticated"). */
   private stuck = new Map<string, number>();
   private restoredOnce = new Set<string>();
+  /** The health watchdog outlives a client (its restart count must survive the restart it causes). */
+  private dogs = new Map<string, WaWatchdog>();
+  private probeTimers = new Map<string, NodeJS.Timeout>();
+  private startFails = new Map<string, number>();
+  /** When each session last became ready: other jobs (group cleanup) wait for it to be stable. */
+  private readyAt = new Map<string, number>();
   private backupTimers = new Map<string, NodeJS.Timeout>();
 
   get(uid: string) {
@@ -117,6 +139,54 @@ class SessionManager {
     const c = this.get(uid);
     if (!c) throw new Error("WhatsApp isn't connected yet");
     return c;
+  }
+
+  /** Ready for at least `ms`, so jobs that need a settled WhatsApp (group cleanup) don't run on a page that just loaded. */
+  stableFor(uid: string, ms: number, now = Date.now()) {
+    const t = this.readyAt.get(uid);
+    return this.ready.has(uid) && t !== undefined && now - t >= ms;
+  }
+
+  /** Healthy: ready and not flagged by the watchdog. */
+  healthy(uid: string) {
+    return this.ready.has(uid) && (this.dogs.get(uid)?.health ?? "ok") === "ok";
+  }
+
+  /** Call when a WhatsApp call failed: a page-level error (protocol, closed target, timeout) triggers an immediate probe. */
+  noteWaError(uid: string, err: unknown) {
+    if (!isWedgeError(err) || !this.ready.has(uid)) return;
+    void this.dogFor(uid).check(err).catch((e) => console.error("[health] check failed", e));
+  }
+
+  private dogFor(uid: string) {
+    let d = this.dogs.get(uid);
+    if (!d) {
+      d = new WaWatchdog({
+        probe: async () => {
+          const c = this.clients.get(uid);
+          if (!c?.pupPage) throw new Error("no WhatsApp page");
+          await c.pupPage.evaluate(() => 1);
+        },
+        restart: async (delayMs) => {
+          console.warn(`[health] ${uid} WhatsApp page unresponsive; restarting it in ${delayMs / 1000}s`);
+          const stopping = this.stop(uid);
+          await Promise.race([stopping, new Promise((r) => setTimeout(r, 20_000))]); // a wedged browser can hang destroy()
+          this.kill(uid); // no-op when it closed cleanly
+          this.scheduleRestart(uid, delayMs);
+        },
+        setHealth: (health, note) => {
+          console.warn(`[health] ${uid} ${health}${note ? `: ${note}` : ""}`);
+          void setState(uid, { health, error: note, ...(health === "failing" ? { status: "error" as const } : {}) });
+        },
+        notify: (key, level, text) => void noticeOnce(uid, `health-${key}`, level, text, key === "recovered" ? 5 * 60_000 : NOTICE_WINDOW_MS),
+        giveUp: this.hooks.onUnhealthy ? () => this.hooks.onUnhealthy?.(uid) : undefined,
+        now: Date.now,
+        sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+        serverName: SERVER_ID,
+      });
+      this.dogs.set(uid, d);
+    }
+    return d;
   }
 
   running(uid: string) {
@@ -138,6 +208,7 @@ class SessionManager {
     if (this.hooks.canRun && !this.hooks.canRun(uid)) return;
     this.starting.add(uid);
     this.aborted.delete(uid);
+    this.dogs.get(uid)?.resetIfStale(Date.now()); // the account came back after a give-up: start fresh
     try {
       await this.launch(uid);
     } catch (e) {
@@ -248,9 +319,11 @@ class SessionManager {
     client.on("auth_failure", (m) => void setState(uid, { status: "error", error: `Auth failed: ${m}` }));
     client.on("ready", async () => {
       this.ready.add(uid);
+      this.readyAt.set(uid, Date.now());
       this.stuck.delete(uid);
+      this.startFails.delete(uid);
       const me = client.info;
-      await setState(uid, { status: "ready", qr: null, phone: me?.wid?.user ?? null, pushName: me?.pushname ?? null, error: null });
+      await setState(uid, { status: "ready", qr: null, phone: me?.wid?.user ?? null, pushName: me?.pushname ?? null, error: null, health: "ok" });
       await userRef(uid).set({ waEnabled: true, selfId: me?.wid?._serialized ?? null }, { merge: true });
       console.log(`[session] ${uid} ready as +${me?.wid?.user}`);
       markLive(uid);
@@ -258,12 +331,19 @@ class SessionManager {
       this.hooks.onReady?.(uid, this.sources.get(uid) ?? "local");
       // Fresh link: old chats are never read. Restored link: read what arrived while we were down (no auto-replies).
       if (!sawQr && wasLinked) {
-        catchUpSince(uid, client, offlineSince).then((n) => { if (n) void notice(uid, "info", `Server was offline for a while. Caught up on ${n} message${n === 1 ? "" : "s"} that came in meanwhile; nothing was sent automatically.`); }).catch((e) => console.error("[session] catch-up failed", e));
+        catchUpSince(uid, client, offlineSince).then((n) => { if (n) void notice(uid, "info", `Server was offline for a while. Caught up on ${n} message${n === 1 ? "" : "s"} that came in meanwhile; nothing was sent automatically.`); }).catch((e) => {
+          console.error("[session] catch-up failed", e);
+          noticeOnce(uid, "catchup-failed", "warn", `WhatsApp on ${SERVER_ID} was slow to answer, so messages from while the server was offline weren't all read (${String((e as Error).message ?? e).slice(0, 120)}). Open Messages to check for anything missed.`);
+          this.noteWaError(uid, e);
+        });
       }
       // Keep a recent copy of the login so a crash can't cost a re-scan.
       setTimeout(() => void backupSession(uid).catch(() => undefined), 90_000).unref();
       clearInterval(this.backupTimers.get(uid));
       this.backupTimers.set(uid, setInterval(() => void backupSession(uid).catch(() => undefined), BACKUP_EVERY_MS).unref());
+      // Cheap probe of the WhatsApp page; a wedged one is reported and restarted (health.ts).
+      clearInterval(this.probeTimers.get(uid));
+      this.probeTimers.set(uid, setInterval(() => { if (this.clients.get(uid) === client && this.ready.has(uid)) void this.dogFor(uid).check().catch((e) => console.error("[health] check failed", e)); }, PROBE_EVERY_MS).unref());
     });
     client.on("vote_update", (vote) => {
       handleVote(uid, client, vote).catch((e) => console.error("[poll] vote failed", e));
@@ -309,9 +389,12 @@ class SessionManager {
         return;
       }
       console.error(`[session] ${uid} failed to start`, e);
+      const fails = (this.startFails.get(uid) ?? 0) + 1;
+      this.startFails.set(uid, fails);
       await setState(uid, { status: "error", error: (e as Error).message });
       await this.stop(uid);
-      this.scheduleRestart(uid);
+      if (fails >= START_NOTICE_AFTER) noticeOnce(uid, "start-failed", "warn", `WhatsApp on ${SERVER_ID} isn't starting (${String((e as Error).message).slice(0, 140)}). It keeps retrying; if this machine is short on memory, closing other apps or using a smaller AI model helps.`);
+      this.scheduleRestart(uid, startRetryMs(fails));
     }
   }
 
@@ -332,6 +415,9 @@ class SessionManager {
     this.ready.delete(uid);
     clearInterval(this.backupTimers.get(uid));
     this.backupTimers.delete(uid);
+    clearInterval(this.probeTimers.get(uid));
+    this.probeTimers.delete(uid);
+    this.readyAt.delete(uid);
     unwatchUser(uid);
     if (c) this.stopping.set(uid, c);
     try {
@@ -382,4 +468,7 @@ class SessionManager {
 }
 
 export const sessions = new SessionManager();
+setWedgeHook((client, err) => {
+  for (const uid of sessions.activeUids()) if (sessions.get(uid) === client) sessions.noteWaError(uid, err);
+});
 export { FieldValue };

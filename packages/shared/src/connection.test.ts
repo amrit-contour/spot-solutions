@@ -18,6 +18,14 @@ describe("linkView", () => {
   });
 });
 
+describe("linkView health", () => {
+  it("a ready session whose page stopped answering is unresponsive, not connected", () => {
+    expect(linkView({ status: "ready", health: "unresponsive" }, true)).toBe("unresponsive");
+    expect(linkView({ status: "ready", health: "failing" }, true)).toBe("unresponsive");
+    expect(linkView({ status: "ready", health: "ok" }, true)).toBe("connected");
+  });
+});
+
 describe("server presence", () => {
   it("is up within 90 s of lastSeen", () => {
     expect(isServerUp({ status: "ready", lastSeen: 1_000_000 }, 1_080_000)).toBe(true);

@@ -36,6 +36,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
     }
   };
 
+  const stuck = status === "ready" && Boolean(session?.health && session.health !== "ok");
   const view = !workerOnline && status !== "ready" ? "offline" : status === "ready" ? "ready" : status === "qr" ? "qr" : status === "starting" || status === "authenticated" || busy ? "starting" : "idle";
 
   return (
@@ -45,7 +46,12 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
           <h2 className="type-headline-s">{view === "ready" ? "WhatsApp is linked" : "Link your WhatsApp"}</h2>
           <AnimatePresence mode="wait" initial={false}>
             <motion.div key={view} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-              {view === "ready" && (
+              {view === "ready" && stuck && (
+                <p className="mt-2 type-body-l text-error">
+                  WhatsApp stopped responding on your server. {session?.error ?? "It is restarting it."} This card updates by itself once it answers again.
+                </p>
+              )}
+              {view === "ready" && !stuck && (
                 <p className="mt-2 type-body-l text-on-surface-variant">
                   Listening as <span className="text-on-surface tabular">+{session?.phone}</span>
                   {session?.pushName ? ` (${session.pushName})` : ""}. New DMs are checked for spot requests as they arrive.
@@ -108,7 +114,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
                   {view === "starting" && <span className="pulse-ring absolute inset-0 rounded-full bg-primary/30" />}
                   {view === "ready" ? <IconCheck className="icon size-7 md:size-10" /> : view === "offline" ? <IconServer className="icon size-7 md:size-10" /> : <IconPhone className="icon size-7 md:size-10" />}
                 </span>
-                <span className="type-label-l text-on-surface-variant">{view === "ready" ? "Connected" : view === "offline" ? "Server offline" : view === "starting" ? "Starting WhatsApp…" : "Not linked"}</span>
+                <span className="type-label-l text-on-surface-variant">{view === "ready" ? (stuck ? "Not responding" : "Connected") : view === "offline" ? "Server offline" : view === "starting" ? "Starting WhatsApp…" : "Not linked"}</span>
               </motion.div>
             )}
           </AnimatePresence>

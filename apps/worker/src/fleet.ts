@@ -137,9 +137,14 @@ const preFleet = (now = Date.now()) => preFleetServers([...serverBeats.values()]
 const oldServerRunning = () => !serversReady || preFleet().length > 0;
 
 // ---- claim ----
+/** Accounts this server gave up because its WhatsApp page kept failing: not claimed back for a while, so another server gets its turn (even a pinned one). */
+const unhealthyUntil = new Map<string, number>();
+const UNHEALTHY_COOLDOWN_MS = 15 * 60_000;
+
 async function claim(uid: string, opts: { requireWanted: boolean }): Promise<boolean> {
   claimTimers.delete(uid);
   if (draining || held.has(uid)) return held.has(uid);
+  if ((unhealthyUntil.get(uid) ?? 0) > Date.now()) return false;
   if (oldServerRunning()) return false;
   if (opts.requireWanted && !known.get(uid)?.enabled) return false;
   if (units() >= capacity().maxAccounts) return false;
@@ -599,7 +604,7 @@ function evaluate() {
     if (!claimableHere(lease, { now, me: ME, heldLocally: false, observedStaleMs: staleFor(uid, lease) })) {
       cancelClaim(uid);
       // Pinned here but running elsewhere: pull it back.
-      if (prefs.get(uid)?.pinned === ME && lease?.server && lease.server !== ME && lease.state === "running" && !lease.moveTo && rank(uid, now)[0]?.id === ME && !limited(`pin:${uid}`)) {
+      if ((unhealthyUntil.get(uid) ?? 0) <= Date.now() && prefs.get(uid)?.pinned === ME && lease?.server && lease.server !== ME && lease.state === "running" && !lease.moveTo && rank(uid, now)[0]?.id === ME && !limited(`pin:${uid}`)) {
         console.log(`[fleet] ${uid} is pinned here; asking ${lease.server} to hand it over`);
         void setMoveTo(uid, ME, "move", lease.server).catch(() => undefined);
       }
@@ -690,6 +695,14 @@ export function start(h: { onAcquire(uid: string): void; retryPending?(uid: stri
     const h1 = held.get(uid);
     void agentSessions.stop(uid); // the agent number talks to your number: with no linked WhatsApp it has nothing to do
     if (h1) void releaseLease(uid, h1.epoch).then(() => { held.delete(uid); h1.timers.forEach(clearInterval); h1.timers.forEach(clearTimeout); publish(); });
+  };
+  sessions.hooks.onUnhealthy = (uid) => {
+    const h1 = held.get(uid);
+    if (!h1) return;
+    console.warn(`[fleet] ${uid} WhatsApp keeps failing here; releasing the account so another server can run it`);
+    unhealthyUntil.set(uid, Date.now() + UNHEALTHY_COOLDOWN_MS);
+    void sessions.stop(uid);
+    void releaseLease(uid, h1.epoch, null, "failover").then(() => { held.delete(uid); h1.timers.forEach(clearInterval); h1.timers.forEach(clearTimeout); publish(); });
   };
   db.collectionGroup("fleet").onSnapshot(
     (q) => {

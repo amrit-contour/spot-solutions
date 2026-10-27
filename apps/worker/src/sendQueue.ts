@@ -63,9 +63,14 @@ export function sendContent(client: WAWebJS.Client, to: string, content: Sendabl
       }
     }
     live.noteError(client);
+    wedgeHook?.(client, last);
     throw last;
   });
 }
+
+/** Set by sessions.ts: a send that failed at the browser level (not a WhatsApp refusal) asks the health watchdog to look. */
+let wedgeHook: ((client: WAWebJS.Client, err: unknown) => void) | undefined;
+export const setWedgeHook = (f: typeof wedgeHook) => void (wedgeHook = f);
 
 export function sendQueued(client: WAWebJS.Client, to: string, body: string) {
   return sendContent(client, to, body, body.length);

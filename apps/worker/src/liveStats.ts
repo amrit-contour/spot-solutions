@@ -35,6 +35,9 @@ export interface AccountStat {
   uid: string;
   role: SessionRole;
   status: string;
+  /** WhatsApp page health (health.ts): "ok", "unresponsive" or "failing"; note says why. */
+  health?: string;
+  healthNote?: string | null;
   /** When the status last changed. */
   since: number;
   /** Masked, e.g. "+91 98•••12". */
@@ -140,8 +143,12 @@ export function createLiveStats(opts: LiveOptions) {
 
   const api = {
     /** A session changed state (status and linked number come from sessions.ts's setState). */
-    recordSession(uid: string, s: { status?: string; phone?: string | null }, role: SessionRole = "client") {
+    recordSession(uid: string, s: { status?: string; phone?: string | null; health?: string; error?: string | null }, role: SessionRole = "client") {
       const a = account(uid, role);
+      if (s.health !== undefined) {
+        a.health = s.health;
+        a.healthNote = s.health === "ok" ? null : (s.error ?? null);
+      }
       if (s.status && s.status !== a.status) {
         a.status = s.status;
         a.since = now();

@@ -30,12 +30,15 @@ export function ConnectionCard({ uid }: { uid: string }) {
     );
   }
   const bad = !c.serverUp;
+  const stuck = c.whatsapp === "unresponsive" && !bad;
   const ok = c.whatsapp === "connected" && !bad;
   const seen = c.lastSeen ? ago(c.lastSeen, now) : null;
-  const title = ok ? "WhatsApp is connected" : bad ? "Server offline" : c.whatsapp === "qr" ? "WhatsApp needs a scan" : c.whatsapp === "starting" ? "Starting WhatsApp…" : "WhatsApp isn't linked";
+  const title = ok ? "WhatsApp is connected" : stuck ? "WhatsApp stopped responding" : bad ? "Server offline" : c.whatsapp === "qr" ? "WhatsApp needs a scan" : c.whatsapp === "starting" ? "Starting WhatsApp…" : "WhatsApp isn't linked";
   const detail = ok
     ? `Listening as ${maskPhoneTail(c.phone)}${c.pushName ? ` (${c.pushName})` : ""}.`
-    : bad
+    : stuck
+      ? `${c.healthNote ?? "The server is restarting WhatsApp."} Asks wait until it answers again.`
+      : bad
       ? `${c.phone ? `Linked as ${maskPhoneTail(c.phone)}, but your` : "Your"} server isn't reachable. Check that the machine running it is on and online. This updates by itself once it's back.`
       : c.whatsapp === "qr"
         ? `Open ${CURATING} on a laptop and scan the code with your phone.`
@@ -46,13 +49,13 @@ export function ConnectionCard({ uid }: { uid: string }) {
     <div className="flex min-w-0 flex-col gap-3">
       <Card>
         <div className="flex min-w-0 items-start gap-3">
-          <span className={cx("grid size-10 flex-none place-items-center rounded-md", ok ? "bg-secondary-container text-on-secondary-container" : bad ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary")}>
+          <span className={cx("grid size-10 flex-none place-items-center rounded-md", ok ? "bg-secondary-container text-on-secondary-container" : bad || stuck ? "bg-error-container text-on-error-container" : "bg-surface-high text-primary")}>
             {ok ? <IconCheck aria-hidden className="icon size-5" /> : bad ? <IconServer aria-hidden className="icon size-5" /> : c.whatsapp === "qr" ? <IconQr aria-hidden className="icon size-5" /> : <IconPhone aria-hidden className="icon size-5" />}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="type-title-m">{title}</h3>
-              <Chip tone={ok ? "success" : bad ? "error" : "neutral"} className="flex-none">{ok ? "Connected" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>
+              <Chip tone={ok ? "success" : bad || stuck ? "error" : "neutral"} className="flex-none">{ok ? "Connected" : stuck ? "Not responding" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>
             </div>
             <p className="mt-1 break-words type-body-m text-on-surface-variant">{detail}</p>
             {c.serverName && (
@@ -66,7 +69,7 @@ export function ConnectionCard({ uid }: { uid: string }) {
             )}
           </div>
         </div>
-        {!ok && !bad && (
+        {!ok && !bad && !stuck && (
           <div className="mt-1 -mb-2 flex flex-wrap">
             <Out href={CURATING_WHATSAPP}>{c.whatsapp === "qr" ? "Scan in" : "Link in"} {CURATING}</Out>
           </div>
@@ -111,7 +114,7 @@ export function ConnectionCard({ uid }: { uid: string }) {
 export function ConnectionBanner({ uid }: { uid: string }) {
   const c: Connection = useConnection(uid);
   if (!c.problem) return null;
-  const text = c.problem === "offline" ? "Server offline. Asks can't be sent until it's back." : c.problem === "qr" ? "WhatsApp needs a QR scan." : "WhatsApp isn't linked.";
+  const text = c.problem === "offline" ? "Server offline. Asks can't be sent until it's back." : c.problem === "qr" ? "WhatsApp needs a QR scan." : c.problem === "unresponsive" ? "WhatsApp stopped responding; the server is restarting it." : "WhatsApp isn't linked.";
   return (
     <Link to="/settings" className="state-layer pressable flex min-w-0 items-center gap-3 rounded-lg bg-error-container p-3 text-on-error-container">
       <IconWarn aria-hidden className="icon size-5 flex-none" />

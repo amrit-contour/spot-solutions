@@ -33,6 +33,7 @@ export function useConnection(): { tone: "ok" | "wait" | "error" | "idle"; label
   const { session, workerOnline } = useApp();
   if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode", detail: "your own sandbox", short: "Demo" };
   if (!workerOnline) return { tone: "error" as const, label: "Server offline", short: "Offline" };
+  if (session?.status === "ready" && session.health && session.health !== "ok") return { tone: "error" as const, label: "WhatsApp not responding", detail: "the server is restarting it", short: "Stuck" };
   if (session?.status === "ready") return { tone: "ok" as const, label: "WhatsApp connected", detail: maskPhone(session.phone), short: "Live" };
   if (session?.status === "qr" || session?.status === "starting" || session?.status === "authenticated") return { tone: "wait" as const, label: "Linking WhatsApp…", short: "Linking" };
   return { tone: "idle" as const, label: "WhatsApp not linked", short: "Unlinked" };

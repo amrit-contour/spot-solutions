@@ -15,6 +15,8 @@ export interface SessionState {
   lastSeen?: number; // epoch ms, worker heartbeat (0 after a clean shutdown)
   aliveAt?: number; // last time the worker was processing messages; survives shutdown
   error?: string | null;
+  /** The WhatsApp page answers ("ok", or missing), stopped answering and is being restarted, or kept failing and was given up. `error` says why. */
+  health?: "ok" | "unresponsive" | "failing";
 }
 
 export interface Settings {

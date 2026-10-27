@@ -38,7 +38,9 @@ export interface Connection {
   pushName: string | null;
   agentPhone: string | null;
   /** Something the comic should know about up front: the server is off, WhatsApp isn't linked, or it needs a QR scan. */
-  problem: "offline" | "unlinked" | "qr" | null;
+  problem: "offline" | "unlinked" | "qr" | "unresponsive" | null;
+  /** Why WhatsApp stopped answering (from the server), when it did. */
+  healthNote: string | null;
 }
 
 /** users/{uid}/session/state, session/agent and fleet/lease, plus fleetServers for the server's name. */
@@ -56,7 +58,7 @@ export function useConnection(uid: string): Connection {
   const id = lease.data?.server ?? null;
   const serverName = id ? servers.find((s) => s.id === id)?.hostname ?? id : null;
   const loading = session.loading || lease.loading;
-  const problem = loading ? null : !serverUp ? "offline" : whatsapp === "qr" ? "qr" : whatsapp === "unlinked" ? "unlinked" : null;
+  const problem = loading ? null : !serverUp ? "offline" : whatsapp === "qr" ? "qr" : whatsapp === "unresponsive" ? "unresponsive" : whatsapp === "unlinked" ? "unlinked" : null;
   return {
     loading,
     whatsapp,
@@ -68,5 +70,6 @@ export function useConnection(uid: string): Connection {
     pushName: session.data?.pushName ?? null,
     agentPhone: agent.data?.phone ?? null,
     problem,
+    healthNote: session.data?.health && session.data.health !== "ok" ? session.data.error ?? null : null,
   };
 }

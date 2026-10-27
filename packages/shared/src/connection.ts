@@ -5,12 +5,14 @@ import type { SessionState } from "./types.ts";
 /** session/state.lastSeen fresher than this counts as "the server is up" (same rule Curate uses). */
 export const WORKER_STALE_MS = 90_000;
 
-export type LinkView = "connected" | "offline" | "qr" | "starting" | "unlinked";
+export type LinkView = "connected" | "unresponsive" | "offline" | "qr" | "starting" | "unlinked";
 
 /** One view for a WhatsApp session doc (the main number or the agent number). */
 export function linkView(s: SessionState | null | undefined, serverUp: boolean): LinkView {
   const status = s?.status ?? "idle";
   if (!serverUp && status !== "ready") return "offline";
+  // Linked and the server is up, but its WhatsApp page stopped answering (health.ts in the worker): not "connected".
+  if (status === "ready" && s?.health && s.health !== "ok") return "unresponsive";
   if (status === "ready") return "connected";
   if (status === "qr") return "qr";
   if (status === "starting" || status === "authenticated") return "starting";

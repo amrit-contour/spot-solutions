@@ -874,9 +874,10 @@ function accountsBody() {
   if (!l) return `<div class="muted empty">No report from the worker yet.</div>`;
   if (!l.accounts.length) return `<div class="muted empty">No accounts on this server right now. Curators show up here once they link WhatsApp in the app and this server takes them on.</div>`;
   return `<div class="acclist ${l.state === "stale" ? "dimmed" : ""}">${l.accounts.map((a) => {
-    const st = STATUS[a.status] || [a.status, "neutral", "warn"];
+    let st = STATUS[a.status] || [a.status, "neutral", "warn"];
+    if (a.status === "ready" && a.health && a.health !== "ok") st = [a.health === "failing" ? "Not responding" : "Restarting", "bad", "bad"];
     const title = a.name || a.email || "Account";
-    const sub = [a.name && a.email ? a.email : null, a.phone, a.since ? `${st[0].toLowerCase()} since ${when(a.since)}` : null].filter(Boolean).map(esc).join(" · ");
+    const sub = [a.name && a.email ? a.email : null, a.phone, a.since ? `${st[0].toLowerCase()} since ${when(a.since)}` : null, a.healthNote].filter(Boolean).map(esc).join(" · ");
     return `<div class="acc"><span class="dot ${st[2]}"></span><div class="who"><b>${esc(title)}${a.role === "agent" ? ` <span class="chip neutral" style="height:20px;padding:0 6px;font-size:11px">agent</span>` : ""}</b><div class="muted small">${sub}</div></div><span class="chip ${st[1]}">${esc(st[0])}</span><div class="nums small">${n(a.in)} read · ${n(a.spot)} spot · ${n(a.sent)} sent${a.err ? ` · <span class="err-text">${n(a.err)} err</span>` : ""}</div></div>`;
   }).join("")}</div><div class="muted small" style="margin-top:10px">Totals since the worker started. Phone numbers are masked and message text never leaves WhatsApp and the app.</div>`;
 }

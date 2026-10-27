@@ -780,6 +780,7 @@ export async function runCommand(uid: string, doc: QueryDocumentSnapshot) {
     await doc.ref.update({ status: "done", result: result ?? null, finishedAt: Date.now(), ...(CHAT_RESULT_COMMANDS.has(cmd.type) && { expireAt: expireAt(TTL_DAYS.messages) }) });
   } catch (e) {
     console.error(`[command] ${uid} ${cmd.type} failed`, e);
+    sessions.noteWaError(uid, e); // a wedged WhatsApp page (protocol error, closed target) gets probed and restarted
     await doc.ref.update({ status: "error", error: (e as Error).message, finishedAt: Date.now(), ...(CHAT_RESULT_COMMANDS.has(cmd.type) && { expireAt: expireAt(TTL_DAYS.messages) }) });
   } finally {
     inFlight.delete(doc.id);
