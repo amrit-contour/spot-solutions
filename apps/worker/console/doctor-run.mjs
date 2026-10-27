@@ -31,6 +31,24 @@ export function parseEnv(raw) {
   return Object.fromEntries(String(raw).split("\n").filter((l) => l.includes("=") && !l.trim().startsWith("#")).map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]));
 }
 
+/** Memory that's actually available. os.freemem() counts file cache as used on macOS and Linux, so it reads ~100%. */
+export async function readMemory() {
+  const total = os.totalmem();
+  try {
+    if (MAC) {
+      const { stdout } = await exec("vm_stat");
+      const page = Number(/page size of (\d+)/.exec(stdout)?.[1] ?? 4096);
+      const pages = (name) => Number(new RegExp(`Pages ${name}:\\s+(\\d+)`).exec(stdout)?.[1] ?? 0);
+      return { total, free: Math.min(total, (pages("free") + pages("inactive") + pages("speculative") + pages("purgeable")) * page) };
+    }
+    if (!WIN) {
+      const kb = Number(/MemAvailable:\s+(\d+)/.exec(readFileSync("/proc/meminfo", "utf8"))?.[1] ?? NaN);
+      if (Number.isFinite(kb)) return { total, free: kb * 1024 };
+    }
+  } catch {}
+  return { total, free: os.freemem() };
+}
+
 /** The real machine behind doctor.mjs's `d`. Anything platform-specific that can't be done from Node is optional and reported as such. */
 export function createMachine({ env = process.env, paths = machinePaths(env), log = () => {} } = {}) {
   const readText = (f) => { try { return readFileSync(f, "utf8"); } catch { return null; } };
@@ -59,6 +77,11 @@ export function createMachine({ env = process.env, paths = machinePaths(env), lo
     },
     ollamaTags: async () => {
       try { const r = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(2500) }); return r.ok ? ((await r.json()).models ?? []).map((m) => m.name) : null; } catch { return null; }
+    },
+    memory: readMemory,
+    /** Models Ollama holds in memory right now: [{ name, size }] (null when Ollama can't be asked). */
+    ollamaLoaded: async () => {
+      try { const r = await fetch(`${ollamaUrl}/api/ps`, { signal: AbortSignal.timeout(2500) }); return r.ok ? ((await r.json()).models ?? []).map((m) => ({ name: m.name, size: Number(m.size) || 0 })) : null; } catch { return null; }
     },
     ollamaEnsure: async () => {
       const model = parseEnv(readText(paths.envFile) ?? "").NBS_LOCAL_MODEL || env.NBS_LOCAL_MODEL || "gemma3:4b";

@@ -94,7 +94,7 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
       const r = await fetchImpl(`${ollamaUrl}/api/chat`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, stream: false, think: false, keep_alive: "24h", options: { temperature: 0, num_predict: 16 }, messages: [{ role: "user", content: "Reply with only the word OK." }] }),
+        body: JSON.stringify({ model, stream: false, think: false, keep_alive: "5m", options: { temperature: 0, num_predict: 16 }, messages: [{ role: "user", content: "Reply with only the word OK." }] }),
         signal: AbortSignal.timeout(180_000), // the first call loads the model into memory
       });
       const b = await r.json().catch(() => ({}));

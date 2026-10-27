@@ -5,12 +5,13 @@ import { GoogleGenAI } from "@google/genai";
 import { DEFAULT_AI_POLICY, type AiRoute, type AiSettings } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { counters, live } from "./stats.ts";
-import { AiPolicyError, IMPLICIT_GEMINI_MODEL, planRoutes } from "./aiRouting.ts";
+import { AiPolicyError, IMPLICIT_GEMINI_MODEL, ollamaKeepAlive, planRoutes } from "./aiRouting.ts";
 
 export const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 // Slow laptops (an old i5 with 8 GB) can take a few minutes on a cold model. Waiting longer beats failing: messages are
 // read in the background, and a failed read is retried anyway (intake.ts). NBS_OLLAMA_TIMEOUT_MS overrides.
 const OLLAMA_TIMEOUT_MS = Number(process.env.NBS_OLLAMA_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS ?? 300_000);
+const KEEP_ALIVE = ollamaKeepAlive(process.env.NBS_OLLAMA_KEEP_ALIVE);
 const GEMINI_TIMEOUT_MS = 30_000;
 const SERVER_GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 /** Set by the installers for Gemini-only servers. */
@@ -60,7 +61,7 @@ async function ollama(model: string, prompt: string, schema: Schema, temperature
         stream: false,
         think: false,
         ...(structured ? { format: schema } : {}),
-        keep_alive: "24h",
+        keep_alive: KEEP_ALIVE,
         options: { temperature },
         messages: [{ role: "user", content: prompt }],
       }),

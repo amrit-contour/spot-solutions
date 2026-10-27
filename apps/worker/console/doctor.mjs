@@ -10,6 +10,11 @@ import path from "node:path";
 const GIB = 1024 ** 3;
 export const MIN_NODE_MAJOR = 22;
 export const MIN_FREE_BYTES = 2 * GIB;
+/** Warn when free + reclaimable memory is under this share of the total... */
+export const LOW_FREE_FRACTION = 0.15;
+/** ...and the loaded AI model takes more than this share of it. */
+export const BIG_MODEL_FRACTION = 0.4;
+export const SMALL_MODEL = "gemma3:4b";
 
 /** Top-level entries of an old data folder that are never carried over (machine-specific or regenerated). */
 export const NOT_MIGRATED = new Set(["console-token", "live-stats.json", "live-stats.json.tmp", "update.json", "update.json.tmp", "task.json", "move.json", "console.log", "worker.log", ".nbs-data-copy"]);
@@ -140,6 +145,29 @@ export const CHECKS = [
       return { ok: true, detail: `Ollama is running with ${model}` };
     },
     repair: async (d) => { await d.ollamaEnsure(); return "Starting Ollama and downloading the model in the background (it can take a while)"; },
+  },
+  {
+    // Not repaired automatically (a repair-all must never change the owner's model): the console offers "Use <model>" as its own button.
+    id: "memory", title: "Memory",
+    run: async (d) => {
+      const env = d.parseEnv(d.readText(d.paths.envFile) ?? "");
+      if (/^(1|true|yes)$/i.test(env.NBS_NO_LOCAL_MODEL ?? "") || /^(1|true|yes)$/i.test(env.NBS_MODEL_STOPPED ?? "")) return { ok: true, detail: "No local model in memory" };
+      const mem = d.memory ? await d.memory() : null;
+      if (!mem?.total) return { ok: true, detail: "Couldn't measure memory" };
+      const loaded = (d.ollamaLoaded ? await d.ollamaLoaded() : null) ?? [];
+      const big = loaded.reduce((a, m) => (m.size > a.size ? m : a), { name: "", size: 0 });
+      const freePct = mem.free / mem.total;
+      const text = `${(mem.free / GIB).toFixed(1)} of ${(mem.total / GIB).toFixed(1)} GB memory free`;
+      if (freePct < LOW_FREE_FRACTION && big.size > mem.total * BIG_MODEL_FRACTION) {
+        const small = d.smallModel ?? SMALL_MODEL;
+        return {
+          ok: false, detail: `${text}, and the AI model ${big.name} is holding ${(big.size / GIB).toFixed(1)} GB (${Math.round((big.size / mem.total) * 100)}% of this computer). WhatsApp can freeze when memory runs this low.`,
+          fix: `A smaller model such as ${small} fits comfortably. Nothing is changed unless you press the button.`,
+          action: big.name === small ? undefined : { id: "use-small-model", label: `Use ${small}`, model: small },
+        };
+      }
+      return { ok: true, detail: loaded.length ? `${text}; ${big.name} uses ${(big.size / GIB).toFixed(1)} GB` : text };
+    },
   },
   {
     id: "services", title: "Background services",

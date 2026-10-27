@@ -22,7 +22,7 @@ import { createStorage } from "./storageview.mjs";
 import { createBrowser } from "./fsbrowse.mjs";
 import { planAdmins } from "./admins.mjs";
 import { createWorkerControl, isStopped, modelStopped } from "./control.mjs";
-import { createMachine } from "./doctor-run.mjs";
+import { createMachine, readMemory } from "./doctor-run.mjs";
 import { runDoctor, summarize } from "./doctor.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 
@@ -221,23 +221,7 @@ function keyInfo() {
   }
 }
 
-/** Memory that's actually available. os.freemem() counts file cache as used on macOS and Linux, so it reads ~100%. */
-async function memory() {
-  const total = os.totalmem();
-  try {
-    if (MAC) {
-      const { stdout } = await exec("vm_stat");
-      const page = Number(/page size of (\d+)/.exec(stdout)?.[1] ?? 4096);
-      const pages = (name) => Number(new RegExp(`Pages ${name}:\\s+(\\d+)`).exec(stdout)?.[1] ?? 0);
-      return { total, free: Math.min(total, (pages("free") + pages("inactive") + pages("speculative") + pages("purgeable")) * page) };
-    }
-    if (!WIN) {
-      const kb = Number(/MemAvailable:\s+(\d+)/.exec(readFileSync("/proc/meminfo", "utf8"))?.[1] ?? NaN);
-      if (Number.isFinite(kb)) return { total, free: kb * 1024 };
-    }
-  } catch {}
-  return { total, free: os.freemem() };
-}
+const memory = readMemory;
 
 async function status() {
   const env = readEnv();

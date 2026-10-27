@@ -613,7 +613,7 @@ function healthCard() {
     body = "";
   } else {
     title = `<span role="status">${esc(d.summary || `${bad.length} ${bad.length === 1 ? "thing needs" : "things need"} attention`)}</span>`;
-    body = bad.map((r) => `<div class="hrow"><span class="dot bad" aria-hidden="true"></span><div class="grow"><b>${esc(r.title)}</b><div class="small">${esc(r.detail || "")}</div>${r.fix ? `<div class="small muted" style="margin-top:2px">${esc(r.fix)}</div>` : ""}</div>${r.repairable ? `<button type="button" class="tonal sm" data-heal="${esc(r.id)}" aria-label="Repair ${esc(r.title)}">Repair</button>` : ""}</div>`).join("");
+    body = bad.map((r) => `<div class="hrow"><span class="dot bad" aria-hidden="true"></span><div class="grow"><b>${esc(r.title)}</b><div class="small">${esc(r.detail || "")}</div>${r.fix ? `<div class="small muted" style="margin-top:2px">${esc(r.fix)}</div>` : ""}</div>${r.repairable ? `<button type="button" class="tonal sm" data-heal="${esc(r.id)}" aria-label="Repair ${esc(r.title)}">Repair</button>` : ""}${r.action?.model ? `<button type="button" class="tonal sm" data-use-model="${esc(r.action.model)}">${esc(r.action.label)}</button>` : ""}</div>`).join("");
   }
   const fixedNow = !busy && hl.note ? `<div class="small hnote" role="status">${esc(hl.note)}</div>` : "";
   const err = !busy && d && hl.err ? `<div class="small err-text hnote" role="alert">${esc(hl.err)}</div>` : "";
@@ -652,9 +652,29 @@ async function heal(id) {
   render();
   focusAfter(`[data-health-check]`);
 }
+// "Use gemma3:4b": download the smaller model, then make it this server's local model (the worker restarts). Only on the owner's click.
+async function useModel(model) {
+  if (hl.busy) return;
+  hl.busy = "all"; hl.t0 = Date.now(); hl.err = null; hl.note = null; render();
+  try {
+    await post("/api/ai/pull", { model });
+    for (let i = 0; i < 900; i++) { // up to ~30 min
+      await new Promise((r) => setTimeout(r, 2000));
+      const v = await api("/api/ai");
+      if (v.pull?.error) throw new Error(v.pull.error);
+      if (!v.pull || v.pull.model !== model || v.pull.done) break;
+    }
+    await post("/api/ai/defaults", { localModel: model });
+    hl.note = `This server now uses ${model}. The worker is restarting.`;
+  } catch (e) { hl.err = `Couldn't switch to ${model}: ${e.message}`; }
+  hl.busy = null; hl.loading = false;
+  try { hl.data = await api("/api/doctor"); } catch { /* restarting */ }
+  render();
+}
 setInterval(() => { const el = $("#hl-elapsed"); if (el && hl.busy) el.textContent = hlElapsed(); }, 1000);
 function wireHealth() {
   document.querySelectorAll("[data-heal]").forEach((b) => b.onclick = () => heal(b.dataset.heal));
+  document.querySelectorAll("[data-use-model]").forEach((b) => b.onclick = () => useModel(b.dataset.useModel));
   document.querySelectorAll("[data-health-check]").forEach((b) => b.onclick = () => { hl.note = null; loadDoctor(); });
   document.querySelectorAll("[data-goto-health]").forEach((b) => b.onclick = () => revealSection("server", "#health-title"));
 }

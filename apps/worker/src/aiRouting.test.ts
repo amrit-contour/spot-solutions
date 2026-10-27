@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { IMPLICIT_GEMINI_MODEL, planRoutes } from "./aiRouting.ts";
+import { IMPLICIT_GEMINI_MODEL, ollamaKeepAlive, planRoutes } from "./aiRouting.ts";
 
 const local = { provider: "ollama", model: "gemma3:4b" } as const;
 const cloud = { provider: "gemini", model: "gemini-2.5-flash-lite" } as const;
+
+describe("ollamaKeepAlive", () => {
+  it("defaults to 5m so an idle model unloads, and takes a valid override", () => {
+    expect(ollamaKeepAlive(undefined)).toBe("5m");
+    expect(ollamaKeepAlive("")).toBe("5m");
+    expect(ollamaKeepAlive("30m")).toBe("30m");
+    expect(ollamaKeepAlive("24h")).toBe("24h");
+    expect(ollamaKeepAlive("-1")).toBe("-1");
+    expect(ollamaKeepAlive("forever; rm -rf")).toBe("5m");
+  });
+});
 
 describe("planRoutes", () => {
   it("local_only never includes Gemini, even as primary or fallback, even with a key", () => {

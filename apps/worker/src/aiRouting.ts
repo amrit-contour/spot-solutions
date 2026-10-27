@@ -20,3 +20,12 @@ export function planRoutes(ai: Pick<AiSettings, "primary" | "fallback" | "policy
   if (hasGeminiKey && !routes.some((r) => r.provider === "gemini")) routes.push({ provider: "gemini", model: IMPLICIT_GEMINI_MODEL });
   return routes;
 }
+
+/**
+ * How long Ollama keeps the model in memory after a call (NBS_OLLAMA_KEEP_ALIVE: "5m", "30s", "0", "-1"...). Short by default, so
+ * an idle model gives its memory back and WhatsApp's browser isn't swapped out beside a 9 GB model for hours.
+ */
+export function ollamaKeepAlive(raw: string | undefined): string {
+  const v = (raw ?? "").trim();
+  return /^(-1|0|\d+(\.\d+)?(ms|s|m|h))$/.test(v) ? v : "5m";
+}
