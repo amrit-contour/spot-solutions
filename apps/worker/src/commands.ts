@@ -61,6 +61,7 @@ import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
 import { getMedia, getThread, listThreads, summarizeThread } from "./chats.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { settleRound } from "./replies.ts";
+import { askForSpot } from "./groupWatch.ts";
 import { sendAsk } from "./asks.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
@@ -538,6 +539,9 @@ const handlers: Record<Command["type"], Handler> = {
   },
 
   /** Nothing BOT Comedy: send one drafted ask to a room's curator (asks/{askId}). In the comic's voice when the ask says so. */
+  /** Comic app: DM the contact of a group spot alert ("Ask for it"). */
+  ask_for_spot: (uid, payload) => askForSpot(uid, payload),
+
   async send_ask(uid, { askId }) {
     if (!askId) throw new Error("Pick an ask to send.");
     return sendAsk(uid, String(askId));

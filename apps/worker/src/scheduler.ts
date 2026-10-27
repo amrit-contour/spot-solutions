@@ -11,6 +11,7 @@ import { expireOffers, sendMicChecks } from "./replies.ts";
 import { maybeCheckFollowUps } from "./followUp.ts";
 import { sendGroupPosts } from "./groupPosts.ts";
 import { runCleanups } from "./groupCleanup.ts";
+import { startGroupWatch } from "./groupWatch.ts";
 import { maybeTickAsks } from "./asks.ts";
 
 const TICK_MS = 2 * 60_000;
@@ -41,6 +42,8 @@ async function tick(uid: string) {
 }
 
 export function startScheduler(uids: () => Iterable<string>) {
+  // Nothing BOT Comedy: spot alerts from the groups a comic watches (its own listener on each ready WhatsApp session).
+  startGroupWatch(uids);
   setInterval(() => {
     for (const uid of uids()) {
       // The agent number's own notices and morning digest (it runs wherever the account's lease is held).

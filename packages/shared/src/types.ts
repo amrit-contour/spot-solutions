@@ -433,7 +433,8 @@ export type CommandType =
   | "list_voice_sources"
   | "cleanup_group"
   | "settle_round"
-  | "send_ask";
+  | "send_ask"
+  | "ask_for_spot";
 
 export interface Command {
   type: CommandType;
