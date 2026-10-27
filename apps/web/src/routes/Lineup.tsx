@@ -511,9 +511,10 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
   };
 
   // What the comics were last told. Lineups confirmed before that was recorded start from how they stand now.
-  const baseline = confirmed && lineup ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
+  const baseline = confirmed && lineup && !lineup.backfilled ? (lineup.sent ?? sentSnapshot(lineup.slots, show, lineup.sentAt ?? 0)) : null;
   const changes = baseline && lineup ? diffLineup(lineup.slots, baseline, show) : null;
   const statesFor = (cid: string): TellState[] => {
+    if (lineup?.backfilled) return []; // recorded afterwards: nobody was told, and nobody needs to be
     if (changes?.added.includes(cid)) return [{ kind: "new", text: "Not told yet" }];
     if (changes) {
       const m = changes.moved.find((x) => x.comicId === cid);

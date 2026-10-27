@@ -65,18 +65,19 @@ export function BackfillSheet({ open, onClose, show, week }: { open: boolean; on
         </p>
       </div>
 
-      <section className="mt-5 flex items-center justify-between gap-3 rounded-lg bg-surface-container p-3">
-        <span className="min-w-0 flex-1">
+      <section className="mt-5 flex flex-col gap-3 rounded-lg bg-surface-container p-3">
+        <span className="min-w-0">
           <span className="block type-body-m">Did it happen?</span>
           <span className="block type-body-s text-on-surface-variant">{outcome ? "" : "Not marked yet. "}Didn't happen means it counts for nobody.</span>
         </span>
         <Segmented
+          full
           size="sm"
           value={outcome ?? ""}
           onChange={(v) => void run("outcome", () => backfillOutcome(uid, week, show, shows, v === "happened" ? "happened" : "canned"))}
           options={[
             { value: "happened", label: "Happened" },
-            { value: "canned", label: "Didn't" },
+            { value: "canned", label: "Didn't happen" },
           ]}
         />
       </section>
@@ -86,11 +87,15 @@ export function BackfillSheet({ open, onClose, show, week }: { open: boolean; on
         <p className="type-body-s text-on-surface-variant">Regular spots count toward the cooldown. Ad hoc spots never do. Both stay in their history.</p>
         <ul className="mt-2 flex flex-col gap-1.5">
           {slots.map((s) => (
-            <li key={s.comicId} className="flex min-h-14 items-center gap-3 rounded-md bg-surface-container py-2 pr-1 pl-3">
-              <Avatar name={nameOf(s.comicId)} size={32} />
-              <span className="min-w-0 flex-1 truncate type-title-s">{nameOf(s.comicId)}</span>
-              <Segmented size="sm" value={kindOfSlot(s)} onChange={(k) => void run(`kind:${s.comicId}`, () => backfillAdd(uid, week, show, shows, s.comicId, k))} options={KIND_OPTIONS} />
-              <IconButton icon={IconClose} label={`Remove ${nameOf(s.comicId)}`} onClick={() => void run(`rm:${s.comicId}`, () => backfillRemove(uid, week, show, shows, s.comicId))} className="size-9" />
+            <li key={s.comicId} className="flex flex-col gap-2 rounded-md bg-surface-container py-2 pr-1 pl-3">
+              <div className="flex items-center gap-3">
+                <Avatar name={nameOf(s.comicId)} size={32} />
+                <span className="min-w-0 flex-1 truncate type-title-s">{nameOf(s.comicId)}</span>
+                <IconButton icon={IconClose} label={`Remove ${nameOf(s.comicId)}`} onClick={() => void run(`rm:${s.comicId}`, () => backfillRemove(uid, week, show, shows, s.comicId))} className="size-9" />
+              </div>
+              <div className="pr-2">
+                <Segmented full size="sm" value={kindOfSlot(s)} onChange={(k) => void run(`kind:${s.comicId}`, () => backfillAdd(uid, week, show, shows, s.comicId, k))} options={KIND_OPTIONS} />
+              </div>
             </li>
           ))}
           {!slots.length && <li className="rounded-md border border-dashed border-outline-variant px-4 py-6 text-center type-body-s text-on-surface-variant">Nobody recorded yet. Add who performed below.</li>}
