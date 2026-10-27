@@ -201,3 +201,28 @@ input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-dat
   min-width: 0;
   text-align: start;
 }
+
+/* ---- iOS text editing (caret drag / selection) ------------------------------------------------------------------------------
+   iOS Safari zooms the page when an editable element under 16px is focused or has text selected, and a double tap zooms too.
+   On phones every text-entry control computes to at least 16px (overriding the smaller type utilities); double-tap zoom is off
+   app-wide with `manipulation` (pinch still works); editable fields keep native text selection whatever their container sets. */
+html { touch-action: manipulation; }
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="file"], [type="color"]),
+textarea,
+select,
+[contenteditable="true"],
+[contenteditable=""] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  touch-action: manipulation;
+}
+@media (max-width: 639px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="file"], [type="color"]),
+  textarea,
+  select,
+  [contenteditable="true"],
+  [contenteditable=""] {
+    font-size: 16px !important;
+  }
+}

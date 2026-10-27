@@ -32,7 +32,7 @@ export function useTextEditing(ref: RefObject<HTMLTextAreaElement | HTMLInputEle
       onChange(next.value);
       requestAnimationFrame(() => {
         if (!el) return;
-        if (focus) el.focus();
+        if (focus && document.activeElement !== el) el.focus({ preventScroll: true });
         el.setSelectionRange(next.start, next.end);
       });
     },
@@ -54,11 +54,12 @@ export function FormatBar({ onFormat, onEmoji, extra, className }: { onFormat: (
           <button
             type="button"
             // Keep the selection in the box while the button is pressed.
+            onPointerDown={(e) => e.preventDefault()}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onFormat(t.op)}
             aria-label={t.label}
             title={t.keys ? `${t.label} (${t.keys})` : t.label}
-            className="state-layer pressable grid size-8 place-items-center rounded-sm text-sm text-on-surface-variant"
+            className="state-layer pressable touch-manipulation grid size-8 place-items-center rounded-sm text-sm text-on-surface-variant"
           >
             {t.glyph}
           </button>
@@ -69,7 +70,7 @@ export function FormatBar({ onFormat, onEmoji, extra, className }: { onFormat: (
         title="Emoji"
         width={328}
         trigger={(toggle, open) => (
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={toggle} aria-label="Emoji" aria-expanded={open} title="Emoji" className="state-layer pressable grid size-8 place-items-center rounded-sm text-base">
+          <button type="button" onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()} onClick={toggle} aria-label="Emoji" aria-expanded={open} title="Emoji" className="state-layer pressable touch-manipulation grid size-8 place-items-center rounded-sm text-base">
             <span aria-hidden>🙂</span>
           </button>
         )}

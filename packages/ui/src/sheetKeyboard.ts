@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from "react";
+import { shouldReveal, type RevealTrigger } from "@spot/shared";
 
 const KEYBOARD_MIN = 80; // px the visual viewport must lose before it counts as an on-screen keyboard
 const FIELD = "input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), textarea, select, [contenteditable=true], [contenteditable='']";
@@ -22,9 +23,23 @@ export function useSheetKeyboard(root: RefObject<HTMLElement | null>, scroller: 
     if (!enabled || !el || !sc || !vv) return;
     let raf = 0;
     let timer = 0;
+    let releaseTimer = 0;
+    let trigger: RevealTrigger = "viewport";
+    // iOS runs its own autoscroll + caret magnifier while a finger drags in a field; nothing here may move then (see revealPolicy).
+    let touching = false;
+    let lastSelection = 0;
+    const selectionActive = () => {
+      const a = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+      if (a && sc.contains(a) && typeof a.selectionStart === "number" && a.selectionStart !== a.selectionEnd) return true;
+      const sel = document.getSelection();
+      return !!sel && !sel.isCollapsed && !!sel.anchorNode && sc.contains(sel.anchorNode);
+    };
+    const allowed = () => shouldReveal({ trigger, touching, selectionActive: selectionActive(), msSinceSelectionChange: Date.now() - lastSelection });
     const covered = () => Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
     const open = () => covered() > KEYBOARD_MIN || window.innerHeight - vv.height > KEYBOARD_MIN;
     const frame = () => {
+      // The pan compensation jitters while iOS autoscrolls a selection drag: hold it until the finger is up.
+      if (touching) return;
       if (open()) {
         el.style.setProperty("--sheet-kb", `${Math.max(covered(), window.innerHeight - vv.height)}px`);
         // iOS panned the visual viewport: follow it so the header stays visible; the sheet keeps its full height.
@@ -60,23 +75,56 @@ export function useSheetKeyboard(root: RefObject<HTMLElement | null>, scroller: 
       else if (block.bottom > box.bottom - pad) sc.scrollTop += block.bottom - (box.bottom - pad);
       else if (block.top < box.top + pad) sc.scrollTop -= box.top + pad - block.top;
     };
-    const onViewport = () => {
+    const run = (t: RevealTrigger) => {
+      trigger = t;
       frame();
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(reveal);
+      raf = requestAnimationFrame(() => allowed() && reveal());
     };
+    const onViewport = () => run("viewport");
+    const onInput = () => run("input");
+    const onTouchStart = (e: Event) => {
+      if (!(e.target as HTMLElement | null)?.closest?.(FIELD)) return;
+      touching = true;
+      window.clearTimeout(releaseTimer);
+    };
+    const onTouchEnd = () => {
+      if (!touching) return;
+      window.clearTimeout(releaseTimer);
+      // The magnifier and handles outlive the touch by a beat; catch the sheet position up after that.
+      releaseTimer = window.setTimeout(() => {
+        touching = false;
+        frame();
+      }, 400);
+    };
+    const onSelectionChange = () => { lastSelection = Date.now(); };
     const onFocusIn = () => {
+      trigger = "focus";
       // The keyboard animates in after focus: reveal now, and again once the viewport has settled.
-      onViewport();
+      run("focus");
       window.clearTimeout(timer);
-      timer = window.setTimeout(onViewport, 320);
+      timer = window.setTimeout(() => run("focus"), 320);
+    };
+    // iOS can leave the (overflow:hidden) document scrolled after the keyboard closes; put it back with no animation.
+    const onFocusOut = () => {
+      window.setTimeout(() => {
+        if (!sc.contains(document.activeElement) && (window.scrollY || document.documentElement.scrollTop)) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      }, 120);
     };
     frame();
+    el.addEventListener("focusout", onFocusOut);
     vv.addEventListener("resize", onViewport);
     vv.addEventListener("scroll", onViewport);
     el.addEventListener("focusin", onFocusIn);
     // Typing can grow what sits under the field (search results): keep it in view.
-    el.addEventListener("input", onViewport);
+    el.addEventListener("input", onInput);
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("pointerdown", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    window.addEventListener("pointerup", onTouchEnd, { passive: true });
+    window.addEventListener("pointercancel", onTouchEnd, { passive: true });
+    document.addEventListener("selectionchange", onSelectionChange);
     window.addEventListener("orientationchange", onViewport);
     return () => {
       cancelAnimationFrame(raf);
@@ -84,7 +132,16 @@ export function useSheetKeyboard(root: RefObject<HTMLElement | null>, scroller: 
       vv.removeEventListener("resize", onViewport);
       vv.removeEventListener("scroll", onViewport);
       el.removeEventListener("focusin", onFocusIn);
-      el.removeEventListener("input", onViewport);
+      window.clearTimeout(releaseTimer);
+      el.removeEventListener("focusout", onFocusOut);
+      el.removeEventListener("input", onInput);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("pointerdown", onTouchStart);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
+      window.removeEventListener("pointerup", onTouchEnd);
+      window.removeEventListener("pointercancel", onTouchEnd);
+      document.removeEventListener("selectionchange", onSelectionChange);
       window.removeEventListener("orientationchange", onViewport);
       el.style.top = el.style.height = el.style.bottom = "";
       el.style.removeProperty("--sheet-kb");

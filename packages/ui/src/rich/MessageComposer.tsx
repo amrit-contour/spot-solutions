@@ -92,7 +92,8 @@ export function MessageComposer({
     const next = insertText(cur, el?.selectionStart ?? cur.length, el?.selectionEnd ?? cur.length, token);
     setField(id, next.value);
     requestAnimationFrame(() => {
-      el?.focus();
+      // Already focused (the chip never took focus): re-focusing makes iOS re-open the keyboard and zoom/scroll.
+      if (el && document.activeElement !== el) el.focus({ preventScroll: true });
       el?.setSelectionRange(next.start, next.end);
     });
   };
@@ -215,7 +216,7 @@ export function MessageComposer({
       {!compact && variables && value.kind !== "location" && (
         <div className="flex flex-wrap gap-1.5">
           {variables.map((v) => (
-            <button key={v.key} type="button" onClick={() => insertToken(v.key)} className="state-layer pressable h-7 rounded-sm bg-surface-high px-2.5 font-mono text-xs text-on-surface-variant" title={`Insert ${v.label}`}>
+            <button key={v.key} type="button" onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()} onClick={() => insertToken(v.key)} className="state-layer pressable touch-manipulation h-7 rounded-sm bg-surface-high px-2.5 font-mono text-xs text-on-surface-variant" title={`Insert ${v.label}`}>
               {`{{${v.key}}}`}
             </button>
           ))}
