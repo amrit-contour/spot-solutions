@@ -1,6 +1,7 @@
-import { closesLabel, limitsText, opensLabel, type Ask, type PlannedAsk } from "@spot/shared";
+import { askDayLabel, closesLabel, limitsText, opensLabel, type Ask, type PlannedAsk } from "@spot/shared";
 import { Bubble, Button, Chip, IconBuilding, IconClock, IconPen, IconPhone, IconSend, IconWarn, IconUserCheck } from "@spot/ui";
 import { Card, CardActions, Chips, IconTile } from "./ui";
+import { DAY_NAMES } from "@spot/shared";
 import { ago, dateTime } from "../lib/time";
 import { TZ } from "../lib/asks";
 import { messageFor } from "./askMessage";
@@ -8,11 +9,12 @@ import { messageFor } from "./askMessage";
 const firstName = (n?: string) => (n ?? "").trim().split(/\s+/)[0] ?? "";
 
 /** One ask that is open right now: who, which show, when it closes, the message, and Send or Skip. */
-export function AskOpenCard({ a, template, now, busy, onSend, onSkip, onEdit }: { a: PlannedAsk; template: string; now: number; busy: boolean; onSend: () => void; onSkip: () => void; onEdit: () => void }) {
+export function AskOpenCard({ a, template, now, today, busy, onSend, onSkip, onEdit }: { a: PlannedAsk; template: string; now: number; today?: string; busy: boolean; onSend: () => void; onSkip: () => void; onEdit: () => void }) {
   const left = a.closesAt - now;
   const urgent = left < 3 * 3_600_000;
   const message = messageFor(a, template);
   const waitingForNine = a.mode === "auto" && now < a.sendFrom;
+  const missed = a.due === "overdue";
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex min-w-0 items-center gap-3">
@@ -37,7 +39,7 @@ export function AskOpenCard({ a, template, now, busy, onSend, onSkip, onEdit }: 
           </Chip>
         )}
         {a.standIn && <Chip>Stand-in</Chip>}
-        <Chip>{a.ruleLabel}</Chip>
+        {missed ? <Chip tone="tertiary">Was due {today ? askDayLabel(a.askOn, today).toLowerCase() : a.askOn} · show is {a.weekday != null ? DAY_NAMES[a.weekday].slice(0, 3) : a.showDate}</Chip> : <Chip>{a.ruleLabel}</Chip>}
         <Chip tone={a.mode === "auto" ? "primary" : "neutral"}>{a.mode === "auto" ? (waitingForNine ? "Sends by itself soon" : "Sends by itself") : "Draft for you"}</Chip>
         {a.blocked && (
           <Chip tone="error" icon={IconWarn}>
@@ -58,7 +60,7 @@ export function AskOpenCard({ a, template, now, busy, onSend, onSkip, onEdit }: 
 
       <CardActions spread>
         <Button variant="text" size="sm" onClick={onSkip} disabled={busy} className="-ml-2">
-          Skip
+          {missed ? "Not this week" : "Skip"}
         </Button>
         <span className="flex items-center gap-2">
           <Button variant="tonal" size="sm" icon={IconPen} onClick={onEdit} disabled={busy}>

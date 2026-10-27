@@ -2,7 +2,7 @@
 // comic does with it. The worker writes alerts and updates; the comic clears them. Pure rules live in @spot/shared (groupAlerts.ts).
 import { useEffect, useState } from "react";
 import { deleteDoc, deleteField, doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
-import { db } from "@spot/ui/firebase";
+import { auth, db } from "@spot/ui/firebase";
 import {
   DEFAULT_SETTINGS,
   alertAskId,
@@ -51,6 +51,19 @@ export interface ComicSettings {
   autoApplyGroupUpdates?: boolean;
   /** Edits to the rules that decide which group messages push at once (only what differs from the defaults). */
   alertRules?: StoredAlertRules;
+  /** Asks > Open now lists asks whose ping day has passed but whose show hasn't ("Missed: still time to ask"). Default on. */
+  showMissedAsks?: boolean;
+}
+
+/** Whether Asks lists the asks I missed (a setting, default on). Signed out (the dev demo) it stays on. */
+export function useShowMissedAsks(): boolean {
+  const uid = auth.currentUser?.uid;
+  const [show, setShow] = useState(true);
+  useEffect(() => {
+    if (!uid) return;
+    return onSnapshot(doc(db, "users", uid), (s) => setShow(s.data()?.comicSettings?.showMissedAsks !== false), () => undefined);
+  }, [uid]);
+  return show;
 }
 
 /** users/{uid}.comicSettings, live. `set` merges a change. */

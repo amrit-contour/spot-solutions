@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { askDayLabel, openNow, upcomingGroups, type Ask, type PlannedAsk } from "@spot/shared";
 import { Button, IconPlus, IconBuilding, IconChat, IconClock, IconMenuDots, IconButton, Menu, MenuItem, PageHeader, Segmented, Spinner } from "@spot/ui";
 import { EmptyState, Page, Section } from "../components/ui";
+import { useShowMissedAsks } from "../lib/alerts";
 import { draftFor, useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { shortDate } from "../lib/time";
@@ -29,7 +30,12 @@ export function Asks() {
   const [templateOpen, setTemplateOpen] = useState(false);
   const [modesOpen, setModesOpen] = useState(false);
 
-  const open = useMemo(() => openNow(plan), [plan]);
+  const showMissed = useShowMissedAsks();
+  const openAll = useMemo(() => openNow(plan), [plan]);
+  // A ping day that came and went, with the show still ahead: kept apart so it never reads like a rule that fired today.
+  const dueToday = useMemo(() => openAll.filter((a) => a.due !== "overdue"), [openAll]);
+  const missed = useMemo(() => (showMissed ? openAll.filter((a) => a.due === "overdue") : []), [openAll, showMissed]);
+  const open = useMemo(() => [...dueToday, ...missed], [dueToday, missed]);
   const groups = useMemo(() => upcomingGroups(plan, today, 7), [plan, today]);
   const comingCount = groups.reduce((n, g) => n + g.asks.length, 0);
   const sent = useMemo(
@@ -72,6 +78,11 @@ export function Asks() {
     );
   };
 
+  const card = (a: PlannedAsk) => (
+    <li key={a.id} className="min-w-0">
+      <AskOpenCard a={a} template={store.template} now={now} today={today} busy={busy.has(a.id)} onSend={() => void send(a)} onSkip={() => void skip(a)} onEdit={() => setEditing(a)} />
+    </li>
+  );
   const noRooms = !roster.loading && roster.rooms.length === 0;
   return (
     <div className="w-full">
@@ -125,13 +136,18 @@ export function Asks() {
                 {groups[0] ? `The next ask opens ${askDayLabel(groups[0].date, today).toLowerCase()}: ${groups[0].asks[0]!.label}.` : "When a room's ask window opens, it shows up here."}
               </EmptyState>
             ) : (
-              <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">
-                {open.slice(0, showAll ? undefined : 12).map((a) => (
-                  <li key={a.id} className="min-w-0">
-                    <AskOpenCard a={a} template={store.template} now={now} busy={busy.has(a.id)} onSend={() => void send(a)} onSkip={() => void skip(a)} onEdit={() => setEditing(a)} />
-                  </li>
-                ))}
-              </ul>
+              <>
+                {dueToday.length > 0 && (
+                  <Section title="Due today" count={dueToday.length}>
+                    <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">{dueToday.slice(0, showAll ? undefined : 12).map(card)}</ul>
+                  </Section>
+                )}
+                {missed.length > 0 && (
+                  <Section title="Missed: still time to ask" count={missed.length}>
+                    <ul className="grid grid-cols-[minmax(0,1fr)] gap-3">{missed.slice(0, showAll ? undefined : 12).map(card)}</ul>
+                  </Section>
+                )}
+              </>
             )}
             {open.length > 12 && !showAll && (
               <Button variant="tonal" onClick={() => setShowAll(true)} className="self-center">
