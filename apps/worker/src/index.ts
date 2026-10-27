@@ -164,6 +164,14 @@ async function main() {
   };
   // SIGHUP too (terminal closed, ssh dropped): puppeteer's own handlers are off, so this drain is the only thing that closes Chromium cleanly.
   for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => void shutdown());
+  // Node prints MaxListenersExceededWarning without saying who added the listeners; log the stack once per kind so the
+  // source shows up in worker.log instead of a bare "possible memory leak" line.
+  const warned = new Set<string>();
+  process.on("warning", (w) => {
+    if (w.name !== "MaxListenersExceededWarning" || warned.has(w.message)) return;
+    warned.add(w.message);
+    console.warn(`[warning] ${w.message}\n${w.stack ?? ""}`);
+  });
   // Windows has no SIGTERM for a console-less process, so "Stop server" in the console sets NBS_WORKER_STOPPED=1 in .env and the
   // worker closes itself properly (logins uploaded, leases released) when it sees it. Elsewhere the supervisor sends SIGTERM.
   if (process.platform === "win32") {
