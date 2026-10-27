@@ -80,25 +80,29 @@
   }
 
   /* ---- server bar: the Mac app's header for every other browser (state, services, Stop/Start server) ---- */
-  .srvbar { position: sticky; top: 8px; z-index: 25; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 8px 8px 16px; margin: 0 0 16px; background: var(--s-high); border-radius: 999px; box-shadow: 0 1px 0 color-mix(in srgb, var(--outline-v) 60%, transparent), 0 6px 18px rgb(0 0 0 / .08); }
-  .srvbar .st { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; white-space: nowrap; }
-  .srvbar .st .v { font: 400 12px "Roboto Mono", monospace; color: var(--on-surface-v); }
-  .srvbar .svc { display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--on-surface-v); }
-  .srvbar .svc > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-  .srvbar .svc .dot { width: 8px; height: 8px; }
-  .srvbar .auto { font-size: 12px; color: var(--on-surface-v); white-space: nowrap; }
-  .srvbar .push { margin-left: auto; }
-  .srvbar button { height: 36px; }
-  .srvbar button.stop { background: var(--error-c); color: var(--on-error-c); }
+  /* Server control: what's running, and one switch for all of it. A section under the header, not a pinned bar. */
+  .ctl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 20px; align-items: center; margin: 0 0 16px; padding: 18px 20px; background: var(--s-low); border-radius: 20px; }
+  .ctl .head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .ctl .head .dot { width: 12px; height: 12px; flex: none; }
+  .ctl .head b { font-size: 18px; }
+  .ctl .head .v { font: 400 12px "Roboto Mono", monospace; color: var(--on-surface-v); }
+  .ctl .note { grid-column: 1 / -1; margin-top: -8px; font-size: 13px; color: var(--on-surface-v); }
+  .ctl .svcs { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .ctl .svcs > div { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border-radius: 14px; background: var(--s-high); }
+  .ctl .svcs .dot { width: 9px; height: 9px; flex: none; }
+  .ctl .svcs .t { min-width: 0; }
+  .ctl .svcs .t b { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ctl .svcs .t span { display: block; font-size: 12px; color: var(--on-surface-v); }
+  .ctl .acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .ctl button.stop { background: var(--error-c); color: var(--on-error-c); }
   .dot.warn { background: var(--m-warn); }
   @media (max-width: 640px) {
-    .srvbar { border-radius: 20px; padding: 10px 10px 10px 14px; top: 6px; gap: 6px 10px; }
-    .srvbar .svc { order: 3; flex: 1 0 100%; gap: 6px 12px; }
-    .srvbar .auto { order: 4; flex: 1 0 100%; }
-    .srvbar .svc .long { display: none; }
+    .ctl { grid-template-columns: 1fr; padding: 16px; }
+    .ctl .acts { justify-content: stretch; } .ctl .acts button { flex: 1; }
+    .ctl .svcs { grid-template-columns: 1fr; }
   }
   /* inside the Mac app the native header already shows the icon, state and controls */
-  :root[data-app="mac"] .srvbar, :root[data-app="mac"] header .logo, :root[data-app="mac"] header .chip.state { display: none !important; }
+  :root[data-app="mac"] .ctl, :root[data-app="mac"] header .logo, :root[data-app="mac"] header .chip.state { display: none !important; }
   /* local models list */
   .mdl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .mdl .grow { flex: 1 1 200px; }
@@ -635,21 +639,29 @@ const mstate = (s) => ctlBusy === "model-stop" ? "stopping" : ctlBusy === "model
 const wstate = (s) => ctlBusy === "stop" ? "stopping" : ctlBusy === "start" ? "starting" : (s.workerControl?.state ?? (s.services.worker ? "running" : "down"));
 
 // The server bar (same content as the Mac app's header): overall state, version, the three services, and one Stop server / Start server button.
+/** Inside the Mac app (see the head script): its native header has the state and Stop/Start, so the page hides its own. */
+const APP_MAC = document.documentElement.getAttribute("data-app") === "mac";
 function serverBar(s, { ws, ms, allUp, wStopped, mOff }) {
   const k = s.config.key, a = s.autostart;
   const busy = ctlBusy === "stop" || ctlBusy === "start" || ws === "stopping" || ws === "starting";
-  const overall = ws === "stopping" ? ["Stopping…", "warn"] : ws === "starting" ? ["Starting…", "warn"] : wStopped ? ["Stopped", "off"] : allUp ? ["Running", "ok"] : ["Needs attention", "bad"];
+  const overall = !k ? ["Not connected yet", "warn"] : ws === "stopping" ? ["Stopping…", "warn"] : ws === "starting" ? ["Starting…", "warn"] : wStopped ? ["Server stopped", "off"] : allUp ? ["Server running", "ok"] : ["Needs attention", "bad"];
   const dotFor = (st) => st === "running" ? "ok" : st === "stopped" ? "off" : st === "stopping" || st === "starting" ? "warn" : "bad";
-  const svc = [
-    s.localModel ? `<span><i class="dot ${dotFor(ms)}"></i>Ollama<span class="long"> (Gemma)</span></span>` : `<span><i class="dot off"></i>Gemini only</span>`,
-    `<span><i class="dot ${dotFor(ws)}"></i>WhatsApp<span class="long"> worker</span></span>`,
-    `<span><i class="dot ok"></i>Server<span class="long"> console</span></span>`,
+  const word = (st) => ({ running: "Running", stopped: "Stopped", stopping: "Stopping…", starting: "Starting…" })[st] || "Not running";
+  const svc = (dot, name, sub) => `<div><i class="dot ${dot}" aria-hidden="true"></i><div class="t"><b>${name}</b><span>${sub}</span></div></div>`;
+  const svcs = [
+    s.localModel ? svc(dotFor(ms), "Local AI (Ollama)", mOff ? "Stopped" : word(ms)) : svc("off", "Local AI", "Off · Gemini only"),
+    svc(dotFor(ws), "WhatsApp worker", word(ws)),
+    svc("ok", "Server console", "Running"),
   ].join("");
+  const note = !k ? "Connect this server to Nothing BOT Curate (Setup below), then it starts reading WhatsApp." : wStopped ? "WhatsApp messages aren't being read. It stays stopped, even after a restart or an update, until you start it."
+    : allUp ? "Reading WhatsApp and answering. Stop pauses everything; the console stays up so you can start it again." : "Something isn't running. Check Services and Health below.";
+  const auto = a ? ` ${esc(a.label)}: ${a.on ? "on" : "off"}.` : "";
   const btn = !k ? "" : wStopped && ws === "stopped" ? `<button type="button" data-worker="start" data-models="1">Start server</button>`
     : `<button type="button" class="stop" data-worker="stop" data-models="1" ${busy ? "disabled" : ""}>${busy ? `${spin} ${ws === "starting" ? "Starting…" : "Stopping…"}` : "Stop server"}</button>`;
-  return `<div class="srvbar" role="region" aria-label="Server"><span class="st"><i class="dot ${overall[1]}" aria-hidden="true"></i><span role="status">${overall[0]}</span>${s.version ? `<span class="v">v${esc(shortV(s.version))}</span>` : ""}</span>
-    <span class="svc">${svc}</span>${a ? `<span class="auto" title="${a.on ? "Comes back by itself after a restart or power cut." : "Stays off after a restart until you press Start server."}">${esc(a.label)}: ${a.on ? "on" : "off"}</span>` : ""}
-    <span class="push">${btn}</span></div>`;
+  return `<section class="ctl" aria-label="Server control"><div class="head"><i class="dot ${overall[1]}" aria-hidden="true"></i><b role="status">${overall[0]}</b>${s.version ? `<span class="v">v${esc(shortV(s.version))}</span>` : ""}</div>
+    <div class="acts">${btn}</div>
+    <div class="note">${esc(note)}${auto}</div>
+    <div class="svcs">${svcs}</div></section>`;
 }
 // ---------- Health: check and repair ----------
 // The banner shows when the doctor says the browser is missing; before the first check, when the worker log says so.
@@ -751,8 +763,8 @@ function alerts(s) {
   const st = s.storage;
   if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Nothing BOT Server keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
   if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Nothing BOT Curate below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
-  else if (ws === "stopped" || ws === "stopping") out.push(`<div class="banner bad" role="alert"><div class="grow"><b>${ws === "stopping" ? "Stopping the server…" : "Your server is stopped."}</b><div class="small">${ws === "stopping" ? "WhatsApp is being saved and closed. This can take up to a minute." : "WhatsApp messages aren't being read. It stays stopped, even after a restart or an update, until you start it."}</div></div>${ws === "stopped" ? `<button data-worker="start" data-models="1">Start server</button>` : ""}</div>`);
-  else if (ws === "starting") out.push(`<div class="banner busy" role="status">${spin}<div class="grow"><b>Starting the server…</b><div class="small">WhatsApp reconnects within a minute.</div></div></div>`);
+  else if (APP_MAC && (ws === "stopped" || ws === "stopping")) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>${ws === "stopping" ? "Stopping the server…" : "Your server is stopped."}</b><div class="small">${ws === "stopping" ? "WhatsApp is being saved and closed. This can take up to a minute." : "WhatsApp messages aren't being read. It stays stopped, even after a restart or an update, until you start it."}</div></div>${ws === "stopped" ? `<button data-worker="start" data-models="1">Start server</button>` : ""}</div>`);
+  else if (APP_MAC && ws === "starting") out.push(`<div class="banner busy" role="status">${spin}<div class="grow"><b>Starting the server…</b><div class="small">WhatsApp reconnects within a minute.</div></div></div>`);
   else if (!s.services.worker && !s.update.running) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The worker isn't running</b><div class="small">WhatsApp is offline until it starts. Try restarting it; the logs say why it stopped.</div></div><button data-restart="worker">Restart worker</button></div>`);
   return out.length ? `<div class="alerts">${out.join("")}</div>` : "";
 }
@@ -1206,7 +1218,6 @@ function render() {
       <div class="actions"><button type="button" class="tonal" data-layout-reset>Reset layout</button><button type="button" data-cust-done>Done</button></div></div>` : "";
   const at = typing() ? document.activeElement : null, keep = at?.id ? { id: at.id, from: at.selectionStart, to: at.selectionEnd } : null;
   $("#app").innerHTML = `
-  ${serverBar(s, { ws, ms, allUp, wStopped, mOff })}
   <header>${logo}
     <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Nothing BOT Server <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
     <span class="chip state ${allUp ? "ok" : "bad"}">${wStopped ? "Server stopped" : allUp ? "All services running" : "Needs attention"}</span>
@@ -1216,6 +1227,7 @@ function render() {
       <div class="menusep"></div>
       <button type="button" role="menuitem" data-cust-toggle>${custMode ? "Done customizing" : "Customize page"}</button></div>` : ""}</span>
   </header>
+  ${serverBar(s, { ws, ms, allUp, wStopped, mOff })}
   ${alerts(s)}
   ${custBar}
   <div id="secs">${visibleIds().map((id) => blocks[id]).join("")}</div>
