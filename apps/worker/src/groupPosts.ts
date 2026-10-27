@@ -48,6 +48,7 @@ async function sendOne(uid: string, client: WAWebJS.Client, show: Show, post: Gr
 
   const lineup = (await col(uid, "lineups").doc(lineupIdFor(show, showDate)).get()).data() as Lineup | undefined;
   const when = `${whenLabel(post.daysBefore).toLowerCase()} (${showDate})`;
+  if (lineup?.backfilled) return;
   if (lineup && (lineup.status === "cancelled" || lineup.status === "canned")) return void console.log(`[group-post] ${show.name} ${when}: show is off, skipped`);
 
   const msg = groupPostMessage(settings, post);

@@ -301,7 +301,7 @@ export async function sendMicChecks(uid: string, client: WAWebJS.Client) {
   const snap = await col(uid, "lineups").where("status", "==", "confirmed").get();
   for (const d of snap.docs) {
     const l = d.data() as Lineup;
-    if (l.outcome || l.micCheckSentOn || !l.date || l.date >= now.date) continue;
+    if (l.outcome || l.micCheckSentOn || l.backfilled || !l.date || l.date >= now.date) continue;
     await d.ref.update({ micCheckSentOn: now.date });
     const show = shows.find((s) => s.id === l.showId);
     // With the agent number linked (and its notices on), it asks you there and reads your yes/no; no "Message yourself" chat.

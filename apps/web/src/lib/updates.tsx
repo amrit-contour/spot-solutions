@@ -70,7 +70,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       if (intro) introductions.push(intro);
       else server.push(n);
     }
-    const micChecks = settings.micCheck.enabled ? confirmed.data.filter((l) => !l.outcome && l.date && l.date < today && shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5) : [];
+    const micChecks = settings.micCheck.enabled ? confirmed.data.filter((l) => !l.outcome && !l.backfilled && l.date && l.date < today && shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5) : [];
     const cleanups = asked.data.filter((l) => shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date));
     const rounds = new Map<string, SpotOffer[]>();
     for (const o of interested.data) if (o.round) rounds.set(o.round.id, [...(rounds.get(o.round.id) ?? []), o]);

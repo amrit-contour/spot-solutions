@@ -11,11 +11,12 @@ import { db } from "@spot/ui/firebase";
 import { weekdayOf } from "../../lib/calendarDates";
 import { addDefaults, placeComic, withSelf } from "../../lib/lineup";
 import { answerMicCheck } from "../../lib/updates";
+import { BackfillSheet } from "../BackfillSheet";
 import { OfferSheet } from "../OfferSheet";
 import { Popover } from "@spot/ui";
 import { SendUpdatesSheet } from "../SendUpdatesSheet";
 import { Avatar, Button, Spinner, cx } from "@spot/ui";
-import { IconCheck, IconMic, IconRefresh, IconSend, IconUserPlus } from "@spot/ui";
+import { IconCheck, IconHistory, IconMic, IconRefresh, IconSend, IconUserPlus } from "@spot/ui";
 import { listNames } from "./EventCard";
 import { pendingCount, type CalEvent, useCal } from "./shared";
 
@@ -47,6 +48,7 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
   const [offer, setOffer] = useState(false);
   const [updates, setUpdates] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [backfill, setBackfill] = useState(false);
   const off = lineup?.status === "cancelled" || lineup?.status === "canned";
   const past = ev.date < cal.today;
   const full = (lineup?.slots.length ?? 0) >= show.slotCount;
@@ -80,12 +82,14 @@ function ShowActions({ ev, many }: { ev: CalEvent; many: boolean }) {
     <div>
       {many && <p className="px-3 pb-1 type-label-l text-on-surface-variant">{show.name}</p>}
       <ul className="flex flex-col gap-0.5">
+        {past && <li><ActionRow icon={IconHistory} label="Record who performed" hint="Past show: only recorded, nobody is messaged" onClick={() => setBackfill(true)} /></li>}
         {mic && <li><ActionRow icon={IconCheck} label="Mark happened" hint="It already took place" onClick={() => answerMicCheck(uid, mic, "happened")} /></li>}
         {!off && !past && pending > 0 && baseline && <li><ActionRow icon={IconSend} label="Send updates" hint={`${pending} change${pending > 1 ? "s" : ""} not told yet`} onClick={() => setUpdates(true)} accent /></li>}
         <li><ActionRow icon={IconMic} label="Open lineup" hint={`${lineup?.slots.length ?? 0}/${show.slotCount} slots filled`} to="/lineup" /></li>
         {!off && !past && <li><ActionRow icon={IconUserPlus} label="Offer a spot" hint={full ? "Lineup is full" : "Ask someone to take a slot"} onClick={() => setOffer(true)} disabled={full} /></li>}
-        {!off && <li><ActionRow icon={IconRefresh} label="Add POCs, regulars and co-hosts" hint="Reads the group again, adds anyone missing" onClick={() => void addRegulars()} busy={busy} disabled={full} /></li>}
+        {!off && !past && <li><ActionRow icon={IconRefresh} label="Add POCs, regulars and co-hosts" hint="Reads the group again, adds anyone missing" onClick={() => void addRegulars()} busy={busy} disabled={full} /></li>}
       </ul>
+      <BackfillSheet open={backfill} onClose={() => setBackfill(false)} show={show} week={week} />
       <OfferSheet open={offer} onClose={() => setOffer(false)} show={show} exclude={lineup?.slots.map((s) => s.comicId) ?? []} />
       {lineup && baseline && <SendUpdatesSheet open={updates} onClose={() => setUpdates(false)} show={show} lineup={lineup} baseline={baseline} onSent={() => undefined} />}
     </div>

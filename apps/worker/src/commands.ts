@@ -68,6 +68,11 @@ import { sendAsk } from "./asks.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
+/** A past show recorded afterwards (backfill) is history only: nothing is ever sent, synced or offered for it. */
+export function assertNotBackfilled(l: { backfilled?: boolean } | undefined) {
+  if (l?.backfilled) throw new Error("That past show is only recorded. Nobody is messaged for it.");
+}
+
 const handlers: Record<Command["type"], Handler> = {
   async connect(uid) {
     await userRef(uid).set({ waEnabled: true }, { merge: true });
@@ -133,6 +138,7 @@ const handlers: Record<Command["type"], Handler> = {
     const lineupRef = col(uid, "lineups").doc(String(lineupId));
     const lineup = (await lineupRef.get()).data() as Lineup | undefined;
     if (!lineup) throw new Error("Lineup not found");
+    assertNotBackfilled(lineup);
     const show = shows.find((s) => s.id === lineup.showId);
     if (!show) throw new Error("Show not found");
     const comics = await loadComics(uid, lineup.slots.map((s) => s.comicId));
@@ -215,6 +221,7 @@ const handlers: Record<Command["type"], Handler> = {
     const { shows } = watchUser(uid);
     const lineupRef = col(uid, "lineups").doc(String(lineupId));
     const lineup = (await lineupRef.get()).data() as Lineup;
+    assertNotBackfilled(lineup);
     const show = shows.find((s) => s.id === lineup.showId) as Show;
     if (!show.groupId) throw new Error("No WhatsApp group linked to this show");
     await lineupRef.update({ groupSync: { status: "computing", toAdd: [], toRemove: [], kept: [] } });
@@ -243,6 +250,7 @@ const handlers: Record<Command["type"], Handler> = {
     const { shows, settings } = watchUser(uid);
     const lineupRef = col(uid, "lineups").doc(String(lineupId));
     const lineup = (await lineupRef.get()).data() as Lineup;
+    assertNotBackfilled(lineup);
     const plan = lineup.groupSync;
     if (!plan || plan.status !== "pending") throw new Error("No pending group sync to apply");
     const show = shows.find((s) => s.id === lineup.showId) as Show;
@@ -288,6 +296,7 @@ const handlers: Record<Command["type"], Handler> = {
     const lineupRef = col(uid, "lineups").doc(String(lineupId));
     const lineup = (await lineupRef.get()).data() as Lineup | undefined;
     if (!lineup) throw new Error("Lineup not found");
+    assertNotBackfilled(lineup);
     if (lineup.status !== "confirmed") throw new Error("This lineup isn't confirmed yet. Confirm it first.");
     if (!lineup.sent) throw new Error("There's no record of what was sent, so there's nothing to compare. Nothing was sent.");
     const show = shows.find((s) => s.id === lineup.showId);
@@ -380,6 +389,7 @@ const handlers: Record<Command["type"], Handler> = {
     const { settings, shows, venues } = watchUser(uid);
     const lineup = (await col(uid, "lineups").doc(String(lineupId)).get()).data() as Lineup | undefined;
     if (!lineup) throw new Error("Lineup not found");
+    assertNotBackfilled(lineup);
     const show = shows.find((s) => s.id === lineup.showId);
     if (!show) throw new Error("Show not found");
     const ids = [...new Set((Array.isArray(comicIds) ? comicIds : [comicId]).map(String).filter(Boolean))];
@@ -556,6 +566,7 @@ const handlers: Record<Command["type"], Handler> = {
     const ref = col(uid, "lineups").doc(String(lineupId));
     const lineup = (await ref.get()).data() as Lineup | undefined;
     if (!lineup) throw new Error("That lineup isn't there any more.");
+    assertNotBackfilled(lineup);
     if (lineup.cleanup?.status === "done") return { already: true };
     if (keep) return void (await keepGroup(uid, String(lineupId)));
     const show = watchUser(uid).shows.find((s) => s.id === lineup.showId);
@@ -646,7 +657,7 @@ export async function dropFromLineup(uid: string, client: WAWebJS.Client, comicI
   const { shows, settings } = watchUser(uid);
   const lineupRef = col(uid, "lineups").doc(id);
   const lineup = (await lineupRef.get()).data() as Lineup | undefined;
-  if (!lineup) return;
+  if (!lineup || lineup.backfilled) return;
   const show = shows.find((s) => s.id === lineup.showId);
   const date = show ? dateInWeek(lineup.weekOf, show.weekday) : lineup.date;
   // They cancelled themselves: nothing is owed to them, so they leave the "what was sent" record too.

@@ -39,11 +39,12 @@ export type CleanupStep = "run" | "ask" | "skip";
  */
 export function cleanupStep(
   show: Pick<Show, "groupId" | "cleanup" | "active">,
-  lineup: Pick<Lineup, "date" | "status" | "outcome" | "cleanup">,
+  lineup: Pick<Lineup, "date" | "status" | "outcome" | "cleanup"> & { backfilled?: boolean },
   now: { date: string; time: string },
   micCheckOn: boolean,
 ): CleanupStep | null {
   const c = show.cleanup;
+  if (lineup.backfilled) return null; // a past show recorded afterwards: the group was never ours to clear
   if (!c?.enabled || !show.groupId || !lineup.date || lineup.cleanup) return null;
   if (lineup.status !== "confirmed" && lineup.status !== "canned") return null;
   const day = addDays(lineup.date, 1);

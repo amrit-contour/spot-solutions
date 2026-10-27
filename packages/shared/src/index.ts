@@ -37,3 +37,4 @@ export * from "./groupOpenings.ts";
 export * from "./connection.ts";
 export * from "./comicAgent.ts";
 export * from "./memberSearch.ts";
+export * from "./backfill.ts";

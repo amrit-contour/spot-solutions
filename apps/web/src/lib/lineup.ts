@@ -34,7 +34,7 @@ export async function setSlots(uid: string, week: string, show: Show, slots: Slo
 }
 
 /** Maybe asks and group members aren't comics yet; placing one makes them one, from the request or the group list. */
-async function ensureComic(uid: string, week: string, comicId: string, fallback?: { name: string }) {
+export async function ensureComic(uid: string, week: string, comicId: string, fallback?: { name: string }) {
   const ref = userDoc(uid, "comics", comicId);
   if ((await getDoc(ref)).exists()) return;
   const req = (await getDoc(userDoc(uid, "requests", `${week}_${comicId}`))).data() as SpotRequest | undefined;

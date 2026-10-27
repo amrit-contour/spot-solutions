@@ -13,6 +13,7 @@ import { PageHeader } from "@spot/ui";
 import { StickyBar } from "@spot/ui";
 import { ConfirmDialog } from "@spot/ui";
 import { Menu, MenuItem } from "@spot/ui";
+import { PastSpotSheet } from "../components/PastSpotSheet";
 import { ImportContactsSheet, ImportFileSheet, ImportGoogleSheet } from "../components/ImportSheets";
 import { Avatar, Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "@spot/ui";
 import { IconChat, IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "@spot/ui";
@@ -202,10 +203,13 @@ export function Comics() {
 }
 
 function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose: () => void }) {
-  const { uid, shows, settings, session } = useApp();
+  const { uid, shows, settings, session, comicsById } = useApp();
   const today = localNow(new Date(), settings.timezone).date;
+  const [pastOpen, setPastOpen] = useState(false);
   const [d, setD] = useState<Partial<Comic>>({});
   const [last, setLast] = useState<Partial<Comic> | null>(null);
+  // Read live, so a past spot recorded from here shows straight away.
+  const history = (d.id ? comicsById.get(d.id)?.history : undefined) ?? d.history;
   if (value !== last) {
     setLast(value);
     if (value) setD(value);
@@ -314,18 +318,19 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
           <div>
             <div className="mb-2 flex items-center justify-between type-label-l text-on-surface-variant">
               <span>Spot history</span>
-              {cancellations(d.history) > 0 && <span className="text-error">{cancellations(d.history)} cancelled</span>}
+              {cancellations(history) > 0 && <span className="text-error">{cancellations(history)} cancelled</span>}
             </div>
-            {d.history?.length ? (
+            {d.id && <Button size="sm" variant="tonal" icon={IconHistory} className="mb-2" onClick={() => setPastOpen(true)}>Add a past spot</Button>}
+            {history?.length ? (
               <ul className="overflow-hidden rounded-md bg-surface-container">
-                {d.history.slice(0, 8).map((h) => {
+                {history.slice(0, 8).map((h) => {
                   // A confirmed spot is only "performed" once the show date has passed.
-                  const label = h.status === "cancelled" ? "Cancelled" : h.status === "canned" ? "Mic didn't happen" : h.date > today ? "Booked" : h.date === today ? "Tonight" : "Performed";
+                  const label = h.status === "cancelled" ? "Cancelled" : h.status === "canned" ? "Mic didn't happen" : h.date > today ? "Booked" : h.date === today ? "Tonight" : h.adhoc ? "Performed · ad hoc" : "Performed";
                   return (
                     <li key={`${h.date}-${h.showId}`} className="flex items-center gap-3 border-b border-outline-variant/40 px-3 py-2 last:border-0">
                       <span className="w-16 type-label-m tabular text-on-surface-variant">{formatDate(h.date)}</span>
                       <span className="flex-1 truncate type-body-m">{h.showName}</span>
-                      <span className={cx("type-label-m", label === "Performed" ? "text-primary" : label === "Cancelled" ? "text-error" : label === "Mic didn't happen" ? "text-on-surface-variant" : "text-tertiary")}>{label}</span>
+                      <span className={cx("type-label-m", label.startsWith("Performed") ? "text-primary" : label === "Cancelled" ? "text-error" : label === "Mic didn't happen" ? "text-on-surface-variant" : "text-tertiary")}>{label}</span>
                     </li>
                   );
                 })}
@@ -337,6 +342,7 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
         )}
         <Field label="Notes"><TextArea value={d.notes ?? ""} onChange={(e) => setD({ ...d, notes: e.target.value })} placeholder="Closer material, good with crowd work…" /></Field>
       </div>
+      {d.id && <PastSpotSheet open={pastOpen} onClose={() => setPastOpen(false)} comic={d as Comic} />}
     </Sheet>
   );
 }

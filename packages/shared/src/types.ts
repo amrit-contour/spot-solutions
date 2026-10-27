@@ -316,6 +316,8 @@ export interface SpotRequest {
   ackedAt?: number | null;
   rejectedAt?: number | null;
   hold?: HoldReason | null;
+  /** Settled by a recorded past spot (backfill); set so removing that spot can reopen it. */
+  backfilledAt?: number;
   /** Curator chose to let a held request through. */
   holdOverridden?: boolean;
   /**
@@ -339,6 +341,8 @@ export interface Slot {
   minutes?: number | null;
   /** A last-minute spot (booked through an offer, or added after the lineup was confirmed). Kept in history; never holds them back. */
   adhoc?: boolean;
+  /** Recorded afterwards for a show that had already happened: never messaged, never synced to the group. */
+  backfill?: boolean;
 }
 
 export interface GroupSyncPlan {
@@ -385,6 +389,8 @@ export interface Lineup {
   /** Regulars, co-hosts and group admins were put on this lineup when it was first opened. Not redone after you remove someone. */
   defaultsSeeded?: boolean;
   micCheckSentOn?: string | null;
+  /** A past show recorded after the fact. History only: the worker never messages, syncs, asks or posts for it. */
+  backfilled?: boolean;
 }
 
 export interface GroupInfo {

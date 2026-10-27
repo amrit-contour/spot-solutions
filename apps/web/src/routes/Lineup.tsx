@@ -59,11 +59,12 @@ import { GroupSyncSheet } from "../components/GroupSyncSheet";
 import { GroupPopover, GroupTab, MemberTileBody } from "../components/GroupPanel";
 import { Popover, ToolButton } from "@spot/ui";
 import { PillRow, Pill, comicPills, type TellState } from "../components/Pills";
+import { BackfillSheet, PAST_SHOW_NOTE } from "../components/BackfillSheet";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
 import { Avatar, Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "@spot/ui";
-import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "@spot/ui";
+import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "@spot/ui";
 
 const BENCH = "bench";
 // Droppables that aren't lineup lists: a group member's leave zone (in the Waiting column's Group tab).
@@ -73,7 +74,7 @@ const MEMBER = "gm:";
 type Columns = Record<string, string[]>;
 
 export function LineupBoard() {
-  const { uid, week, shows, comics, comicsById } = useApp();
+  const { uid, week, shows, comics, comicsById, settings } = useApp();
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const prevLineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", shiftWeek(week, -1))], `prev:${week}`);
@@ -156,7 +157,13 @@ export function LineupBoard() {
   const removeFrom = (cid: string, show: Show) => unplaceComic(uid, week, show, cid, lineupByShow.get(show.id));
   const containerOf = (id: string) => (id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
   // Confirmed lineups stay editable (changes are reviewed in Send updates); only called-off ones are closed.
-  const closed = (showId: string) => ["cancelled", "canned"].includes(lineupByShow.get(showId)?.status ?? "draft");
+  // A past show that never went out is edited in the backfill sheet, never by dragging.
+  const closed = (showId: string) => {
+    const l = lineupByShow.get(showId);
+    const show = shows.find((s) => s.id === showId);
+    const pastRecord = Boolean(show) && dateInWeek(week, show!.weekday) < localNow(new Date(), settings.timezone).date && (!l || l.status === "draft" || l.backfilled);
+    return pastRecord || ["cancelled", "canned"].includes(l?.status ?? "draft");
+  };
   // A member dropped on the Leaving zone, waiting for its show's group popover to confirm the removal.
   const [leaveReq, setLeaveReq] = useState<{ showId: string; id: string } | null>(null);
   const groupShows = activeShows.filter((s) => s.groupId);
@@ -316,7 +323,7 @@ export function LineupBoard() {
                             const l = lineupByShow.get(s.id);
                             const preferred = requestByComic.get(cid)?.intent.preferredDays.includes(s.weekday);
                             return (
-                              <MenuItem key={s.id} highlighted={preferred} hint={`${l?.slots.length ?? 0}/${s.slotCount}`} disabled={l?.status === "cancelled" || l?.status === "canned"} onClick={() => (close(), void addTo(cid, s))}>
+                              <MenuItem key={s.id} highlighted={preferred} hint={`${l?.slots.length ?? 0}/${s.slotCount}`} disabled={closed(s.id)} onClick={() => (close(), void addTo(cid, s))}>
                                 {s.name}
                                 <span className="block type-body-s text-on-surface-variant">{DAY_SHORT[s.weekday]} · {formatTime(s.startTime)}</span>
                               </MenuItem>
@@ -449,7 +456,11 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
   // Canned and cancelled both mean the mic is off; only the label differs.
   const cancelled = status === "cancelled" || canned;
   const showDate = dateInWeek(week, show.weekday);
-  const past = localNow(new Date(), settings.timezone).date >= showDate;
+  const today = localNow(new Date(), settings.timezone).date;
+  const past = today >= showDate;
+  // Past and never sent (or already a record): who performed is recorded in the backfill sheet; nothing is sent.
+  const record = showDate < today && (Boolean(lineup?.backfilled) || !lineup || lineup.status === "draft");
+  const [backfillOpen, setBackfillOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
@@ -567,7 +578,9 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
             <h2 className="mt-0.5 truncate type-title-l">{show.name}</h2>
             {venue && <p className="truncate type-body-s text-on-surface-variant">{venue.name}</p>}
           </div>
-          {confirmed ? (
+          {record ? (
+            <Chip tone="neutral" icon={IconHistory}>{canned ? "Didn't happen" : "Past show"}</Chip>
+          ) : confirmed ? (
             <div className="flex items-center gap-1">
             <Chip tone="success" icon={IconCheck}>Sent</Chip>
             <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}>
@@ -586,6 +599,7 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
                 >
                   Mic didn't happen
                 </MenuItem>
+                {showDate < today && <MenuItem onClick={() => (close(), setBackfillOpen(true))}>Record who performed…</MenuItem>}
                 <MenuItem disabled={!resetPlan} onClick={() => (close(), setResetOpen(true))}>
                   Reset lineup…
                 </MenuItem>
@@ -636,7 +650,13 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
         </div>
       </header>
 
-      {repeatable.length > 0 && !hideRepeat && (
+      {record && (
+        <div className="mb-3 flex items-center gap-2 rounded-md bg-tertiary-container/60 py-2 pl-3 pr-1 text-on-tertiary-container">
+          <IconHistory className="icon size-4 flex-none" />
+          <p className="min-w-0 flex-1 type-body-s">{PAST_SHOW_NOTE}</p>
+        </div>
+      )}
+      {repeatable.length > 0 && !hideRepeat && !record && (
         <div className="mb-3 flex h-11 items-center gap-2 rounded-md bg-tertiary-container/60 pl-3 pr-1 text-on-tertiary-container">
           <IconRepeat className="icon size-4 flex-none" />
           <p className="min-w-0 flex-1 truncate type-body-s" title={`Last week's ${show.name} was called off. Bring back ${repeatable.map((id) => nameOf(id)).join(", ")}`}>Last week was called off</p>
@@ -660,11 +680,11 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
               adhoc={Boolean(lineup?.slots.find((x) => x.comicId === cid)?.adhoc)}
               states={statesFor(cid)}
               onMinutes={lineup && !cancelled ? (m) => void setMinutes(uid, week, show, lineup, cid, m).catch((e: Error) => toast.error(e.message)) : undefined}
-              disabled={cancelled}
-              action={cancelled ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />}
+              disabled={cancelled || record}
+              action={cancelled || record ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />}
             />
           ))}
-          {ids.length < show.slotCount && (
+          {!record && ids.length < show.slotCount && (
             <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant px-4 py-2.5 text-center type-body-s text-balance text-on-surface-variant/70 transition-colors", ids.length ? "min-h-11" : "min-h-20", dragKind && "border-primary/60 text-primary")}>
               {!ids.length ? "Drop comics or group members here" : `${show.slotCount - ids.length} open slot${show.slotCount - ids.length === 1 ? "" : "s"}`}
             </li>
@@ -765,11 +785,16 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
                 )}
               </Popover>
             )}
-            {!cancelled && (
+            {!cancelled && !record && (
               <GroupPopover show={show} lineup={lineup} ids={ids} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? onAddTold : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />
             )}
                 </div>
-        {canned ? null : cancelled ? (
+        {record ? (
+          <>
+            <div className="flex-1" />
+            <Button size="sm" variant="tonal" icon={IconHistory} onClick={() => setBackfillOpen(true)}>Record who performed</Button>
+          </>
+        ) : canned ? null : cancelled ? (
           <Button size="sm" variant="text" onClick={() => setLineupStatus(uid, week, show, "draft")}>Reopen</Button>
         ) : confirmed ? (
           <>
@@ -797,6 +822,7 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
         )}
       </footer>
 
+      <BackfillSheet open={backfillOpen} onClose={() => setBackfillOpen(false)} show={show} week={week} />
       <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} onSending={() => (armed.current = mode === "confirm")} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
       {lineup && baseline && <SendUpdatesSheet open={updatesOpen} onClose={() => setUpdatesOpen(false)} show={show} lineup={lineup} baseline={baseline} onSent={() => void (armed.current = mode === "confirm")} />}
       <ResetDialog open={resetOpen} onClose={() => setResetOpen(false)} plans={resetPlan ? [resetPlan] : []} shows={[show]} scope="show" />

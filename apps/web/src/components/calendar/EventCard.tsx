@@ -23,10 +23,11 @@ import { answerMicCheck } from "../../lib/updates";
 import { ConfirmSheet } from "../ConfirmSheet";
 import { SendUpdatesSheet } from "../SendUpdatesSheet";
 import { OfferSheet } from "../OfferSheet";
+import { BackfillSheet } from "../BackfillSheet";
 import { GroupSyncSheet } from "../GroupSyncSheet";
 import { PillRow, comicPills, type TellState } from "../Pills";
 import { Avatar, Button, Chip, buttonClass, cx } from "@spot/ui";
-import { IconArrowRight, IconCheck, IconClock, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "@spot/ui";
+import { IconArrowRight, IconCheck, IconClock, IconHistory, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "@spot/ui";
 import { laneOf } from "../../routes/Requests";
 
 const first = (name: string) => name.split(" ")[0];
@@ -41,6 +42,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
+  const [backfillOpen, setBackfillOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status;
@@ -204,6 +206,9 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
           {canAct && confirmed && !(changes && changes.total > 0) && (
             <span className="inline-flex min-w-0 items-center gap-1.5 type-label-m text-on-surface-variant"><IconCheck className="icon size-4 flex-none text-primary" /><span className="truncate">Everyone's been told</span></span>
           )}
+          {past && (
+            <Button size="sm" variant="tonal" icon={IconHistory} onClick={() => setBackfillOpen(true)} className="flex-none">Record who performed</Button>
+          )}
           {canAct && !slots.length && (
             <Link to="/lineup" className={buttonClass({ size: "sm", variant: "tonal", icon: true, className: "flex-none" })}><IconMic className="icon size-4" />Start lineup</Link>
           )}
@@ -227,6 +232,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
 
       <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} onSending={() => (armed.current = mode === "confirm")} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
       {lineup && baseline && <SendUpdatesSheet open={updatesOpen} onClose={() => setUpdatesOpen(false)} show={show} lineup={lineup} baseline={baseline} onSent={() => void (armed.current = mode === "confirm")} />}
+      <BackfillSheet open={backfillOpen} onClose={() => setBackfillOpen(false)} show={show} week={week} />
       <OfferSheet open={offerOpen} onClose={() => setOfferOpen(false)} show={show} exclude={ids} />
       {lineup && <GroupSyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} show={show} lineup={lineup} />}
     </li>

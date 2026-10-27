@@ -24,6 +24,7 @@ async function tick(uid: string) {
   for (const doc of today.docs) {
     const lineup = doc.data() as Lineup;
     const show = shows.find((s) => s.id === lineup.showId);
+    if (lineup.backfilled) continue; // a recorded past show: history only
     if (!show?.active || !show.groupId || show.groupMode !== "show_day") continue;
     if (lineup.showDaySyncedOn === now.date || now.time < (show.showDaySyncTime ?? "12:00")) continue;
     const key = `${uid}|${doc.id}`;
