@@ -87,7 +87,7 @@ function Remove-LegacyInstall {
     if (-not $p) { continue }
     foreach ($n in @($p.PSObject.Properties.Name)) {
       if ($n -like 'PS*') { continue }
-      if ($n -match 'Spot' -or "$($p.$n)" -match $LegacyPattern) {
+      if ($n -match '^(SpotSolutions|Spot Solutions|Spot Server|SpotServer)' -or "$($p.$n)" -match $LegacyPattern) {
         $found = $true
         Remove-ItemProperty -Path $k -Name $n -ErrorAction SilentlyContinue
         Log "Removed old startup entry '$n'"
