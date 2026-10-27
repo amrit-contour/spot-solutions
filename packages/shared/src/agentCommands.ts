@@ -7,6 +7,7 @@
 import { DAY_NAMES, dateInWeek, formatDate, formatTime } from "./week.ts";
 import { OFFER_POLL_OPTIONS, greetName, messageRich, renderRich } from "./messages.ts";
 import { choosePending, confirmPending, describePlan, matchPeople, maskPhone, type ActionPlan, type AgentIntent, type PersonRef, type PlanPerson, type Planned } from "./agent.ts";
+import { directEffects } from "./adhoc.ts";
 import type { Lineup, Settings, Show } from "./types.ts";
 
 // ---------------------------------------------------------------- reading the words
@@ -38,6 +39,17 @@ const memberName = (s: string) =>
  * Null when it isn't one of them.
  */
 export function parseExtraRules(l: string): AgentIntent | null {
+  // "add Rahul to Monday directly, no message" / "...and don't add him to the group": the two switches of the app's "Already agreed".
+  const noMsg = /,?\s*(?:and\s+)?(?:without (?:sending (?:a |any )?)?(?:a |any )?(?:message|confirmation)|without telling (?:them|him|her)|(?:with )?no (?:message|confirmation)|(?:don'?t|do not) (?:message|text|tell) (?:them|him|her)|silently)/;
+  const noGroup = /,?\s*(?:and\s+)?(?:without (?:adding (?:them|him|her) to )?(?:the )?(?:show'?s? )?group|(?:with )?no group|(?:don'?t|do not) add (?:them|him|her) to the (?:show'?s? )?group)/;
+  if (noMsg.test(l) || noGroup.test(l)) {
+    const r = parseExtraBase(l.replace(noMsg, "").replace(noGroup, "").trim());
+    if (r?.name === "offer" && r.direct) return { ...r, ...(noMsg.test(l) && { confirm: false }), ...(noGroup.test(l) && { addToGroup: false }) };
+  }
+  return parseExtraBase(l);
+}
+
+function parseExtraBase(l: string): AgentIntent | null {
   let m: RegExpMatchArray | null;
 
   // Members (admins). Questions about them are read-only.
@@ -107,6 +119,9 @@ export interface OfferCtx {
   week: string;
   today?: string;
   direct: boolean;
+  /** Direct adds only: the two switches. Missing means on. */
+  confirm?: boolean;
+  addToGroup?: boolean;
   primaryReady: boolean;
 }
 
@@ -121,15 +136,15 @@ export function planOfferFor(c: OfferCtx): { fail: string } | { plan: ActionPlan
   if (c.lineup?.slots.some((x) => x.comicId === p.id)) return { fail: `${p.name} is already on ${s.name}.` };
   if (!c.primaryReady) return { fail: `Your own WhatsApp isn't connected right now, so I can't message ${greetName(p.name)}.` };
   if (!c.direct && p.banned) return { fail: `${p.name} is on your Banned list, so I won't offer them a spot.` };
-  if (!c.direct && filled >= s.slotCount) return { fail: `${s.name} is full (${filled} of ${s.slotCount}). If ${greetName(p.name)} already agreed, say "add ${greetName(p.name).toLowerCase()} to ${DAY_NAMES[s.weekday].toLowerCase()} directly".` };
 
   const notes: string[] = [];
-  if (c.direct && filled >= s.slotCount) notes.push(`${s.name} has ${s.slotCount} ${s.slotCount === 1 ? "spot" : "spots"} and ${filled} ${filled === 1 ? "is" : "are"} filled, so this puts it ${filled + 1 - s.slotCount} over.`);
+  // The slot count is a soft limit: the curator's yes to this plan is the "add anyway", and the worker is told so.
+  if (filled >= s.slotCount) notes.push(`${s.name} has ${s.slotCount} ${s.slotCount === 1 ? "spot" : "spots"} and ${filled} ${filled === 1 ? "is" : "are"} filled, so ${c.direct ? "this" : "a yes"} puts it ${filled + 1 - s.slotCount} over (${filled + 1} of ${s.slotCount}).`);
   const other = c.lineups.filter((l) => l.showId !== s.id && l.status !== "cancelled" && l.status !== "canned" && l.slots.some((x) => x.comicId === p.id)).map((l) => c.shows.find((x) => x.id === l.showId)?.name).filter(Boolean);
   if (other.length) notes.push(`${greetName(p.name)} is also on ${other.join(" and ")} this week.`);
   if (c.direct && p.banned) notes.push("They're on your Banned list.");
 
-  const plan: ActionPlan = { type: "offer", showId: s.id, comicId: p.id, comicName: p.name, phone: p.phone, direct: c.direct };
+  const plan: ActionPlan = { type: "offer", showId: s.id, comicId: p.id, comicName: p.name, phone: p.phone, direct: c.direct, ...(c.direct && c.confirm === false && { confirm: false }), ...(c.direct && c.addToGroup === false && { addToGroup: false }) };
   return { plan, summary: [describePlan(plan, { show: s, week: c.week }), ...notes].join(" ") };
 }
 
@@ -143,7 +158,7 @@ export function offerPayload(settings: Pick<Settings, "messages">, show: Pick<Sh
 
 export const describeOffer = (plan: Extract<ActionPlan, { type: "offer" }>, when: string): string =>
   plan.direct
-    ? `Add ${plan.comicName} (${maskPhone(plan.phone || plan.comicId.split("@")[0])}) to ${when} directly? No offer is sent: they go straight onto the lineup, get your confirmation message and join the show's group.`
+    ? `Add ${plan.comicName} (${maskPhone(plan.phone || plan.comicId.split("@")[0])}) to ${when} directly? No offer is sent: they go straight onto the lineup; ${directEffects(plan)}.`
     : `Offer ${plan.comicName} (${maskPhone(plan.phone || plan.comicId.split("@")[0])}) the spot on ${when}, from your own WhatsApp? If they say yes they're added and get your confirmation; if it fills up first they're told it's gone.`;
 
 // ---------------------------------------------------------------- members (admins)

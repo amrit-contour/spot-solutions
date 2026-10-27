@@ -49,9 +49,23 @@ const mondayOf = (iso: string) => {
 };
 
 /** "Added Rahul to Monday Mic directly": the Updates entry for comics added without an offer. */
-export function directNotice(names: string[], showName: string): string {
+export function directNotice(names: string[], showName: string, opts: DirectOptions = {}): string {
   const who = names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `Added ${who} to ${showName} directly`;
+  const off = [opts.confirm === false && "no confirmation sent", opts.addToGroup === false && "not added to the group"].filter(Boolean).join(", ");
+  return `Added ${who} to ${showName} directly${off ? ` (${off})` : ""}`;
+}
+
+/** What a direct add also does. Both default to on: the confirmation message goes out and they join the show's group. */
+export interface DirectOptions {
+  confirm?: boolean;
+  addToGroup?: boolean;
+}
+
+/** In words, for the agent's "yes?" question and the app: "gets your confirmation and is added to the show's group", "no message, not added to the group". */
+export function directEffects(o: DirectOptions = {}): string {
+  const msg = o.confirm === false ? "no message is sent" : "they get your confirmation message";
+  const grp = o.addToGroup === false ? "they aren't added to the group" : "they join the show's group";
+  return `${msg}, ${grp}`;
 }
 
 /** Who a direct add puts on the lineup, who is already there, and how far over the show's slot count it goes. Cooldown never applies. */

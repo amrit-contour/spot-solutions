@@ -158,6 +158,9 @@ export interface AgentIntent {
   happened?: boolean;
   /** offer: they already agreed, so no offer is sent. */
   direct?: boolean;
+  /** offer, direct: the two switches of "Already agreed" ("no message", "don't add to the group"). Missing means on. */
+  confirm?: boolean;
+  addToGroup?: boolean;
 }
 
 const strip = (t: string) => t.trim().replace(/[?!.\s]+$/g, "").replace(/\s+/g, " ");
@@ -391,7 +394,7 @@ export type ActionPlan =
   /** A comic said yes in an ad hoc round where the curator picks. */
   | { type: "adhoc_pick"; showId: string; roundId: string; comicId: string; comicName: string }
   /** offer: ask them (a poll or text from the curator's own WhatsApp); direct: they already agreed, so no offer (the app's "Already agreed"). */
-  | { type: "offer"; showId: string; comicId: string; comicName: string; phone: string; direct: boolean }
+  | { type: "offer"; showId: string; comicId: string; comicName: string; phone: string; direct: boolean; confirm?: boolean; addToGroup?: boolean }
   /** An admin approves or declines ("removed") a request to join. Has no show. */
   | { type: "member"; uid: string; name: string; email: string; decision: "approved" | "removed" };
 
@@ -476,7 +479,7 @@ export function planAction(intent: AgentIntent, w: PlanWorld, people: PlanPerson
     if (!found.length) return { reply: `I couldn't find anyone called "${intent.person}".` };
     for (const s of candidates) {
       for (const p of found) {
-        const r = planOfferFor({ show: s, person: p as PlanPerson, lineup: lineupOf(s), lineups: w.lineups, shows: w.shows, week: w.week, today: w.today, direct: intent.direct === true, primaryReady: o.primaryReady });
+        const r = planOfferFor({ show: s, person: p as PlanPerson, lineup: lineupOf(s), lineups: w.lineups, shows: w.shows, week: w.week, today: w.today, direct: intent.direct === true, confirm: intent.confirm, addToGroup: intent.addToGroup, primaryReady: o.primaryReady });
         if ("fail" in r) fail.push(r.fail);
         else choices.push({ label: `${p.name} → ${showLabel(s, w.week)}`, plan: r.plan, summary: r.summary });
       }

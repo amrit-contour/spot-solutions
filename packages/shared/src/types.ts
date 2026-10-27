@@ -119,6 +119,8 @@ export interface SpotOffer {
   /** Sent as a poll: the poll message's id and its options (first books the spot, second passes). */
   pollMessageId?: string;
   pollOptions?: string[];
+  /** Sent after the curator agreed to go over the slot count: a yes books them even when the show is full. */
+  overfill?: boolean;
 }
 
 /** Host availability poll for one week. */
@@ -365,6 +367,10 @@ export interface Slot {
   adhoc?: boolean;
   /** Recorded afterwards for a show that had already happened: never messaged, never synced to the group. */
   backfill?: boolean;
+  /** Added directly with "Send them a confirmation" off: nobody has told them yet. Cleared by the lineup's record of what was sent. */
+  notTold?: boolean;
+  /** Added directly with "Add them to the show's group" off: automatic group syncs leave them out; a sync you press adds them. */
+  noGroup?: boolean;
 }
 
 export interface GroupSyncPlan {

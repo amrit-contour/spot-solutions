@@ -12,6 +12,7 @@ import {
   OFFER_POLL_OPTIONS,
   parseYesNo,
   renderMessage,
+  sentSnapshot,
   sentWith,
   withHistory,
   type Comic,
@@ -19,6 +20,7 @@ import {
   type Lineup,
   type SpotOffer,
   type Show,
+  type Slot,
   type SpotRequest,
 } from "@spot/shared";
 import { col, db } from "./firebase.ts";
@@ -98,7 +100,7 @@ async function tellFull(uid: string, client: WAWebJS.Client, offerRef: FirebaseF
  * Put one comic on a show's lineup as an ad hoc spot (in their history, never counted by the cooldown).
  * Returns the lineup, or null when the show is full (unless `overfill`) or called off.
  */
-async function placeAdhoc(uid: string, show: Show | undefined, lineupId: string, comicId: string, overfill = false): Promise<Lineup | null> {
+async function placeAdhoc(uid: string, show: Show | undefined, lineupId: string, comicId: string, overfill = false, flags: Pick<Slot, "notTold" | "noGroup"> = {}): Promise<Lineup | null> {
   const lineupRef = col(uid, "lineups").doc(lineupId);
   const comicRef = col(uid, "comics").doc(comicId);
   return db.runTransaction(async (tx) => {
@@ -112,7 +114,7 @@ async function placeAdhoc(uid: string, show: Show | undefined, lineupId: string,
     const comic = comicSnap.data() as Comic | undefined;
     const req = reqSnap.data() as SpotRequest | undefined;
     const date = dateInWeek(lineup.weekOf, show.weekday);
-    tx.update(lineupRef, { slots: [...lineup.slots, { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null, adhoc: true }] });
+    tx.update(lineupRef, { slots: [...lineup.slots, { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null, adhoc: true, ...(flags.notTold && { notTold: true }), ...(flags.noGroup && { noGroup: true }) }] });
     // Ad hoc: in their history, but never counted against them by the cooldown (no lastPerformedWeek).
     tx.set(comicRef, { history: withHistory(comic?.history, { date, showId: show.id, showName: show.name, status: "confirmed", adhoc: true }) }, { merge: true });
     if (req) tx.update(reqRef, { status: "confirmed", updatedAt: Date.now() });
@@ -121,18 +123,22 @@ async function placeAdhoc(uid: string, show: Show | undefined, lineupId: string,
 }
 
 /** After they're on the lineup: the confirmation, counted as told, and into the show's group when it's today. */
-async function finishPlaced(uid: string, client: WAWebJS.Client, show: Show, lineupId: string, comicId: string, weekOf: string, status: Lineup["status"]) {
+async function finishPlaced(uid: string, client: WAWebJS.Client, show: Show, lineupId: string, comicId: string, weekOf: string, status: Lineup["status"], opts: { confirm?: boolean; addToGroup?: boolean } = {}) {
   const { settings } = watchUser(uid);
   const lineupRef = col(uid, "lineups").doc(lineupId);
   const comic = (await col(uid, "comics").doc(comicId).get()).data() as Comic;
-  await sendConfirmation(uid, client, show, comic, weekOf);
-  // On a confirmed lineup this counts as told, so "Send updates" doesn't confirm them a second time.
-  if (status === "confirmed") {
+  const lineupBefore = (await lineupRef.get()).data() as Lineup;
+  if (opts.confirm === false) {
+    // Not told: on a confirmed lineup the record of what was sent must exist and leave them out, so Send updates still tells them.
+    if (status === "confirmed" && !lineupBefore.sent) await lineupRef.update({ sent: sentSnapshot(lineupBefore.slots.filter((s) => s.comicId !== comicId), show, lineupBefore.sentAt ?? Date.now()) });
+  } else {
+    await sendConfirmation(uid, client, show, comic, weekOf);
+    // Counted as told, so neither "Send updates" nor Confirm & send messages them a second time.
     const fresh = (await lineupRef.get()).data() as Lineup;
     await lineupRef.update({ sent: sentWith(fresh.sent, fresh.slots, show, comicId, Date.now()) });
   }
   // Show is today and its group is managed: add them now (ad hoc comics join the group like everyone else).
-  if (show.groupId && localNow(new Date(), settings.timezone).date === dateInWeek(weekOf, show.weekday)) {
+  if (opts.addToGroup !== false && show.groupId && localNow(new Date(), settings.timezone).date === dateInWeek(weekOf, show.weekday)) {
     const group = (await client.getChatById(show.groupId)) as WAWebJS.GroupChat;
     await group.addParticipants([comicId], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) }).catch(() => undefined);
   }
@@ -142,7 +148,7 @@ async function finishPlaced(uid: string, client: WAWebJS.Client, show: Show, lin
 export async function bookOffer(uid: string, client: WAWebJS.Client, offerRef: FirebaseFirestore.DocumentReference, offer: SpotOffer, reply: string | null): Promise<boolean> {
   const { shows } = watchUser(uid);
   const show = shows.find((s) => s.id === offer.showId);
-  const booked = await placeAdhoc(uid, show, offer.lineupId, offer.comicId);
+  const booked = await placeAdhoc(uid, show, offer.lineupId, offer.comicId, offer.overfill === true);
 
   if (!booked || !show) {
     await tellFull(uid, client, offerRef, offer, reply, true);
@@ -161,12 +167,18 @@ export async function bookOffer(uid: string, client: WAWebJS.Client, offerRef: F
  * confirmation message and group add as a booked offer. The cooldown never applies and a full show doesn't block it
  * (the sheet warns). Returns who was added and who was already on it.
  */
-export async function addDirect(uid: string, client: WAWebJS.Client, lineupId: string, comicIds: string[]) {
+export async function addDirect(uid: string, client: WAWebJS.Client, lineupId: string, comicIds: string[], opts: { overfill?: boolean; confirm?: boolean; addToGroup?: boolean } = {}) {
   const { shows } = watchUser(uid);
   const lineup = (await col(uid, "lineups").doc(lineupId).get()).data() as Lineup | undefined;
   const show = shows.find((s) => s.id === lineup?.showId);
   if (!lineup || !show) throw new Error("Lineup not found");
   if (lineup.status === "cancelled" || lineup.status === "canned") throw new Error(`${show.name} is called off.`);
+  const overfill = opts.overfill === true;
+  const confirm = opts.confirm !== false;
+  const addToGroup = opts.addToGroup !== false;
+  const newOnes = comicIds.filter((id) => !lineup.slots.some((s) => s.comicId === id));
+  // The slot count is a soft limit: going over needs an explicit yes (the app's "Add anyway").
+  if (!overfill && lineup.slots.length + newOnes.length > show.slotCount) throw new Error(`${show.name} has ${show.slotCount} ${show.slotCount === 1 ? "spot" : "spots"} and ${lineup.slots.length} ${lineup.slots.length === 1 ? "is" : "are"} filled. Adding ${newOnes.length === 1 ? "them" : `${newOnes.length}`} goes over; confirm to add anyway.`);
   const added: string[] = [];
   const already: string[] = [];
   const names: string[] = [];
@@ -174,19 +186,19 @@ export async function addDirect(uid: string, client: WAWebJS.Client, lineupId: s
     const comicRef = col(uid, "comics").doc(id);
     const comic = (await comicRef.get()).data() as Comic | undefined;
     if (!comic) continue;
-    const placed = await placeAdhoc(uid, show, lineupId, id, true);
+    const placed = await placeAdhoc(uid, show, lineupId, id, true, { ...(confirm ? {} : { notTold: true }), ...(addToGroup ? {} : { noGroup: true }) });
     if (!placed) continue;
-    if (lineup.slots.some((s) => s.comicId === id)) {
+    if (placed.slots.some((s) => s.comicId === id)) {
       already.push(id);
       continue;
     }
     // A direct add replaces any offer still waiting on them.
     for (const d of (await col(uid, "offers").where("comicId", "==", id).where("status", "==", "pending").get()).docs) await d.ref.update({ status: "expired" });
-    await finishPlaced(uid, client, show, lineupId, id, placed.weekOf, placed.status);
+    await finishPlaced(uid, client, show, lineupId, id, placed.weekOf, placed.status, { confirm, addToGroup });
     added.push(id);
     names.push(comic.name);
   }
-  if (names.length) await notice(uid, "info", directNotice(names, show.name), "offer");
+  if (names.length) await notice(uid, "info", directNotice(names, show.name, { confirm, addToGroup }), "offer");
   return { added: added.length, already: already.length, ids: added };
 }
 

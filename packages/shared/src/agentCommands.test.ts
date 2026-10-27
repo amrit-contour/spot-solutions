@@ -83,9 +83,11 @@ describe("planning an offer", () => {
     expect(r.pending.plan).toMatchObject({ type: "offer", direct: true });
     expect(r.pending.summary).toContain("No offer is sent");
   });
-  it("a plain offer to a full show is refused with a pointer to adding directly; direct warns instead", () => {
+  it("a full show is a soft limit: the offer and the direct add both warn that they go over, and the yes is the confirmation", () => {
     const w = world({ lineups: [lineup("mon", ["x@c.us", "y@c.us"])] });
-    expect(planAction(offer("rahul", "monday", false), w, people, o).reply).toMatch(/Monday Mic is full \(2 of 2\)\..*directly/);
+    const p = planAction(offer("rahul", "monday", false), w, people, o);
+    if (p.pending?.stage !== "confirm") throw new Error("expected confirm");
+    expect(p.pending.summary).toContain("a yes puts it 1 over (3 of 2)");
     const d = planAction(offer("rahul", "monday", true), w, people, o);
     if (d.pending?.stage !== "confirm") throw new Error("expected confirm");
     expect(d.pending.summary).toContain("puts it 1 over");
@@ -186,5 +188,23 @@ describe("members", () => {
   it("lists who is waiting", () => {
     expect(formatMembersWaiting(rows)).toBe("1 waiting to join:\n• Priya Shah (priya@x.com)\nReply *approve Priya* or *decline Priya*.");
     expect(formatMembersWaiting([])).toBe("Nobody is waiting to join.");
+  });
+});
+
+describe("direct add switches (confirmation message, group)", () => {
+  const read = (t: string) => parseIntentByRules(t);
+  it("reads 'no message' and 'don't add to the group' on a direct add", () => {
+    expect(read("add Rahul to Monday directly, no message")).toEqual({ name: "offer", person: "rahul", day: "monday", direct: true, confirm: false });
+    expect(read("add Rahul to Monday directly without adding them to the group")).toEqual({ name: "offer", person: "rahul", day: "monday", direct: true, addToGroup: false });
+    expect(read("add Rahul to Monday directly, no message and no group")).toEqual({ name: "offer", person: "rahul", day: "monday", direct: true, confirm: false, addToGroup: false });
+  });
+  it("the question says what will happen", () => {
+    const on = planAction({ name: "offer", person: "rahul", day: "monday", direct: true }, world(), people, o);
+    if (on.pending?.stage !== "confirm") throw new Error("expected confirm");
+    expect(on.reply ?? on.pending.question ?? JSON.stringify(on.pending)).toMatch(/get your confirmation message, they join the show's group/);
+    const off = planAction({ name: "offer", person: "rahul", day: "monday", direct: true, confirm: false, addToGroup: false }, world(), people, o);
+    if (off.pending?.stage !== "confirm") throw new Error("expected confirm");
+    expect(off.pending.plan).toMatchObject({ type: "offer", direct: true, confirm: false, addToGroup: false });
+    expect(JSON.stringify(off.pending)).toMatch(/no message is sent, they aren't added to the group/);
   });
 });

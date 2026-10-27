@@ -192,7 +192,7 @@ const handlers: Record<Command["type"], Handler> = {
     await logActivity(uid, String(lineupId), { kind: "confirmations", tone: bad.length ? "failed" : "done", text: `Confirmations sent to ${gone} ${gone === 1 ? "comic" : "comics"}${bad.length ? `, ${bad.length} failed` : ""}`, ...(bad.length ? { detail: bad.map((n) => `${n}: not sent`) } : {}) });
 
     // "Review when I confirm" shows open the group review now; manual and show-day ones wait for the curator or the day.
-    if (show.groupId && groupModeOf(show) === "confirm") await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
+    if (show.groupId && groupModeOf(show) === "confirm") await handlers.plan_group_sync(uid, { lineupId, auto: true }).catch((e) => console.error("[group] plan failed", e));
     // Last show of the week locked in → everyone still waiting gets a regret.
     if (settings.reject.enabled && (await weekIsFinal(uid, lineup.weekOf, shows))) {
       await handlers.send_rejections(uid, { weekOf: lineup.weekOf });
@@ -227,7 +227,7 @@ const handlers: Record<Command["type"], Handler> = {
     return { sent, total: targets.length };
   },
 
-  async plan_group_sync(uid, { lineupId }) {
+  async plan_group_sync(uid, { lineupId, auto }) {
     const client = sessions.require(uid);
     const { shows } = watchUser(uid);
     const lineupRef = col(uid, "lineups").doc(String(lineupId));
@@ -254,10 +254,18 @@ const handlers: Record<Command["type"], Handler> = {
       protected: [...(show.protected ?? []), ...(show.pocs ?? [])],
       self: `${client.info.wid.user}@c.us`,
       forceRemove: lineup.groupLeaving ?? [],
+      aliases: { ...aliases, [`${info.wid.user}@c.us`]: [info.wid._serialized, info.lid?._serialized ?? ""].filter(Boolean) },
+      waiting: Object.keys(waiting),
     });
-    // Anyone we couldn't map to a phone number is kept — never remove what we can't identify.
-    const plan: GroupSyncPlan = { status: "pending", toAdd, toRemove, kept: [...kept, ...unresolved] };
-    await lineupRef.update({ groupSync: plan });
+    // Anyone we couldn't map to a phone number is kept: never remove what we can't identify.
+    const resolved = new Set(members.filter((m) => m.phone).map((m) => `${m.phone}@c.us`));
+    const unresolved = diff.toRemove.filter((id) => !resolved.has(id));
+    const toRemove = diff.toRemove.filter((id) => resolved.has(id));
+    // Added with "Add them to the show's group" off: the automatic passes (on confirm, on show day) leave them out; a sync you press adds them.
+    const held = new Set(auto === true ? lineup.slots.filter((x) => x.noGroup).map((x) => x.comicId) : []);
+    const toAdd = diff.toAdd.filter((id) => !held.has(id));
+    const plan: GroupSyncPlan = { status: "pending", toAdd, toRemove, kept: [...diff.kept, ...unresolved], invited: waiting, lapsed: lapsed.filter((id) => toAdd.includes(id)) };
+    await lineupRef.update({ groupSync: plan, groupInvites: invites });
     return plan;
   },
 
@@ -274,24 +282,28 @@ const handlers: Record<Command["type"], Handler> = {
     await lineupRef.update({ "groupSync.status": "applying" });
 
     const group = (await client.getChatById(show.groupId!)) as WAWebJS.GroupChat;
-    const results: GroupSyncPlan["results"] = {};
+    const raw: Record<string, SyncResult> = {};
     const lidOf = await lidMap(client, group);
+    const addable = await loadComics(uid, plan.toAdd);
 
     for (const id of plan.toAdd.filter((id) => !skip.has(id))) {
+      // The phone-based id when the roster has the number: it's what WhatsApp can resolve.
+      const comic = addable.get(id);
+      const target = comic?.phone ? comicIdForPhone(comic.phone.replace(/\D/g, "")) : id;
       await enqueueTask(client, async () => {
-        const r = await group.addParticipants([id], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) });
+        const r = await group.addParticipants([target], { autoSendInviteV4: true, comment: renderMessage(settings, "groupWelcome", { show: show.name }) });
         // Runtime shape is { [id]: { code, message, isInviteV4Sent } } (the bundled typings nest it one level too deep).
         const res = typeof r === "string" ? null : (Object.values(r)[0] as unknown as { code: number; isInviteV4Sent: boolean });
-        results[id] = res?.code === 200 ? "added" : res?.isInviteV4Sent ? "invited" : "failed";
+        raw[id] = res?.code === 200 || res?.code === 409 ? "added" : res?.isInviteV4Sent ? "invited" : "failed";
       });
     }
     for (const id of plan.toRemove.filter((id) => !skip.has(id))) {
       await enqueueTask(client, async () => {
         try {
           await group.removeParticipants([lidOf.get(id) ?? id]);
-          results[id] = "removed";
+          raw[id] = "removed";
         } catch {
-          results[id] = "failed";
+          raw[id] = "failed";
         }
       });
     }
@@ -309,6 +321,9 @@ const handlers: Record<Command["type"], Handler> = {
     }
     const { results, invites } = settleSyncResults({ results: raw, now: Date.now(), prior: lineup.groupInvites, isIn: (id) => inGroup(id, members.map((m) => ({ id: m.ids[0], alt: m.ids.slice(1) })), aliases) });
     await lineupRef.update({ "groupSync.status": "done", "groupSync.results": results, "groupSync.invited": invites, "groupSync.lapsed": [], groupInvites: invites, groupLeaving: null });
+    // Pressed by the curator: whoever was held back from the group now has been added (or invited).
+    const reached = new Set(Object.entries(results).filter(([, r]) => r === "added" || r === "invited").map(([id]) => id));
+    if (lineup.slots.some((x) => x.noGroup && reached.has(x.comicId))) await lineupRef.update({ slots: lineup.slots.map((x) => (x.noGroup && reached.has(x.comicId) ? { comicId: x.comicId, minutes: x.minutes, ...(x.adhoc && { adhoc: true }), ...(x.notTold && { notTold: true }) } : x)) });
     {
       const r = Object.values(results);
       const n = (k: string) => r.filter((x) => x === k).length;
@@ -395,7 +410,7 @@ const handlers: Record<Command["type"], Handler> = {
     await batch.commit();
     await logActivity(uid, String(lineupId), { kind: "updates", tone: bad.size ? "failed" : "done", text: `Lineup update sent to ${messaged.length} ${messaged.length === 1 ? "comic" : "comics"}${bad.size ? `, ${bad.size} not sent` : ""}`, ...(bad.size ? { detail: [...bad].map((id) => `${comics.get(id)?.name ?? id}: not sent`) } : {}) });
 
-    if (show.groupId && groupModeOf(show) === "confirm") await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
+    if (show.groupId && groupModeOf(show) === "confirm") await handlers.plan_group_sync(uid, { lineupId, auto: true }).catch((e) => console.error("[group] plan failed", e));
     return { sent: messaged.length, failed: failed.map((id) => comics.get(id)?.name ?? id) };
   },
 
@@ -422,7 +437,7 @@ const handlers: Record<Command["type"], Handler> = {
    * Offer open slot(s) to one comic (comicId, message already filled in) or to several at once (comicIds, the template:
    * {{name}} is filled per comic). Several make one ad hoc round that fills `slots`; autoAdd books the first yeses.
    */
-  async send_offer(uid, { comicId, comicIds, lineupId, body, rich, slots, autoAdd, direct }) {
+  async send_offer(uid, { comicId, comicIds, lineupId, body, rich, slots, autoAdd, direct, overfill, confirm, addToGroup }) {
     const client = sessions.require(uid);
     const { settings, shows, venues } = watchUser(uid);
     const lineup = (await col(uid, "lineups").doc(String(lineupId)).get()).data() as Lineup | undefined;
@@ -433,9 +448,10 @@ const handlers: Record<Command["type"], Handler> = {
     const ids = [...new Set((Array.isArray(comicIds) ? comicIds : [comicId]).map(String).filter(Boolean))];
     if (!ids.length) throw new Error("Pick someone to offer the spot to.");
     // Already agreed: no offer, no waiting for a yes. They go straight on the lineup, get the confirmation and join the group.
-    if (direct === true) return addDirect(uid, client, String(lineupId), ids);
+    if (direct === true) return addDirect(uid, client, String(lineupId), ids, { overfill: overfill === true, confirm: confirm !== false, addToGroup: addToGroup !== false });
+    // The slot count is a soft limit: an explicit overfill (the app's "Add anyway") lets an offer go out for a full show.
     const open = show.slotCount - lineup.slots.length;
-    if (open <= 0) throw new Error(`${show.name} is full.`);
+    if (open <= 0 && overfill !== true) throw new Error(`${show.name} is full.`);
     const comics = await loadComics(uid, ids);
 
     const asPoll = rich ? normalizeMessage(rich).kind === "poll" : false;
@@ -450,7 +466,7 @@ const handlers: Record<Command["type"], Handler> = {
     } else if (msg.kind !== "text") throw new Error("An offer goes out as a poll or as text.");
 
     const now = Date.now();
-    const round = { id: `r${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, size: ids.length, slots: Math.max(1, Math.min(open, Number(slots) || 1, ids.length)), autoAdd: ids.length === 1 ? true : autoAdd !== false };
+    const round = { id: `r${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`, size: ids.length, slots: Math.max(1, Math.min(Math.max(1, open), Number(slots) || 1, ids.length)), autoAdd: ids.length === 1 ? true : autoAdd !== false };
     let sentCount = 0;
     for (const id of ids) {
       const comic = comics.get(id);
@@ -473,6 +489,7 @@ const handlers: Record<Command["type"], Handler> = {
         reply: null,
         round,
         ...(pollOptions && sent && { pollMessageId: sent.id._serialized, pollOptions }),
+        ...(overfill === true && { overfill: true }),
       };
       await col(uid, "offers").add(offer);
       sentCount++;
@@ -759,7 +776,7 @@ export async function runShowDaySync(uid: string, id: string) {
   const client = sessions.require(uid);
   const { shows } = watchUser(uid);
   const lineupRef = col(uid, "lineups").doc(id);
-  const plan = (await handlers.plan_group_sync(uid, { lineupId: id })) as GroupSyncPlan;
+  const plan = (await handlers.plan_group_sync(uid, { lineupId: id, auto: true })) as GroupSyncPlan;
   const results = (await handlers.sync_group(uid, { lineupId: id, exclude: [] })) as NonNullable<GroupSyncPlan["results"]>;
   const lineup = (await lineupRef.get()).data() as Lineup;
   const show = shows.find((s) => s.id === lineup.showId) as Show;

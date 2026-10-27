@@ -49,7 +49,7 @@ const U = "u1";
 const client = { getChatById: async () => ({ addParticipants: async (ids: string[]) => void added.push(ids) }) } as never;
 const lineup = (slots: string[], status = "draft") => store.set(key(U, "lineups", "w_mon"), { weekOf: "2026-10-26", showId: "mon", status, slots: slots.map((comicId) => ({ comicId })) });
 const comic = (id: string, name: string, extra: Record<string, unknown> = {}) => store.set(key(U, "comics", id), { id, name, ...extra });
-const slots = () => ((store.get(key(U, "lineups", "w_mon")) as { slots: { comicId: string; adhoc?: boolean }[] }).slots);
+const slots = () => ((store.get(key(U, "lineups", "w_mon")) as { slots: { comicId: string; adhoc?: boolean; notTold?: boolean; noGroup?: boolean }[] }).slots);
 
 beforeEach(() => {
   store.clear();
@@ -114,12 +114,43 @@ describe("addDirect (already agreed)", () => {
     expect(store.get(key(U, "offers", "o1"))?.status).toBe("expired");
   });
 
-  it("goes over the show's slot count (the sheet warns) but refuses a called-off show", async () => {
+  it("the slot count is a soft limit: a full show needs an explicit overfill (the app's Add anyway), and a called-off show is refused", async () => {
     lineup(["a@c.us", "b@c.us", "c@c.us"]);
     comic("r@c.us", "Rahul");
-    expect((await addDirect(U, client, "w_mon", ["r@c.us"])).added).toBe(1);
+    await expect(addDirect(U, client, "w_mon", ["r@c.us"])).rejects.toThrow(/3 spots and 3 are filled/);
+    expect(slots()).toHaveLength(3);
+    expect((await addDirect(U, client, "w_mon", ["r@c.us"], { overfill: true })).added).toBe(1);
+    expect(slots()).toHaveLength(4);
     lineup([], "cancelled");
     await expect(addDirect(U, client, "w_mon", ["r@c.us"])).rejects.toThrow(/called off/);
+  });
+
+  it("confirm off: no message, the slot is marked Not told, and on a confirmed lineup the record of what was sent leaves them out", async () => {
+    lineup(["a@c.us"], "confirmed");
+    comic("r@c.us", "Rahul");
+    await addDirect(U, client, "w_mon", ["r@c.us"], { confirm: false });
+    expect(confirmations).toEqual([]);
+    expect(slots()[1]).toMatchObject({ comicId: "r@c.us", notTold: true });
+    const sent = (store.get(key(U, "lineups", "w_mon")) as { sent: Record<string, unknown> }).sent;
+    expect(Object.keys(sent)).toEqual(["a@c.us"]);
+    expect(notices).toEqual(["Added Rahul to Monday Mic directly (no confirmation sent)"]);
+  });
+
+  it("confirm on counts as told, on a draft lineup too, so Confirm & send won't message them again", async () => {
+    lineup([]);
+    comic("r@c.us", "Rahul");
+    await addDirect(U, client, "w_mon", ["r@c.us"]);
+    expect(Object.keys((store.get(key(U, "lineups", "w_mon")) as { sent: Record<string, unknown> }).sent)).toEqual(["r@c.us"]);
+  });
+
+  it("group off: not added to the group even on show day, and the slot says so", async () => {
+    lineup([]);
+    comic("r@c.us", "Rahul");
+    await addDirect(U, client, "w_mon", ["r@c.us"], { addToGroup: false });
+    expect(added).toEqual([]);
+    expect(confirmations).toEqual(["Rahul"]);
+    expect(slots()[0]).toMatchObject({ noGroup: true });
+    expect(slots()[0].notTold).toBeUndefined();
   });
 
   it("skips the group add when the show is not today, like a booked offer", async () => {
