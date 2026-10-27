@@ -136,11 +136,19 @@ export function CalendarView({ spots, today, selected, onSelect, mode, onMode }:
               ))}
             </div>
           ) : mode === "week" ? (
-            <div role="group" aria-label={`Week of ${weekDates(selected, o)[0]}`} className="grid grid-cols-7 gap-0.5 px-0.5">
-              {weekDates(selected, o).map((d) => (
-                <WeekCell key={d} date={d} today={today} selected={d === selected} spots={list.get(d) ?? []} onSelect={() => onSelect(d)} />
-              ))}
-            </div>
+            <>
+              {/* Phones: a slim strip (the week's agenda sits below it). From md up: seven columns with the times in them. */}
+              <div role="group" aria-label={`Week of ${weekDates(selected, o)[0]}`} className="grid grid-cols-7 px-0.5 md:hidden">
+                {weekDates(selected, o).map((d) => (
+                  <DayCell key={d} date={d} today={today} selected={d === selected} sources={by.get(d) ?? []} onSelect={() => onSelect(d)} />
+                ))}
+              </div>
+              <div role="group" aria-label={`Week of ${weekDates(selected, o)[0]}`} className="hidden grid-cols-7 gap-0.5 px-0.5 md:grid">
+                {weekDates(selected, o).map((d) => (
+                  <WeekCell key={d} date={d} today={today} selected={d === selected} spots={list.get(d) ?? []} onSelect={() => onSelect(d)} />
+                ))}
+              </div>
+            </>
           ) : (
             <div role="group" aria-label={`${monthName(addMonths(selected, o))} grid`} className="flex flex-col gap-0.5 px-0.5">
               {monthGrid(selected, o).map((row) => (

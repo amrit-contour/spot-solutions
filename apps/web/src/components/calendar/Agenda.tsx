@@ -1,18 +1,55 @@
 // A list of days with their shows: the Week view on phones, and "the next 7 days" in the Day view.
-import { formatTime } from "@spot/shared";
-import { fmtDayShort } from "../../lib/calendarDates";
+import { useState } from "react";
+import { DAY_SHORT, formatTime } from "@spot/shared";
+import { fmtDayShort, weekdayOf } from "../../lib/calendarDates";
 import { useApp } from "../../lib/app";
 import { cx } from "@spot/ui";
 import { IconMap } from "@spot/ui";
 import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal } from "./shared";
 
-export function Agenda({ dates, label }: { dates: string[]; label: string }) {
+/** Week on a phone: a strip of the seven days (dots per show), then the days' shows grouped under day headers. */
+function WeekStrip({ dates }: { dates: string[] }) {
+  const cal = useCal();
+  return (
+    <div role="group" aria-label="Days of the week" className="mb-3 grid grid-cols-7 gap-1 rounded-lg bg-surface-low p-1.5">
+      {dates.map((d) => {
+        const evs = cal.eventsOn(d);
+        const isToday = d === cal.today;
+        return (
+          <button key={d} type="button" onClick={() => cal.openDay(d)} aria-label={`${fmtDayShort(d)}${isToday ? ", today" : ""}, ${evs.length ? `${evs.length} show${evs.length > 1 ? "s" : ""}` : "no shows"}. Open day`} className={cx("state-layer pressable flex min-h-16 min-w-0 flex-col items-center gap-1 rounded-md py-1.5", isToday ? "bg-primary-container text-on-primary-container" : "text-on-surface", d < cal.today && "opacity-70")}>
+            <span className="type-label-s text-on-surface-variant">{DAY_SHORT[weekdayOf(d)].slice(0, 1)}</span>
+            <span className="type-title-m leading-none tabular">{Number(d.slice(8, 10))}</span>
+            <span className="flex h-1.5 items-center gap-0.5" aria-hidden>
+              {evs.slice(0, 3).map((ev) => (
+                <span key={ev.key} className={cx("size-1.5 rounded-full", toneOf(ev, cal.today, cal.loading).bar)} />
+              ))}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Agenda({ dates, label, week }: { dates: string[]; label: string; /** The Week view: adds the day strip and a toggle to drop empty days. */ week?: boolean }) {
   const cal = useCal();
   const { venues } = useApp();
+  const [hideEmpty, setHideEmpty] = useState(false);
+  const anyEmpty = week && dates.some((d) => !cal.eventsOn(d).length);
   return (
+    <>
+    {week && <WeekStrip dates={dates} />}
+    {anyEmpty && (
+      <div className="mb-1 flex justify-end">
+        <button type="button" aria-pressed={hideEmpty} onClick={() => setHideEmpty((v) => !v)} className="state-layer inline-flex min-h-10 items-center rounded-full px-3 type-label-l text-primary">
+          {hideEmpty ? "Show empty days" : "Hide empty days"}
+        </button>
+      </div>
+    )}
     <ol aria-label={label} className="flex flex-col">
       {dates.map((d) => {
         const evs = cal.eventsOn(d);
+        if (week && hideEmpty && !evs.length) return null;
         const isToday = d === cal.today;
         return (
           <li key={d} className={cx("border-b border-outline-variant/40 py-2.5 last:border-b-0", d < cal.today && "opacity-70")}>
@@ -59,5 +96,6 @@ export function Agenda({ dates, label }: { dates: string[]; label: string }) {
         );
       })}
     </ol>
+    </>
   );
 }

@@ -9,6 +9,7 @@ import { ago, dateTime } from "../lib/time";
 import { ConnectionBanner } from "../components/ConnectionCard";
 import { CalendarView, readMode, type CalendarMode } from "../components/calendar/CalendarView";
 import { DayPanel } from "../components/calendar/DayPanel";
+import { WeekAgenda } from "../components/calendar/WeekAgenda";
 import { addMonths } from "../components/calendar/dates";
 import { SpotEditor } from "../components/SpotEditor";
 import { blankSpot } from "../lib/newSpot";
@@ -89,7 +90,7 @@ export function Today({ uid }: { uid?: string }) {
   const nothing = !loading && roster.rooms.length === 0 && store.spots.length === 0 && store.regulars.length === 0;
   return (
     <div className="w-full">
-      <PageHeader title="Today" subtitle="Your day at a glance." actions={<Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full text-primary"><IconRepeat className="icon size-5" /></Link>} />
+      <PageHeader title="Today" subtitle="Your day at a glance." />
       <Page wide>
         {uid && <ConnectionBanner uid={uid} />}
         {loading ? (
@@ -104,7 +105,11 @@ export function Today({ uid }: { uid?: string }) {
             )}
             <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start">
               <div className="min-w-0 lg:sticky lg:top-24"><CalendarView spots={calSpots} today={today} selected={selected} onSelect={setSelected} mode={mode} onMode={setMode} /></div>
+              {mode === "week" ? (
+                <WeekAgenda date={selected} today={today} spots={calSpots} asks={plan} onOpenDay={(d) => { setSelected(d); setMode("day"); }} onAdd={(d) => setEditing(blankSpot(d))} onOpen={setEditing} />
+              ) : (
               <DayPanel date={selected} today={today} spots={calSpots} allSpots={all} asks={plan} agenda={mode === "day"} onAdd={(d) => setEditing(blankSpot(d))} onOpen={setEditing} />
+              )}
             </div>
             {suggestions.length > 0 && (
               <CardButton to="/spots/regulars" className="flex items-center gap-3">

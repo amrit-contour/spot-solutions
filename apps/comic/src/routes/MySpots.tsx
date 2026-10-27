@@ -49,7 +49,7 @@ export function MySpots() {
         title="My spots"
         actions={
           <>
-            <Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full text-primary"><IconRepeat className="icon size-5" /></Link>
+            <Link to="/spots/regulars" aria-label="Regular spots" className="state-layer pressable grid size-11 place-items-center rounded-full border border-outline text-primary"><IconRepeat className="icon size-5" /></Link>
             <CompactButton icon={IconPlus} label="Add a spot" variant="filled" onClick={() => setEditing(blankSpot(today))} />
           </>
         }

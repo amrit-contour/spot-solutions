@@ -33,9 +33,9 @@ export function ConnectionCard({ uid }: { uid: string }) {
   const stuck = c.whatsapp === "unresponsive" && !bad;
   const ok = c.whatsapp === "connected" && !bad;
   const seen = c.lastSeen ? ago(c.lastSeen, now) : null;
-  const title = ok ? "WhatsApp is connected" : stuck ? "WhatsApp stopped responding" : bad ? "Server offline" : c.whatsapp === "qr" ? "WhatsApp needs a scan" : c.whatsapp === "starting" ? "Starting WhatsApp…" : "WhatsApp isn't linked";
+  const title = ok ? `WhatsApp connected · ${maskPhoneTail(c.phone)}` : stuck ? "WhatsApp stopped responding" : bad ? "Server offline" : c.whatsapp === "qr" ? "WhatsApp needs a scan" : c.whatsapp === "starting" ? "Starting WhatsApp…" : "WhatsApp isn't linked";
   const detail = ok
-    ? `Listening as ${maskPhoneTail(c.phone)}${c.pushName ? ` (${c.pushName})` : ""}.`
+    ? ""
     : stuck
       ? `${c.healthNote ?? "The server is restarting WhatsApp."} Asks wait until it answers again.`
       : bad
@@ -57,7 +57,7 @@ export function ConnectionCard({ uid }: { uid: string }) {
               <h3 className="type-title-m">{title}</h3>
               {!ok && <Chip tone={bad || stuck ? "error" : "neutral"} className="flex-none">{stuck ? "Not responding" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>}
             </div>
-            <p className="mt-1 break-words type-body-m text-on-surface-variant">{detail}</p>
+            {detail && <p className="mt-1 break-words type-body-m text-on-surface-variant">{detail}</p>}
             {c.serverName && (
               <p className="mt-1 flex min-w-0 items-start gap-2 type-body-s text-on-surface-variant">
                 <IconServer aria-hidden className="icon mt-0.5 size-4 flex-none" />
