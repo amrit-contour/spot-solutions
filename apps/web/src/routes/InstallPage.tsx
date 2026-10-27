@@ -65,7 +65,7 @@ export function InstallPage() {
 
         <Card className="mt-6 p-5 sm:p-6">
           <h2 className="type-title-m">1. Install</h2>
-          <p className="mt-1 type-body-s text-on-surface-variant">{needs} Keep it plugged in and online. About 8 GB of memory is best; with less, it uses Gemini instead of a local model.</p>
+          <p className="mt-1 type-body-s text-on-surface-variant">{needs} Keep it plugged in and online. About 8 GB of memory is best; with less, it uses Gemini instead of a local model. A fresh install asks where to keep the data and AI models (about 5 GB; the disk with the most room is pre-selected, so one Enter is enough).</p>
           {os === "mac" && (
             <>
               <p className="mt-3 type-body-m">Open Terminal and run:</p>

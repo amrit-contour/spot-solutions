@@ -33,6 +33,8 @@ printf '{"version":"%s","builtAt":%s,"sha256":"%s","size":%s,"model":"%s"}\n' "$
 # One entry point for every install address, old (spot-solutions.web.app/install.sh) or new: they all serve the new
 # installers, so a fresh install always gets the new layout. Servers already installed never re-run an installer.
 cp deploy/install.sh "$DIST/install.sh"
+# The installers' data-location step (drive ranking, blocklist, pointer files): each installer fetches it once Node is there.
+cp deploy/datadir.mjs "$DIST/datadir.mjs"
 cp deploy/ubuntu/uninstall.sh "$DIST/uninstall.sh"
 # Migration helpers (docs/migrate-to-nothing-bot-server.md): run on the owner's Mac, no secrets inside.
 cp deploy/migrate/migrate-mac.sh "$DIST/migrate-mac.sh"
@@ -63,5 +65,5 @@ cp deploy/retired/index.html deploy/retired/sw.js "$RETIRED/"
 # when it was judged (deploy/retired/press is the pre-rebrand set).
 cp -R deploy/retired/press "$RETIRED/press"
 
-echo "dist (new):    dl/nothing-bot-server.json ($SHA), dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip, dl/NothingBotServer-mac.zip, install.sh, install.ps1, install-mac.sh, uninstall.sh, uninstall.ps1, migrate-mac.sh, restore-backup.sh"
+echo "dist (new):    dl/nothing-bot-server.json ($SHA), dl/nothing-bot-server.tar.gz, dl/NothingBotServer-Windows.zip, dl/NothingBotServer-mac.zip, install.sh, install.ps1, install-mac.sh, datadir.mjs, uninstall.sh, uninstall.ps1, migrate-mac.sh, restore-backup.sh"
 echo "retired:       spot-solutions.web.app serves only the forwarding page"

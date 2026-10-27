@@ -34,6 +34,16 @@ To set your admin email at the same time, run this first: `$env:ADMIN_EMAILS = "
 
 There is one installer. A PC with about 8 GB of RAM or more starts with Ollama and Gemma; a smaller one starts on Gemini. You can switch any time in the console under **AI models**, which installs or turns off the local model for you. `Install Nothing BOT Server (Gemini only).cmd` still exists and forces Gemini at install time. A Gemini-only server can't host accounts set to **Local only**. See [multi-server.md](multi-server.md).
 
+## Where the data and AI models go
+
+A fresh install asks **Where should Nothing BOT keep its data and AI models?** (the WhatsApp logins, backups, logs and the Gemma models; the program itself always stays in `C:\NothingBotServer`). It lists the drives with their free space and pre-selects the fixed drive with the most room, with the folder `<drive>:\Nothing BOT Server`. Press **Enter** to accept it, type a number, or type another full folder path. It shows the free space against what is needed (about 5 GB with the default `gemma3:4b`; it follows the model's size) and asks before going ahead on less.
+
+It refuses, with a one-line reason: cloud-synced folders (OneDrive, including the `OneDrive*` folders Windows reports, Dropbox, Google Drive, iCloud Drive), removable, USB and network drives, and the program folder. When the system drive has the most room, nothing changes: the data stays in `C:\NothingBotServer\data` and the models in `C:\NothingBotServer\ollama`. On another drive the data goes in `<folder>\data` and the models in `<folder>\ollama`.
+
+The choice is written to the same two files the console's **Move data** writes, `C:\NothingBotServer\data-dir` and `models-dir`, and to the machine-level `OLLAMA_MODELS`. **Re-running the installer and updating never ask again**: an existing choice (or an install already on the PC) is kept.
+
+Unattended installs: `$env:NBS_DATA_DIR = "D:\Nothing BOT Server"` (or `-DataDir "D:\Nothing BOT Server"` after `install.ps1` or `Install Nothing BOT Server.cmd`) uses that folder, still refusing the places above. `$env:NBS_YES = "1"` (or `-Yes`) accepts the suggestion. With neither, and nobody at the keyboard, the default folder is used. The logic is one file, `deploy/datadir.mjs`, which the installer fetches once Node is installed (and which `deploy/build-dist.sh` publishes).
+
 ## What the installer does
 
 | Step | Result |
@@ -84,7 +94,7 @@ Everything is under `C:\NothingBotServer`.
 | Path | What's in it |
 |---|---|
 | `app\` | The code. Settings are in `app\apps\worker\.env`. |
-| `data\` | `service-account.json` (the key), `worker.log`, `console.log`, `console-token`. Can be moved to another drive: see below. |
+| `data\` | `service-account.json` (the key), `worker.log`, `console.log`, `console-token`. Can be on another drive: chosen at install, or moved later (see below). |
 | `data\wwebjs\` | WhatsApp logins (`session-<uid>`), the server id (`server.json`) and login-backup markers. |
 | `node\`, `ollama\`, `chrome\` | Node.js, the Gemma models, Chrome. |
 | `run-worker.ps1`, `run-console.ps1` | The launchers the tasks run. |

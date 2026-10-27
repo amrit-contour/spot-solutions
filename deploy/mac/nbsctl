@@ -2,6 +2,9 @@
 # Nothing BOT Server control for macOS (Apple Silicon and Intel). No Homebrew or Xcode needed.
 #
 #   nbsctl setup        download Node, Ollama, Gemma and the worker; install launch agents
+#                        A first setup in a terminal asks where to keep the data and AI models (the disk with the most room is
+#                        pre-selected; cloud-synced, external and network disks are refused). NBS_DATA_DIR=/folder or --yes
+#                        (NBS_YES=1) answer it up front; with nobody to ask (the app's button) the default folder is used.
 #                        A local model is set up when this Mac has about 8 GB of memory or more, Gemini only on less.
 #                        You can switch in the server console (AI models) or: NBS_NO_LOCAL_MODEL=1|0 nbsctl setup
 #   nbsctl update       fetch the latest release (checked against its sha256), restart the worker and console
@@ -51,6 +54,31 @@ LEGACY_ROOT="$HOME/Library/Application Support/SpotSolutions"
 step() { printf '\n▸ %s\n' "$*"; }
 ok()   { printf '  ✓ %s\n' "$*"; }
 die()  { printf '  ✗ %s\n' "$*" >&2; exit 1; }
+
+# Where the data and AI models live (deploy/datadir.mjs, fetched next to the installer: the code isn't unpacked yet). A pointer from
+# an earlier setup or from the console's Move data is kept and nothing is asked. It writes the same data-dir / models-dir files the
+# console writes; every later setup, update and `nbsctl apply` reads them, so the launch agents follow.
+choose_data_dir() {
+  step "Where to keep the data"
+  if [[ -s "$ROOT/data-dir" ]]; then ok "Keeping the data in $DATA (chosen earlier)"; return 0; fi
+  local js="${NBS_DATADIR_SCRIPT:-}" res; res="$(mktemp)"
+  if [[ -z "$js" ]]; then
+    js="$(mktemp)"
+    curl -fsSL "${NBS_DIST_URL:-https://nothingbotcurating.web.app}/datadir.mjs" -o "$js" || { echo "  Couldn't fetch the data-location helper, so the data goes in $DATA. Move it later in the console (Storage)."; return 0; }
+  fi
+  local args=(choose --platform darwin --state-dir "$ROOT" --program-root "$ROOT" --program-dir "$APP" --default-data "$ROOT/data" --model "$MODEL" --out "$res")
+  if no_local; then args+=(--no-local); fi
+  # An Ollama that was already running keeps its own models folder.
+  if ollama_up && [[ ! -f "$AGENTS/app.nothingbot.server.ollama.plist" ]]; then args+=(--no-models); fi
+  case "${NBS_YES:-}" in 1|true|yes) args+=(--yes) ;; esac
+  if [[ -n "${NBS_DATA_DIR:-}" ]]; then args+=(--data-dir "$NBS_DATA_DIR"); fi
+  "$(node_bin)" "$js" "${args[@]}" || die "Nothing was set up because of the data location above. Pass another folder as NBS_DATA_DIR=/folder, or leave it out to use $DATA."
+  rm -f "$res"
+  DATA="$(head -n1 "$ROOT/data-dir" 2>/dev/null || true)"; [[ -n "$DATA" ]] || DATA="$ROOT/data"
+  MODELS_DIR="$(head -n1 "$ROOT/models-dir" 2>/dev/null || true)"
+  if [[ "$DATA" != "$ROOT/data" ]]; then rmdir "$ROOT/data" 2>/dev/null || true; fi
+  ok "Data in $DATA${MODELS_DIR:+, AI models in $MODELS_DIR}"
+}
 # pnpm skips puppeteer's own Chrome download when it installs from its store cache, so check for the browser ourselves
 # (copying an older install's identical build when there is one) and fail clearly if it can't be had. deploy/ensure-browser.mjs.
 # The doctor (apps/worker/console/doctor.mjs): finds, reuses or downloads what this server needs and says what it did.
@@ -218,6 +246,8 @@ cmd_setup() {
         touch "$ROOT/.no-local-model"; echo "  This Mac has under 8 GB of memory, so it will use Gemini. You can turn on a local model later in the console."
       fi ;;
   esac
+  choose_data_dir
+  mkdir -p "$DATA"
   if no_local; then
     step "Gemini-only server: skipping Ollama and Gemma"
     ok "AI will use Gemini (add a Gemini key in the console or the app)"

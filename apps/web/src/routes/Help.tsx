@@ -161,7 +161,7 @@ export function HelpPage() {
               head={["You need", "Details"]}
               rows={[
                 ["A computer that can stay on", os === "mac" ? "Any Mac on macOS 13 or newer (Apple Silicon or Intel)" : os === "windows" ? "Windows 10 or 11 with the App Installer (winget). Most PCs already have it." : "Ubuntu 24.04 or newer, Debian or Kali. Installed onto the disk or a USB stick works too; a live USB doesn't."],
-                ["Memory and disk", "8 GB RAM recommended, about 10 GB of free disk"],
+                ["Memory and disk", "8 GB RAM recommended, about 10 GB of free disk (the installer asks where to keep the data and AI models, and about 5 GB is needed there)"],
                 ["Power and internet", "Plugged in, with Wi-Fi or Ethernet"],
                 ["An admin account", <>You sign in with Google on the server, and approve it. Only admins can connect a server. See below.</>],
                 ["Your phone", "To scan the WhatsApp QR code once"],
@@ -179,7 +179,7 @@ export function HelpPage() {
               <>
                 <P>Open <B>Terminal</B> and run:</P>
                 <Cmd>curl -fsSL https://nothingbotcurating.web.app/install.sh | bash</Cmd>
-                <P>This puts <B>Nothing BOT Server</B> in Applications, sets the Mac up (a few minutes the first time) and opens the app. The older <Code>install-mac.sh</Code> address still works. Or download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/NothingBotServer-mac.zip?v=${__BUILD_ID__}`} download>NothingBotServer-mac.zip</a>, double-click it and drag the app into Applications.</P>
+                <P>This puts <B>Nothing BOT Server</B> in Applications, sets the Mac up (a few minutes the first time; it asks where to keep the data and AI models, with the disk that has the most room pre-selected, and refuses iCloud Drive, external and network disks) and opens the app. The older <Code>install-mac.sh</Code> address still works. Or download <a className="text-primary underline-offset-4 hover:underline" href={`/dl/NothingBotServer-mac.zip?v=${__BUILD_ID__}`} download>NothingBotServer-mac.zip</a>, double-click it and drag the app into Applications.</P>
                 <Callout>Downloaded through a browser, macOS says it can't check the developer the first time. Open <B>System Settings → Privacy & Security</B> and click <B>Open Anyway</B>. The Terminal install avoids this.</Callout>
               </>
             )}
@@ -192,6 +192,7 @@ export function HelpPage() {
                 </Steps>
                 <P>Or, in PowerShell as Administrator:</P>
                 <Cmd>{"Set-ExecutionPolicy -Scope Process Bypass -Force\nirm https://nothingbotcurating.web.app/install.ps1 | iex"}</Cmd>
+                <P>A fresh install asks <B>Where should Nothing BOT keep its data and AI models?</B> It lists the drives with free space and pre-selects the fixed drive with the most room (Enter accepts it). It refuses OneDrive and other cloud-synced folders, USB and network drives and the program folder, and warns when there is under about 5 GB free. Re-installing and updating keep your choice and never ask again. For an unattended install use <Code>$env:NBS_DATA_DIR = "D:\Nothing BOT Server"</Code> and <Code>$env:NBS_YES = "1"</Code> before the command.</P>
                 <P>When it finishes you'll have <B>Nothing BOT Server Console</B> and <B>Nothing BOT Curate</B> on the desktop and in the Start menu.</P>
               </>
             )}
@@ -199,7 +200,8 @@ export function HelpPage() {
               <>
                 <P>In a terminal on the server (or over SSH):</P>
                 <Cmd>curl -fsSL https://nothingbotcurating.web.app/install.sh | sudo bash</Cmd>
-                <P>It asks nothing, installs Node and (with about 8 GB of memory or more) Ollama and Gemma, and sets up services that start at boot and restart on crash: <Code>ollama</Code>, <Code>nothing-bot-server-worker</Code> and <Code>nothing-bot-server-console</Code>. At the end it prints the console link.</P>
+                <P>It installs Node and (with about 8 GB of memory or more) Ollama and Gemma, and sets up services that start at boot and restart on crash: <Code>ollama</Code>, <Code>nothing-bot-server-worker</Code> and <Code>nothing-bot-server-console</Code>. At the end it prints the console link.</P>
+                <P>On a fresh install it first asks <B>Where should Nothing BOT keep its data and AI models?</B>, listing the disks with free space and pre-selecting the one with the most room. Press Enter to accept it. It refuses cloud-synced folders, removable and network disks and the program folder, and warns when there is under about 5 GB free. For an unattended install, add <Code>NBS_DATA_DIR=/mnt/disk/nothing-bot-server</Code> (after <Code>sudo</Code>) or <Code>-s -- --yes</Code> to take the suggestion.</P>
                 <Callout>Want a pocket server? Install Ubuntu Server onto a USB stick (a full install, not a live USB) and boot the laptop from it. See the <a className="underline" href="#always-on">always-on</a> tips below.</Callout>
               </>
             )}

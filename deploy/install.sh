@@ -13,6 +13,11 @@
 # the data to another disk (with move.mjs and storage.mjs, also root-owned, in /usr/local/lib/nothing-bot-server).
 # Connect the server from its console afterwards. Re-running updates and restarts.
 #
+# Where the data and AI models live (WhatsApp logins, backups, logs, models): a fresh install asks, listing the disks with free
+# space and pre-selecting the one with the most room (one Enter accepts it; the helper is deploy/datadir.mjs). Cloud-synced,
+# removable and network disks are refused. Unattended: NBS_DATA_DIR=/path (a base folder) or --yes to take the suggestion.
+# Re-running or updating keeps an earlier choice (the console's Storage section moves it later). The program stays in /opt.
+#
 # Local model or Gemini only? You choose in the console (AI models) and can switch any time. The installer picks for
 # you: a local model on computers with about 8 GB of memory or more, Gemini only on smaller ones. To force it:
 #   NBS_NO_LOCAL_MODEL=1 (or --no-local-model), or NBS_NO_LOCAL_MODEL=0. Re-running keeps the last choice.
@@ -34,13 +39,20 @@ STATE_DIR="/etc/nothing-bot-server"
 # installer keeps it instead of going back to the default folder.
 DATA_DIR="$(head -n1 "${STATE_DIR}/data-dir" 2>/dev/null || true)"
 [[ -n "${DATA_DIR}" ]] || DATA_DIR="/var/lib/nothing-bot-server"
+MODELS_DIR="$(head -n1 "${STATE_DIR}/models-dir" 2>/dev/null || true)"   # where Ollama keeps the models, when not its own default
 [[ "${DATA_DIR}" == "/var/lib/nothing-bot-server" ]] || [[ -d "$(dirname "${DATA_DIR}")" ]] || { echo "Your data lives in ${DATA_DIR}, but that disk isn't mounted. Mount it and run this again."; exit 1; }
 SVC_USER="nbs"
 MODEL="${GEMMA_MODEL:-gemma3:4b}"
 PNPM="pnpm@9.15.4"
 PORT=7420
 
-for arg in "$@"; do if [[ "$arg" == "--no-local-model" ]]; then NBS_NO_LOCAL_MODEL=1; fi; done
+ASSUME_YES=0; case "${NBS_YES:-}" in 1|true|yes) ASSUME_YES=1 ;; esac
+for arg in "$@"; do
+  case "$arg" in
+    --no-local-model) NBS_NO_LOCAL_MODEL=1 ;;
+    --yes|-y) ASSUME_YES=1 ;;
+  esac
+done
 [[ $EUID -eq 0 ]] || { echo "Run with sudo."; exit 1; }
 . /etc/os-release
 case "${ID} ${ID_LIKE:-}" in *ubuntu*|*debian*|*kali*) ;; *) echo "Warning: built for Ubuntu/Debian/Kali, you're on ${PRETTY_NAME}. Trying anyway." ;; esac
@@ -79,6 +91,29 @@ retire_legacy() {
 step() { printf '\n\033[1;33m▸ %s\033[0m\n' "$*"; }
 ok()   { printf '  \033[32m%s\033[0m\n' "$*"; }
 
+# The data-location step (deploy/datadir.mjs, fetched next to this installer: the code isn't unpacked yet). A pointer from an
+# earlier install or from the console's Move data is kept and nothing is asked. It writes the same data-dir / models-dir files the
+# console writes, so every later update, restart and move uses the same folders.
+choose_data_dir() {
+  if [[ -s "${STATE_DIR}/data-dir" ]]; then ok "Keeping the data in ${DATA_DIR} (chosen earlier)"; return 0; fi
+  local js="${NBS_DATADIR_SCRIPT:-}" res; res="$(mktemp)"
+  if [[ -z "$js" ]]; then
+    js="$(mktemp)"
+    curl -fsSL "${BASE_URL}/datadir.mjs" -o "$js" || { echo "  Couldn't fetch the data-location helper, so the data goes in ${DATA_DIR}. Move it later in the console (Storage)."; return 0; }
+  fi
+  local args=(choose --platform linux --state-dir "${STATE_DIR}" --program-root "${APP_DIR}" --default-data /var/lib/nothing-bot-server --model "${MODEL}")
+  if [[ "${NO_LOCAL}" == 1 ]]; then args+=(--no-local); fi
+  if [[ "${ASSUME_YES}" == 1 ]]; then args+=(--yes); fi
+  if [[ -n "${NBS_DATA_DIR:-}" ]]; then args+=(--data-dir "${NBS_DATA_DIR}"); fi
+  mkdir -p "${STATE_DIR}"
+  "${NODE}" "$js" "${args[@]}" --out "$res" || { echo "  Nothing was installed. Pass another folder as NBS_DATA_DIR=/path, or leave it out to use ${DATA_DIR}."; exit 1; }
+  # The pointer files are the answer (none: the default folder).
+  DATA_DIR="$(head -n1 "${STATE_DIR}/data-dir" 2>/dev/null || true)"; [[ -n "${DATA_DIR}" ]] || DATA_DIR="/var/lib/nothing-bot-server"
+  MODELS_DIR="$(head -n1 "${STATE_DIR}/models-dir" 2>/dev/null || true)"
+  rm -f "$res"
+  ok "Data in ${DATA_DIR}${MODELS_DIR:+, AI models in ${MODELS_DIR}}"
+}
+
 step "Checking for an older install"
 retire_legacy
 ok "Done"
@@ -103,6 +138,9 @@ fi
 NODE="$(command -v node)"
 ok "Node $(node -v)"
 
+step "Where to keep the data"
+choose_data_dir
+
 if [[ "${NO_LOCAL}" == 1 ]]; then
   step "Gemini-only server: skipping Ollama and Gemma"
   ok "AI will use Gemini (add a Gemini key in the console or the app)"
@@ -115,6 +153,12 @@ cat > /etc/systemd/system/ollama.service.d/nothing-bot-server.conf <<EOF
 Environment=OLLAMA_KEEP_ALIVE=5m
 Environment=OLLAMA_NUM_PARALLEL=1
 EOF
+# The models folder the owner chose (or moved to in the console): the same drop-in the console's Move data writes.
+if [[ -n "${MODELS_DIR}" ]]; then
+  mkdir -p "${MODELS_DIR}"
+  if id ollama >/dev/null 2>&1; then chown -R ollama:ollama "${MODELS_DIR}"; fi
+  printf '[Service]\nEnvironment="OLLAMA_MODELS=%s"\n' "${MODELS_DIR}" > /etc/systemd/system/ollama.service.d/models.conf
+fi
 systemctl daemon-reload
 # Ollama the owner stopped from the console (NBS_MODEL_STOPPED=1 in .env) stays stopped until Start there.
 if grep -Eqi '^NBS_MODEL_STOPPED=(1|true|yes)[[:space:]]*$' "${ENV_FILE}" 2>/dev/null; then
@@ -135,6 +179,7 @@ mkdir -p "${DATA_DIR}" "${APP_DIR}"
 # Code comes as a tarball (no git needed). .env and node_modules aren't in it, so updates keep them.
 curl -fsSL "${SRC_URL}" | tar -xz -C "${APP_DIR}"
 chown -R "${SVC_USER}:${SVC_USER}" "${APP_DIR}" "${DATA_DIR}"
+if [[ "${DATA_DIR}" != "/var/lib/nothing-bot-server" ]]; then chmod 700 "${DATA_DIR}"; fi
 sudo -u "${SVC_USER}" -H bash -c "cd ${APP_DIR} && npx -y ${PNPM} install --frozen-lockfile --filter @spot/worker..."
 # pnpm skips puppeteer's own Chrome download when it installs from its store cache, so make sure the browser is there
 # (an older install's identical build is copied instead of downloaded).
@@ -221,6 +266,7 @@ User=${SVC_USER}
 Environment=NBS_DATA_DIR=${DATA_DIR}
 Environment=NBS_ENV_FILE=${ENV_FILE}
 Environment=NBS_CONSOLE_PORT=${PORT}
+${MODELS_DIR:+Environment="OLLAMA_MODELS=${MODELS_DIR}"}
 ExecStart=${NODE} ${APP_DIR}/apps/worker/console/server.mjs
 Restart=always
 RestartSec=5

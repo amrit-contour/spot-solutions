@@ -53,6 +53,12 @@ From Terminal, the same controls are in `nbsctl` inside the app:
 
 Everything lives in `~/Library/Application Support/NothingBotServer` (`app`, `data` with the key and WhatsApp logins, `logs`, `runtime`).
 
+## Where the data and AI models go
+
+The first `nbsctl setup` in a Terminal (the install command) asks **Where should Nothing BOT keep its data and AI models?** It lists the internal disks with free space and pre-selects the one with the most room (one **Enter** accepts it); the default, on the Mac's own disk, stays `~/Library/Application Support/NothingBotServer/data`. A different internal disk gets `/Volumes/<disk>/Nothing BOT Server/data` and `.../ollama`. It shows free space against what is needed (about 5 GB with `gemma3:4b`) and asks before going ahead on less. It refuses, with a one-line reason: iCloud Drive (including Desktop & Documents when they sync, and `~/Library/Mobile Documents`), Dropbox, Google Drive and OneDrive folders, external, USB and network volumes, and the program folder.
+
+The choice goes in the `data-dir` and `models-dir` files in `~/Library/Application Support/NothingBotServer`, the same ones **Move data** writes, and `nbsctl` writes `OLLAMA_MODELS` into the launch agents from them. Re-running setup and updates keep it and never ask again. Unattended: `NBS_DATA_DIR=/folder` picks a folder (checked the same way) and `--yes` (or `NBS_YES=1`) accepts the suggestion. The **Set up this Mac** button in the app has nobody to ask, so it uses the default folder; use the Terminal install, or **Storage → Move data** later, to put the data elsewhere.
+
 ## Moving the data to an external drive
 
 In the console, **Storage**, type the new folder (for example `/Volumes/Backup HDD/NothingBotServer/data`) and press **Check folder**, then **Move data**. The worker stops, everything is copied and checked, the launch agents are rewritten to use the new folder (`nbsctl apply`, from the `data-dir` file in `~/Library/Application Support/NothingBotServer`, which every `nbsctl` run reads, so updates and re-running setup keep it), the worker and console restart, and the console waits for WhatsApp to be ready again. Any failure switches back to the old folder. **Delete the old copy** appears only afterwards. Use an APFS or Mac OS Extended drive, and keep it connected: the server can't start without it.

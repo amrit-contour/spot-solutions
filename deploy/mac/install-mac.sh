@@ -7,6 +7,8 @@ set -euo pipefail
 # Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
 for _v in $(compgen -v SPOT_ || true); do _n="NBS_${_v#SPOT_}"; [[ -n "${!_n+x}" ]] || export "$_n=${!_v}"; done
 BASE="${NBS_DIST_URL:-https://nothingbotcurating.web.app}"
+# --yes: take the suggested data location without asking (NBS_DATA_DIR=/folder picks one; see nbsctl setup).
+for _a in "$@"; do case "$_a" in --yes|-y) export NBS_YES=1 ;; esac; done
 TMP="$(mktemp -d)"
 echo "▸ Downloading Nothing BOT Server"
 curl -fSL --progress-bar "$BASE/dl/NothingBotServer-mac.zip" -o "$TMP/NothingBotServer.zip"

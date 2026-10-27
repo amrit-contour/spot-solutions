@@ -16,6 +16,13 @@
   for you: a local model on PCs with about 8 GB of memory or more, Gemini only on smaller ones. To force it, set
   $env:NBS_NO_LOCAL_MODEL = "1" (or "0") first, or use "Install Nothing BOT Server (Gemini only).cmd".
   Re-running without it keeps whatever the previous install chose.
+
+  Where the data and AI models live (WhatsApp logins, backups, logs, models): a fresh install asks, listing the drives with free
+  space and pre-selecting the fixed drive with the most room (one Enter accepts it; the helper is deploy/datadir.mjs). Cloud-synced
+  folders (OneDrive, Dropbox, Google Drive, iCloud), removable/USB/network drives and the program folder are refused. Unattended:
+  $env:NBS_DATA_DIR = "D:\Nothing BOT Server" (or -DataDir "D:\Nothing BOT Server" on the command line) uses that folder, and
+  $env:NBS_YES = "1" (or -Yes) takes the suggestion. Re-running or updating keeps an earlier choice and does not ask again.
+  The program itself always stays in C:\NothingBotServer.
 #>
 $ErrorActionPreference = "Stop"
 # Settings from before the rename to Nothing BOT Server were called SPOT_*; keep honouring them.
@@ -26,6 +33,14 @@ trap {
   Write-Host "`n  Install failed: $($_.Exception.Message)" -ForegroundColor Red
   Write-Host "  At: $("$($_.InvocationInfo.Line)".Trim())" -ForegroundColor Red
   break
+}
+
+# Unattended data location: -DataDir <folder> / -Yes on the command line, or NBS_DATA_DIR / NBS_YES (read from $args, so it also runs through irm | iex).
+$ReqDataDir = $env:NBS_DATA_DIR
+$AssumeYes = [bool]($env:NBS_YES -match '^(1|true|yes)$')
+for ($i = 0; $i -lt $args.Count; $i++) {
+  if ("$($args[$i])" -match '^-{1,2}DataDir$' -and $i + 1 -lt $args.Count) { $ReqDataDir = [string]$args[$i + 1]; $i++ }
+  elseif ("$($args[$i])" -match '^-{1,2}(Yes|y)$') { $AssumeYes = $true }
 }
 
 $BaseUrl   = if ($env:NBS_BASE_URL) { $env:NBS_BASE_URL } else { "https://nothingbotcurating.web.app" }
@@ -280,6 +295,41 @@ $major = Node-Major
 if ($major -lt 22) { throw "Couldn't set up Node.js in $NodeDir. Check the internet connection and run this again." }
 $env:Path = "$NodeDir;$env:Path"
 Ok "Node $(& $Node -v) at $Node"
+
+Step "Where to keep the data"
+# deploy/datadir.mjs (fetched next to this installer: the code isn't unpacked yet) lists the drives, pre-selects the one with the most
+# room, refuses cloud-synced / removable / network places and the program folder, and writes the same data-dir / models-dir pointer
+# files the Server Console's Move data writes. A pointer from an earlier install or a move is kept and nothing is asked.
+if ((Test-Path "$Root\data-dir") -or (Test-Path "$Root\data-dir.txt")) {
+  Ok "Keeping the data in $DataDir (chosen earlier)"
+} else {
+  $DataJs = $env:NBS_DATADIR_SCRIPT
+  if (-not $DataJs) {
+    $DataJs = "$env:TEMP\nbs-datadir.mjs"
+    try { Invoke-WebRequest "$BaseUrl/datadir.mjs" -OutFile $DataJs -UseBasicParsing }
+    catch { $DataJs = $null; Write-Host "  Couldn't fetch the data-location helper, so the data goes in $DataDir. Move it later in the Server Console (Storage)." }
+  }
+  if ($DataJs) {
+    $DataRes = "$env:TEMP\nbs-datadir.json"
+    Remove-Item $DataRes -ErrorAction SilentlyContinue
+    $dargs = @($DataJs, "choose", "--platform", "win32", "--state-dir", $Root, "--program-root", $Root, "--program-dir", $AppDir, "--forbid", "$Root\node", "--forbid", "$Root\chrome", "--forbid", "$Root\ollama-app", "--model", $Model, "--out", $DataRes)
+    if ($NoLocal) { $dargs += "--no-local" }
+    if ($AssumeYes) { $dargs += "--yes" }
+    if ($ReqDataDir) { $dargs += @("--data-dir", $ReqDataDir) }
+    New-Item -ItemType Directory -Force -Path $Root | Out-Null
+    & $Node @dargs
+    if ($LASTEXITCODE -ne 0) { throw "Nothing was installed because of the data location above. Run again with -DataDir <folder> (or set `$env:NBS_DATA_DIR) to use another folder, or leave it out to use $DataDir." }
+    Remove-Item $DataRes -ErrorAction SilentlyContinue
+    # The pointer files are the answer (none: the default folders).
+    foreach ($f in @("$Root\data-dir", "$Root\data-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $DataDir = $p; break } } }
+    $ModelsDir = Models-Dir
+    if ($DataDir -ne "$Root\data") {
+      # Browser profiles nest deeper than 260 characters (the same setting Move data makes).
+      reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
+      Ok "Data in $DataDir, AI models in $ModelsDir"
+    }
+  }
+}
 
 New-Item -ItemType Directory -Force -Path $ModelsDir, $DataDir, $ChromeDir | Out-Null
 $Ollama = $null
