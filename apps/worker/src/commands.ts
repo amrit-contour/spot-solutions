@@ -42,6 +42,7 @@ import {
   type SpotRequest,
 } from "@spot/shared";
 import { col, db, expireAt, userRef } from "./firebase.ts";
+import { logActivity } from "./activity.ts";
 import { sessions } from "./sessions.ts";
 import { agentSessions } from "./agentSession.ts";
 import { curatorPhone, forgetSettings, resolvedInApp, sendToCurator } from "./agentOutbox.ts";
@@ -179,6 +180,9 @@ const handlers: Record<Command["type"], Handler> = {
     const told = lineup.slots.filter((s) => results[s.comicId]?.startsWith("sent"));
     batch.update(lineupRef, { status: "confirmed", sentAt, sent: sentSnapshot(told, show, sentAt, lineup.sent) });
     await batch.commit();
+    const bad = lineup.slots.filter((x) => results[x.comicId]?.startsWith("failed")).map((x) => comics.get(x.comicId)?.name ?? x.comicId);
+    const gone = told.filter((x) => results[x.comicId] === "sent").length;
+    await logActivity(uid, String(lineupId), { kind: "confirmations", tone: bad.length ? "failed" : "done", text: `Confirmations sent to ${gone} ${gone === 1 ? "comic" : "comics"}${bad.length ? `, ${bad.length} failed` : ""}`, ...(bad.length ? { detail: bad.map((n) => `${n}: not sent`) } : {}) });
 
     // "Review when I confirm" shows open the group review now; manual and show-day ones wait for the curator or the day.
     if (show.groupId && groupModeOf(show) === "confirm") await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
@@ -280,6 +284,14 @@ const handlers: Record<Command["type"], Handler> = {
       });
     }
     await lineupRef.update({ "groupSync.status": "done", "groupSync.results": results, groupLeaving: null });
+    {
+      const r = Object.values(results);
+      const n = (k: string) => r.filter((x) => x === k).length;
+      const parts = [n("added") && `${n("added")} added`, n("invited") && `${n("invited")} invited`, n("removed") && `${n("removed")} removed`].filter(Boolean);
+      const bad = Object.entries(results).filter(([, x]) => x === "failed").map(([id]) => id);
+      const names = bad.length ? await loadComics(uid, bad) : new Map<string, Comic>();
+      await logActivity(uid, String(lineupId), { kind: "sync", tone: bad.length ? "failed" : "done", text: `Group updated${parts.length ? `: ${parts.join(", ")}` : ", no changes"}${bad.length ? `. ${bad.length} couldn't be updated` : ""}`, ...(bad.length ? { detail: bad.map((id) => `${names.get(id)?.name ?? `+${id.split("@")[0]}`}: couldn't be updated`) } : {}) });
+    }
     // The cached member list on the show should match the group again.
     await listGroupMembers(uid, { showId: show.id }).catch((e) => console.error("[group] member refresh failed", e));
     return results;
@@ -356,6 +368,7 @@ const handlers: Record<Command["type"], Handler> = {
     }
     batch.update(lineupRef, { sent: settleSent(lineup.slots, show, lineup.sent, now, { messaged, failed: [...bad] }) });
     await batch.commit();
+    await logActivity(uid, String(lineupId), { kind: "updates", tone: bad.size ? "failed" : "done", text: `Lineup update sent to ${messaged.length} ${messaged.length === 1 ? "comic" : "comics"}${bad.size ? `, ${bad.size} not sent` : ""}`, ...(bad.size ? { detail: [...bad].map((id) => `${comics.get(id)?.name ?? id}: not sent`) } : {}) });
 
     if (show.groupId && groupModeOf(show) === "confirm") await handlers.plan_group_sync(uid, { lineupId }).catch((e) => console.error("[group] plan failed", e));
     return { sent: messaged.length, failed: failed.map((id) => comics.get(id)?.name ?? id) };
@@ -728,6 +741,7 @@ export async function runShowDaySync(uid: string, id: string) {
     const venue = watchUser(uid).venues.find((v) => v.id === show.venueId);
     const vars = groupPostVars(show, venue, dateInWeek(lineup.weekOf, show.weekday), names);
     await sendRich(client, show.groupId, messageRich(watchUser(uid).settings, "groupLineup"), vars, venue);
+    await logActivity(uid, id, { kind: "lineup_post", tone: "done", text: "Posted the lineup in the group" });
   }
   console.log(`[show-day] ${uid} ${show.name}: +${plan.toAdd.length} −${plan.toRemove.length}`);
 }

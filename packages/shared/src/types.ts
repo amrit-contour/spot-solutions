@@ -1,6 +1,7 @@
 // Firestore document shapes. Everything lives under users/{uid}/...
 import type { GroupPost } from "./groupPosts.ts";
 import type { GroupCleanup, LineupCleanup } from "./groupCleanup.ts";
+import type { ActivityEntry } from "./lineupActivity.ts";
 
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
 export type Tier = "open" | "regular" | "featured";
@@ -393,6 +394,8 @@ export interface Lineup {
   micCheckSentOn?: string | null;
   /** A past show recorded after the fact. History only: the worker never messages, syncs, asks or posts for it. */
   backfilled?: boolean;
+  /** What the worker did for this lineup that nothing else records (confirmations, updates, group update, group posts). Newest last, capped at 50. */
+  activity?: ActivityEntry[];
 }
 
 export interface GroupInfo {

@@ -3,6 +3,7 @@
 import { localNow, type Lineup } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { notice, runShowDaySync } from "./commands.ts";
+import { logActivity } from "./activity.ts";
 import { sessions } from "./sessions.ts";
 import { agentSessions } from "./agentSession.ts";
 import { agentTick } from "./agent.ts";
@@ -36,6 +37,7 @@ async function tick(uid: string) {
     } catch (e) {
       console.error(`[show-day] ${uid} ${show.name} failed`, e);
       await doc.ref.update({ showDaySyncedOn: now.date });
+      await logActivity(uid, doc.id, { kind: "sync", tone: "failed", text: "The show-day group update failed", detail: [(e as Error).message] });
       await notice(uid, "warn", `${show.name}: the show-day group update failed (${(e as Error).message}). Check the group by hand.`);
     } finally {
       running.delete(key);

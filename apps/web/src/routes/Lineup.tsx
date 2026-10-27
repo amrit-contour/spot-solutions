@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { doc, getDoc, where } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
 import { Link } from "react-router-dom";
@@ -36,6 +36,7 @@ import {
   pendingRejections,
   planLineupReset,
   planWeekReset,
+  showState,
   sentSnapshot,
   shiftWeek,
   type Comic,
@@ -63,8 +64,9 @@ import { BackfillSheet, PAST_SHOW_NOTE } from "../components/BackfillSheet";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
+import { ActivitySection, Chevron, CollapsedSummary, Reveal, StatePill, useRemembered } from "../components/ShowCardParts";
 import { Avatar, Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "@spot/ui";
-import { IconAdd, IconCalendarMark, IconCancel, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "@spot/ui";
+import { IconAdd, IconCalendarMark, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "@spot/ui";
 
 const BENCH = "bench";
 // Droppables that aren't lineup lists: a group member's leave zone (in the Waiting column's Group tab).
@@ -373,8 +375,8 @@ export function LineupBoard() {
   );
 }
 
-function Column({ id, children, className }: { id: string; children: React.ReactNode; className?: string }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+function Column({ id, children, className, disabled }: { id: string; children: React.ReactNode; className?: string; disabled?: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled });
   return (
     <section ref={setNodeRef} className={cx("flex flex-col rounded-xl bg-surface-low p-3 transition-[box-shadow] duration-150", isOver && "shadow-[inset_0_0_0_2px_var(--md-sys-color-primary)]", className)}>
       {children}
@@ -472,6 +474,12 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
   const fill = Math.min(1, ids.length / Math.max(1, show.slotCount));
   const minutesOf = new Map(lineup?.slots.map((s) => [s.comicId, s.minutes]));
   const mode = groupModeOf(show);
+  // The pill, and whether the card is open: shut once the show is over, until the curator opens or shuts it by hand.
+  const state = showState(lineup, showDate, today);
+  const [open, setOpen] = useRemembered(lineup?.id ?? `${week}_${show.id}`, !state.over);
+  const panel = useId();
+  const performed = ids.map((id) => comicsById.get(id)?.name ?? requestByComic.get(id)?.comicName ?? `+${id.split("@")[0]}`);
+  const summary = ids.length === 0 ? "Nobody on the lineup" : state.kind === "done" || state.kind === "recorded" ? `${ids.length} performed` : state.kind === "past" ? `${ids.length} on the lineup` : `${ids.length} ${ids.length === 1 ? "was" : "were"} booked`;
 
   // A week's lineup starts with the show's POCs (you too, if you're one), regulars, co-hosts and group admins. Once; removals stick.
   const seeded = useRef(false);
@@ -568,23 +576,8 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
     }
   };
 
-  return (
-    <Column id={show.id} className={cx(cancelled && "opacity-60")}>
-      <header className="mb-3 px-1">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="type-label-m text-primary">
-              {DAY_NAMES[show.weekday]} · {formatDate(dateInWeek(week, show.weekday))} · {formatTime(show.startTime)}
-            </p>
-            <h2 className="mt-0.5 truncate type-title-l">{show.name}</h2>
-            {venue && <p className="truncate type-body-s text-on-surface-variant">{venue.name}</p>}
-          </div>
-          {record ? (
-            <Chip tone="neutral" icon={IconHistory}>{canned ? "Didn't happen" : "Past show"}</Chip>
-          ) : confirmed ? (
-            <div className="flex items-center gap-1">
-            <Chip tone="success" icon={IconCheck}>Sent</Chip>
-            <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}>
+  const menu = record || cancelled ? null : confirmed ? (
+    <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}>
               {(close) => (
                 <>
                 <MenuItem disabled={past || ids.length >= show.slotCount} hint={ids.length >= show.slotCount ? "full" : undefined} onClick={() => (close(), setOfferOpen(true))}>
@@ -607,11 +600,8 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                 </>
               )}
             </Menu>
-            </div>
-          ) : cancelled ? (
-            <Chip tone="error" icon={IconCancel}>{canned ? "Didn't happen" : "Cancelled"}</Chip>
-          ) : (
-            <Menu
+  ) : (
+    <Menu
               align="right"
               trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}
             >
@@ -628,189 +618,217 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                 </>
               )}
             </Menu>
-          )}
-        </div>
-        <div className="mt-3 flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-highest">
-            <motion.div className={cx("h-full rounded-full", fill >= 1 ? "bg-tertiary" : "bg-primary")} animate={{ width: `${fill * 100}%` }} transition={{ type: "spring", duration: 0.5, bounce: 0.1 }} />
+  );
+
+  return (
+    <Column id={show.id} disabled={!open} className={cx(cancelled && "opacity-60")}>
+      <header className={cx("px-1", open && "mb-3")}>
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <StatePill state={state} sent={confirmed && !record} />
+              <p className="type-label-m text-primary">
+                <span className="sm:hidden">{DAY_SHORT[show.weekday]}</span><span className="hidden sm:inline">{DAY_NAMES[show.weekday]}</span> · {formatDate(dateInWeek(week, show.weekday))} · {formatTime(show.startTime)}
+              </p>
+            </div>
+            <h2 className="mt-1 truncate type-title-l">{show.name}</h2>
+            {venue && <p className="truncate type-body-s text-on-surface-variant">{venue.name}</p>}
           </div>
-          <span className="type-label-m tabular text-on-surface-variant">
-            {ids.length}/{show.slotCount}
-          </span>
+          <div className="flex flex-none items-center gap-1">
+            {menu}
+            <button type="button" title={open ? "Collapse" : "Expand"} aria-label={`${open ? "Collapse" : "Expand"} ${show.name}`} aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)} className="state-layer pressable grid size-9 place-items-center rounded-full">
+              <Chevron open={open} />
+            </button>
+          </div>
         </div>
+        {open ? (
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-highest">
+              <motion.div className={cx("h-full rounded-full", fill >= 1 ? "bg-tertiary" : "bg-primary")} animate={{ width: `${fill * 100}%` }} transition={{ type: "spring", duration: 0.5, bounce: 0.1 }} />
+            </div>
+            <span className="type-label-m tabular text-on-surface-variant">
+              {ids.length}/{show.slotCount}
+            </span>
+          </div>
+        ) : (
+          <CollapsedSummary names={performed} text={summary} onOpen={() => setOpen(true)} panel={panel} />
+        )}
       </header>
 
-      {record && (
-        <div className="mb-3 flex items-center gap-2 rounded-md bg-tertiary-container/60 py-2 pl-3 pr-1 text-on-tertiary-container">
-          <IconHistory className="icon size-4 flex-none" />
-          <p className="min-w-0 flex-1 type-body-s">{PAST_SHOW_NOTE}</p>
-        </div>
-      )}
-      {repeatable.length > 0 && !hideRepeat && !record && (
-        <div className="mb-3 flex h-11 items-center gap-2 rounded-md bg-tertiary-container/60 pl-3 pr-1 text-on-tertiary-container">
-          <IconRepeat className="icon size-4 flex-none" />
-          <p className="min-w-0 flex-1 truncate type-body-s" title={`Last week's ${show.name} was called off. Bring back ${repeatable.map((id) => nameOf(id)).join(", ")}`}>Last week was called off</p>
-          <Button size="sm" variant="text" className="flex-none text-on-tertiary-container" onClick={() => void repeat()}>Bring back {repeatable.length}</Button>
-          <IconButton icon={IconClose} label="Not now" onClick={() => setHideRepeat(true)} className="size-9 flex-none" />
-        </div>
-      )}
-      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <ol className="flex min-h-32 flex-col gap-2">
-          {ids.map((cid, i) => (
-            <ComicTile
-              key={cid}
-              id={cid}
-              index={i}
-              shared={shared}
-              comic={comicsById.get(cid)}
-              request={requestByComic.get(cid)}
-              lastWeek={lastWeek}
-              minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null}
-              show={show}
-              adhoc={Boolean(lineup?.slots.find((x) => x.comicId === cid)?.adhoc)}
-              states={statesFor(cid)}
-              onMinutes={lineup && !cancelled ? (m) => void setMinutes(uid, week, show, lineup, cid, m).catch((e: Error) => toast.error(e.message)) : undefined}
-              disabled={cancelled || record}
-              action={cancelled || record ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />}
-            />
-          ))}
-          {!record && ids.length < show.slotCount && (
-            <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant px-4 py-2.5 text-center type-body-s text-balance text-on-surface-variant/70 transition-colors", ids.length ? "min-h-11" : "min-h-20", dragKind && "border-primary/60 text-primary")}>
-              {!ids.length ? "Drop comics or group members here" : `${show.slotCount - ids.length} open slot${show.slotCount - ids.length === 1 ? "" : "s"}`}
-            </li>
-          )}
-        </ol>
-      </SortableContext>
+      <Reveal open={open} id={panel} className="flex flex-1 flex-col">
+        {record && (
+          <div className="mb-3 flex items-center gap-2 rounded-md bg-tertiary-container/60 py-2 pl-3 pr-1 text-on-tertiary-container">
+            <IconHistory className="icon size-4 flex-none" />
+            <p className="min-w-0 flex-1 type-body-s">{PAST_SHOW_NOTE}</p>
+          </div>
+        )}
+        {repeatable.length > 0 && !hideRepeat && !record && (
+          <div className="mb-3 flex h-11 items-center gap-2 rounded-md bg-tertiary-container/60 pl-3 pr-1 text-on-tertiary-container">
+            <IconRepeat className="icon size-4 flex-none" />
+            <p className="min-w-0 flex-1 truncate type-body-s" title={`Last week's ${show.name} was called off. Bring back ${repeatable.map((id) => nameOf(id)).join(", ")}`}>Last week was called off</p>
+            <Button size="sm" variant="text" className="flex-none text-on-tertiary-container" onClick={() => void repeat()}>Bring back {repeatable.length}</Button>
+            <IconButton icon={IconClose} label="Not now" onClick={() => setHideRepeat(true)} className="size-9 flex-none" />
+          </div>
+        )}
+        <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+          <ol className="flex min-h-32 flex-col gap-2">
+            {ids.map((cid, i) => (
+              <ComicTile
+                key={cid}
+                id={cid}
+                index={i}
+                shared={shared}
+                comic={comicsById.get(cid)}
+                request={requestByComic.get(cid)}
+                lastWeek={lastWeek}
+                minutes={show.includeSlotTime ? (minutesOf.get(cid) ?? show.defaultMinutes) : null}
+                show={show}
+                adhoc={Boolean(lineup?.slots.find((x) => x.comicId === cid)?.adhoc)}
+                states={statesFor(cid)}
+                onMinutes={lineup && !cancelled ? (m) => void setMinutes(uid, week, show, lineup, cid, m).catch((e: Error) => toast.error(e.message)) : undefined}
+                disabled={cancelled || record}
+                action={cancelled || record ? undefined : <IconButton icon={IconClose} label="Remove from show" onClick={() => onRemove(cid)} className="size-9" />}
+              />
+            ))}
+            {!record && ids.length < show.slotCount && (
+              <li className={cx("grid place-items-center rounded-md border border-dashed border-outline-variant px-4 py-2.5 text-center type-body-s text-balance text-on-surface-variant/70 transition-colors", ids.length ? "min-h-11" : "min-h-20", dragKind && "border-primary/60 text-primary")}>
+                {!ids.length ? "Drop comics or group members here" : `${show.slotCount - ids.length} open slot${show.slotCount - ids.length === 1 ? "" : "s"}`}
+              </li>
+            )}
+          </ol>
+        </SortableContext>
 
-      <div className="flex-1" />
+        <div className="flex-1" />
 
-      <footer className="mt-3 flex flex-wrap items-center gap-2">
-        {/* Group, offers, hosts and changes: bottom left, next to the main action. On phones each opens as a sheet from the bottom. */}
-        <div className="flex flex-none items-center gap-1">
-            <div className="flex-none">
-              {(changes && changes.total > 0) || lineup?.dropped?.length ? (
+        <footer className="mt-3 flex flex-wrap items-center gap-2">
+          {/* Group, offers, hosts and changes: bottom left, next to the main action. On phones each opens as a sheet from the bottom. */}
+          <div className="flex flex-none items-center gap-1">
+              <div className="flex-none">
+                {(changes && changes.total > 0) || lineup?.dropped?.length ? (
+                  <Popover
+                    title="Needs a look"
+                    width={360}
+                    trigger={(toggle, open) => (
+                      <Chip tone={lineup?.dropped?.length ? "error" : "tertiary"} icon={IconPen} selected={open} onClick={toggle} className="max-w-full">
+                        <span className="truncate">{(changes?.total ?? 0) === 0 ? `Dropped out · ${lineup?.dropped?.length}` : `Changed · ${(changes?.total ?? 0) + (lineup?.dropped?.length ?? 0)}`}</span>
+                      </Chip>
+                    )}
+                  >
+                    {(close) => (
+                      <div className="flex flex-col gap-3">
+                        {changes && changes.total > 0 && (
+                          <section>
+                            <p className="type-label-l text-on-surface-variant">Since you confirmed</p>
+                            <ul className="mt-1 flex flex-col">
+                              {changes.added.map((id) => <NoteRow key={`a${id}`} name={nameOf(id)} pill={<Pill tone="warn">Not told yet</Pill>} />)}
+                              {changes.moved.map((m) => <NoteRow key={`m${m.comicId}`} name={nameOf(m.comicId)} pill={<Pill tone="warn">Moved from {m.from}</Pill>} />)}
+                              {changes.minutes.map((m) => <NoteRow key={`t${m.comicId}`} name={nameOf(m.comicId)} pill={<Pill tone="warn" icon={IconClock}>Was {m.from ?? "?"} min</Pill>} />)}
+                              {changes.removed.map((id) => <NoteRow key={`r${id}`} name={nameOf(id)} pill={<Pill tone="plain">Removed, not told</Pill>} />)}
+                            </ul>
+                            {confirmed && (
+                              <Button size="sm" icon={IconSend} className="mt-2" onClick={() => (close(), setUpdatesOpen(true))}>
+                                Send updates
+                              </Button>
+                            )}
+                          </section>
+                        )}
+                        {lineup?.dropped?.length ? (
+                          <section>
+                            <p className="type-label-l text-on-surface-variant">Dropped out</p>
+                            <ul className="mt-1 flex flex-col">
+                              {lineup.dropped.map((d) => <NoteRow key={d.comicId} name={nameOf(d.comicId)} pill={<Pill tone="error">Dropped out</Pill>} />)}
+                            </ul>
+                          </section>
+                        ) : null}
+                      </div>
+                    )}
+                  </Popover>
+                ) : null}
+              </div>
+              {pendingOffers.length > 0 && (
                 <Popover
-                  title="Needs a look"
-                  width={360}
-                  trigger={(toggle, open) => (
-                    <Chip tone={lineup?.dropped?.length ? "error" : "tertiary"} icon={IconPen} selected={open} onClick={toggle} className="max-w-full">
-                      <span className="truncate">{(changes?.total ?? 0) === 0 ? `Dropped out · ${lineup?.dropped?.length}` : `Changed · ${(changes?.total ?? 0) + (lineup?.dropped?.length ?? 0)}`}</span>
-                    </Chip>
-                  )}
+                  title="Offers out"
+                  trigger={(toggle, open) => <ToolButton icon={IconUserPlus} label="Offers waiting for a reply" count={pendingOffers.length} active={open} onClick={toggle} />}
                 >
                   {(close) => (
-                    <div className="flex flex-col gap-3">
-                      {changes && changes.total > 0 && (
-                        <section>
-                          <p className="type-label-l text-on-surface-variant">Since you confirmed</p>
-                          <ul className="mt-1 flex flex-col">
-                            {changes.added.map((id) => <NoteRow key={`a${id}`} name={nameOf(id)} pill={<Pill tone="warn">Not told yet</Pill>} />)}
-                            {changes.moved.map((m) => <NoteRow key={`m${m.comicId}`} name={nameOf(m.comicId)} pill={<Pill tone="warn">Moved from {m.from}</Pill>} />)}
-                            {changes.minutes.map((m) => <NoteRow key={`t${m.comicId}`} name={nameOf(m.comicId)} pill={<Pill tone="warn" icon={IconClock}>Was {m.from ?? "?"} min</Pill>} />)}
-                            {changes.removed.map((id) => <NoteRow key={`r${id}`} name={nameOf(id)} pill={<Pill tone="plain">Removed, not told</Pill>} />)}
-                          </ul>
-                          {confirmed && (
-                            <Button size="sm" icon={IconSend} className="mt-2" onClick={() => (close(), setUpdatesOpen(true))}>
-                              Send updates
-                            </Button>
-                          )}
-                        </section>
-                      )}
-                      {lineup?.dropped?.length ? (
-                        <section>
-                          <p className="type-label-l text-on-surface-variant">Dropped out</p>
-                          <ul className="mt-1 flex flex-col">
-                            {lineup.dropped.map((d) => <NoteRow key={d.comicId} name={nameOf(d.comicId)} pill={<Pill tone="error">Dropped out</Pill>} />)}
-                          </ul>
-                        </section>
-                      ) : null}
+                    <div>
+                      <ul className="flex flex-col">
+                        {pendingOffers.map((o) => <NoteRow key={o.id} name={o.comicName} pill={<Pill tone="reading">Waiting for a reply</Pill>} />)}
+                      </ul>
+                      <Button size="sm" variant="tonal" icon={IconUserPlus} className="mt-2" disabled={past || cancelled || ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>
+                        Offer another spot…
+                      </Button>
                     </div>
                   )}
                 </Popover>
-              ) : null}
-            </div>
-            {pendingOffers.length > 0 && (
-              <Popover
-                title="Offers out"
-                trigger={(toggle, open) => <ToolButton icon={IconUserPlus} label="Offers waiting for a reply" count={pendingOffers.length} active={open} onClick={toggle} />}
-              >
-                {(close) => (
-                  <div>
-                    <ul className="flex flex-col">
-                      {pendingOffers.map((o) => <NoteRow key={o.id} name={o.comicName} pill={<Pill tone="reading">Waiting for a reply</Pill>} />)}
-                    </ul>
-                    <Button size="sm" variant="tonal" icon={IconUserPlus} className="mt-2" disabled={past || cancelled || ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>
-                      Offer another spot…
-                    </Button>
-                  </div>
-                )}
-              </Popover>
-            )}
-            {hostsFree.length > 0 && (
-              <Popover
-                title="Hosts free"
-                trigger={(toggle, open) => <ToolButton icon={IconUserCheck} label="Hosts free for this show" count={hostsFree.length} active={open} onClick={toggle} />}
-              >
-                {(close) => (
-                  <div>
-                    <p className="type-body-s text-on-surface-variant">Said they're free for {show.name} in the hosts poll.</p>
-                    <ul className="mt-1 flex flex-col">
-                      {hostsFree.map((h) => {
-                        const onLineup = ids.includes(h.id);
-                        const known = comicsById.has(h.id);
-                        return (
-                          <li key={h.id} className="flex min-h-12 items-center gap-2.5 py-1">
-                            <Avatar name={h.name} size={28} tone="secondary" />
-                            <span className="min-w-0 flex-1 truncate type-label-l">{h.name}</span>
-                            {onLineup ? <Pill tone="told" icon={IconCheck}>On lineup</Pill> : (
-                              <Button size="sm" variant="tonal" disabled={!known || cancelled || ids.length >= show.slotCount} onClick={() => (close(), void onAdd(h.id))}>
-                                Add
-                              </Button>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
-              </Popover>
-            )}
-            {!cancelled && !record && (
-              <GroupPopover show={show} lineup={lineup} ids={ids} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? onAddTold : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />
-            )}
-                </div>
-        {record ? (
-          <>
-            <div className="flex-1" />
-            <Button size="sm" variant="tonal" icon={IconHistory} onClick={() => setBackfillOpen(true)}>Record who performed</Button>
-          </>
-        ) : canned ? null : cancelled ? (
-          <Button size="sm" variant="text" onClick={() => setLineupStatus(uid, week, show, "draft")}>Reopen</Button>
-        ) : confirmed ? (
-          <>
-            <span className="inline-flex min-w-0 flex-1 items-center justify-end gap-1.5 type-label-m text-on-surface-variant">
-              {changes && changes.total > 0 ? (
-                <>Changes aren't sent yet</>
-              ) : (
-                <>
-                  <svg viewBox="0 0 24 24" className="draw-check size-4 text-primary" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-                  Everyone's been told
-                </>
               )}
-            </span>
-            <Button size="sm" icon={IconSend} disabled={!changes || changes.total === 0} onClick={() => setUpdatesOpen(true)}>
-              Send updates
-            </Button>
-          </>
-        ) : (
-          <>
-            <div className="flex-1" />
-            <Button size="sm" icon={IconSend} disabled={!ids.length} onClick={() => setConfirmOpen(true)}>
-              Confirm & send
-            </Button>
-          </>
-        )}
-      </footer>
+              {hostsFree.length > 0 && (
+                <Popover
+                  title="Hosts free"
+                  trigger={(toggle, open) => <ToolButton icon={IconUserCheck} label="Hosts free for this show" count={hostsFree.length} active={open} onClick={toggle} />}
+                >
+                  {(close) => (
+                    <div>
+                      <p className="type-body-s text-on-surface-variant">Said they're free for {show.name} in the hosts poll.</p>
+                      <ul className="mt-1 flex flex-col">
+                        {hostsFree.map((h) => {
+                          const onLineup = ids.includes(h.id);
+                          const known = comicsById.has(h.id);
+                          return (
+                            <li key={h.id} className="flex min-h-12 items-center gap-2.5 py-1">
+                              <Avatar name={h.name} size={28} tone="secondary" />
+                              <span className="min-w-0 flex-1 truncate type-label-l">{h.name}</span>
+                              {onLineup ? <Pill tone="told" icon={IconCheck}>On lineup</Pill> : (
+                                <Button size="sm" variant="tonal" disabled={!known || cancelled || ids.length >= show.slotCount} onClick={() => (close(), void onAdd(h.id))}>
+                                  Add
+                                </Button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </Popover>
+              )}
+              {!cancelled && !record && (
+                <GroupPopover show={show} lineup={lineup} ids={ids} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={ids.length < show.slotCount ? onAddTold : undefined} onSync={syncGroup} onReview={() => setSyncOpen(true)} />
+              )}
+                  </div>
+          {record ? (
+            <>
+              <div className="flex-1" />
+              <Button size="sm" variant="tonal" icon={IconHistory} onClick={() => setBackfillOpen(true)}>Record who performed</Button>
+            </>
+          ) : canned ? null : cancelled ? (
+            <Button size="sm" variant="text" onClick={() => setLineupStatus(uid, week, show, "draft")}>Reopen</Button>
+          ) : confirmed ? (
+            <>
+              <span className="inline-flex min-w-0 flex-1 items-center justify-end gap-1.5 type-label-m text-on-surface-variant">
+                {changes && changes.total > 0 ? (
+                  <>Changes aren't sent yet</>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" className="draw-check size-4 text-primary" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                    Everyone's been told
+                  </>
+                )}
+              </span>
+              <Button size="sm" icon={IconSend} disabled={!changes || changes.total === 0} onClick={() => setUpdatesOpen(true)}>
+                Send updates
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="flex-1" />
+              <Button size="sm" icon={IconSend} disabled={!ids.length} onClick={() => setConfirmOpen(true)}>
+                Confirm & send
+              </Button>
+            </>
+          )}
+        </footer>
+        <ActivitySection lineup={lineup} show={show} offers={offers.filter((o) => o.showId === show.id)} nameOf={nameOf} over={state.over} />
+      </Reveal>
 
       <BackfillSheet open={backfillOpen} onClose={() => setBackfillOpen(false)} show={show} week={week} />
       <ConfirmSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} onSending={() => (armed.current = mode === "confirm")} show={show} ids={ids} lineup={lineup} regretsAfter={regretsAfter} />
