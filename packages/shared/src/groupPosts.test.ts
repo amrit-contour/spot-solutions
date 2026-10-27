@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { duePosts, groupPostMessage, groupPostVars, needsLineup, newGroupPost, nextRun, renderGroupPost, type GroupPost } from "./groupPosts.ts";
+import { duePosts, groupPostMessage, groupPostVars, needsLineup, newGroupPost, nextRun, renderGroupPost, whenLabel, type GroupPost } from "./groupPosts.ts";
 import { matchGroupThreads } from "./threads.ts";
 
 // 2026-10-26 is a Monday.
@@ -65,5 +65,24 @@ describe("matchGroupThreads", () => {
     const out = matchGroupThreads(chats, shows, [{ id: "919876543210@c.us", phone: "919876543210", name: "Rohan" }]);
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ groupId: "mon@g.us", name: "Monday comics", showIds: ["mon", "mon2"], author: "Rohan", unread: 2, snippet: "on my way" });
+  });
+});
+
+describe("posts after the show", () => {
+  // Monday shows; 26 Oct 2026 is a Monday.
+  const show = { weekday: 1, groupPostsSent: {} as Record<string, string> };
+  const post = { id: "after", template: "custom" as const, daysBefore: -1, time: "11:00", enabled: true };
+  it("labels days after", () => {
+    expect(whenLabel(-1)).toBe("Day after");
+    expect(whenLabel(-3)).toBe("3 days after");
+    expect(whenLabel(2)).toBe("2 days before");
+  });
+  it("goes out the day after the show, for that show", () => {
+    expect(duePosts({ ...show, groupPosts: [post] }, { date: "2026-10-27", time: "11:05" })).toEqual([{ post, showDate: "2026-10-26" }]);
+    expect(duePosts({ ...show, groupPosts: [post] }, { date: "2026-10-26", time: "11:05" })).toEqual([]);
+  });
+  it("next run looks back at a show that already happened", () => {
+    expect(nextRun(show, post, "2026-10-27")).toEqual({ date: "2026-10-27", time: "11:00" });
+    expect(nextRun({ ...show, groupPostsSent: { after: "2026-10-26" } }, post, "2026-10-27")).toEqual({ date: "2026-11-03", time: "11:00" });
   });
 });

@@ -13,7 +13,7 @@ export interface GroupPost {
   id: string;
   /** Which group message it sends, or "custom" for one written just for this post (in `message`). */
   template: GroupPostKey | "custom";
-  /** 0 = the show day, 1 = the day before, up to 6. */
+  /** 0 = the show day, 1 = the day before, up to 6; negative = after the show (-1 the day after, down to -3). */
   daysBefore: number;
   /** Local time, "HH:MM". */
   time: string;
@@ -25,6 +25,10 @@ export interface GroupPost {
 }
 
 export const GROUP_POST_MAX_DAYS = 6;
+/** Posts can also follow the show: up to this many days after it (daysBefore down to -GROUP_POST_MAX_AFTER). */
+export const GROUP_POST_MAX_AFTER = 3;
+/** daysBefore kept in range: -3 (3 days after) … 6 (6 days before). */
+export const clampDays = (n: number) => Math.max(-GROUP_POST_MAX_AFTER, Math.min(GROUP_POST_MAX_DAYS, Math.round(n) || 0));
 
 /** What a new post looks like for each template: a sensible time for it. */
 export function newGroupPost(template: GroupPost["template"], show: Pick<Show, "startTime">): GroupPost {
@@ -61,8 +65,9 @@ export function nextShowDate(show: Pick<Show, "weekday">, today: string): string
   return addDays(today, (show.weekday - weekdayOf(today) + 7) % 7);
 }
 
-/** "Show day", "Day before", "3 days before". */
-export const whenLabel = (daysBefore: number) => (daysBefore === 0 ? "Show day" : daysBefore === 1 ? "Day before" : `${daysBefore} days before`);
+/** "Show day", "Day before", "3 days before", "Day after", "2 days after". */
+export const whenLabel = (daysBefore: number) =>
+  daysBefore === 0 ? "Show day" : daysBefore === 1 ? "Day before" : daysBefore > 1 ? `${daysBefore} days before` : daysBefore === -1 ? "Day after" : `${-daysBefore} days after`;
 
 /** The message a post sends, before variables are filled in. */
 export function groupPostMessage(settings: Pick<Settings, "messages">, post: GroupPost): RichMessage {
@@ -111,7 +116,7 @@ export function duePosts(show: Pick<Show, "weekday" | "groupPosts" | "groupPosts
   const out: DuePost[] = [];
   for (const post of show.groupPosts ?? []) {
     if (!post.enabled) continue;
-    const days = Math.max(0, Math.min(GROUP_POST_MAX_DAYS, Math.round(post.daysBefore) || 0));
+    const days = clampDays(post.daysBefore);
     const showDate = addDays(now.date, days);
     if (weekdayOf(showDate) !== show.weekday) continue;
     if (now.time < post.time) continue;
@@ -123,11 +128,13 @@ export function duePosts(show: Pick<Show, "weekday" | "groupPosts" | "groupPosts
 
 /** When a post next goes out, for the schedule list. */
 export function nextRun(show: Pick<Show, "weekday" | "groupPostsSent">, post: GroupPost, today: string): { date: string; time: string } {
-  let showDate = nextShowDate(show, today);
+  const days = clampDays(post.daysBefore);
+  // A post after the show belongs to a show that may already be past: start looking that many days back.
+  let showDate = nextShowDate(show, addDays(today, Math.min(0, days)));
   for (let i = 0; i < 3; i++) {
-    const sendOn = addDays(showDate, -post.daysBefore);
+    const sendOn = addDays(showDate, -days);
     if (sendOn > today || (sendOn === today && show.groupPostsSent?.[post.id] !== showDate)) return { date: sendOn, time: post.time };
     showDate = addDays(showDate, 7);
   }
-  return { date: addDays(showDate, -post.daysBefore), time: post.time };
+  return { date: addDays(showDate, -days), time: post.time };
 }

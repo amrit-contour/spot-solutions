@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import {
   DAY_SHORT,
   GROUP_POST_KEYS,
-  GROUP_POST_MAX_DAYS,
+  GROUP_POST_MAX_DAYS, GROUP_POST_MAX_AFTER,
   usesVar,
   formatDate,
   formatTime,
@@ -56,7 +56,8 @@ const VARIABLES = [
   { key: "pocs", label: "POCs (tagged)" },
 ];
 
-const DAY_OPTIONS = Array.from({ length: GROUP_POST_MAX_DAYS + 1 }, (_, d) => ({ value: String(d), label: whenLabel(d) }));
+// Furthest before first, then the show day, then after it (for after-show posts, e.g. once the group is cleared).
+const DAY_OPTIONS = Array.from({ length: GROUP_POST_MAX_DAYS + GROUP_POST_MAX_AFTER + 1 }, (_, i) => GROUP_POST_MAX_DAYS - i).map((d) => ({ value: String(d), label: whenLabel(d) }));
 
 type PostShow = Pick<Show, "name" | "weekday" | "startTime" | "venueId" | "groupPostsSent" | "pocs">;
 

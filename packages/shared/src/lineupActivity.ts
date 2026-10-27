@@ -2,7 +2,7 @@
 // Most of it is read from fields that already exist (sent, groupSync, cleanup, outcome, offers, the show's scheduled posts).
 // What nothing recorded (confirmations, updates, group posts, the group update, with their failures) the worker appends to the
 // lineup's capped `activity` array. Pure rules; the web renders them and the worker writes the entries.
-import { addDays } from "./groupPosts.ts";
+import { clampDays, addDays } from "./groupPosts.ts";
 import type { GroupPost } from "./groupPosts.ts";
 import { formatDate, formatTime } from "./week.ts";
 import type { Lineup, Show, SpotOffer } from "./types.ts";
@@ -122,7 +122,7 @@ export function lineupActivity({ lineup, show, offers = [], now, nameOf }: Activ
   if (showDate && show.groupId && !off) {
     for (const post of show.groupPosts ?? []) {
       if (!post.enabled) continue;
-      const day = addDays(showDate, -Math.max(0, Math.round(post.daysBefore) || 0));
+      const day = addDays(showDate, -clampDays(post.daysBefore));
       const label = POST_LABEL[post.template];
       const recorded = stored.some((e) => (e.kind === "post" || e.kind === "lineup_post") && e.ref === post.id);
       if (show.groupPostsSent?.[post.id] === showDate) {
