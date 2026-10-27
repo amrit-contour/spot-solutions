@@ -50,6 +50,16 @@ describe("update checks", () => {
     u.setAuto(false);
     expect(u.view().autoUpdate).toBe(false);
   });
+  it("a task the runner never picked up stops blocking after 5 minutes", () => {
+    const data = mkdtempSync(path.join(os.tmpdir(), "spot-upd-"));
+    let t = 10_000_000;
+    const u = createUpdater({ version: "abc1234", data, hostname: "h", platform: "linux", dryRun: true, now: () => t, log: () => {} });
+    writeFileSync(path.join(data, "update.json"), JSON.stringify({ state: "running", step: "Starting", startedAt: t - 4 * 60_000, task: "move-cleanup" }));
+    expect(u.view().running).toBe(true);
+    t += 2 * 60_000;
+    expect(u.view().running).toBe(false);
+    expect(u.view().progress).toMatchObject({ state: "error", error: expect.stringMatching(/never started/) });
+  });
   it("carries a move request in task.json, and a long job that keeps reporting isn't stale", async () => {
     const data = mkdtempSync(path.join(os.tmpdir(), "spot-upd-"));
     let t = 10_000_000;

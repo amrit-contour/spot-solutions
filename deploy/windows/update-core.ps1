@@ -21,7 +21,8 @@ $NodeDir   = "$Root\node"
 # another drive. The installer reads them too, so neither an update nor a re-install puts them back on C:.
 $DataDir   = "$Root\data"
 $ModelsDir = "$Root\ollama"
-foreach ($p in @(@{ File = "$Root\data-dir.txt"; Name = "DataDir" }, @{ File = "$Root\models-dir.txt"; Name = "ModelsDir" })) {
+# move.mjs writes data-dir / models-dir (no extension); older notes used .txt. The extension-less file is read last, so it wins.
+foreach ($p in @(@{ File = "$Root\data-dir.txt"; Name = "DataDir" }, @{ File = "$Root\data-dir"; Name = "DataDir" }, @{ File = "$Root\models-dir.txt"; Name = "ModelsDir" }, @{ File = "$Root\models-dir"; Name = "ModelsDir" })) {
   if (Test-Path $p.File) { $v = (Get-Content $p.File -Raw).Trim(); if ($v) { Set-Variable -Name $p.Name -Value $v } }
 }
 $ChromeDir = "$Root\chrome"

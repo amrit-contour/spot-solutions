@@ -48,8 +48,8 @@ $modelDirs = @()
 foreach ($r in $Roots) {
   $dataDirs += "$r\data"
   $modelDirs += "$r\ollama"
-  if (Test-Path "$r\data-dir.txt") { $p = (Get-Content "$r\data-dir.txt" -Raw).Trim(); if ($p) { $dataDirs += $p } }
-  if (Test-Path "$r\models-dir.txt") { $p = (Get-Content "$r\models-dir.txt" -Raw).Trim(); if ($p) { $modelDirs += $p } }
+  foreach ($f in @("$r\data-dir", "$r\data-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $dataDirs += $p } } }
+  foreach ($f in @("$r\models-dir", "$r\models-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $modelDirs += $p } } }
 }
 $dataDirs = $dataDirs | Where-Object { Test-Path $_ } | Select-Object -Unique
 $modelDirs = $modelDirs | Where-Object { Test-Path $_ } | Select-Object -Unique

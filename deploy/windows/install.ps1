@@ -36,8 +36,9 @@ $DataDir   = "$Root\data"
 $ModelsDir = "$Root\ollama"   # shared by the tray app and the boot task, so Gemma downloads once
 # The data (and the AI models) may have been moved to another drive in the Server Console (Storage, Move data). That choice
 # is kept in these two files: re-running the installer keeps the chosen folders instead of going back to C:.
-if (Test-Path "$Root\data-dir.txt") { $p = (Get-Content "$Root\data-dir.txt" -Raw).Trim(); if ($p) { $DataDir = $p } }
-if (Test-Path "$Root\models-dir.txt") { $p = (Get-Content "$Root\models-dir.txt" -Raw).Trim(); if ($p) { $ModelsDir = $p } }
+# The console's "Move data" writes data-dir / models-dir (no extension); older notes used .txt. Either works.
+foreach ($f in @("$Root\data-dir", "$Root\data-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $DataDir = $p; break } } }
+foreach ($f in @("$Root\models-dir", "$Root\models-dir.txt")) { if (Test-Path $f) { $p = (Get-Content $f -Raw).Trim(); if ($p) { $ModelsDir = $p; break } } }
 if ($DataDir -ne "$Root\data") {
   if (-not (Test-Path (Split-Path $DataDir -Qualifier))) { throw "Your data lives on $(Split-Path $DataDir -Qualifier) ($DataDir), but that drive isn't connected. Plug it in and run this again." }
   Write-Host "Keeping the data in $DataDir (chosen in the Server Console)." -ForegroundColor Cyan

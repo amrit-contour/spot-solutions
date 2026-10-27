@@ -17,6 +17,8 @@ const FIRST_CHECK_MS = 45_000;
 /** After a failed update, automatic updates wait this long (a manual Update now still works). */
 const FAILURE_BACKOFF_MS = 6 * 3_600_000;
 const STALE_RUNNING_MS = 60 * 60_000;
+/** A task still at "Starting" this long was never picked up by the platform's task runner. */
+const STALE_START_MS = 5 * 60_000;
 /** Servers in one fleet shouldn't all restart at once: each waits a stable 0 to 10 minutes after it first sees a release. */
 const STAGGER_MAX_MS = 10 * 60_000;
 
@@ -76,6 +78,7 @@ export function createUpdater({ version, data, hostname, platform, uid, macRoot,
   function progress() {
     const p = readJson(progressFile);
     if (p.state === "running" && now() - (p.updatedAt ?? p.startedAt ?? 0) > STALE_RUNNING_MS) return { ...p, state: "error", error: "The update stopped without finishing. Try again." };
+    if (p.state === "running" && p.step === "Starting" && now() - (p.updatedAt ?? p.startedAt ?? 0) > STALE_START_MS) return { ...p, state: "error", error: "The task never started on this computer. Try again; if it keeps happening, run the installer again." };
     return p;
   }
   const running = () => starting || progress().state === "running";
