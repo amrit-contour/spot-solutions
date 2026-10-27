@@ -656,7 +656,8 @@ const handlers: Record<Command["type"], Handler> = {
   get_media: getMedia,
   react_message: reactMessage,
   send_media: sendMedia,
-  summarize_thread: summarizeThread,
+  // Progress lines ("Reading 28 messages…") go on the command document while it runs; the app shows them.
+  summarize_thread: (uid, payload, commandId) => summarizeThread(uid, payload, (stage) => void (commandId && col(uid, "commands").doc(commandId).update({ stage }).catch(() => undefined))),
   // Nothing BOT Comedy, Rooms → Import from text, file or link: turns pasted text, a file or a link into rooms. Nothing is saved
   // here (the app shows the result in the merge-with-review sheet). The payload can hold a person's pasted list and curator
   // numbers, so the result is short-lived like the Messages ones.
@@ -672,6 +673,8 @@ const handlers: Record<Command["type"], Handler> = {
   },
   // "Your voice" → Choose chats: names of every chat, short-lived like the Messages results.
   list_voice_sources: (uid) => listVoiceSourceChats(uid),
+  // Profile pictures: queued and fetched in the background (one every couple of seconds); the answer lands on the comic docs.
+  profile_pics: profilePics,
 };
 
 /** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */
@@ -689,8 +692,6 @@ export async function sendConfirmation(uid: string, client: WAWebJS.Client, show
   const venue = venues.find((v) => v.id === show.venueId);
   const facts = await confirmFacts(uid, client, show, comic, week, minutes);
   return sendRich(client, comic.chatId ?? comic.id, { kind: "text", body: settings.confirm.template, attachLocation: settings.confirm.attachLocation }, facts, venue, {
-  // Profile pictures: queued and fetched in the background (one every couple of seconds); the answer lands on the comic docs.
-  profile_pics: profilePics,
     rewrite: (text) => inVoice(uid, "confirm", text, facts),
   });
 }

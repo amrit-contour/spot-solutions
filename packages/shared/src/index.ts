@@ -26,6 +26,7 @@ export * from "./richText.ts";
 export * from "./geo.ts";
 export * from "./threads.ts";
 export * from "./chatState.ts";
+export * from "./aiBudget.ts";
 export * from "./groupPosts.ts";
 export * from "./groupCleanup.ts";
 export * from "./adhoc.ts";

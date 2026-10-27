@@ -5,6 +5,8 @@ import WAWebJS from "whatsapp-web.js";
 import {
   THREAD_FETCH_MAX,
   THREAD_PAGE,
+  ASSIST_MAX_MESSAGES,
+  trimForModel,
   PHOTO_MAX_BYTES,
   STICKER_MAX_BYTES,
   authorNames,
@@ -36,8 +38,8 @@ import { parseEmoji, parsePhotoPayload, reactTo, sendPhoto } from "./chatActions
 import { sendContent } from "./sendQueue.ts";
 import { THREAD_ASSIST_SCHEMA, buildThreadPrompt, parseThreadAssist, showLines } from "./threadAssist.ts";
 
-/** Messages the model reads. Enough for a back-and-forth about one spot, small enough for a local model. */
-const ASSIST_MESSAGES = 30;
+/** Messages the model reads: the newest ASSIST_MAX_MESSAGES, further capped by characters (trimForModel). Enough for a back-and-forth about one spot, small enough for a local model to answer in well under its budget. */
+const ASSIST_MESSAGES = ASSIST_MAX_MESSAGES;
 
 export const asMessageLike = (m: WAWebJS.Message): WaMessageLike => ({
   id: m.id._serialized,
@@ -264,7 +266,8 @@ export async function sendMedia(uid: string, payload: Record<string, unknown>) {
 }
 
 /** summarize_thread: a sentence, a suggested reply, and actions backed by quotes. Suggests only; sends and changes nothing. */
-export async function summarizeThread(uid: string, payload: Record<string, unknown>): Promise<SummarizeThreadResult> {
+export async function summarizeThread(uid: string, payload: Record<string, unknown>, onStage: (s: string) => void = () => undefined): Promise<SummarizeThreadResult> {
+  onStage("Opening the chat…");
   const { comic, chat } = await chatOf(uid, payload.comicId);
   const { settings, venues } = watchUser(uid);
   const week = /^\d{4}-\d{2}-\d{2}$/.test(String(payload.weekOf ?? "")) ? String(payload.weekOf) : null;
@@ -272,8 +275,10 @@ export async function summarizeThread(uid: string, payload: Record<string, unkno
   const req = week ? ((await col(uid, "requests").doc(`${week}_${comic.id}`).get()).data() as SpotRequest | undefined) : undefined;
   const open = req && ["new", "acked"].includes(req.status) ? req : null;
 
-  const { messages } = pageMessages((await chat.fetchMessages({ limit: ASSIST_MESSAGES * 2 })).map(asMessageLike), null, ASSIST_MESSAGES);
+  const page = pageMessages((await chat.fetchMessages({ limit: ASSIST_MESSAGES * 2 })).map(asMessageLike), null, ASSIST_MESSAGES);
+  const messages = trimForModel(page.messages);
   if (!messages.length) throw new Error("There's nothing in this chat to summarise yet.");
+  onStage(`Reading ${messages.length} message${messages.length === 1 ? "" : "s"}…`);
   const first = comic.name.split(/\s+/)[0] || comic.name;
   const prompt = buildThreadPrompt({
     name: first,
@@ -282,7 +287,7 @@ export async function summarizeThread(uid: string, payload: Record<string, unkno
     venues,
     request: open ? { status: open.status, preferredDays: open.intent.preferredDays, note: open.intent.note } : null,
   });
-  const { text, model } = await generateJson(uid, settings.ai, prompt, THREAD_ASSIST_SCHEMA, { temperature: 0.2 });
+  const { text, model } = await generateJson(uid, settings.ai, prompt, THREAD_ASSIST_SCHEMA, { temperature: 0.2, interactive: true, onStage });
   const out = parseThreadAssist(text, messages, shows.map((s) => s.id), showLines(shows, venues).join(" "));
   if (!out.summary) throw new Error("The model didn't give a usable summary. Try again.");
   return { ...out, model, at: Date.now() };

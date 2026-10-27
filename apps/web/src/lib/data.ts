@@ -50,7 +50,7 @@ export function useDocument<T>(path: string[] | null) {
 }
 
 /** Drop a command for the worker and resolve when it finishes. */
-export async function runCommand<R = unknown>(uid: string, type: CommandType, payload: Record<string, unknown> = {}, timeoutMs = 10 * 60_000, opts: { ephemeral?: boolean } = {}) {
+export async function runCommand<R = unknown>(uid: string, type: CommandType, payload: Record<string, unknown> = {}, timeoutMs = 10 * 60_000, opts: { ephemeral?: boolean; /** Progress lines the worker writes while it runs ("Reading 28 messages…"). */ onStage?: (stage: string) => void } = {}) {
   if (isDemoUser()) throw new Error("This needs a linked WhatsApp, so it's off in the demo. Sign in with Google to try it for real.");
   // `ephemeral`: the result holds chat text (Messages page). It expires fast, and is deleted here the moment it has been read.
   const ref = await addDoc(userCol(uid, "commands"), { type, payload, status: "pending", createdAt: Date.now(), expireAt: expireAt(opts.ephemeral ? TTL_DAYS.messages : TTL_DAYS.commands) } satisfies Command);
@@ -62,6 +62,7 @@ export async function runCommand<R = unknown>(uid: string, type: CommandType, pa
     }, timeoutMs);
     const unsub = onSnapshot(ref, (s) => {
       const d = s.data() as (Command & { result?: R }) | undefined;
+      if (d?.stage) opts.onStage?.(d.stage);
       if (d?.status === "done") {
         clearTimeout(timer);
         unsub();

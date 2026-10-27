@@ -2,7 +2,7 @@
 // falling back to their second choice if it fails. Ollama is local; Gemini uses the curator's
 // own key (from users/{uid}/secrets/ai), or the server's GEMINI_API_KEY if they have none.
 import { GoogleGenAI } from "@google/genai";
-import { DEFAULT_AI_POLICY, type AiRoute, type AiSettings } from "@spot/shared";
+import { AI_INTERACTIVE_DEADLINE_MS, DEFAULT_AI_POLICY, aiFailureMessage, routeBudgetMs, type AiRoute, type AiSettings } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { counters, live } from "./stats.ts";
 import { AiPolicyError, IMPLICIT_GEMINI_MODEL, ollamaKeepAlive, planRoutes } from "./aiRouting.ts";
@@ -12,7 +12,7 @@ export const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 // read in the background, and a failed read is retried anyway (intake.ts). NBS_OLLAMA_TIMEOUT_MS overrides.
 const OLLAMA_TIMEOUT_MS = Number(process.env.NBS_OLLAMA_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS ?? 300_000);
 const KEEP_ALIVE = ollamaKeepAlive(process.env.NBS_OLLAMA_KEEP_ALIVE);
-const GEMINI_TIMEOUT_MS = 30_000;
+const GEMINI_TIMEOUT_MS = 45_000;
 const SERVER_GEMINI_KEY = process.env.GEMINI_API_KEY || null;
 /** Set by the installers for Gemini-only servers. */
 export const NO_LOCAL_MODEL = /^(1|true|yes)$/i.test(process.env.NBS_NO_LOCAL_MODEL ?? "");
@@ -49,13 +49,13 @@ function geminiFor(uid: string | null) {
 // ---- providers ----
 const noSchema = new Set<string>(); // Ollama models that reject JSON-schema output
 
-async function ollama(model: string, prompt: string, schema: Schema, temperature = 0) {
+async function ollama(model: string, prompt: string, schema: Schema, temperature = 0, timeoutMs = OLLAMA_TIMEOUT_MS) {
   if (NO_LOCAL_MODEL) throw new Error("This server has no local model (Gemini-only)");
   const call = (structured: boolean) =>
     fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         model,
         stream: false,
@@ -75,7 +75,7 @@ async function ollama(model: string, prompt: string, schema: Schema, temperature
   return ((await res.json()) as { message: { content: string } }).message.content;
 }
 
-async function gemini(uid: string | null, model: string, prompt: string, schema: Schema, temperature = 0) {
+async function gemini(uid: string | null, model: string, prompt: string, schema: Schema, temperature = 0, timeoutMs = GEMINI_TIMEOUT_MS) {
   const ai = geminiFor(uid);
   // Gemma models on the Gemini API don't take a response schema; Gemini models do.
   const structured = !model.startsWith("gemma");
@@ -84,15 +84,15 @@ async function gemini(uid: string | null, model: string, prompt: string, schema:
     contents: prompt,
     config: {
       temperature,
-      abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+      abortSignal: AbortSignal.timeout(timeoutMs),
       ...(structured ? { responseMimeType: "application/json", responseJsonSchema: schema } : {}),
     },
   });
   return res.text ?? "";
 }
 
-function run(uid: string | null, route: AiRoute, prompt: string, schema: Schema, temperature?: number) {
-  return route.provider === "gemini" ? gemini(uid, route.model, prompt, schema, temperature) : ollama(route.model, prompt, schema, temperature);
+function run(uid: string | null, route: AiRoute, prompt: string, schema: Schema, temperature?: number, timeoutMs?: number) {
+  return route.provider === "gemini" ? gemini(uid, route.model, prompt, schema, temperature, timeoutMs) : ollama(route.model, prompt, schema, temperature, timeoutMs);
 }
 
 // Local models run one generation at a time, so queue everything to avoid timeouts in bursts.
@@ -100,7 +100,14 @@ let gate: Promise<unknown> = Promise.resolve();
 
 /** Run a prompt that must answer in JSON. Returns the raw text and which model produced it. */
 /** `temperature` above 0 for writing (voice drafts); classification stays at 0. */
-export function generateJson(uid: string | null, ai: AiSettings, prompt: string, schema: Schema, opts: { temperature?: number } = {}) {
+/**
+ * `interactive`: someone is waiting (Messages summary, a drafted reply). The whole job, queue wait included, has
+ * AI_INTERACTIVE_DEADLINE_MS; each route gets its own cap of what is left (a local model times out in time for Gemini to try),
+ * `onStage` hears what is happening, and a timeout is reported in plain words.
+ */
+export function generateJson(uid: string | null, ai: AiSettings, prompt: string, schema: Schema, opts: { temperature?: number; interactive?: boolean; onStage?: (s: string) => void } = {}) {
+  const deadlineAt = Date.now() + AI_INTERACTIVE_DEADLINE_MS;
+  if (opts.interactive) opts.onStage?.("Waiting for the model…");
   const task = gate.catch(() => undefined).then(async () => {
     // The account's AI policy decides which routes exist at all (local_only never reaches Gemini).
     const routes = planRoutes(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY));
@@ -112,13 +119,19 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
     let last: unknown;
     for (const [i, route] of routes.entries()) {
       const t0 = Date.now();
+      const budget = opts.interactive ? routeBudgetMs(route.provider, deadlineAt, t0) : undefined;
+      if (opts.interactive && !budget) {
+        last = last ?? new Error("The model took too long. Try again.");
+        break;
+      }
+      opts.interactive && opts.onStage?.(route.provider === "ollama" ? "Writing… (local model)" : "Writing… (Gemini)");
       try {
-        const text = await run(uid, route, prompt, schema, opts.temperature);
+        const text = await run(uid, route, prompt, schema, opts.temperature, budget);
         counters.classified++;
         live.noteAi(route.provider, Date.now() - t0, i > 0);
         return { text, model: `${route.provider}/${route.model}` };
       } catch (err) {
-        last = err;
+        last = new Error(aiFailureMessage(route.provider, err), { cause: err });
         live.noteAiFail();
         const next = routes[i + 1];
         if (next) console.warn(`[llm] ${route.provider}/${route.model} failed, trying ${next.provider}/${next.model}:`, (err as Error).message);

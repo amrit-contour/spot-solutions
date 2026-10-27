@@ -490,6 +490,8 @@ export interface Command {
   status: "pending" | "running" | "done" | "error";
   error?: string | null;
   createdAt: number;
+  /** summarize_thread: what the worker is doing now ("Reading 28 messages…"), written while it runs. */
+  stage?: string;
   /** scan_history: written by the worker while it runs. */
   progress?: { chats: number; done: number; found: number };
   /** learn_voice: written by the worker while it reads. */
