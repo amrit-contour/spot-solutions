@@ -4,7 +4,7 @@ import { DAY_SHORT, formatTime } from "@spot/shared";
 import { fmtDayShort, weekdayOf } from "../../lib/calendarDates";
 import { useApp } from "../../lib/app";
 import { cx } from "@spot/ui";
-import { IconMap } from "@spot/ui";
+import { IconRoom } from "@spot/ui";
 import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal } from "./shared";
 
 /** Week on a phone: a strip of the seven days (dots per show), then the days' shows grouped under day headers. */
@@ -74,7 +74,7 @@ export function Agenda({ dates, label, week }: { dates: string[]; label: string;
                           <span className="block truncate type-title-s">{ev.show.name}</span>
                           {venue && (
                             <span className="mt-0.5 flex items-center gap-1 type-body-s text-on-surface-variant">
-                              <IconMap className="icon size-3.5 flex-none" />
+                              <IconRoom className="icon size-3.5 flex-none" />
                               <span className="truncate">{venue.name}</span>
                             </span>
                           )}

@@ -31,7 +31,7 @@ import { BackfillSheet } from "../BackfillSheet";
 import { GroupSyncSheet } from "../GroupSyncSheet";
 import { PillRow, comicPills, type TellState } from "../Pills";
 import { Button, Chip, buttonClass, cx } from "@spot/ui";
-import { IconAdd, IconArrowRight, IconCancel, IconCheck, IconClock, IconClose, IconGroup, IconHistory, IconInbox, IconMap, IconMic, IconPen, IconSend, IconSparkle, type Icon } from "@spot/ui";
+import { IconAdd, IconArrowRight, IconCancel, IconCheck, IconClock, IconClose, IconGroup, IconHistory, IconInbox, IconMic, IconRoom, IconPen, IconSend, IconSparkle, type Icon } from "@spot/ui";
 import { laneOf } from "../../lib/lanes";
 import { ComicAvatar } from "../../lib/photos";
 
@@ -155,7 +155,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
           <h3 className="truncate type-title-m">{show.name}</h3>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-3 type-body-s text-on-surface-variant">
             <span className="inline-flex items-center gap-1"><IconClock className="icon size-3.5" />{formatTime(show.startTime)}</span>
-            {venue && <span className="inline-flex min-w-0 items-center gap-1"><IconMap className="icon size-3.5 flex-none" /><span className="truncate">{venue.name}</span></span>}
+            {venue && <span className="inline-flex min-w-0 items-center gap-1"><IconRoom className="icon size-3.5 flex-none" /><span className="truncate">{venue.name}</span></span>}
           </p>
         </div>
         <div className="flex-none">

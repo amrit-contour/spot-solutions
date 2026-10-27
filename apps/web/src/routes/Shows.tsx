@@ -13,7 +13,7 @@ import { GroupAvatar } from "../lib/photos";
 import { PageHeader } from "@spot/ui";
 import { ShowPeoplePicker } from "../components/ShowPeoplePicker";
 import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
-import { IconAdd, IconBuilding, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "@spot/ui";
+import { IconAdd, IconRoom, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "@spot/ui";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
@@ -55,7 +55,7 @@ export function Shows() {
         subtitle="The mics you curate, and where they happen"
         actions={
           <>
-            <Button variant="tonal" icon={IconBuilding} onClick={() => setEditingVenue({})}>
+            <Button variant="tonal" icon={IconRoom} onClick={() => setEditingVenue({})}>
               Venue
             </Button>
             <Button icon={IconAdd} onClick={() => (venues.length ? setEditingShow(newShow(venues[0].id)) : setEditingVenue({}))}>
@@ -66,7 +66,7 @@ export function Shows() {
       />
       <div className="grid gap-8 px-4 pb-12 sm:px-8">
         {!venues.length ? (
-          <Empty icon={IconBuilding} title="Start with a venue" action={<Button icon={IconAdd} onClick={() => setEditingVenue({})}>Add venue</Button>}>
+          <Empty icon={IconRoom} title="Start with a venue" action={<Button icon={IconAdd} onClick={() => setEditingVenue({})}>Add venue</Button>}>
             Where do your mics happen? Add the club first, then its weekly shows.
           </Empty>
         ) : (
@@ -76,7 +76,7 @@ export function Shows() {
               <section key={v.id}>
                 <div className="mb-3 flex items-center gap-3">
                   <span className="grid size-10 place-items-center rounded-md bg-tertiary-container text-on-tertiary-container">
-                    <IconBuilding className="icon size-5" />
+                    <IconRoom className="icon size-5" />
                   </span>
                   <div className="min-w-0 flex-1">
                     <h2 className="type-title-l">{v.name}</h2>

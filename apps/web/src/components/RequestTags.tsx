@@ -1,10 +1,11 @@
 // Pills on a request card: what the app knows (solid) and what Gemma read from the message (dashed).
 import { motion } from "motion/react";
+import type { ComponentType, SVGProps } from "react";
 import { INTENT_TAG_LABEL, type FactTagId, type IntentTag, type Comic, type SpotRequest, type Show, factTags } from "@spot/shared";
 import { Chip } from "@spot/ui";
-import { IconCrown, IconFlag, IconGroup, IconHistory, IconLightbulb, IconMap, IconMic, IconRepeat, IconStopwatch, IconSuitcase, IconUserPlus, IconCalendar, IconClock } from "@spot/ui";
+import { IconCrown, IconFlag, IconGroup, IconHistory, IconLightbulb, IconMic, IconRoom, IconRepeat, IconStopwatch, IconSuitcase, IconUserPlus, IconCalendar, IconClock } from "@spot/ui";
 
-type Icon = typeof IconMic;
+type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
 const FACT_ICON: Record<FactTagId, Icon> = {
   new_to_you: IconUserPlus,
@@ -37,7 +38,7 @@ export function requestPills(args: { r: SpotRequest; comic?: Comic; shows: Show[
   const facts = factTags({ comic, shows, week: r.weekOf, today, firstContact: r.firstContact, priorRequests: r.priorRequests });
   return [
     ...facts.map((f): Pill => ({ key: f.id, label: f.label, icon: FACT_ICON[f.id], kind: "fact" })),
-    ...(venueName ? [{ key: "venue", label: venueName, icon: IconMap, kind: "reading" } satisfies Pill] : []),
+    ...(venueName ? [{ key: "venue", label: venueName, icon: IconRoom, kind: "reading" } satisfies Pill] : []),
     ...(r.intent.tags ?? []).map((t): Pill => ({ key: t, label: INTENT_TAG_LABEL[t] ?? t, icon: READING_ICON[t] ?? IconLightbulb, kind: "reading" })),
   ];
 }
