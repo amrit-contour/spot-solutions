@@ -5,7 +5,9 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { ComicLogo } from "./components/ComicLogo";
 import { AccountMenu, AppShell, Spinner, IconAdd, IconCalendarMark, IconMic, IconBuilding, IconSettings, type NavEntry } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
+import { Landing } from "./routes/Landing";
 import { SignIn } from "./routes/SignIn";
+import { isStandalone } from "./lib/install";
 import { Placeholder } from "./routes/Placeholder";
 import { Rooms } from "./routes/Rooms";
 import { RosterProvider, useFirestoreRoster } from "./lib/roster";
@@ -56,7 +58,8 @@ export default function App() {
           <Spinner className="size-8" />
         </div>
       ) : user === null ? (
-        <SignIn />
+        // The installed app is already "the product": skip the marketing page and go straight to signing in.
+        isStandalone() ? <SignIn /> : <Landing />
       ) : (
         <AppShell nav={NAV} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={(align) => <AccountMenu user={user} align={align} onSignOut={() => void signOut(auth)} />}>
           <Routes>
