@@ -106,13 +106,15 @@ async function placeAdhoc(uid: string, show: Show | undefined, lineupId: string,
     if (!show || !lineup || lineup.status === "cancelled" || lineup.status === "canned") return null;
     if (lineup.slots.some((s) => s.comicId === comicId)) return lineup;
     if (!overfill && lineup.slots.length >= show.slotCount) return null;
-    const comic = (await tx.get(comicRef)).data() as Comic | undefined;
+    // Every read before any write: Firestore transactions refuse a get after a set/update.
+    const reqRef = col(uid, "requests").doc(`${lineup.weekOf}_${comicId}`);
+    const [comicSnap, reqSnap] = await Promise.all([tx.get(comicRef), tx.get(reqRef)]);
+    const comic = comicSnap.data() as Comic | undefined;
+    const req = reqSnap.data() as SpotRequest | undefined;
     const date = dateInWeek(lineup.weekOf, show.weekday);
     tx.update(lineupRef, { slots: [...lineup.slots, { comicId, minutes: show.includeSlotTime ? (show.defaultMinutes ?? null) : null, adhoc: true }] });
     // Ad hoc: in their history, but never counted against them by the cooldown (no lastPerformedWeek).
     tx.set(comicRef, { history: withHistory(comic?.history, { date, showId: show.id, showName: show.name, status: "confirmed", adhoc: true }) }, { merge: true });
-    const reqRef = col(uid, "requests").doc(`${lineup.weekOf}_${comicId}`);
-    const req = (await tx.get(reqRef)).data() as SpotRequest | undefined;
     if (req) tx.update(reqRef, { status: "confirmed", updatedAt: Date.now() });
     return lineup;
   });
