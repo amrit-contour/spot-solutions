@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import type { AccessEntry } from "@spot/shared";
 import { auth } from "@spot/ui/firebase";
 import { isAdmin, useAccessConfig } from "../lib/access";
-import { Button } from "@spot/ui";
+import { Button, sharpPhoto } from "@spot/ui";
 import { IconClock, IconLogout, IconShield } from "@spot/ui";
 
 export function Waiting({ user, entry }: { user: User; entry: AccessEntry | null }) {
@@ -30,7 +30,7 @@ export function Waiting({ user, entry }: { user: User; entry: AccessEntry | null
               : "Nothing BOT Curate is invite-only. The person running this server has been told you asked to join. This page opens by itself once they approve you."}
         </p>
         <p className="mt-6 inline-flex items-center gap-2 rounded-full bg-surface-container px-4 py-2 type-label-l text-on-surface-variant">
-          {user.photoURL && <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-6 rounded-full" />}
+          {user.photoURL && <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-6 rounded-full" />}
           <span className="text-on-surface-variant/80">Signed in as</span> <span className="text-on-surface">{user.email}</span>
         </p>
         <div className="mt-8">

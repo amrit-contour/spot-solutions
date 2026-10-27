@@ -203,7 +203,7 @@ export function SettingsPage() {
             <SettingsLinks current={tab} />
           </StickyBar>
         </div>
-        <div className="hidden w-60 flex-none lg:sticky lg:top-[calc(1.5rem+env(safe-area-inset-top)+var(--page-header-h,0px))] lg:block">
+        <div className="hidden w-60 flex-none lg:sticky lg:top-[calc(1.5rem+var(--page-header-h,0px))] lg:block">
           <SettingsLinks current={tab} vertical />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-4">

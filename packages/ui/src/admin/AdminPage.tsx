@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { PageHeader } from "../Shell";
+import { PageHeader, appScroller } from "../Shell";
 import { Spinner, Segmented, cx } from "../ui";
 import { AdminsPanel } from "./AdminsPanel";
 import { MembersPanel, type AdminCtx } from "./MembersPanel";
@@ -36,7 +36,7 @@ export function AdminPage({ me, extraTabs = [], approveLimit, title = "Members &
   const wanted = hash.replace("#", "");
   const current = tabs.some((t) => t.id === wanted) ? wanted : "members";
   useEffect(() => {
-    window.scrollTo({ top: 0 });
+    appScroller()?.scrollTo({ top: 0 });
   }, [current]);
 
   const ctx = list && admins ? { me, records: list, admins, activity } : null;

@@ -348,7 +348,7 @@ export function LineupBoard() {
 
           <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {activeShows.map((show) => (
-              <ShowColumn key={show.id} elsewhere={[...new Set(activeShows.filter((o) => o.id !== show.id).flatMap((o) => cols[o.id] ?? []))].filter((cid) => !(cols[show.id] ?? []).includes(cid))} dragKind={dragKind} shared={!activeId && settled} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} prev={prevLineups.data.find((l) => l.showId === show.id)} onAdd={(cid, seed) => addTo(cid, show, seed)} onAddTold={(cid, name) => addTold(cid, show, name)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
+              <ShowColumn key={show.id} dragKind={dragKind} shared={!activeId && settled} lineupsLoaded={!lineups.loading} pendingLeave={leaveReq?.showId === show.id ? leaveReq.id : null} onLeaveHandled={() => setLeaveReq(null)} offers={offers.data} poll={poll.data} prev={prevLineups.data.find((l) => l.showId === show.id)} onAdd={(cid, seed) => addTo(cid, show, seed)} onAddTold={(cid, name) => addTold(cid, show, name)} onRemove={(cid) => void removeFrom(cid, show)} regretsAfter={openShows.length === 1 && openShows[0].id === show.id ? regrets.length : 0} show={show} ids={cols[show.id] ?? []} lineup={lineupByShow.get(show.id)} requests={requests.data} comicsById={comicsById} requestByComic={requestByComic} lastWeek={lastWeek} />
             ))}
           </div>
         </div>
@@ -447,7 +447,7 @@ function ComicTile({ id, comic, request, lastWeek, index, minutes, disabled, act
   );
 }
 
-function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, prev, onAdd, onAddTold, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { /** On another show this week but not this one. */ elsewhere: string[]; dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; prev?: Lineup; onAdd: (cid: string, seed?: { name: string }) => Promise<void>; onAddTold: (cid: string, name: string) => void; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
+function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHandled, offers, poll, prev, onAdd, onAddTold, onRemove, regretsAfter, show, ids, lineup, requests, comicsById, requestByComic, lastWeek }: { dragKind: "member" | "tile" | null; shared: boolean; lineupsLoaded: boolean; pendingLeave: string | null; onLeaveHandled: () => void; offers: SpotOffer[]; poll: HostPoll | null; prev?: Lineup; onAdd: (cid: string, seed?: { name: string }) => Promise<void>; onAddTold: (cid: string, name: string) => void; onRemove: (cid: string) => void; regretsAfter: number; show: Show; ids: string[]; lineup?: Lineup; requests: SpotRequest[]; comicsById: Map<string, Comic>; requestByComic: Map<string, SpotRequest>; lastWeek: string }) {
   const { uid, week, currentWeek, venues, settings, session } = useApp();
   const venue = venues.find((v) => v.id === show.venueId);
   const status = lineup?.status ?? "draft";
@@ -622,17 +622,6 @@ function ShowColumn({ elsewhere, dragKind, shared, lineupsLoaded, pendingLeave, 
                     <span className="block type-body-s text-on-surface-variant">Reads the group again, adds anyone missing</span>
                   </MenuItem>
                   <MenuItem onClick={() => (close(), void repeat())}>Repeat last week's lineup</MenuItem>
-                  {elsewhere.length > 0 && ids.length < show.slotCount && (
-                    <>
-                      <p className="mt-1 border-t border-outline-variant/40 px-4 pt-2 pb-1 type-label-m text-on-surface-variant">Also put on this show</p>
-                      {elsewhere.slice(0, 12).map((cid) => (
-                        <MenuItem key={cid} onClick={() => (close(), void onAdd(cid))}>
-                          {comicsById.get(cid)?.name ?? `+${cid.split("@")[0]}`}
-                          <span className="block type-body-s text-on-surface-variant">{settings.rules.onePerWeek && !(show.pocs?.includes(cid) || show.regulars?.includes(cid) || show.protected?.includes(cid)) ? "Moves them off their other show" : "Stays on their other show too"}</span>
-                        </MenuItem>
-                      ))}
-                    </>
-                  )}
                   <MenuItem disabled={ids.length >= show.slotCount} onClick={() => (close(), setOfferOpen(true))}>Offer a spot…</MenuItem>
                   <MenuItem disabled={!resetPlan} onClick={() => (close(), setResetOpen(true))}>Reset lineup…</MenuItem>
                   <MenuItem onClick={() => (close(), void setLineupStatus(uid, week, show, "cancelled"))}>Mark mic cancelled</MenuItem>

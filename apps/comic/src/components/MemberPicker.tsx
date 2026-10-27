@@ -1,12 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { filterMembers } from "@spot/shared";
-import { Avatar, Button, IconSearch } from "@spot/ui";
+import { Avatar, sharpPhoto, Button, IconSearch } from "@spot/ui";
 import { loadMembers, type MemberEntry } from "../lib/members";
 
 function Photo({ m, size }: { m: MemberEntry; size: number }) {
   const [bad, setBad] = useState(false);
   if (!m.photoURL || bad) return <Avatar name={m.name} size={size} />;
-  return <img src={m.photoURL} alt="" width={size} height={size} referrerPolicy="no-referrer" loading="lazy" onError={() => setBad(true)} className="flex-none rounded-full bg-surface-high object-cover" style={{ width: size, height: size }} />;
+  return <img src={sharpPhoto(m.photoURL)} alt="" width={size} height={size} referrerPolicy="no-referrer" loading="lazy" onError={() => setBad(true)} className="flex-none rounded-full bg-surface-high object-cover" style={{ width: size, height: size }} />;
 }
 
 function Who({ m, size = 40 }: { m: MemberEntry; size?: number }) {

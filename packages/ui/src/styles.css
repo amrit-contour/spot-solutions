@@ -117,7 +117,9 @@
   @media (hover: hover) and (pointer: fine) {
     &:hover::before { opacity: 0.08; }
   }
+  /* Pressed only while a finger is actually down on a touch screen: no lingering overlay after the tap. */
   &:active::before { opacity: 0.12; }
+  @media (pointer: coarse) { &::before { transition-duration: 80ms; } }
   &:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
 }
 
@@ -128,7 +130,7 @@
 }
 
 @layer base {
-  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; background: var(--md-sys-color-surface); }
   body {
     margin: 0;
     background: var(--md-sys-color-surface);

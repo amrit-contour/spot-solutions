@@ -45,7 +45,7 @@ export function StickyBar({
       data-stuck={stuck || undefined}
       className={cx(
         // z-20: above page content and the Requests sticky aside, below the bottom nav (z-40), menus and sheets (z-[60]).
-        "sticky top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))] z-20 border-b border-transparent bg-surface transition-[border-color] duration-200",
+        "sticky top-[var(--page-header-h,0px)] z-20 border-b border-transparent bg-surface transition-[border-color] duration-200",
         bleed && "-mx-4 px-4 sm:-mx-8 sm:px-8",
         "data-[stuck]:border-outline-variant",
         className,

@@ -22,6 +22,16 @@ export type NavEntry = {
 type ShellCtx = { accountMenu: (align?: "left" | "right") => ReactNode; phoneStatus?: ReactNode };
 const ShellContext = createContext<ShellCtx>({ accountMenu: () => null });
 
+/**
+ * The page's scroller. On iOS 26 the document's own scroll view gets a system "scroll edge effect" (a progressive blur) under the
+ * status bar and toolbars, which smeared our title and avatar. So the document never scrolls: the shell is exactly one viewport
+ * tall and this element scrolls inside it, below the safe area, where the system draws no effect.
+ */
+export const APP_SCROLL_ID = "app-scroll";
+export function appScroller(): HTMLElement | null {
+  return typeof document === "undefined" ? null : document.getElementById(APP_SCROLL_ID);
+}
+
 export function StatusDot({ tone }: { tone: "ok" | "wait" | "error" | "idle" }) {
   const c = { ok: "bg-ok", wait: "bg-primary", error: "bg-error", idle: "bg-outline" }[tone];
   return (
@@ -84,13 +94,16 @@ export function AppShell({
   children: ReactNode;
 }) {
   const loc = useLocation();
+  // A new page starts at its top (the document used to be the scroller; now it's <main>).
+  useEffect(() => {
+    appScroller()?.scrollTo(0, 0);
+  }, [loc.pathname]);
   return (
     <ShellContext.Provider value={{ accountMenu, phoneStatus }}>
-      <div className="flex min-h-dvh bg-surface">
-        {/* Installed app: the status bar / notch area is painted with the page colour, so scrolled content never shows through it. */}
-        <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-50 h-[env(safe-area-inset-top)] bg-surface" />
+      {/* One viewport tall, and padded below the status bar: the scroller (main) starts under it, so nothing ever scrolls beneath the notch. */}
+      <div className="flex h-dvh overflow-hidden bg-surface pt-[env(safe-area-inset-top)]">
         {/* Rail >= 600px */}
-        <nav aria-label="Main" className="sticky top-0 hidden h-dvh w-24 flex-none flex-col items-center gap-3 bg-surface pt-[calc(1.25rem+env(safe-area-inset-top))] pb-5 sm:flex">
+        <nav aria-label="Main" className="hidden h-full w-24 flex-none flex-col items-center gap-3 bg-surface pt-5 pb-5 sm:flex">
           <NavLink to="/" aria-label={`${appName} home`} className="mb-5">
             {logo ?? <Logo className="size-11" />}
           </NavLink>
@@ -102,7 +115,7 @@ export function AppShell({
           {railFooter}
         </nav>
 
-        <main className="min-w-0 flex-1 pt-[env(safe-area-inset-top)] pb-[calc(var(--nav-h)+1rem)] sm:pb-0">
+        <main id={APP_SCROLL_ID} className="min-w-0 flex-1 overflow-x-clip overflow-y-auto overscroll-y-contain pb-[calc(var(--nav-h)+1rem)] [-webkit-overflow-scrolling:touch] sm:pb-0">
           {banner}
           {/* CSS keyframes, not AnimatePresence: they always run to the end, so a route can never get stuck invisible. */}
           <div key={loc.pathname} className="page-enter">
@@ -158,16 +171,16 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
   // Frosted as soon as anything scrolls under it. The bar's height never changes, so there's no threshold dance.
   useEffect(() => {
     let frame = 0;
+    const sc: HTMLElement | Window = appScroller() ?? window;
     const read = () => {
       frame = 0;
-      const y = window.scrollY;
-      setStuck(y > 2);
+      setStuck((sc instanceof Window ? window.scrollY : sc.scrollTop) > 2);
     };
     const onScroll = () => (frame ||= requestAnimationFrame(read));
     read();
-    window.addEventListener("scroll", onScroll, { passive: true });
+    sc.addEventListener("scroll", onScroll, { passive: true });
     return () => {
-      window.removeEventListener("scroll", onScroll);
+      sc.removeEventListener("scroll", onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
   }, []);
@@ -182,7 +195,7 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       // scroll frame, which flickers). Fixed height: only the hairline/shadow changes when stuck (box-shadow never affects layout).
       // Nothing above it but the notch strip, so the avatar always sits on plain surface, never under glass.
       className={cx(
-        "sticky top-[env(safe-area-inset-top)] z-30 bg-surface px-4 pt-3 pb-2 transition-shadow duration-200 motion-reduce:transition-none sm:px-8 sm:pt-4 sm:pb-3",
+        "sticky top-0 z-30 bg-surface px-4 pt-3 pb-2 transition-shadow duration-200 motion-reduce:transition-none sm:px-8 sm:pt-4 sm:pb-3",
         stuck ? "shadow-[0_1px_0_var(--color-outline-variant),0_6px_12px_-8px_rgb(0_0_0/0.5)]" : "shadow-[0_1px_0_transparent]",
       )}
     >
@@ -199,10 +212,16 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       {bar && <div className="mt-2 sm:mt-3">{bar}</div>}
       </div>
     </header>
-    {/* Connection status is for glancing at, not pinning: it scrolls away with the page. */}
-    {phoneStatus && <div className="px-4 pt-2 sm:hidden">{phoneStatus}</div>}
-    {/* The subtitle scrolls away with the page instead of collapsing inside the bar. */}
-    {subtitle && <p className={cx("px-4 pt-2 type-body-m text-on-surface-variant sm:px-8", width === "narrow" && "mx-auto w-full max-w-3xl")}>{subtitle}</p>}
+    {/* One meta row under the title: connection chip (phones) and the subtitle share a left edge with the title, 8px under it.
+        They sit on one line when they fit and wrap cleanly when they don't. It scrolls away with the page. */}
+    {(phoneStatus || subtitle) && (
+      <div className="px-4 pt-0.5 pb-3 sm:px-8">
+        <div className={cx("flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5", width === "narrow" && "mx-auto w-full max-w-[44rem]")}>
+          {phoneStatus && <div className="flex min-w-0 max-w-full flex-none sm:hidden">{phoneStatus}</div>}
+          {subtitle && <p className="min-w-0 flex-1 basis-48 type-body-m text-on-surface-variant">{subtitle}</p>}
+        </div>
+      </div>
+    )}
     </>
   );
 }

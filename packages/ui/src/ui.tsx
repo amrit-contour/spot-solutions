@@ -163,6 +163,11 @@ export function Chip({
   );
 }
 
+/** Google profile photos default to a 96px crop (=s96-c); ask for 240px so they stay sharp on a 3x phone screen. */
+export function sharpPhoto(url: string, px = 240) {
+  return url.replace(/=s\d+(-c)?(?=$|\?)/, `=s${px}-c`);
+}
+
 export function Avatar({ name, size = 40, tone = "primary" }: { name: string; size?: number; tone?: "primary" | "tertiary" | "secondary" }) {
   const t = { primary: "bg-primary-container text-on-primary-container", tertiary: "bg-tertiary-container text-on-tertiary-container", secondary: "bg-secondary-container text-on-secondary-container" }[tone];
   return (

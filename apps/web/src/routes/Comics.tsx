@@ -100,7 +100,7 @@ export function Comics() {
 
   return (
     <div className="w-full">
-      <PageHeader title="Comics" subtitle={`${comics.length} on your roster. New faces are added when they message you, or import your scene.`} actions={
+      <PageHeader title="Comics" subtitle={`${comics.length} on your roster. New faces join when they message you.`} actions={
         <>
           <Menu
             align="right"

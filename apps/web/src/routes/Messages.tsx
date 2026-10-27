@@ -43,7 +43,7 @@ import { timeAgo, useCollection, useNow, userDoc } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
 import { demoSource, liveSource, type ChatSource, type MentionTag } from "../lib/messages";
 import { placeAsTold, placeComic } from "../lib/lineup";
-import { PageHeader } from "@spot/ui";
+import { PageHeader, appScroller } from "@spot/ui";
 import { Menu, MenuItem } from "@spot/ui";
 import { COMIC_MESSAGE_KEYS, SnippetMenu } from "../components/SnippetMenu";
 import { GroupPostsEditor } from "../components/GroupPosts";
@@ -147,7 +147,7 @@ export function Messages() {
       <div className={anyOpen ? "hidden lg:contents" : "contents"}>
         <PageHeader
           title="Messages"
-          subtitle="Chats with the comics on your list and your show groups. Read live from your WhatsApp, never saved."
+          subtitle="Read live from your WhatsApp, never saved."
           actions={ready && <IconButton icon={IconRefresh} label="Refresh chats" onClick={() => void list.refresh()} disabled={list.loading} className={cx("size-9", list.loading && "[&_svg]:animate-spin")} />}
         />
       </div>
@@ -159,7 +159,7 @@ export function Messages() {
           ) : (
             <>
               {demo && <p className="mb-3 rounded-lg bg-tertiary-container px-4 py-3 type-body-s text-on-tertiary-container">Sample chats built from the demo's requests. A real account shows your WhatsApp conversations here.</p>}
-              <div className="sticky top-[calc(env(safe-area-inset-top)+var(--page-header-h,0px))] z-20 -mx-4 flex flex-col gap-2 bg-surface px-4 pt-2 pb-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:px-0">
+              <div className="sticky top-[var(--page-header-h,0px)] z-20 -mx-4 flex flex-col gap-2 bg-surface px-4 pt-2 pb-2 sm:-mx-8 sm:px-8 lg:static lg:mx-0 lg:px-0">
                 <label className="relative block">
                   <IconSearch className="icon pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-on-surface-variant" />
                   <input
@@ -634,16 +634,19 @@ function Conversation({
   const bottomGap = () => {
     const el = scroller.current;
     const desktop = window.matchMedia("(min-width: 1024px)").matches;
-    return desktop && el ? el.scrollHeight - el.scrollTop - el.clientHeight : document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+    const page = appScroller();
+    if (desktop && el) return el.scrollHeight - el.scrollTop - el.clientHeight;
+    return page ? page.scrollHeight - page.scrollTop - page.clientHeight : document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
   };
   useEffect(() => {
     const onScroll = () => (stick.current = bottomGap() < 160);
     const el = scroller.current;
     el?.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("scroll", onScroll, { passive: true });
+    const page = appScroller();
+    page?.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       el?.removeEventListener("scroll", onScroll);
-      window.removeEventListener("scroll", onScroll);
+      page?.removeEventListener("scroll", onScroll);
     };
   }, []);
   const lastKey = messages[messages.length - 1]?.id ?? "";
@@ -651,7 +654,7 @@ function Conversation({
     if (!stick.current && lastKey) return;
     const el = scroller.current;
     if (window.matchMedia("(min-width: 1024px)").matches && el) el.scrollTop = el.scrollHeight;
-    else window.scrollTo({ top: document.documentElement.scrollHeight });
+    else appScroller()?.scrollTo({ top: appScroller()!.scrollHeight });
   }, [lastKey, pending.length]);
 
   const rows = useMemo(() => groupByDay(messages, now, tz), [messages, now, tz]);
@@ -659,7 +662,7 @@ function Conversation({
 
   return (
     <div className="-mb-4 flex min-h-[calc(100dvh-env(safe-area-inset-top)-var(--nav-h))] flex-1 flex-col sm:mb-0 sm:min-h-[calc(100dvh-env(safe-area-inset-top))] lg:min-h-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-outline-variant">
-      <header className="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 flex flex-none items-center gap-2 border-b border-outline-variant bg-surface px-2 pt-3 pb-2 sm:-mx-8 sm:px-6 lg:static lg:mx-0 lg:bg-surface-low lg:px-3 lg:py-2">
+      <header className="sticky top-0 z-30 -mx-4 flex flex-none items-center gap-2 border-b border-outline-variant bg-surface px-2 pt-3 pb-2 sm:-mx-8 sm:px-6 lg:static lg:mx-0 lg:bg-surface-low lg:px-3 lg:py-2">
         <IconButton icon={IconArrowLeft} label="Back to chats" onClick={onBack} className="lg:hidden" />
         {header}
         <IconButton icon={IconRefresh} label="Refresh this chat" onClick={() => void newest.refresh()} disabled={newest.loading} className={cx(newest.loading && "[&_svg]:animate-spin")} />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { signInWithPopup, signOut } from "firebase/auth";
 import { toast } from "sonner";
-import { Avatar, Button, IconArrowRight, IconBell, IconCalendarMark, IconChat, IconGroup, IconInbox, IconMoon, IconShield, IconSun, IconTemplate, PageHeader, Segmented, SettingRow, Switch, savedBrand, savedMode, setBrand, setMode, useBrand, type Brand, type ThemeMode } from "@spot/ui";
+import { Avatar, sharpPhoto, Button, IconArrowRight, IconBell, IconCalendarMark, IconChat, IconGroup, IconInbox, IconMoon, IconShield, IconSun, IconTemplate, PageHeader, Segmented, SettingRow, Switch, savedBrand, savedMode, setBrand, setMode, useBrand, type Brand, type ThemeMode } from "@spot/ui";
 import { auth, google } from "@spot/ui/firebase";
 import { IconTile, ListGroup, ListRow, Page, Section } from "../components/ui";
 import { useComicSettings, useWatchedGroups } from "../lib/alerts";
@@ -41,7 +41,7 @@ export function Settings({ uid }: { uid: string }) {
         <Section title="Account">
           <div className="flex min-w-0 flex-col gap-4 rounded-lg bg-surface-low p-4">
             <div className="flex min-w-0 items-center gap-3">
-              {user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-12 flex-none rounded-full object-cover" /> : <Avatar name={name} size={48} />}
+              {user?.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-12 flex-none rounded-full object-cover" /> : <Avatar name={name} size={48} />}
               <div className="min-w-0 flex-1">
                 <p className="truncate type-title-m">{name}</p>
                 {user?.email && user.displayName && <p className="truncate type-body-s text-on-surface-variant">{user.email}</p>}

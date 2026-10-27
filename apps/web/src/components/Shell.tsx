@@ -23,11 +23,17 @@ const NAV: NavEntry[] = [
   { to: "/settings", label: "Settings", icon: IconSettings, phoneHidden: true },
 ];
 
-export function useConnection() {
+/** "+91 ••••• 16962": enough to recognise the number, never the whole thing. */
+function maskPhone(p?: string | null) {
+  const d = (p ?? "").replace(/\D/g, "");
+  return d.length >= 8 ? `+${d.slice(0, d.length - 10 > 0 ? d.length - 10 : 2)} ••••• ${d.slice(-5)}` : "";
+}
+
+export function useConnection(): { tone: "ok" | "wait" | "error" | "idle"; label: string; detail?: string; short: string } {
   const { session, workerOnline } = useApp();
-  if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode · your own sandbox", short: "Demo" };
+  if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode", detail: "your own sandbox", short: "Demo" };
   if (!workerOnline) return { tone: "error" as const, label: "Server offline", short: "Offline" };
-  if (session?.status === "ready") return { tone: "ok" as const, label: `WhatsApp · +${session.phone ?? ""}`, short: "Live" };
+  if (session?.status === "ready") return { tone: "ok" as const, label: "WhatsApp connected", detail: maskPhone(session.phone), short: "Live" };
   if (session?.status === "qr" || session?.status === "starting" || session?.status === "authenticated") return { tone: "wait" as const, label: "Linking WhatsApp…", short: "Linking" };
   return { tone: "idle" as const, label: "WhatsApp not linked", short: "Unlinked" };
 }
@@ -51,12 +57,12 @@ function ShellFrame({ children }: { children: ReactNode }) {
       logo={<CuratingLogo className="size-11" />}
       accountMenu={(align) => <AccountMenu align={align} />}
       phoneStatus={
-        <NavLink to="/settings#whatsapp" className="state-layer inline-flex min-w-0 items-center gap-2 rounded-full px-2 py-1 type-label-m text-on-surface-variant">
+        <NavLink to="/settings#whatsapp" title={conn.detail ? `${conn.label} · ${conn.detail}` : conn.label} className="state-layer inline-flex h-7 max-w-full min-w-0 items-center gap-2 rounded-full bg-surface-container px-3 type-label-m text-on-surface-variant">
           <StatusDot tone={conn.tone} /> <span className="truncate">{conn.label}</span>
         </NavLink>
       }
       railFooter={
-        <NavLink to="/settings#whatsapp" title={conn.label} className="state-layer flex flex-col items-center gap-1.5 rounded-lg px-2 py-2 text-on-surface-variant">
+        <NavLink to="/settings#whatsapp" title={conn.detail ? `${conn.label} · ${conn.detail}` : conn.label} className="state-layer flex flex-col items-center gap-1.5 rounded-lg px-2 py-2 text-on-surface-variant">
           <span className="relative">
             <IconPhone className="icon size-6" />
             <span className="absolute -right-1 -bottom-0.5">

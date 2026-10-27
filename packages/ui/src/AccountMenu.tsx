@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate, type NavigateFunction } from "react-router-dom";
 import { Menu } from "./Menu";
-import { Avatar, Segmented, cx, type Icon } from "./ui";
+import { Avatar, Segmented, sharpPhoto, cx, type Icon } from "./ui";
 import { IconLogout, IconMoon, IconSettings, IconSun } from "./icons";
 import { savedMode, setMode, type ThemeMode } from "./theme";
 
@@ -40,15 +40,15 @@ export function AccountMenu({
     <Menu
       align={align}
       trigger={(toggle, open) => (
-        <button onClick={toggle} aria-label="Account" aria-expanded={open} className={cx("state-layer pressable rounded-full p-0.5", open && "ring-2 ring-primary")}>
-          {user.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
+        <button onClick={toggle} aria-label="Account" aria-expanded={open} className={cx("pressable rounded-full p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary", open && "ring-2 ring-primary")}>
+          {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
         </button>
       )}
     >
       {(close) => (
         <div className="w-72">
           <div className="flex items-center gap-3 px-4 pt-2 pb-3">
-            {user.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
+            {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
             <div className="min-w-0">
               <div className="truncate type-title-s">{name}</div>
               {user.email && <div className="truncate type-body-s text-on-surface-variant">{user.email}</div>}
