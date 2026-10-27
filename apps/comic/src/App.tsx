@@ -8,17 +8,16 @@ import { auth } from "@spot/ui/firebase";
 import { Landing } from "./routes/Landing";
 import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/install";
-import { Placeholder } from "./routes/Placeholder";
 import { Rooms } from "./routes/Rooms";
-import { RostersApp } from "./routes/RostersApp";
-import { ComicStores } from "./routes/Stores";
-import { Today } from "./routes/Today";
-import { Asks } from "./routes/Asks";
-import { MySpots } from "./routes/MySpots";
 import { Alerts } from "./routes/Alerts";
 import { Groups } from "./routes/Groups";
 import { Settings } from "./routes/Settings";
 import { useForegroundPush } from "./lib/push";
+import { ComicStores } from "./routes/Stores";
+import { Today } from "./routes/Today";
+import { Asks } from "./routes/Asks";
+import { MySpots } from "./routes/MySpots";
+import { RostersApp } from "./routes/RostersApp";
 import { RosterProvider, useFirestoreRoster } from "./lib/roster";
 
 // Dev only: the Rooms page on the Bangalore seed with no sign-in (/dev/rooms, or /dev/rooms?empty=1). Dropped from production builds.
@@ -88,6 +87,8 @@ export default function App() {
               <Route path="/asks" element={<Asks />} />
               <Route path="/spots" element={<MySpots />} />
             </Route>
+            <Route path="/alerts" element={<Alerts uid={user.uid} />} />
+            <Route path="/groups" element={<Groups uid={user.uid} />} />
             <Route path="/settings" element={<Settings uid={user.uid} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
