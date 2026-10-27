@@ -310,6 +310,12 @@
   .banner button { background: var(--primary); color: var(--on-primary); flex: none; }
   .banner.bad button { background: var(--error); color: var(--surface); }
   /* Health card (Check and repair) */
+  dialog.ask { border: 0; padding: 20px; border-radius: 20px; background: var(--s-high); color: var(--on-surface); max-width: min(440px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgb(0 0 0 / .35); }
+  dialog.ask::backdrop { background: rgb(0 0 0 / .45); }
+  dialog.ask b { font-size: 16px; }
+  dialog.ask p { margin: 8px 0 0; white-space: pre-line; }
+  dialog.ask .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  dialog.ask button.stop { background: var(--error-c); color: var(--on-error-c); }
   .health { margin-top: 12px; }
   .accgroup + .accgroup { border-top: 1px solid color-mix(in srgb, var(--outline-v) 50%, transparent); }
   .accgroup .acc.agent { margin-left: 22px; padding-top: 0; border-top: 0; }
@@ -497,6 +503,22 @@ const $ = (s) => document.querySelector(s);
 const fmt = (b) => b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : b >= 1e6 ? Math.round(b / 1e6) + " MB" : b >= 1e3 ? Math.round(b / 1e3) + " KB" : b + " B";
 const up = (s) => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+/** In-page confirm. The Mac app's WKWebView has no JavaScript dialogs (window.confirm returns false there), so never use confirm(). */
+function askConfirm(message, { ok = "Continue", danger = false } = {}) {
+  return new Promise((resolve) => {
+    const [title, ...rest] = String(message).split("\n\n");
+    const d = document.createElement("dialog");
+    d.className = "ask";
+    d.innerHTML = `<form method="dialog"><b>${esc(title)}</b>${rest.length ? `<p class="muted small">${esc(rest.join("\n\n"))}</p>` : ""}<div class="acts"><button type="button" class="tonal" value="no">Cancel</button><button type="submit" value="yes" class="${danger || /^(Delete|Remove|Stop|Turn off)/.test(title) ? "stop" : ""}">${esc(/^Delete/.test(title) ? "Delete" : /^Remove/.test(title) ? "Remove" : /^Stop/.test(title) ? "Stop" : ok)}</button></div></form>`;
+    const done = (v) => { d.close(); d.remove(); resolve(v); };
+    d.querySelector('button[value="no"]').onclick = () => done(false);
+    d.addEventListener("cancel", (e) => { e.preventDefault(); done(false); });
+    d.querySelector("form").onsubmit = (e) => { e.preventDefault(); done(true); };
+    document.body.appendChild(d);
+    d.showModal();
+    d.querySelector('button[type="submit"]').focus();
+  });
+}
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3500); }
 async function api(path, body) {
   const r = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
@@ -1342,7 +1364,7 @@ function wireStorage() {
   const go = $("[data-move-go]");
   if (go) go.onclick = async () => {
     const where = moveCheck?.path || moveInput.trim();
-    if (!confirm(`Move all of Nothing BOT Server's data${moveModels ? " and the AI models" : ""} to ${where}?\n\nWhatsApp goes offline for a few minutes while it is copied and checked. If anything fails, everything goes back to the old folder. The old copy stays until you delete it.`)) return;
+    if (!(await askConfirm(`Move all of Nothing BOT Server's data${moveModels ? " and the AI models" : ""} to ${where}?\n\nWhatsApp goes offline for a few minutes while it is copied and checked. If anything fails, everything goes back to the old folder. The old copy stays until you delete it.`))) return;
     startingMove = true; render();
     try { await post("/api/storage/move", { path: where, models: moveModels }); restarting = false; toast("Moving the data. Keep this page open."); moveCheck = null; }
     catch (err) { toast(err.message); }
@@ -1351,7 +1373,7 @@ function wireStorage() {
   const del = $("[data-move-delete]");
   if (del) del.onclick = async () => {
     const mv = stor?.move;
-    if (!confirm(`Delete the old copy in ${mv?.old}${mv?.moveModels && mv?.modelsOld ? ` and the old AI models in ${mv.modelsOld}` : ""}?\n\nThis can't be undone. Only do it once you've seen WhatsApp working from the new folder.`)) return;
+    if (!(await askConfirm(`Delete the old copy in ${mv?.old}${mv?.moveModels && mv?.modelsOld ? ` and the old AI models in ${mv.modelsOld}` : ""}?\n\nThis can't be undone. Only do it once you've seen WhatsApp working from the new folder.`))) return;
     try { await post("/api/storage/cleanup", {}); toast("Deleting the old copy…"); } catch (err) { toast(err.message); }
     refresh(true);
   };
@@ -1567,7 +1589,7 @@ function wire() {
   const logs = $("#logs"); if (logs) logs.scrollTop = logs.scrollHeight;
   document.querySelectorAll("[data-worker]").forEach((b) => b.onclick = async () => {
     const act = b.dataset.worker;
-    if (act === "stop" && !confirm(b.dataset.models === "1" ? "Stop the server?\n\nWhatsApp is saved and closed and the local model stops too, so your messages are not read until you press Start server. It stays stopped after a restart or an update. This page stays up." : "Stop the worker?\n\nWhatsApp is saved and closed, and your messages are not read until you press Start. It stays stopped after a restart or an update. The local model keeps running.")) return;
+    if (act === "stop" && !(await askConfirm(b.dataset.models === "1" ? "Stop the server?\n\nWhatsApp is saved and closed and the local model stops too, so your messages are not read until you press Start server. It stays stopped after a restart or an update. This page stays up." : "Stop the worker?\n\nWhatsApp is saved and closed, and your messages are not read until you press Start. It stays stopped after a restart or an update. The local model keeps running."))) return;
     ctlBusy = act; render();
     try { const r = await api("/api/worker", { action: act, models: b.dataset.models === "1" }); toast(act === "stop" ? (b.dataset.models === "1" ? "Server stopped" : "Worker stopped") : r.state === "running" ? "Server running" : "Starting the server…"); }
     catch (e) { toast(e.message); }
@@ -1575,7 +1597,7 @@ function wire() {
   });
   document.querySelectorAll('[data-model="stop"],[data-model="start"]').forEach((b) => b.onclick = async () => {
     const act = b.dataset.model;
-    if (act === "stop" && !confirm("Stop Ollama?\n\nLocal AI turns off and the server uses Gemini if you've added a key. It stays stopped after a restart or an update until you press Start.")) return;
+    if (act === "stop" && !(await askConfirm("Stop Ollama?\n\nLocal AI turns off and the server uses Gemini if you've added a key. It stays stopped after a restart or an update until you press Start."))) return;
     ctlBusy = "model-" + act; render();
     try { const r = await api("/api/model", { action: act }); toast(act === "stop" ? "Ollama stopped" : r.model?.state === "running" ? "Ollama running" : "Starting Ollama…"); }
     catch (e) { toast(e.message); }
@@ -1690,7 +1712,7 @@ function wire() {
   };
   const kr = $("[data-key-replace]"); if (kr) kr.onclick = () => { replacingKey = true; render(); };
   const kc = $("[data-key-cancel]"); if (kc) kc.onclick = () => { replacingKey = false; gKeyInput = ""; editing = false; render(); };
-  const kd = $("[data-key-remove]"); if (kd) kd.onclick = () => { if (confirm("Remove the server's Gemini key? Curators without their own key will have no Gemini fallback.")) run("key", async () => { await post("/api/ai/key", { key: "" }); gModels = null; toast("Key removed. Worker restarting."); }); };
+  const kd = $("[data-key-remove]"); if (kd) kd.onclick = async () => { if (await askConfirm("Remove the server's Gemini key? Curators without their own key will have no Gemini fallback.")) run("key", async () => { await post("/api/ai/key", { key: "" }); gModels = null; toast("Key removed. Worker restarting."); }); };
   const fm = $("[data-fetch-models]"); if (fm) fm.onclick = async () => {
     gModelsBusy = true; render();
     try { gModels = (await post("/api/ai/models", { key: gKeyInput.trim() || undefined })).models; if (!draft.geminiModel && gModels.length) draft.geminiModel = gModels.find((m) => /flash/.test(m)) || gModels[0]; toast(`${gModels.length} models`); } catch (e) { toast(e.message); }
@@ -1705,14 +1727,14 @@ function wire() {
   });
   document.querySelectorAll("[data-mdl-use]").forEach((b) => b.onclick = async () => {
     const name = b.dataset.mdlUse;
-    if (!confirm(`Use ${name}?\n\nThe server answers with it from now on. The worker restarts for a moment.`)) return;
+    if (!(await askConfirm(`Use ${name}?\n\nThe server answers with it from now on. The worker restarts for a moment.`))) return;
     modelBusy[name] = "use"; render();
     try { await post("/api/ai/defaults", { localModel: name }); if (draft) draft.localModel = name; toast(`Using ${name}. Worker restarting.`); } catch (e) { toast(e.message); }
     delete modelBusy[name]; refresh(true);
   });
   document.querySelectorAll("[data-mdl-del]").forEach((b) => b.onclick = async () => {
     const name = b.dataset.mdlDel;
-    if (!confirm(`Delete ${name}?\n\nThis frees ${fmt(Number(b.dataset.size) || 0)} on this computer. You can download it again later.`)) return;
+    if (!(await askConfirm(`Delete ${name}?\n\nThis frees ${fmt(Number(b.dataset.size) || 0)} on this computer. You can download it again later.`))) return;
     modelBusy[name] = "del"; render();
     try { const r = await post("/api/ai/delete-model", { model: name }); toast(`Deleted ${name}, freed ${fmt(r.freed || 0)}.`); } catch (e) { toast(e.message); }
     delete modelBusy[name]; refresh(true);
@@ -1739,9 +1761,9 @@ function wire() {
       refresh(true);
     };
   }
-  document.querySelectorAll("[data-local]").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("[data-local]").forEach((b) => b.onclick = async () => {
     const on = b.dataset.local === "on";
-    if (!confirm(on ? "Turn on the local model? This installs Ollama and downloads the model (about 3.5 GB). The worker restarts when it's ready." : "Turn off the local model? The server will answer with Gemini only, and can't host accounts set to Local only. Downloaded models stay on disk.")) return;
+    if (!(await askConfirm(on ? "Turn on the local model? This installs Ollama and downloads the model (about 3.5 GB). The worker restarts when it's ready." : "Turn off the local model? The server will answer with Gemini only, and can't host accounts set to Local only. Downloaded models stay on disk."))) return;
     run("local", async () => { await post("/api/local", { enabled: on }); toast(on ? "Setting up the local model…" : "Turning it off…"); });
   });
 
