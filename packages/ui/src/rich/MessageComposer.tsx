@@ -18,7 +18,8 @@ import {
 import { Bubble, Button, Segmented, Switch, TextInput, cx } from "../ui";
 import { IconAdd, IconClose, IconMap } from "../icons";
 import { RichField } from "./RichField";
-import { PinCard, PollCard, WaText } from "./WaText";
+import { PinCard, PollCard } from "./WaText";
+import { TemplateBubble } from "./TemplatePreview";
 
 const KIND_LABEL: Record<MessageKind, string> = { text: "Text", poll: "Poll", location: "Location" };
 
@@ -79,6 +80,7 @@ export function MessageComposer({
   const poll = value.poll ?? emptyPoll();
   const problem = value.kind === "poll" ? pollProblem(poll) : null;
   const [touched, setTouched] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
 
   const setPoll = (p: Partial<PollSpec>) => onChange({ ...value, poll: { ...poll, ...p } });
   const setOption = (i: number, v: string) => setPoll({ options: poll.options.map((o, j) => (j === i ? v : o)) });
@@ -114,7 +116,9 @@ export function MessageComposer({
             mono={!compact}
             id={`${idPrefix}-body`}
             ariaLabel="Message text"
-            preview={Boolean(compact)}
+            previewVars={vars}
+            knownVars={variables?.map((v) => v.key)}
+            onPreviewChange={setPreviewing}
             onFocus={() => (last.current = "body")}
             fieldRef={(el) => (fields.current.body = el)}
           />
@@ -216,7 +220,7 @@ export function MessageComposer({
       {!compact && variables && value.kind !== "location" && (
         <div className="flex flex-wrap gap-1.5">
           {variables.map((v) => (
-            <button key={v.key} type="button" onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()} onClick={() => insertToken(v.key)} className="state-layer pressable touch-manipulation h-7 rounded-sm bg-surface-high px-2.5 font-mono text-xs text-on-surface-variant" title={`Insert ${v.label}`}>
+            <button key={v.key} type="button" disabled={previewing} onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()} onClick={() => insertToken(v.key)} className="state-layer pressable touch-manipulation h-7 rounded-sm bg-surface-high px-2.5 font-mono text-xs text-on-surface-variant disabled:opacity-40" title={`Insert ${v.label}`}>
               {`{{${v.key}}}`}
             </button>
           ))}
@@ -229,13 +233,13 @@ export function MessageComposer({
   return (
     <div className="grid items-start gap-5 lg:grid-cols-2">
       {editor}
-      <MessagePreview value={value} vars={vars} />
+      <MessagePreview value={value} vars={vars} known={variables?.map((v) => v.key)} />
     </div>
   );
 }
 
 /** What the comic will see: the text with WhatsApp formatting, the poll, and the pin, as separate bubbles. */
-export function MessagePreview({ value, vars, className }: { value: RichMessage; vars: TemplateVars; className?: string }) {
+export function MessagePreview({ value, vars, className, known }: { value: RichMessage; vars: TemplateVars; className?: string; known?: readonly string[] }) {
   const r = renderRich(value, vars);
   const venue = String(vars.venue ?? "The venue");
   return (
@@ -243,9 +247,7 @@ export function MessagePreview({ value, vars, className }: { value: RichMessage;
       <span className="mb-3 type-label-m text-on-surface-variant">Preview</span>
       <div className="flex flex-col gap-1.5">
         {r.kind === "text" && (
-          <Bubble outgoing meta="9:41 PM">
-            {r.body.trim() ? <WaText text={r.body} /> : <span className="opacity-50">Empty message</span>}
-          </Bubble>
+          <TemplateBubble text={value.body} vars={vars} known={known} />
         )}
         {r.kind === "poll" && r.poll && (
           <Bubble outgoing meta="9:41 PM">

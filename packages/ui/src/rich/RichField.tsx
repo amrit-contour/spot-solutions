@@ -1,10 +1,11 @@
 // A message box with a WhatsApp formatting toolbar, keyboard shortcuts and an emoji picker.
-import { useCallback, useRef, useState, type ReactNode, type RefObject } from "react";
-import { applyFormat, insertText, shortcutOp, type Edit, type FormatOp } from "@spot/shared";
-import { Bubble, TextArea, cx } from "../ui";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { applyFormat, insertText, SAMPLE_VARS, shortcutOp, type Edit, type FormatOp, type TemplateVars } from "@spot/shared";
+import { TextArea, cx } from "../ui";
+import { IconEye, IconPen } from "../icons";
 import { Popover } from "../Popover";
 import { EmojiPicker } from "./EmojiPicker";
-import { WaText } from "./WaText";
+import { TemplateBubble } from "./TemplatePreview";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
@@ -94,6 +95,9 @@ export function RichField({
   onFocus,
   fieldRef,
   preview = true,
+  previewVars,
+  knownVars,
+  onPreviewChange,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -106,58 +110,96 @@ export function RichField({
   mono?: boolean;
   onFocus?: () => void;
   fieldRef?: (el: HTMLTextAreaElement | null) => void;
-  /** Offer a Preview toggle under the box (turn off where the page already shows a preview). */
+  /** Offer the eye / pen toggle in the box's bottom-right corner (swaps the editor for a WhatsApp bubble of the rendered text). */
   preview?: boolean;
+  /** Values for the variables in the preview. Sample values fill in for any not given. */
+  previewVars?: TemplateVars;
+  /** Variable names the page offers, so they are never flagged as unknown. */
+  knownVars?: readonly string[];
+  /** Told when this field switches between editing and previewing (so the page can park its variable chips). */
+  onPreviewChange?: (previewing: boolean) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const height = useRef(0);
+  const caret = useRef<[number, number] | null>(null);
   const { format, insert } = useTextEditing(ref, value, onChange);
+
+  const notify = useRef(onPreviewChange);
+  notify.current = onPreviewChange;
+  useEffect(() => () => notify.current?.(false), []);
+
+  const toPreview = () => {
+    const el = ref.current;
+    height.current = el?.offsetHeight ?? 0;
+    caret.current = el ? [el.selectionStart, el.selectionEnd] : null;
+    setShowPreview(true);
+    onPreviewChange?.(true);
+  };
+  const toEdit = () => {
+    setShowPreview(false);
+    onPreviewChange?.(false);
+    // The textarea stayed mounted (hidden), so its text and selection are intact; put the caret back and focus it.
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      if (caret.current) el.setSelectionRange(caret.current[0], caret.current[1]);
+    });
+  };
+
+  const toggle = preview ? (
+    <button
+      type="button"
+      // Pressing it must not move focus or the selection (iOS would zoom or jump).
+      onPointerDown={(e) => e.preventDefault()}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={showPreview ? toEdit : toPreview}
+      aria-label={showPreview ? "Edit message" : "Preview message"}
+      aria-pressed={showPreview}
+      title={showPreview ? "Edit" : "Preview"}
+      data-preview-toggle
+      className={cx("state-layer pressable touch-manipulation absolute bottom-1.5 right-5 grid size-9 place-items-center rounded-full", showPreview ? "bg-secondary-container text-on-secondary-container" : "text-on-surface-variant")}
+    >
+      {showPreview ? <IconPen className="icon size-5" /> : <IconEye className="icon size-5" />}
+    </button>
+  ) : null;
 
   return (
     <div className="flex flex-col gap-1.5">
-      <FormatBar
-        onFormat={format}
-        onEmoji={(e) => insert(e, false)}
-        extra={
-          preview ? (
-            <button
-              type="button"
-              onClick={() => setShowPreview((v) => !v)}
-              aria-pressed={showPreview}
-              className={cx("state-layer pressable ml-auto h-8 rounded-sm px-2.5 type-label-m", showPreview ? "bg-secondary-container text-on-secondary-container" : "text-on-surface-variant")}
-            >
-              Preview
-            </button>
-          ) : null
-        }
-      />
-      <TextArea
-        ref={(el) => {
-          ref.current = el;
-          fieldRef?.(el);
-        }}
-        id={id}
-        value={value}
-        rows={rows}
-        placeholder={placeholder}
-        aria-label={ariaLabel}
-        spellCheck={mono ? false : undefined}
-        onFocus={onFocus}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-          const op = shortcutOp(e.key, e.shiftKey);
-          if (!op) return;
-          e.preventDefault();
-          format(op);
-        }}
-        className={cx("min-h-0", mono && "font-mono text-sm", className)}
-      />
-      {showPreview && (
-        <Bubble outgoing>
-          <WaText text={value} />
-        </Bubble>
-      )}
+      <div inert={showPreview} className={cx(showPreview && "pointer-events-none opacity-40 transition-opacity")}>
+        <FormatBar onFormat={format} onEmoji={(e) => insert(e, false)} />
+      </div>
+      <div className="relative">
+        <TextArea
+          ref={(el) => {
+            ref.current = el;
+            fieldRef?.(el);
+          }}
+          id={id}
+          value={value}
+          rows={rows}
+          placeholder={placeholder}
+          aria-label={ariaLabel}
+          spellCheck={mono ? false : undefined}
+          onFocus={onFocus}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+            const op = shortcutOp(e.key, e.shiftKey);
+            if (!op) return;
+            e.preventDefault();
+            format(op);
+          }}
+          className={cx("min-h-0", preview && "pb-11", mono && "font-mono text-sm", showPreview && "hidden", className)}
+        />
+        {showPreview && (
+          <div style={{ minHeight: height.current || undefined }} aria-live="polite" className="rounded-md bg-surface-container px-3 pb-12 pt-3">
+            <TemplateBubble text={value} vars={previewVars ?? SAMPLE_VARS} known={knownVars} />
+          </div>
+        )}
+        {toggle}
+      </div>
     </div>
   );
 }

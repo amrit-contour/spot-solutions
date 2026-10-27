@@ -11,6 +11,36 @@ export type WaMention = MentionRef;
 /** Tapping a tag (when the page can open that person). */
 export type OnMention = (m: MentionRef) => void;
 
+/** Preview-only decoration: unknown {{variables}} (swapped for a marker by previewTemplate) and link underlining. */
+export interface WaDeco {
+  /** Names behind the \u2063<index>\u2063 markers in the text. */
+  unknown?: string[];
+  /** Underline links the way a chat does. */
+  links?: boolean;
+}
+
+export const UNKNOWN_MARK = "\u2063";
+const MARK_RE = /\u2063(\d+)\u2063/;
+const URL_RE = /(https?:\/\/[^\s<]*[^\s<.,;:!?)\]'"])/;
+
+function decorated(text: string, deco: WaDeco | undefined, mentions: WaMention[], onMention?: OnMention): ReactNode {
+  if (!deco || (!deco.unknown?.length && !deco.links)) return withMentions(text, mentions, onMention);
+  const out: ReactNode[] = [];
+  text.split(MARK_RE).forEach((part, i) => {
+    if (i % 2 === 1) {
+      const name = deco.unknown?.[Number(part)] ?? part;
+      out.push(
+        <mark key={`u${i}`} data-unknown={name} title="Not a known variable, it will go out blank" className="rounded-xs bg-error-container px-1 font-mono text-[0.9em] text-on-error-container">
+          {`{{${name}}}`}
+        </mark>,
+      );
+    } else if (deco.links) {
+      part.split(URL_RE).forEach((seg, j) => out.push(j % 2 === 1 ? <span key={`l${i}-${j}`} className="text-primary underline underline-offset-2">{seg}</span> : <span key={`t${i}-${j}`} className="contents">{withMentions(seg, mentions, onMention)}</span>));
+    } else out.push(<span key={`t${i}`} className="contents">{withMentions(part, mentions, onMention)}</span>);
+  });
+  return out;
+}
+
 function withMentions(text: string, mentions: WaMention[], onMention?: OnMention): ReactNode {
   if (!mentions.length) return text;
   return splitMentions(text, mentions).map((s, i) => {
@@ -29,25 +59,25 @@ function withMentions(text: string, mentions: WaMention[], onMention?: OnMention
   });
 }
 
-function inline(nodes: Inline[], mentions: WaMention[], onMention?: OnMention): ReactNode {
+function inline(nodes: Inline[], mentions: WaMention[], onMention?: OnMention, deco?: WaDeco): ReactNode {
   return nodes.map((n, i) => {
-    if (n.t === "text") return mentions.length ? <span key={i} className="contents">{withMentions(n.v, mentions, onMention)}</span> : n.v;
+    if (n.t === "text") return mentions.length || deco ? <span key={i} className="contents">{decorated(n.v, deco, mentions, onMention)}</span> : n.v;
     if (n.t === "code") return <code key={i} className="rounded-xs bg-on-primary-container/10 px-1 font-mono text-[0.9em]">{n.v}</code>;
-    const inner = inline(n.c, mentions, onMention);
+    const inner = inline(n.c, mentions, onMention, deco);
     return n.t === "b" ? <strong key={i}>{inner}</strong> : n.t === "i" ? <em key={i}>{inner}</em> : <s key={i}>{inner}</s>;
   });
 }
 
-function block(b: Block, i: number, mentions: WaMention[], onMention?: OnMention): ReactNode {
+function block(b: Block, i: number, mentions: WaMention[], onMention?: OnMention, deco?: WaDeco): ReactNode {
   switch (b.t) {
     case "p":
       // An empty line keeps its height, like in WhatsApp.
-      return <div key={i} className="min-h-[1lh]">{b.c.length ? inline(b.c, mentions, onMention) : null}</div>;
+      return <div key={i} className="min-h-[1lh]">{b.c.length ? inline(b.c, mentions, onMention, deco) : null}</div>;
     case "quote":
       return (
         <div key={i} className="my-0.5 border-l-[3px] border-on-primary-container/30 pl-2.5 opacity-90">
           {b.lines.map((l, j) => (
-            <div key={j} className="min-h-[1lh]">{inline(l, mentions, onMention)}</div>
+            <div key={j} className="min-h-[1lh]">{inline(l, mentions, onMention, deco)}</div>
           ))}
         </div>
       );
@@ -57,7 +87,7 @@ function block(b: Block, i: number, mentions: WaMention[], onMention?: OnMention
           {b.items.map((it, j) => (
             <li key={j} className="flex gap-2">
               <span aria-hidden>•</span>
-              <span className="min-w-0">{inline(it, mentions, onMention)}</span>
+              <span className="min-w-0">{inline(it, mentions, onMention, deco)}</span>
             </li>
           ))}
         </ul>
@@ -68,18 +98,18 @@ function block(b: Block, i: number, mentions: WaMention[], onMention?: OnMention
           {b.items.map((it, j) => (
             <li key={j} className="flex gap-2">
               <span aria-hidden className="tabular">{b.start + j}.</span>
-              <span className="min-w-0">{inline(it, mentions, onMention)}</span>
+              <span className="min-w-0">{inline(it, mentions, onMention, deco)}</span>
             </li>
           ))}
         </ol>
       );
     case "pre":
-      return <pre key={i} className="my-0.5 whitespace-pre-wrap break-words font-mono text-[0.9em]">{b.v}</pre>;
+      return <pre key={i} className="my-0.5 whitespace-pre-wrap break-words font-mono text-[0.9em]">{deco?.unknown?.length ? b.v.replace(new RegExp(MARK_RE.source, "g"), (_, n) => `{{${deco.unknown?.[Number(n)] ?? n}}}`) : b.v}</pre>;
   }
 }
 
-export function WaText({ text, className, mentions = [], onMention }: { text: string; className?: string; mentions?: WaMention[]; onMention?: OnMention }) {
-  return <div className={cx("whitespace-normal break-words", className)}>{parseWhatsApp(text).map((b, i) => block(b, i, mentions, onMention))}</div>;
+export function WaText({ text, className, mentions = [], onMention, deco }: { text: string; className?: string; mentions?: WaMention[]; onMention?: OnMention; deco?: WaDeco }) {
+  return <div className={cx("whitespace-normal break-words", className)}>{parseWhatsApp(text).map((b, i) => block(b, i, mentions, onMention, deco))}</div>;
 }
 
 /** A poll as WhatsApp shows it: the question, then the options with a circle (one answer) or a box (several). */
