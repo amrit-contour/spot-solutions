@@ -4,11 +4,15 @@ const KEYBOARD_MIN = 80; // px the visual viewport must lose before it counts as
 const FIELD = "input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), textarea, select, [contenteditable=true], [contenteditable='']";
 
 /**
- * Keeps a full-screen sheet usable while the on-screen keyboard is up. iOS (and Android's default) shrink the *visual* viewport, not
- * the layout one, so a `fixed inset-0` sheet keeps its old height and its bottom half hides under the keyboard. This sizes the sheet
- * to what you can see (top = visualViewport.offsetTop, height = visualViewport.height) and, when a field gets focus, scrolls it inside
- * the sheet's scroller clear of the keyboard and the footer. When the keyboard closes the inline sizing is removed, so the sheet
- * goes back to plain `inset-0` with no leftover gap.
+ * Keeps a full-screen sheet usable while the on-screen keyboard is up WITHOUT moving the sheet. The sheet keeps its full height and
+ * the footer stays at the bottom, under the keyboard; only the focused field moves, inside the sheet's scroller. iOS shrinks the
+ * *visual* viewport (not the layout one) and may pan it, so this:
+ *  - publishes the covered height as `--sheet-kb` on the sheet; the sheet renders a spacer of that height at the end of the
+ *    scroller, so the last field can scroll above the keyboard;
+ *  - when iOS has panned the visual viewport (offsetTop > 0), moves the sheet down by that much so its header stays in view and
+ *    nothing but the sheet shows (the document itself never scrolls);
+ *  - scrolls the focused field into the part of the scroller that is actually visible (above the keyboard).
+ * When the keyboard closes everything is removed and the sheet is plain `inset-0` again.
  */
 export function useSheetKeyboard(root: RefObject<HTMLElement | null>, scroller: RefObject<HTMLElement | null>, enabled: boolean) {
   useEffect(() => {
@@ -18,19 +22,22 @@ export function useSheetKeyboard(root: RefObject<HTMLElement | null>, scroller: 
     if (!enabled || !el || !sc || !vv) return;
     let raf = 0;
     let timer = 0;
-    const open = () => window.innerHeight - vv.height - vv.offsetTop > KEYBOARD_MIN || window.innerHeight - vv.height > KEYBOARD_MIN;
+    const covered = () => Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    const open = () => covered() > KEYBOARD_MIN || window.innerHeight - vv.height > KEYBOARD_MIN;
     const frame = () => {
       if (open()) {
-        el.style.top = `${vv.offsetTop}px`;
-        el.style.height = `${vv.height}px`;
-        el.style.bottom = "auto";
-        // The home-indicator padding is under the keyboard now: drop it (the footer reads --sheet-safe).
-        el.style.setProperty("--sheet-safe", "0");
+        el.style.setProperty("--sheet-kb", `${Math.max(covered(), window.innerHeight - vv.height)}px`);
+        // iOS panned the visual viewport: follow it so the header stays visible; the sheet keeps its full height.
+        if (vv.offsetTop > 0) {
+          el.style.top = `${vv.offsetTop}px`;
+          el.style.bottom = "auto";
+          el.style.height = `${window.innerHeight}px`;
+        } else {
+          el.style.top = el.style.bottom = el.style.height = "";
+        }
       } else {
-        el.style.removeProperty("--sheet-safe");
-        el.style.top = "";
-        el.style.height = "";
-        el.style.bottom = "";
+        el.style.removeProperty("--sheet-kb");
+        el.style.top = el.style.bottom = el.style.height = "";
       }
     };
     /**
@@ -41,7 +48,10 @@ export function useSheetKeyboard(root: RefObject<HTMLElement | null>, scroller: 
     const reveal = () => {
       const t = document.activeElement as HTMLElement | null;
       if (!t || !sc.contains(t) || !t.matches(FIELD)) return;
-      const box = sc.getBoundingClientRect();
+      const raw = sc.getBoundingClientRect();
+      // Only the part above the keyboard counts as visible.
+      const box = { top: raw.top, bottom: Math.min(raw.bottom, vv.offsetTop + vv.height), height: 0 };
+      box.height = box.bottom - box.top;
       const field = t.getBoundingClientRect();
       const block = (t.closest("[data-keep-visible]") ?? t).getBoundingClientRect();
       const pad = 16;
@@ -63,7 +73,7 @@ export function useSheetKeyboard(root: RefObject<HTMLElement | null>, scroller: 
     };
     frame();
     vv.addEventListener("resize", onViewport);
-    vv.addEventListener("scroll", frame);
+    vv.addEventListener("scroll", onViewport);
     el.addEventListener("focusin", onFocusIn);
     // Typing can grow what sits under the field (search results): keep it in view.
     el.addEventListener("input", onViewport);
@@ -72,12 +82,12 @@ export function useSheetKeyboard(root: RefObject<HTMLElement | null>, scroller: 
       cancelAnimationFrame(raf);
       window.clearTimeout(timer);
       vv.removeEventListener("resize", onViewport);
-      vv.removeEventListener("scroll", frame);
+      vv.removeEventListener("scroll", onViewport);
       el.removeEventListener("focusin", onFocusIn);
       el.removeEventListener("input", onViewport);
       window.removeEventListener("orientationchange", onViewport);
       el.style.top = el.style.height = el.style.bottom = "";
-      el.style.removeProperty("--sheet-safe");
+      el.style.removeProperty("--sheet-kb");
     };
   }, [root, scroller, enabled]);
 }

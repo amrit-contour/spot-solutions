@@ -318,7 +318,7 @@ export function Empty({ icon: I, title, children, action }: { icon: Icon; title:
 export function Sheet({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  // The keyboard shrinks what is visible, not the layout: size to it and keep the focused field above it.
+  // The keyboard covers the sheet's bottom (footer stays put, under it); only the focused field scrolls clear of it.
   useSheetKeyboard(root, scroller, open);
   useEffect(() => {
     if (!open) return;
@@ -351,10 +351,11 @@ export function Sheet({ open, onClose, title, children, footer, wide }: { open: 
           </header>
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <div className={cx("mx-auto w-full px-4 py-6 sm:px-8 sm:py-8", wide ? "max-w-4xl" : "max-w-2xl")}>{children}</div>
+            {/* Keyboard spacer: the sheet is not resized, the keyboard just covers its bottom. This lets the last field scroll above it. */}
+            <div aria-hidden className="h-[var(--sheet-kb,0px)] sm:hidden" />
           </div>
-          {footer && <footer className="flex flex-none items-center justify-end gap-2 border-t border-outline-variant/60 bg-surface-low px-4 py-3 pb-[max(12px,calc(env(safe-area-inset-bottom)*var(--sheet-safe,1)))] sm:hidden">{footer}</footer>}
-          {/* The sheet is sized to the visual viewport, which ends above iOS's translucent form accessory bar and keyboard. This
-              extends the sheet's own surface (footer colour) below it, so nothing but the sheet shows through there. Off-screen otherwise. */}
+          {footer && <footer className="flex flex-none items-center justify-end gap-2 border-t border-outline-variant/60 bg-surface-low px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:hidden">{footer}</footer>}
+          {/* Safety net: extends the sheet's own surface below it (e.g. if iOS pans the page), so nothing but the sheet shows. Off-screen otherwise. */}
           <div aria-hidden className={cx("pointer-events-none absolute inset-x-0 top-full h-screen", footer ? "bg-surface-low sm:bg-surface" : "bg-surface")} />
         </motion.div>
       )}
