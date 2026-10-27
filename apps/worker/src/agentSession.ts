@@ -4,8 +4,8 @@
 import path from "node:path";
 import { rm } from "node:fs/promises";
 import WAWebJS from "whatsapp-web.js";
-import { TTL_DAYS, agentVaultId, type SessionState } from "@spot/shared";
-import { col, expireAt, userRef } from "./firebase.ts";
+import { TTL_DAYS, addNeverRead, agentVaultId, type NeverReadEntry, type SessionState } from "@spot/shared";
+import { col, db, expireAt, userRef } from "./firebase.ts";
 import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
 import { wipeLogin } from "./vault.ts";
 import { prepareLoginSafe } from "./vaultCalls.ts";
@@ -22,6 +22,17 @@ const PREPARE_RETRY_MS = 30_000;
 export const agentRef = (uid: string) => col(uid, "session").doc("agent");
 
 const notice = (uid: string, text: string) => col(uid, "notices").add({ level: "warn", text, createdAt: Date.now(), read: false, expireAt: expireAt(TTL_DAYS.notices) }).catch(() => undefined);
+/** The agent number writes to the curator's own WhatsApp, so it goes on their Never read list: its messages are never read as requests. */
+async function neverReadAgent(uid: string, phone: string) {
+  const id = `${phone.replace(/\D/g, "")}@c.us`;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef(uid));
+    const list = ((snap.data()?.settings ?? {}) as { neverRead?: NeverReadEntry[] }).neverRead ?? [];
+    if (list.some((e) => e.id === id)) return;
+    tx.set(userRef(uid), { settings: { neverRead: addNeverRead(list, [{ id, kind: "person", name: "Agent number" }]) } }, { merge: true });
+  });
+}
+
 const setState = (uid: string, s: Partial<SessionState>) => {
   live.recordSession(uid, s, "agent"); // the server console lists the agent number under its account
   return agentRef(uid).set({ ...s, lastSeen: Date.now(), aliveAt: Date.now() }, { merge: true });
@@ -145,6 +156,7 @@ class AgentSessionManager {
       const me = client.info;
       await setState(uid, { status: "ready", qr: null, phone: me?.wid?.user ?? null, pushName: me?.pushname ?? null, error: null });
       console.log(`[agent] ${uid} ready as +${me?.wid?.user}`);
+      if (me?.wid?.user) void neverReadAgent(uid, me.wid.user).catch((e) => console.warn(`[agent] ${uid} couldn't add the agent number to Never read: ${(e as Error).message}`));
       this.hooks.onReady?.(uid, this.sources.get(uid) ?? "local");
     });
     client.on("message", (msg) => this.hooks.onMessage?.(uid, client, msg));
