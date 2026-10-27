@@ -39,7 +39,7 @@ import { MonthCompact, MonthGrid } from "../components/calendar/MonthViews";
 import { TONE_LEGEND, CalProvider, legendBar, makeEvent, type CalData, type CalEvent } from "../components/calendar/shared";
 import { WeekGrid } from "../components/calendar/WeekGrid";
 import { listNames } from "../components/calendar/EventCard";
-import { laneOf, type Lane } from "./Requests";
+import { laneOf, type Lane } from "../lib/lanes";
 
 /** "/" used to be Requests. Old links like /?view=updates keep working by moving to /requests. */
 export function Home() {
@@ -197,8 +197,10 @@ function Calendar() {
       <PageHeader
         title={title}
         subtitle={subtitle}
-        // Part of the header's own sticky box: one element pins, so the date bar cannot lag, jump or scroll away.
-        bar={
+      />
+
+      {/* Same structure as Requests (whose header renders cleanly on iPhone): the date bar is its own sticky row under the header. */}
+      <div className="sticky top-[var(--page-header-h,0px)] z-20 mb-2 border-b border-outline-variant bg-surface px-4 pt-1 pb-2 sm:px-8">
 <div className="flex items-center gap-1.5 sm:gap-2" role="toolbar" aria-label="Calendar">
               <div className="flex items-center">
                 <IconButton icon={IconArrowLeft} label={`Previous ${view}`} onClick={() => step(-1)} className="size-10 sm:size-9" />
@@ -211,8 +213,7 @@ function Calendar() {
                 <Segmented value={view} onChange={chooseView} options={VIEW_OPTIONS} size="sm" compact />
               </div>
             </div>
-        }
-      />
+      </div>
       <div
         style={{ "--side-w": side ? "3.5rem" : undefined } as React.CSSProperties}
         className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_var(--side-w,20rem)] lg:items-start lg:gap-8 lg:transition-[grid-template-columns] lg:duration-300 lg:ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none xl:grid-cols-[minmax(0,1fr)_var(--side-w,21.25rem)]"
@@ -233,7 +234,7 @@ function Calendar() {
                     animate={{ opacity: 1, transform: "translateX(0px)", transition: { duration: reduce ? 0.12 : 0.24, ease: [0.23, 1, 0.32, 1] } }}
                     exit={{ opacity: 0, transition: { duration: 0.08 } }}
                   >
-                    {view === "week" ? (phone ? <Agenda dates={weekDates(mondayOf(date))} label="This week by day" /> : <WeekGrid monday={mondayOf(date)} />) : null}
+                    {view === "week" ? (phone ? <Agenda week dates={weekDates(mondayOf(date))} label="This week by day" /> : <WeekGrid monday={mondayOf(date)} />) : null}
                     {view === "month" ? (phone ? <MonthCompact date={date} setDate={(d) => go(d, "month", "none")} /> : <MonthGrid date={date} />) : null}
                     {view === "day" ? <DayView date={date} /> : null}
                   </motion.div>
