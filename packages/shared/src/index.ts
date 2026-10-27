@@ -25,4 +25,5 @@ export * from "./adhoc.ts";
 export * from "./rooms.ts";
 export * from "./rosterMerge.ts";
 export * from "./rosterIO.ts";
+export * from "./rosterCommunity.ts";
 export * from "./roomView.ts";
