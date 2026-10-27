@@ -35,13 +35,19 @@ export function appScroller(): HTMLElement | null {
 /** ok = connected (green, gently pulsing), wait = connecting / needs a scan / not responding (amber), error = server offline, idle = not linked (grey). */
 export type StatusTone = "ok" | "wait" | "error" | "idle";
 export const STATUS_BG: Record<StatusTone, string> = { ok: "bg-ok", wait: "bg-warn", error: "bg-error", idle: "bg-outline" };
-export function StatusDot({ tone, size = 10, ring }: { tone: StatusTone; size?: number; /** A ring in the surface colour, for sitting on top of something (the avatar). */ ring?: boolean }) {
-  const c = STATUS_BG[tone];
+/** The same colours as text (currentColor), for rings and the box-shadow pulse. */
+export const STATUS_TEXT: Record<StatusTone, string> = { ok: "text-ok", wait: "text-warn", error: "text-error", idle: "text-outline" };
+/** Connected and connecting breathe; offline and not linked stay still. */
+export const statusPulses = (tone: StatusTone) => tone === "ok" || tone === "wait";
+export function StatusDot({ tone, size = 10, ring }: { tone: StatusTone; size?: number; /** A ring in the surface colour, for sitting on top of something. */ ring?: boolean }) {
+  // The pulse is a box-shadow animation (paint only). A scale/opacity animation would make iOS composite this dot and
+  // everything it overlaps into a layer, which rasterised the header avatar blurry.
   return (
-    <span className="relative inline-flex flex-none" style={{ width: size, height: size }} aria-hidden>
-      {tone === "ok" && <span className={cx("status-pulse absolute inset-0 rounded-full", c)} />}
-      <span className={cx("relative size-full rounded-full", c, ring && "ring-2 ring-surface")} />
-    </span>
+    <span
+      aria-hidden
+      className={cx("inline-flex flex-none rounded-full", STATUS_BG[tone], STATUS_TEXT[tone], statusPulses(tone) && "status-pulse", ring && "ring-2 ring-surface")}
+      style={{ width: size, height: size }}
+    />
   );
 }
 

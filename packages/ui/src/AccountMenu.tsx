@@ -3,12 +3,12 @@ import { useNavigate, type NavigateFunction } from "react-router-dom";
 import { Menu } from "./Menu";
 import { Avatar, Segmented, sharpPhoto, cx, type Icon } from "./ui";
 import { IconLogout, IconMoon, IconSettings, IconSun } from "./icons";
-import { StatusDot, type StatusTone } from "./Shell";
+import { STATUS_TEXT, StatusDot, statusPulses, type StatusTone } from "./Shell";
 import { savedMode, setMode, type ThemeMode } from "./theme";
 
 export type AccountUser = { displayName?: string | null; email?: string | null; photoURL?: string | null };
 
-/** The WhatsApp link as the account button shows it: a dot on the avatar, and a row at the top of the menu. */
+/** The WhatsApp link as the account button shows it: a ring around the avatar, and a dot beside your name in the menu. */
 export type AccountStatus = { tone: StatusTone; label: string; detail?: string; /** Where the row links (e.g. Settings, WhatsApp). */ to?: string; linkLabel?: string };
 
 /** One row of the account menu, styled to match the built-in ones. */
@@ -37,7 +37,7 @@ export function AccountMenu({
   /** App-specific rows, placed between Settings and Sign out. */
   extra?: (close: () => void, nav: NavigateFunction) => ReactNode;
   align?: "left" | "right";
-  /** WhatsApp link state, drawn as a dot on the avatar's bottom-right corner. */
+  /** WhatsApp link state, drawn as a coloured ring around the avatar. */
   status?: AccountStatus;
 }) {
   const [mode, setModeState] = useState<ThemeMode>(savedMode());
@@ -47,46 +47,62 @@ export function AccountMenu({
     <Menu
       align={align}
       trigger={(toggle, open) => (
-        <button onClick={toggle} aria-label={status ? `Account · ${status.label}` : "Account"} aria-expanded={open} className={cx("pressable relative rounded-full p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-primary", open && "ring-2 ring-primary")}>
-          {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
-          {/* The dot sits inside the avatar's square, flush with its bottom-right corner (the button's 2px padding = the avatar's edge). */}
-          {status && (
-            <span data-status={status.tone} className="absolute right-0 bottom-0.5 flex leading-none">
-              <StatusDot tone={status.tone} size={12} ring />
-            </span>
+        // The WhatsApp status is a ring in its colour around the avatar, with a soft halo breathing out of it while connected or
+        // connecting. Everything here is paint-only (box-shadow), no transform/opacity animation and no press scale: iOS would
+        // otherwise rasterise the avatar into a low-resolution layer and draw it blurry in the pinned header.
+        <button
+          onClick={toggle}
+          aria-label={status ? `Account · ${status.label}` : "Account"}
+          aria-expanded={open}
+          className="relative flex rounded-full p-[3px] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          {/* Halo and ring are separate boxes: the pulse animates box-shadow, which would replace the ring's own shadow. */}
+          {status && statusPulses(status.tone) && (
+            <span aria-hidden className={cx("status-pulse pointer-events-none absolute inset-0 rounded-full", STATUS_TEXT[status.tone])} style={{ ["--pulse" as string]: "5px" }} />
           )}
+          <span
+            aria-hidden
+            data-status={status?.tone}
+            className={cx(
+              "pointer-events-none absolute inset-0 rounded-full",
+              status ? cx(STATUS_TEXT[status.tone], "inset-ring-2 inset-ring-current") : open && "inset-ring-2 inset-ring-primary",
+            )}
+          />
+          {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
         </button>
       )}
     >
       {(close) => (
         <div className="w-72">
-          <div className="flex items-center gap-3 px-4 pt-2 pb-3">
-            {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
-            <div className="min-w-0">
-              <div className="truncate type-title-s">{name}</div>
-              {user.email && <div className="truncate type-body-s text-on-surface-variant">{user.email}</div>}
-            </div>
-          </div>
-          {status && (
-            <div className="flex items-center gap-3 border-t border-outline-variant/60 px-4 py-3">
-              <StatusDot tone={status.tone} size={10} />
-              <div className="min-w-0 flex-1 type-body-m">
-                {status.label}
-                {status.detail && <span className="text-on-surface-variant"> · {status.detail}</span>}
-              </div>
-              {status.to && status.tone !== "ok" && (
-                <button
-                  onClick={() => {
-                    close();
-                    nav(status.to!);
-                  }}
-                  className="state-layer -my-1 -mr-2 flex-none rounded-full px-3 py-1.5 type-label-l text-primary"
-                >
-                  {status.linkLabel ?? "Settings"}
-                </button>
-              )}
-            </div>
-          )}
+          {/* Who you are, with the WhatsApp status as a dot beside your name. The whole row opens the connection settings. */}
+          {(() => {
+            const to = status?.to ?? settingsTo;
+            const inner = (
+              <>
+                {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 flex-none rounded-full object-cover" /> : <Avatar name={name} size={40} />}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate type-title-s">{name}</div>
+                  {user.email && <div className="truncate type-body-s text-on-surface-variant">{user.email}</div>}
+                </div>
+                {status && <StatusDot tone={status.tone} size={10} />}
+              </>
+            );
+            return to ? (
+              <button
+                role="menuitem"
+                aria-label={status ? `${name} · ${status.label}. Open settings` : `${name}. Open settings`}
+                onClick={() => {
+                  close();
+                  nav(to);
+                }}
+                className="state-layer flex w-full items-center gap-3 px-4 pt-2 pb-3 text-left"
+              >
+                {inner}
+              </button>
+            ) : (
+              <div className="flex items-center gap-3 px-4 pt-2 pb-3">{inner}</div>
+            );
+          })()}
           <div className="border-t border-outline-variant/60 px-4 py-3">
             <Segmented
               size="sm"

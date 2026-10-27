@@ -167,10 +167,15 @@
 @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.6; } 100% { transform: scale(2.2); opacity: 0; } }
 .pulse-ring { animation: pulse-ring 1.8s var(--ease-out-strong) infinite; }
 
-/* The WhatsApp status dot on the account avatar: a slow, faint ring that breathes out from the dot. Still under reduced motion. */
-@keyframes status-pulse { 0% { transform: scale(1); opacity: 0.5; } 70%, 100% { transform: scale(2.3); opacity: 0; } }
+/* WhatsApp status: a slow, faint halo that breathes out in the status colour (currentColor). Box-shadow ONLY, never transform or
+   opacity: those make iOS put the element (and the avatar it overlaps) on a compositing layer, which it rasterises blurry.
+   --pulse sets how far it travels. Still under reduced motion. */
+@keyframes status-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 var(--pulse, 6px) color-mix(in srgb, currentColor 0%, transparent); }
+}
 .status-pulse { animation: status-pulse 3.2s var(--ease-out-strong) infinite; }
-@media (prefers-reduced-motion: reduce) { .status-pulse { animation: none; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .status-pulse { animation: none; } }
 
 /* Scanning line over the QR while we wait for the phone */
 @keyframes scan { 0% { transform: translateY(0); } 50% { transform: translateY(calc(var(--qr) - 2px)); } 100% { transform: translateY(0); } }
