@@ -3,9 +3,10 @@ import { useId, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { formatDate, lineupActivity, type ActivityRow, type Lineup, type Show, type ShowState, type SpotOffer } from "@spot/shared";
-import { Avatar, Button, Chip, cx, type Icon } from "@spot/ui";
+import { Button, Chip, cx, type Icon } from "@spot/ui";
 import { IconArrowDown, IconCancel, IconCheck, IconChat, IconClock, IconGroup, IconHistory, IconLogout, IconMic, IconSend, IconUserMinus, IconUserPlus, IconWarn } from "@spot/ui";
 import { useApp } from "../lib/app";
+import { ComicAvatar } from "../lib/photos";
 import { runCommand, timeAgo } from "../lib/data";
 
 /* ---------- State pill ---------- */
@@ -95,7 +96,7 @@ export function Chevron({ open }: { open: boolean }) {
 }
 
 /** The one line a collapsed card shows: avatars and what happened. */
-export function CollapsedSummary({ names, text, onOpen, panel }: { names: string[]; text: string; onOpen: () => void; panel: string }) {
+export function CollapsedSummary({ names, ids, text, onOpen, panel }: { names: string[]; /** Comic ids, same order as names: shows their profile photos. */ ids?: string[]; text: string; onOpen: () => void; panel: string }) {
   const shown = names.slice(0, 4);
   return (
     <button type="button" aria-expanded={false} aria-controls={panel} onClick={onOpen} className="state-layer pressable mt-2 flex min-h-11 w-full items-center gap-2.5 rounded-md bg-surface-container px-3 text-left">
@@ -103,7 +104,7 @@ export function CollapsedSummary({ names, text, onOpen, panel }: { names: string
         <span className="flex flex-none items-center" aria-hidden>
           {shown.map((n, i) => (
             <span key={`${n}${i}`} className={cx("rounded-full ring-2 ring-[var(--md-sys-color-surface-container)]", i > 0 && "-ml-1")}>
-              <Avatar name={n} size={24} tone="secondary" />
+              <ComicAvatar id={ids?.[i]} name={n} size={24} tone="secondary" />
             </span>
           ))}
         </span>

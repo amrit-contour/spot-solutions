@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { copyFileSync, readFileSync } from "node:fs";
 import type { Plugin } from "vite";
 import { iconVersion } from "../../packages/ui/icon-version.ts";
+import { buildVersion } from "../../packages/ui/build-version.ts";
 
 // ?v=<hash of the icon files> on every icon/manifest-icon URL, so a changed icon is never served from a stale browser cache.
 const icons = iconVersion(fileURLToPath(new URL("./public", import.meta.url)));
@@ -31,9 +32,13 @@ const legalFiles = (): Plugin => ({
   },
 });
 
-export default defineConfig({
+export default defineConfig(({ command }) => {
+  // __APP_VERSION__ / __APP_BUILT_AT__ in the bundle, and the same pair as /version.json (what the running app polls).
+  const ver = buildVersion(command);
+  return {
   plugins: [
     react(),
+    ver.plugin,
     legalFiles(),
     icons.plugin,
     tailwindcss(),
@@ -71,16 +76,21 @@ export default defineConfig({
       },
       workbox: {
         // App shell only. Firestore traffic is live data and must never be served stale.
-        navigateFallback: "/index.html",
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // The app shell (index.html) is NetworkFirst: a normal reopen loads the newest release when online, and the last
+        // copy when offline. It is never served from the precache, so it can't pin an old release.
+        globPatterns: ["**/*.{js,css,svg,png,woff2}"],
         // Push (FCM) handlers live in public/fcm-sw.js and run inside this same service worker (spot alerts). Loaded with
         // importScripts, so it stays out of the precache and the browser re-checks it on its own.
         importScripts: ["fcm-sw.js"],
         globIgnores: ["fcm-sw.js"],
-        runtimeCaching: [{ urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, handler: "StaleWhileRevalidate", options: { cacheName: "fonts" } }],
+        runtimeCaching: [
+          { urlPattern: ({ request, url }: { request: Request; url: URL }) => request.mode === "navigate" && !/^\/(privacy|terms)/.test(url.pathname), handler: "NetworkFirst", options: { cacheName: "pages", networkTimeoutSeconds: 4 } },
+          { urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, handler: "StaleWhileRevalidate", options: { cacheName: "fonts" } },
+        ],
       },
     }),
   ],
+  define: ver.define,
   server: { port: 5174, strictPort: true },
   build: {
     rolldownOptions: {
@@ -89,4 +99,5 @@ export default defineConfig({
       },
     },
   },
+};
 });

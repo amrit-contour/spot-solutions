@@ -230,12 +230,12 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Starts at">
             <TimePicker value={draft.startTime ?? "20:00"} onChange={(v) => set("startTime", v)} label="Start time" />
           </Field>
           <Field label="Slots">
-            <Stepper value={draft.slotCount ?? 8} onChange={(v) => set("slotCount", v)} min={1} max={40} />
+            <Stepper full value={draft.slotCount ?? 8} onChange={(v) => set("slotCount", v)} min={1} max={40} />
           </Field>
         </div>
 

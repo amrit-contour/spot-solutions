@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AppProvider, useAuthUser } from "./lib/app";
 import { Shell } from "./components/Shell";
-import { ErrorBoundary, Spinner } from "@spot/ui";
+import { ErrorBoundary, Spinner, UpdatePrompt } from "@spot/ui";
 import { Landing } from "./routes/Landing";
 import { SignIn } from "./routes/SignIn";
 import { isStandalone } from "./lib/standalone";
@@ -34,6 +34,7 @@ export default function App() {
   return (
     <>
       <OverfillHost />
+      <UpdatePrompt />
       <Toaster
         position="bottom-center"
         toastOptions={{

@@ -141,17 +141,19 @@ export function Popover({ trigger, title, children, width = 340, controlledOpen,
 }
 
 /** Icon button for a column's toolbar. A count badge sits on the corner; `tone` marks something that needs a look. */
-export function ToolButton({ icon: I, label, count, tone = "plain", active, onClick }: { icon: Icon; label: string; count?: number; tone?: "plain" | "attention" | "accent"; active?: boolean; onClick: () => void }) {
+export function ToolButton({ icon: I, label, text, count, tone = "plain", active, disabled, onClick }: { icon: Icon; label: string; /** Short visible label beside the icon from `sm` up (icon-only on phones). */ text?: string; count?: number; tone?: "plain" | "attention" | "accent"; active?: boolean; disabled?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       aria-label={count ? `${label}, ${count}` : label}
       title={label}
       aria-expanded={active}
+      disabled={disabled}
       onClick={onClick}
-      className={cx("state-layer pressable relative grid size-9 flex-none place-items-center rounded-full", active ? "bg-secondary-container text-on-secondary-container" : tone === "attention" ? "text-tertiary" : tone === "accent" ? "text-primary" : "text-on-surface-variant")}
+      className={cx("state-layer pressable relative flex h-9 flex-none items-center justify-center rounded-full disabled:opacity-40", text ? "size-9 gap-1.5 sm:w-auto sm:pr-3 sm:pl-2.5" : "size-9", active ? "bg-secondary-container text-on-secondary-container" : tone === "attention" ? "text-tertiary" : tone === "accent" ? "text-primary" : "text-on-surface-variant")}
     >
       <I className="icon size-5" />
+      {text && <span className="hidden type-label-l sm:inline">{text}</span>}
       {count ? (
         <span className={cx("absolute right-0 top-0 grid h-4 min-w-4 place-items-center rounded-full px-1 type-label-s tabular leading-none", tone === "attention" ? "bg-tertiary text-on-tertiary" : "bg-primary text-on-primary")}>{count > 99 ? "99+" : count}</span>
       ) : null}

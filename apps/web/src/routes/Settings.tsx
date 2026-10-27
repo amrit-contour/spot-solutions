@@ -50,7 +50,7 @@ import { VoiceSourcesSheet } from "../components/VoiceSourcesSheet";
 import { NeverReadCard } from "../components/NeverReadCard";
 import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "@spot/ui";
-import { Bubble, Button, Collapsible, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
+import { AppVersionRow, Bubble, Button, Collapsible, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose, IconWarn, IconRefresh, IconArrowRight } from "@spot/ui";
 
 const TABS = [
@@ -221,6 +221,9 @@ export function SettingsPage() {
             <NotifyCard />
             <GoogleContactsCard />
             <InstallCard />
+            <Section title="About" icon={IconCheck}>
+              <AppVersionRow />
+            </Section>
           </>
         )}
         {tab === "messages" && (

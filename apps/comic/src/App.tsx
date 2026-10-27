@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 import { Toaster } from "sonner";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { ComicLogo } from "./components/ComicLogo";
-import { AccountMenu, AppShell, ErrorBoundary, Spinner, IconSend, IconBell, IconCalendarMark, IconMic, IconRoom, IconSettings, type NavEntry } from "@spot/ui";
+import { AccountMenu, AppShell, ErrorBoundary, Spinner, UpdatePrompt, IconSend, IconBell, IconCalendarMark, IconMic, IconRoom, IconSettings, type NavEntry } from "@spot/ui";
 import { auth } from "@spot/ui/firebase";
 import { useConnection, connectionStatus } from "./lib/connection";
 import { Landing } from "./routes/Landing";
@@ -79,6 +79,7 @@ export default function App() {
   }
   return (
     <>
+      <UpdatePrompt />
       <Toaster
         position="bottom-center"
         toastOptions={{ style: { background: "var(--md-sys-color-inverse-surface)", color: "var(--md-sys-color-inverse-on-surface)", border: "none", borderRadius: 8, fontFamily: "var(--font-sans)" } }}

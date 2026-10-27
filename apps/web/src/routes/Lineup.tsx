@@ -700,7 +700,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
             </span>
           </div>
         ) : (
-          <CollapsedSummary names={performed} text={summary} onOpen={() => setOpen(true)} panel={panel} />
+          <CollapsedSummary names={performed} ids={ids} text={summary} onOpen={() => setOpen(true)} panel={panel} />
         )}
       </header>
 
@@ -842,6 +842,9 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
               )}
               {!cancelled && !record && (
                 <GroupPopover show={show} lineup={lineup} ids={ids} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={onAddTold} onSync={syncGroup} onReview={() => setSyncOpen(true)} />
+              )}
+              {!cancelled && !record && (
+                <ToolButton icon={IconAdd} label="Ad hoc spot: offer or add someone to this show" text="Ad hoc" disabled={past} onClick={() => setOfferOpen(true)} />
               )}
                   </div>
           {record ? (

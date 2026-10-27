@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { signInWithPopup, signOut } from "firebase/auth";
 import { toast } from "sonner";
-import { Avatar, sharpPhoto, Button, IconArrowRight, IconBell, IconCalendarMark, IconChat, IconGroup, IconInbox, IconMoon, IconShield, IconSun, IconTemplate, PageHeader, Segmented, TextInput, savedBrand, savedMode, setBrand, setMode, useBrand, type Brand, type ThemeMode } from "@spot/ui";
+import { Avatar, sharpPhoto, AppVersionRow, Button, IconArrowRight, IconBell, IconCalendarMark, IconChat, IconGroup, IconInbox, IconMoon, IconShield, IconSun, IconTemplate, PageHeader, Segmented, TextInput, savedBrand, savedMode, setBrand, setMode, useBrand, type Brand, type ThemeMode } from "@spot/ui";
 import { auth, google } from "@spot/ui/firebase";
 import { IconTile, ListGroup, ListRow, Page, Section, ToggleRow } from "../components/ui";
 import { useComicSettings, useWatchedGroups } from "../lib/alerts";
@@ -152,6 +152,10 @@ export function Settings({ uid }: { uid: string }) {
             </ListGroup>
           </Section>
         )}
+
+        <Section title="About">
+          <div className="rounded-lg bg-surface-low p-4"><AppVersionRow /></div>
+        </Section>
 
         <p className="px-1 type-body-s text-on-surface-variant"><a className="underline underline-offset-4" href="/privacy">Privacy</a> · <a className="underline underline-offset-4" href="/terms">Terms</a></p>
       </Page>

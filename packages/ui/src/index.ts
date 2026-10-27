@@ -22,3 +22,5 @@ export * from "./rich/VenuePin";
 export * from "./rich/WaText";
 export * from "./rich/emojiData";
 export * from "./admin";
+export * from "./useAppUpdate";
+export * from "./AppVersion";

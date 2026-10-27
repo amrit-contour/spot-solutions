@@ -271,13 +271,13 @@ export function Segmented<T extends string | number>({ value, onChange, options,
   );
 }
 
-export function Stepper({ value, onChange, min = 0, max = 99, suffix }: { value: number; onChange: (v: number) => void; min?: number; max?: number; suffix?: string }) {
+export function Stepper({ value, onChange, min = 0, max = 99, suffix, full }: { value: number; onChange: (v: number) => void; min?: number; max?: number; suffix?: string; /** Stretch to the width of its container (− and + at the ends). */ full?: boolean }) {
   return (
-    <div className="inline-flex h-10 w-fit self-start items-center rounded-full border border-outline-variant">
+    <div className={cx("items-center rounded-full border border-outline-variant", full ? "flex h-12 w-full justify-between" : "inline-flex h-10 w-fit self-start")}>
       <button className="state-layer grid size-10 place-items-center rounded-full text-on-surface-variant disabled:opacity-30" disabled={value <= min} onClick={() => onChange(value - 1)} aria-label="Decrease">
         −
       </button>
-      <span className="min-w-12 text-center type-label-l tabular">
+      <span className={cx("text-center type-label-l tabular", full ? "min-w-0 flex-1" : "min-w-12")}>
         {value}
         {suffix && <span className="text-on-surface-variant"> {suffix}</span>}
       </span>
