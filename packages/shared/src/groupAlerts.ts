@@ -1,0 +1,939 @@
+// Nothing BOT Comedy: reading a watched WhatsApp group for spot offers, closures, opening notices and curator schedules.
+// Everything here is pure (no worker, no UI): the worker asks a model what a message is, then `interpret` turns that into
+// structured, validated fields (times, dates, room, contact) using the rules below, which are also what the tests cover.
+// Dates are ISO "YYYY-MM-DD", times "HH:MM" (24h), both in the comic's time zone. Weekday 0 = Sunday.
+import {
+  curatorKey,
+  slug,
+  weekdayOf,
+  type Closure,
+  type Curator,
+  type DayPlan,
+  type MySpot,
+  type Room,
+  type RoomShow,
+  type SpotAlert,
+  alertClash,
+  clashes,
+  showDates,
+} from "./rooms.ts";
+import type { Weekday } from "./types.ts";
+import { DAY_NAMES, DAY_SHORT, formatTime } from "./week.ts";
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------------------------------------------------------
+
+export type GroupReadKind = "spot_offer" | "closure" | "opening_notice" | "schedule_update" | "other";
+
+/** What the model says about one message. Only classification and names: dates, times and flags are read by the rules below. */
+export interface AiRead {
+  kind: GroupReadKind;
+  /** The room or venue as written ("TAG", "comedy theatre", "church street"), or "". */
+  room?: string;
+  /** "mic", "show", "late show" when named. */
+  show?: string;
+  /** Who to DM: the sender ("DM me"), a tagged person, or someone named in the text. */
+  contactKind?: "sender" | "mentioned" | "named";
+  contactName?: string;
+}
+
+export interface Person {
+  id: string;
+  name?: string;
+}
+
+/** One group message, as the worker hands it over (mentions already shown as @Name). */
+export interface GroupMsg {
+  id: string;
+  groupId: string;
+  groupName?: string;
+  text: string;
+  /** ms */
+  at: number;
+  sender: Person;
+  /** People tagged in the message, in order. */
+  mentioned: Person[];
+  /** The message this one replies to ("Closed" as a reply to the offer). */
+  quotedMessageId?: string;
+}
+
+export interface ReadCtx {
+  rooms: Room[];
+  curators: Curator[];
+  /** People the comic can name: their Comics, group members. Used for "DM Dhruv". */
+  directory?: Person[];
+  /** The comic's own WhatsApp id: never the contact. */
+  selfId?: string;
+  tz: string;
+  /** ms */
+  now: number;
+}
+
+export interface ParsedOffer {
+  roomId?: string;
+  roomName?: string;
+  showId?: string;
+  date: string;
+  times: string[];
+  reachBy?: string;
+  contact: SpotAlert["contact"];
+  busking: boolean;
+  long: boolean;
+  /** Several rooms fit the name: the poster didn't say which. */
+  ambiguousRooms?: string[];
+}
+
+export interface DateRange {
+  from: string;
+  until: string;
+}
+
+export interface ParsedClosure {
+  roomId?: string;
+  roomName?: string;
+  /** "none": no days named ("Closed", "Over, thanks"): it closes the poster's latest alert and nothing else. */
+  scope: "none" | "today" | "days" | "week" | "next_week";
+  days: Weekday[];
+  ranges: DateRange[];
+}
+
+export interface ParsedOpening {
+  roomId?: string;
+  roomName?: string;
+  /** HH:MM, "spots open by 3:15". */
+  openAt?: string;
+  /** "website is open now". */
+  website: boolean;
+  summary: string;
+}
+
+export interface ScheduleEntry {
+  days: Weekday[];
+  /** First is the one to ask; the rest co-curate. */
+  people: string[];
+}
+export interface ParsedSchedule {
+  roomId?: string;
+  roomName?: string;
+  entries: ScheduleEntry[];
+}
+
+export type Reading =
+  | { kind: "spot_offer"; offer: ParsedOffer }
+  | { kind: "closure"; closure: ParsedClosure }
+  | { kind: "opening_notice"; opening: ParsedOpening }
+  | { kind: "schedule_update"; schedule: ParsedSchedule }
+  | { kind: "other" };
+
+/** users/{uid}/groupUpdates/{id}: a closure, curator schedule or opening notice for the comic to review (or that was applied). */
+export interface GroupUpdate {
+  id: string;
+  kind: "closure" | "schedule" | "opening";
+  groupId: string;
+  groupName?: string;
+  messageId: string;
+  poster: Person;
+  roomId?: string;
+  roomName?: string;
+  /** One line for the list: "Comedy Square full Wed to Sat". */
+  summary: string;
+  /** A short quote. */
+  text?: string;
+  closure?: { ranges: DateRange[]; showId?: string };
+  schedule?: { entries: ScheduleEntry[] };
+  opening?: { openAt?: string; website: boolean };
+  /** pending: waiting for the comic. applied: done (see `auto`). dismissed: cleared. info: nothing to apply, just a heads-up. */
+  status: "pending" | "applied" | "dismissed" | "info";
+  auto?: boolean;
+  receivedAt: number;
+  appliedAt?: number;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Text helpers
+// ---------------------------------------------------------------------------------------------------------------------------
+
+const norm = (s: string) =>
+  s
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/['’`]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+const tokens = (s: string) => norm(s).split(" ").filter(Boolean);
+const hasPhrase = (hay: string[], needle: string[]) => {
+  if (!needle.length || needle.length > hay.length) return false;
+  for (let i = 0; i + needle.length <= hay.length; i++) if (needle.every((w, j) => hay[i + j] === w)) return true;
+  return false;
+};
+
+/** "@919876543210" in a message body becomes "@Dhruv", so the model reads names instead of digits. */
+export function mentionsAsNames(body: string, mentioned: { id: string; name?: string }[]): string {
+  let out = body;
+  for (const m of mentioned) {
+    const digits = m.id.split("@")[0];
+    if (!digits || !m.name) continue;
+    out = out.split(`@${digits}`).join(`@${m.name}`);
+  }
+  return out;
+}
+
+/** The same person across @c.us and @lid forms of an id (the digits before the @). */
+export const samePerson = (a: string | undefined, b: string | undefined) => Boolean(a && b && a.split("@")[0] === b.split("@")[0]);
+
+/** A short quote for storing: the first words of the message, never the whole chat. */
+export const shortQuote = (text: string, max = 160) => {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+};
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Times
+// ---------------------------------------------------------------------------------------------------------------------------
+
+const MER = "(a\\.?m\\.?|p\\.?m\\.?)";
+const hhmm = (h: number, m: number) => `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const merOf = (s: string | undefined): "am" | "pm" | undefined => (s ? (s.toLowerCase().startsWith("a") ? "am" : "pm") : undefined);
+
+/** A clock reading to minutes since midnight. `mer` undefined: a 24h number, else "evening" for 1 to 11 (mics are at night). */
+function clock(h: number, m: number, mer: "am" | "pm" | undefined): number | null {
+  if (h > 23 || m > 59) return null;
+  if (mer === "am") return h > 12 ? null : (h % 12) * 60 + m;
+  if (mer === "pm") return h > 12 ? null : ((h % 12) + 12) * 60 + m;
+  if (h === 0 || h >= 13) return h * 60 + m;
+  if (h === 12) return 12 * 60 + m;
+  return (h + 12) * 60 + m;
+}
+const fromMin = (min: number) => hhmm(Math.floor(min / 60) % 24, min % 60);
+
+const RANGE = new RegExp(`(?<![\\d:.])(\\d{1,2})(?:[:.](\\d{2}))?\\s*${MER}?\\s*(?:-|–|—|to)\\s*(\\d{1,2})(?:[:.](\\d{2}))?\\s*${MER}(?![a-z\\d])`, "gi");
+const TOKEN = new RegExp(`(?<![\\d:./-])(\\d{1,2})(?:[:.](\\d{2}))?(?:\\s*${MER}(?![a-z]))?(?![\\d]|[:.]\\d)`, "gi");
+const UNIT_AFTER = /^\s*(?:mins?\b|minutes?\b|hours?\b|hrs?\b|people\b|persons?\b|spots?\b|slots?\b|comics?\b|st\b|nd\b|rd\b|th\b|%|k\b|km\b|x\b)/i;
+const AT_BEFORE = /\b(?:at|by|from|after|around|before|@)\s*$/i;
+const JOINER = /^\s*(?:,|&|\+|\/|and|or)\s*$/i;
+
+interface Tok {
+  index: number;
+  end: number;
+  h: number;
+  m: number;
+  mer?: "am" | "pm";
+  bare: boolean;
+  min?: number;
+}
+
+/** Start times in `text`: "9:30 and 11 pm", "6pm", "7 and 9pm", "at 10.30", "3-5pm 5-7pm" (starts of ranges). Sorted, no duplicates. */
+export function parseTimes(text: string): string[] {
+  const found: number[] = [];
+  let rest = text;
+  // Ranges first, so "3-5pm" gives 3 PM and the "5" isn't read twice.
+  rest = rest.replace(RANGE, (whole, h1, m1, mer1, h2, m2, mer2) => {
+    const endMer = merOf(mer2);
+    const own = merOf(mer1);
+    const end = clock(Number(h2), Number(m2 ?? 0), endMer);
+    let start = clock(Number(h1), Number(m1 ?? 0), own ?? endMer);
+    if (start !== null && end !== null && !own && start > end) start = clock(Number(h1), Number(m1 ?? 0), endMer === "pm" ? "am" : "pm");
+    if (start !== null) found.push(start);
+    return " ".repeat(whole.length);
+  });
+
+  const toks: Tok[] = [];
+  for (const mt of rest.matchAll(TOKEN)) {
+    const index = mt.index ?? 0;
+    const end = index + mt[0].length;
+    if (UNIT_AFTER.test(rest.slice(end))) continue;
+    const h = Number(mt[1]);
+    const m = Number(mt[2] ?? 0);
+    if (h > 23 || m > 59) continue;
+    toks.push({ index, end, h, m, mer: merOf(mt[3]), bare: mt[2] === undefined && mt[3] === undefined });
+  }
+  // A bare number counts as a time after "at / by / from ..." or when it continues a list of times ("7 and 9").
+  const accepted: Tok[] = [];
+  for (const t of toks) {
+    const prev = accepted[accepted.length - 1];
+    const joined = prev && JOINER.test(rest.slice(prev.end, t.index));
+    if (!t.bare || joined || AT_BEFORE.test(rest.slice(Math.max(0, t.index - 12), t.index))) accepted.push(t);
+  }
+  // "9:30 and 11 pm": numbers without am/pm borrow it from the next time in their list when that keeps the list in order.
+  for (let i = 0; i < accepted.length; i++) {
+    const t = accepted[i]!;
+    let min = clock(t.h, t.m, t.mer);
+    if (!t.mer && t.h <= 12 && t.h >= 1) {
+      for (let j = i + 1; j < accepted.length; j++) {
+        const nx = accepted[j]!;
+        if (!JOINER.test(rest.slice(accepted[j - 1]!.end, nx.index))) break;
+        if (nx.mer) {
+          const borrowed = clock(t.h, t.m, nx.mer);
+          const nxMin = clock(nx.h, nx.m, nx.mer);
+          if (borrowed !== null && nxMin !== null && borrowed <= nxMin) min = borrowed;
+          break;
+        }
+      }
+    }
+    t.min = min ?? undefined;
+    if (min !== null) found.push(min);
+  }
+  return [...new Set(found)].sort((a, b) => a - b).map(fromMin);
+}
+
+const REACH_ABS = new RegExp(
+  `\\b(?:reach(?:ing)?|get there|be there|be here|come|arrive|make it|there)\\b[^.!?\\n]{0,25}?\\b(?:by|before|at)\\s+(\\d{1,2})(?:[:.](\\d{2}))?\\s*${MER}?`,
+  "i",
+);
+const REACH_REL = /\bin\s+(\d{1,3})\s*(?:mins?|minutes?)\b(?:\s*max)?/i;
+
+/** "reach by 5.40pm" or "make it in 20 mins" (from `nowHHMM`). The text with that clause cut out comes back as `rest`. */
+export function parseReachBy(text: string, nowHHMM: string): { reachBy?: string; rest: string } {
+  const abs = text.match(REACH_ABS);
+  if (abs) {
+    const min = clock(Number(abs[1]), Number(abs[2] ?? 0), merOf(abs[3]));
+    return { reachBy: min === null ? undefined : fromMin(min), rest: text.replace(abs[0], " ") };
+  }
+  const rel = text.match(REACH_REL);
+  if (rel) return { reachBy: fromMin(toMin(nowHHMM) + Number(rel[1])), rest: text.replace(rel[0], " ") };
+  return { rest: text };
+}
+
+/** Times and reach-by out of one message. */
+export function parseOfferTimes(text: string, nowHHMM: string): { times: string[]; reachBy?: string } {
+  const { reachBy, rest } = parseReachBy(text, nowHHMM);
+  return { times: parseTimes(rest), reachBy };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Dates and days
+// ---------------------------------------------------------------------------------------------------------------------------
+
+const DAY_MS = 86_400_000;
+const toMs = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y!, m! - 1, d!);
+};
+const addDays = (iso: string, n: number) => new Date(toMs(iso) + n * DAY_MS).toISOString().slice(0, 10);
+
+const DAY = "(sun(?:day)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?)";
+const DAY_RE = new RegExp(`\\b${DAY}\\b`, "gi");
+const DAY_RANGE_RE = new RegExp(`\\b${DAY}\\s*(?:to|-|–|—|till|until|through|thru)\\s*${DAY}\\b`, "gi");
+const dayIndex = (s: string) => ["sun", "mon", "tue", "wed", "thu", "fri", "sat"].indexOf(s.slice(0, 3).toLowerCase()) as Weekday;
+
+/** Weekdays named in a text, ranges expanded ("Wed to Sat", "Mon-Thu"), in the order they fall in the week (Monday first). */
+export function parseWeekdays(text: string): Weekday[] {
+  const out = new Set<Weekday>();
+  let rest = text;
+  rest = rest.replace(DAY_RANGE_RE, (whole, a, b) => {
+    let d = dayIndex(a);
+    const end = dayIndex(b);
+    for (let i = 0; i < 7; i++) {
+      out.add(d);
+      if (d === end) break;
+      d = ((d + 1) % 7) as Weekday;
+    }
+    return " ".repeat(whole.length);
+  });
+  for (const mt of rest.matchAll(DAY_RE)) out.add(dayIndex(mt[1]!));
+  return [...out].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+}
+
+/** The next date (today included) that falls on `weekday`. */
+export const nextWeekday = (weekday: Weekday, today: string) => addDays(today, (weekday - weekdayOf(today) + 7) % 7);
+const sundayOf = (iso: string) => addDays(iso, (7 - weekdayOf(iso)) % 7);
+
+/** Which day an offer is for: today (the default), tomorrow, or the next named weekday. */
+export function parseDayHint(text: string, today: string): string {
+  const t = text.toLowerCase();
+  if (/\b(tomorrow|tmrw|tmr|tom)\b/.test(t)) return addDays(today, 1);
+  if (/\b(today|tonight|tonite|2day|2nite|now)\b/.test(t)) return today;
+  const days = parseWeekdays(text);
+  if (days.length) return days.map((d) => nextWeekday(d, today)).sort()[0]!;
+  return today;
+}
+
+/** Accepts what a model or a person writes for a day: "today", "tomorrow", "friday", or an ISO date. */
+export function resolveDate(hint: string | undefined, today: string): string {
+  const h = (hint ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(h)) return h;
+  return parseDayHint(h, today);
+}
+
+export const alertDayLabel = (date: string, today: string) =>
+  date === today ? "today" : date === addDays(today, 1) ? "tomorrow" : `${DAY_SHORT[weekdayOf(date)]} ${Number(date.slice(8, 10))} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(date.slice(5, 7)) - 1]}`;
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Time zones
+// ---------------------------------------------------------------------------------------------------------------------------
+
+function offsetMin(at: number, tz: string) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(new Date(at))
+      .map((x) => [x.type, x.value]),
+  );
+  return (Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second)) - Math.floor(at / 1000) * 1000) / 60_000;
+}
+
+/** The moment (ms) a wall-clock `date` + `time` is in `tz`. */
+export function zonedToMs(date: string, time: string, tz: string): number {
+  const [y, mo, d] = date.split("-").map(Number);
+  const guess = Date.UTC(y!, mo! - 1, d!, Number(time.slice(0, 2)), Number(time.slice(3, 5)));
+  const first = guess - offsetMin(guess, tz) * 60_000;
+  return guess - offsetMin(first, tz) * 60_000;
+}
+
+/** Wall-clock date and time of a moment in `tz`. */
+export function localParts(ms: number, tz: string): { date: string; time: string; weekday: Weekday } {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      .formatToParts(new Date(ms))
+      .map((x) => [x.type, x.value]),
+  );
+  const date = `${p.year}-${p.month}-${p.day}`;
+  return { date, time: `${p.hour}:${p.minute}`, weekday: weekdayOf(date) };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Rooms
+// ---------------------------------------------------------------------------------------------------------------------------
+
+type RoomLike = Pick<Room, "id" | "name" | "area" | "aliases"> & Partial<Pick<Room, "brand" | "notes">>;
+
+const GENERIC = new Set(["the", "of", "at", "in", "comedy", "club", "cafe", "bar", "mic", "open", "house", "and", "a", "an", "for", "store"]);
+const distinctive = (ts: string[]) => ts.filter((t) => !GENERIC.has(t));
+
+const hostOf = (url: string | undefined) => {
+  try {
+    return new URL(/^https?:/i.test(url ?? "") ? url! : `https://${url}`).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
+/** How well a name hint (or a whole message) points at a room: 0 for no, up to 100 for exactly that room. */
+function roomScore(room: RoomLike, hintNorm: string, hintTokens: string[]): number {
+  if (!hintTokens.length) return 0;
+  let best = 0;
+  const names = [room.name, ...room.aliases, ...(room.brand ? [room.brand] : [])];
+  const withArea = [`${room.name} ${room.area}`, ...(room.brand ? [`${room.brand} ${room.area}`] : []), ...room.aliases.map((a) => `${a} ${room.area}`)];
+  for (const n of [...names, ...withArea]) {
+    const nt = tokens(n);
+    if (!nt.length || n.trim().length < 2) continue;
+    if (norm(n) === hintNorm) best = Math.max(best, 100);
+    else if (hasPhrase(hintTokens, nt) && (nt.length > 1 || !GENERIC.has(nt[0]!))) best = Math.max(best, 80 + Math.min(nt.length, 10));
+  }
+  for (const note of room.notes ?? []) {
+    const host = note.kind === "website" ? hostOf(note.url) : "";
+    if (host && hintNorm.replace(/ /g, "").includes(host.replace(/[^a-z0-9]/g, ""))) best = Math.max(best, 95);
+  }
+  // "Square" for Comedy Square, "ministry" for Ministry of Comedy: every distinctive word of the name is in the hint.
+  const dn = distinctive(tokens(room.name));
+  if (dn.length && dn.every((t) => hintTokens.includes(t))) best = Math.max(best, 70 + Math.min(dn.length, 5));
+  // "church street": the hint is the area (or part of the name) and nothing generic.
+  const at = tokens(room.area);
+  if (distinctive(at).length && hasPhrase(hintTokens, at)) best = Math.max(best, 60);
+  const all = new Set([...tokens(room.name), ...tokens(room.area), ...(room.brand ? tokens(room.brand) : []), ...room.aliases.flatMap(tokens)]);
+  const hd = distinctive(hintTokens);
+  if (hd.length && hd.every((t) => all.has(t)) && hintTokens.length <= 4) best = Math.max(best, 50 + hd.length);
+  return best;
+}
+
+export interface RoomMatch<R extends RoomLike> {
+  room: R | null;
+  /** Rooms tied for the best match when the name didn't settle it (two Comedy Theatres). */
+  candidates: R[];
+}
+
+/** The comic's room a name or a whole message points at, by name, alias, brand, area or website. Ties are not guessed. */
+export function resolveRoom<R extends RoomLike>(rooms: R[], hint: string | undefined): RoomMatch<R> {
+  const hn = norm(hint ?? "");
+  const ht = hn.split(" ").filter(Boolean);
+  if (!ht.length) return { room: null, candidates: [] };
+  const scored = rooms.map((r) => ({ r, s: roomScore(r, hn, ht) })).filter((x) => x.s >= 50);
+  if (!scored.length) return { room: null, candidates: [] };
+  const top = Math.max(...scored.map((x) => x.s));
+  const best = scored.filter((x) => x.s === top).map((x) => x.r);
+  return best.length === 1 ? { room: best[0]!, candidates: best } : { room: null, candidates: best };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Contact
+// ---------------------------------------------------------------------------------------------------------------------------
+
+const NAME_SKIP = /^(me|us|you|him|her|them|now|asap|directly|for|if|the|on|to|and|at|in|is|am|pm|dm|here|your|my|only|first|early|soon|by|with)$/i;
+
+/** "DM Dhruv" gives Dhruv; "DM me", "DM for spots" give nothing. */
+export function namedContact(text: string): string | undefined {
+  const m = text.match(/\b(?:dm|pm|ping|message|msg|contact|whatsapp|call|text|reach out to|talk to)\s+(?:to\s+)?@?([^\n.,;:!?()]{1,40})/i);
+  if (!m) return undefined;
+  const words: string[] = [];
+  for (const w of m[1]!.trim().split(/\s+/)) {
+    // A name is capitalised ("DM Dhruv"); "DM me", "DM for spots", "DM if you can" are not.
+    if (!/^\p{Lu}/u.test(w) || NAME_SKIP.test(w) || words.length >= 2) break;
+    words.push(w);
+  }
+  return words.length ? words.join(" ") : undefined;
+}
+
+const sameName = (a: string | undefined, b: string | undefined) => {
+  const x = tokens(a ?? "");
+  const y = tokens(b ?? "");
+  if (!x.length || !y.length) return false;
+  return x.join(" ") === y.join(" ") || (x[0] === y[0] && (x.length === 1 || y.length === 1));
+};
+
+/**
+ * Who to DM. The sender when it says "DM me" (or nothing); a tagged person when the message tags one ("PM @x"); a person named
+ * in the text ("DM Dhruv") when they're a tagged person or in the directory. The comic is never their own contact.
+ */
+export function resolveContact(args: {
+  sender: Person;
+  mentioned: Person[];
+  text: string;
+  kind?: AiRead["contactKind"];
+  name?: string;
+  directory?: Person[];
+  selfId?: string;
+}): SpotAlert["contact"] {
+  const { sender, text, selfId } = args;
+  const others = args.mentioned.filter((m) => !samePerson(m.id, selfId) && !samePerson(m.id, sender.id));
+  const asSender = (): SpotAlert["contact"] => ({ id: sender.id, name: sender.name, kind: "sender" });
+  const tagged = (p: Person): SpotAlert["contact"] => ({ id: p.id, name: p.name, kind: "mentioned" });
+  const wantsSender = /\b(dm|pm|message|msg|ping)\s+me\b/i.test(text);
+  const named = args.name?.trim() || namedContact(text);
+
+  if (args.kind === "sender" && !named) return asSender();
+  if (others.length && !wantsSender) {
+    const byName = named ? others.find((o) => sameName(o.name, named)) : undefined;
+    return tagged(byName ?? others[0]!);
+  }
+  if (named && !wantsSender) {
+    const hit = [...(args.directory ?? [])].find((p) => !samePerson(p.id, selfId) && sameName(p.name, named));
+    if (hit) return tagged(hit);
+  }
+  return asSender();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Closures
+// ---------------------------------------------------------------------------------------------------------------------------
+
+/** Days a closure covers: "Wed to Sat this week", "Square Sunday", "Over, thanks!" (none). */
+export function parseClosureScope(text: string): { scope: ParsedClosure["scope"]; days: Weekday[] } {
+  const days = parseWeekdays(text);
+  const t = text.toLowerCase();
+  if (/\bnext week\b/.test(t)) return { scope: "next_week", days };
+  if (/\b(this week|rest of the week|for the week|the week)\b/.test(t)) return { scope: "week", days };
+  if (days.length) return { scope: "days", days };
+  if (/\b(today|tonight|tonite|2day)\b/.test(t)) return { scope: "today", days };
+  return { scope: "none", days };
+}
+
+/** Contiguous dates become one range ("Wed to Sat"); a gap makes another. */
+function toRanges(dates: string[]): DateRange[] {
+  const out: DateRange[] = [];
+  for (const d of [...new Set(dates)].sort()) {
+    const last = out[out.length - 1];
+    if (last && addDays(last.until, 1) === d) last.until = d;
+    else out.push({ from: d, until: d });
+  }
+  return out;
+}
+
+/**
+ * The dates a closure covers. `week` is the Monday-to-Sunday week we're in, from today on (days already gone aren't closed);
+ * `days` alone means the next time each of those days comes round. No scope: nothing (it only closes an alert).
+ */
+export function closureRanges(scope: ParsedClosure["scope"], days: Weekday[], today: string): DateRange[] {
+  switch (scope) {
+    case "none":
+      return [];
+    case "today":
+      return [{ from: today, until: today }];
+    case "days":
+      return toRanges(days.map((d) => nextWeekday(d, today)));
+    case "week": {
+      const end = sundayOf(today);
+      const dates: string[] = [];
+      for (let d = today; d <= end; d = addDays(d, 1)) if (!days.length || days.includes(weekdayOf(d))) dates.push(d);
+      return toRanges(dates);
+    }
+    case "next_week": {
+      const mon = addDays(sundayOf(today), 1);
+      const dates: string[] = [];
+      for (let i = 0; i < 7; i++) if (!days.length || days.includes(weekdayOf(addDays(mon, i)))) dates.push(addDays(mon, i));
+      return toRanges(dates);
+    }
+  }
+}
+
+const isLive = (a: Pick<SpotAlert, "status" | "expiresAt">, now: number) => (a.status === "new" || a.status === "asked") && a.expiresAt > now;
+
+/**
+ * The alert a "Closed" / "Over, thanks" means: the one it replies to, else the same poster's latest open alert in that group
+ * (the one for the room it names, when it names one).
+ */
+export function alertToClose(
+  alerts: SpotAlert[],
+  q: { groupId: string; posterId: string; quotedMessageId?: string; roomId?: string; now: number },
+): SpotAlert | null {
+  const live = alerts.filter((a) => a.groupId === q.groupId && isLive(a, q.now));
+  if (q.quotedMessageId) {
+    const hit = live.find((a) => a.messageId === q.quotedMessageId);
+    if (hit) return hit;
+  }
+  const mine = live.filter((a) => samePerson(a.poster.id, q.posterId)).sort((a, b) => b.receivedAt - a.receivedAt);
+  if (q.roomId) return mine.find((a) => a.roomId === q.roomId) ?? mine.find((a) => !a.roomId) ?? null;
+  return mine[0] ?? null;
+}
+
+/** Open alerts a room closure covers, from anyone: the room is full on those dates. */
+export const alertsClosedByRanges = (alerts: SpotAlert[], roomId: string, ranges: DateRange[], now: number) =>
+  alerts.filter((a) => a.roomId === roomId && isLive(a, now) && ranges.some((r) => r.from <= a.date && a.date <= r.until));
+
+/** Adds the closure to the show(s) of a room that run on those dates (or the named show). Already closed for those dates: unchanged. */
+export function applyClosureToRoom(
+  room: Room,
+  ranges: DateRange[],
+  meta: { source?: Closure["source"]; groupId?: string; messageId?: string; showId?: string; at?: number; note?: string } = {},
+): Room {
+  if (!ranges.length) return room;
+  const from = ranges[0]!.from;
+  const to = ranges[ranges.length - 1]!.until;
+  const runs = (s: RoomShow) => (meta.showId ? s.id === meta.showId : showDates(s, from, to).length > 0);
+  let targets = room.shows.filter(runs);
+  if (!targets.length) targets = meta.showId ? [] : room.shows;
+  const ids = new Set(targets.map((s) => s.id));
+  return {
+    ...room,
+    shows: room.shows.map((s) => {
+      if (!ids.has(s.id)) return s;
+      let closures = s.closures ?? [];
+      for (const r of ranges) {
+        if (closures.some((c) => (c.from ?? "0000-00-00") <= r.from && c.until >= r.until)) continue;
+        closures = [...closures, { from: r.from, until: r.until, source: meta.source ?? "group_message", at: meta.at, groupId: meta.groupId, messageId: meta.messageId, note: meta.note }];
+      }
+      return { ...s, closures: closures.map((c) => stripUndefined({ ...c })) };
+    }),
+  };
+}
+
+function stripUndefined<T extends object>(o: T): T {
+  for (const k of Object.keys(o) as (keyof T)[]) if (o[k] === undefined) delete o[k];
+  return o;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Curator schedule ("Comedy Square – Curation Schedule: Monday: @Vishal, Tuesday: @Varun, Wednesday to Saturday: Akhil")
+// ---------------------------------------------------------------------------------------------------------------------------
+
+const SPEC = new RegExp(`${DAY}(?:\\s*(?:to|-|–|—|till|&|and|,|/)\\s*${DAY})*\\s*[:\\-–—]\\s*`, "gi");
+
+/** "Vishal KG Comic BLR" is a name plus a tag line: drop the trailing words that aren't part of the name. */
+export const cleanPersonName = (s: string) =>
+  s
+    .replace(/^[@\s]+/, "")
+    .replace(/[\s,.;]+$/, "")
+    .replace(/\b(comic|comedian|comedy|blr|bangalore|bengaluru)\b(?:\s+\b(comic|comedian|comedy|blr|bangalore|bengaluru)\b)*\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** The days and who curates them, read straight from the text. Empty when the text isn't a schedule. */
+export function parseSchedule(text: string): ScheduleEntry[] {
+  const specs = [...text.matchAll(SPEC)];
+  const out: ScheduleEntry[] = [];
+  specs.forEach((m, i) => {
+    const start = (m.index ?? 0) + m[0].length;
+    const end = i + 1 < specs.length ? (specs[i + 1]!.index ?? text.length) : text.length;
+    // The value runs to the next "Day:" or the end of the line.
+    const value = text.slice(start, end).split("\n")[0]!;
+    const people = value
+      .split(/\s*(?:&|\/|\band\b|\+)\s*/i)
+      .map(cleanPersonName)
+      .filter((p) => p.length > 0 && !/^(off|closed|none|no mic|tbd|-)$/i.test(p));
+    const days = parseWeekdays(m[0].replace(/[:\-–—]\s*$/, ""));
+    if (days.length && people.length) out.push({ days, people });
+  });
+  return out;
+}
+
+/** The existing curator a written name means: the same name, or one that contains the other ("Akhil" is "Akhil Sharma") when that's unambiguous. */
+export function matchCurator(curators: Curator[], name: string): Curator | null {
+  const key = slug(cleanPersonName(name));
+  if (!key) return null;
+  const exact = curators.find((c) => curatorKey(c) === key);
+  if (exact) return exact;
+  const want = tokens(cleanPersonName(name));
+  const within = curators.filter((c) => {
+    const have = tokens(c.name);
+    return have.length > 0 && have.every((t) => want.includes(t));
+  });
+  if (within.length) return within.sort((a, b) => tokens(b.name).length - tokens(a.name).length)[0]!;
+  const first = curators.filter((c) => want.every((t) => tokens(c.name).includes(t)));
+  return first.length === 1 ? first[0]! : null;
+}
+
+export interface ScheduleChange {
+  weekday: Weekday;
+  curatorName: string;
+  /** Another show on the same room has no such day: nothing to change. */
+  skipped?: string;
+  created?: boolean;
+}
+
+/**
+ * Sets who curates each named weekday of the room's show (the first person asked, the rest co-curate). Curators we don't know
+ * are added without a number. A weekday the show doesn't run on is left alone and reported.
+ */
+export function applyScheduleToRoom(
+  room: Room,
+  curators: Curator[],
+  entries: ScheduleEntry[],
+  opts: { showId?: string } = {},
+): { room: Room; curators: Curator[]; changes: ScheduleChange[] } {
+  const nextCurators = [...curators];
+  const changes: ScheduleChange[] = [];
+  const idFor = (name: string) => {
+    const hit = matchCurator(nextCurators, name);
+    if (hit) return { id: hit.id, name: hit.name, created: false };
+    const clean = cleanPersonName(name) || name.trim();
+    let id = slug(clean) || "curator";
+    for (let n = 2; nextCurators.some((c) => c.id === id); n++) id = `${slug(clean)}-${n}`;
+    nextCurators.push({ id, name: clean, notes: "Added from a group message. Add their number." });
+    return { id, name: clean, created: true };
+  };
+  // The named show, else the first one (mics before shows) that runs on any of those days, else the first.
+  const pickShow = (weekdays: Weekday[]) => {
+    if (opts.showId) return room.shows.find((s) => s.id === opts.showId);
+    const ranked = [...room.shows].sort((a, b) => Number(a.type === "show") - Number(b.type === "show"));
+    return ranked.find((s) => weekdays.some((w) => s.days.some((d) => d.weekday === w))) ?? room.shows[0];
+  };
+  let shows = room.shows;
+  for (const e of entries) {
+    const show = pickShow(e.days);
+    if (!show) continue;
+    const ids = e.people.map(idFor);
+    shows = shows.map((s) =>
+      s.id !== show.id
+        ? s
+        : {
+            ...s,
+            days: s.days.map((d): DayPlan => {
+              if (!e.days.includes(d.weekday)) return d;
+              const { standIn: _gone, ...rest } = d;
+              return { ...rest, curatorIds: ids.map((x) => x.id), theyReachOut: undefined } as DayPlan;
+            }),
+          },
+    );
+    for (const w of e.days) {
+      const has = show.days.some((d) => d.weekday === w);
+      changes.push({ weekday: w, curatorName: ids[0]!.name, created: ids[0]!.created || undefined, skipped: has ? undefined : `${show.name} doesn't run on ${DAY_NAMES[w]}` });
+    }
+  }
+  const clean = shows.map((s) => ({ ...s, days: s.days.map((d) => stripUndefined({ ...d })) }));
+  return { room: { ...room, shows: clean }, curators: nextCurators, changes };
+}
+
+/** "Mon Vishal KG, Tue Varun Sachdev, Wed to Sat Akhil": the one line a schedule update gets. */
+export function scheduleSummary(entries: ScheduleEntry[]): string {
+  return entries.map((e) => `${daysShort(e.days)} ${e.people.join(" and ")}`).join(", ");
+}
+function daysShort(days: Weekday[]) {
+  const order = [...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+  const contiguous = order.length >= 3 && order.every((d, i) => i === 0 || (d + 6) % 7 === ((order[i - 1]! + 6) % 7) + 1);
+  return contiguous ? `${DAY_SHORT[order[0]!]} to ${DAY_SHORT[order[order.length - 1]!]}` : order.map((d) => DAY_SHORT[d]).join(", ");
+}
+export const rangeSummary = (ranges: DateRange[]) =>
+  ranges.map((r) => (r.from === r.until ? shortDate(r.from) : `${shortDate(r.from)} to ${shortDate(r.until)}`)).join(", ");
+const shortDate = (d: string) => `${DAY_SHORT[weekdayOf(d)]} ${Number(d.slice(8, 10))}`;
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// What a message is, without the model (the fallback) and what is worth reading at all
+// ---------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Quick filter before anything is read by a model: a message with none of these words is chat, not a spot post. Cheap, and it
+ * keeps unrelated conversation from ever reaching the model.
+ */
+export const worthReading = (text: string) => text.trim().length > 0 && text.length < 1500 && /\b(spots?|slots?|busk\w*|closed?|over|full|filled|open(?:s|ed|ing)?|available|avail|schedule|curat\w*|dm|website|mic)\b/i.test(text);
+
+const OFFER_RE = /\b(spots?|slots?)\b[^.\n]*\b(available|avail|open|free|left|vacant)\b|\b(available|avail|free|open)\b[^.\n]*\b(spots?|slots?)\b|\bdm\b[^.\n]*\b(spots?|slots?)\b|\b(spots?|slots?)\b[^.\n]*\b(dm|pm me|message me)\b|\bbusk\w*\b[^.\n]*\b(available|avail|open|free)\b|\b(spots?|slots?)\s+(at|for)\b/i;
+const OPENING_RE = /\b(will open|opens?\s+(?:at|by|in|from)|open by|opening (?:at|by)|website\b[^.\n]*\bopen|registrations?\b[^.\n]*\bopen)\b/i;
+const CLOSURE_RE = /\b(closed?|over|full|filled|houseful|sold out|no more (?:spots?|slots?)|done|finished|booked)\b/i;
+
+/**
+ * The model's job done by rules: what kind of message it is, and the room or person it names. Used when no model answers
+ * (too slow, offline, no key) so an urgent offer still gets through, and in tests.
+ */
+export function heuristicRead(text: string, mentioned: Person[] = []): AiRead {
+  const t = text.trim();
+  if (parseSchedule(t).length >= 2 && /\b(schedule|curat\w*|roster|lineup)\b/i.test(t)) return { kind: "schedule_update" };
+  const named = namedContact(t);
+  const contact: Pick<AiRead, "contactKind" | "contactName"> =
+    mentioned.length && /\b(dm|pm|ping|message|msg|contact|whatsapp|call|text)\s+@/i.test(t) ? { contactKind: "mentioned" } : named ? { contactKind: "named", contactName: named } : { contactKind: "sender" };
+  if (OPENING_RE.test(t) && /\b(spots?|slots?|website|registrations?|mics?)\b/i.test(t)) return { kind: "opening_notice" };
+  const short = t.length <= 70;
+  if (OFFER_RE.test(t) && !(short && /^\W*(closed?|over|full|done)\b/i.test(t))) return { kind: "spot_offer", ...contact };
+  if (CLOSURE_RE.test(t) && (short || /\b(spots?|slots?)\b/i.test(t))) return { kind: "closure" };
+  return { kind: "other" };
+}
+
+const SPOT_WORD = /\b(spots?|slots?|busk\w*|mics?|sets?)\b/i;
+
+/**
+ * Turn the model's (or the rules') answer into validated fields. A kind the text can't back up becomes "other": a model that says
+ * "spot offer" for a message with no mention of a spot is wrong, and no push goes out for it.
+ */
+export function interpret(ai: AiRead, msg: GroupMsg, ctx: ReadCtx): Reading {
+  const text = msg.text;
+  const now = localParts(ctx.now, ctx.tz);
+  const today = now.date;
+  const room = findRoom(ctx.rooms, ai.room, text);
+  const roomFields = { roomId: room.room?.id, roomName: room.room?.name ?? roomNameOf(room.candidates) ?? (ai.room?.trim() || undefined) };
+
+  switch (ai.kind) {
+    case "spot_offer": {
+      if (!SPOT_WORD.test(text)) return { kind: "other" };
+      const { times, reachBy } = parseOfferTimes(text, now.time);
+      const showId = showFor(room.room, ai.show);
+      return {
+        kind: "spot_offer",
+        offer: {
+          ...roomFields,
+          showId,
+          date: parseDayHint(text, today),
+          times,
+          reachBy,
+          contact: resolveContact({ sender: msg.sender, mentioned: msg.mentioned, text, kind: ai.contactKind, name: ai.contactName, directory: ctx.directory, selfId: ctx.selfId }),
+          busking: /\bbusk\w*/i.test(text),
+          long: /\blong\b/i.test(text),
+          ambiguousRooms: !room.room && room.candidates.length > 1 ? room.candidates.map((r) => `${r.name}, ${r.area}`) : undefined,
+        },
+      };
+    }
+    case "closure": {
+      if (!CLOSURE_RE.test(text)) return { kind: "other" };
+      const { scope, days } = parseClosureScope(text);
+      return { kind: "closure", closure: { ...roomFields, scope, days, ranges: closureRanges(scope, days, today) } };
+    }
+    case "opening_notice": {
+      if (!/\bopen/i.test(text)) return { kind: "other" };
+      const openAt = parseTimes(text.replace(/\bwill open\b/gi, "open"))[0];
+      const website = /\bwebsite|registration|\.(in|com|co)\b/i.test(text);
+      const where = roomFields.roomName ?? "A room";
+      return { kind: "opening_notice", opening: { ...roomFields, openAt, website, summary: openAt ? `${where}: spots open by ${formatTime(openAt)}` : website ? `${where}: the website is open for spots` : `${where}: spots are opening` } };
+    }
+    case "schedule_update": {
+      const entries = parseSchedule(text);
+      if (!entries.length) return { kind: "other" };
+      return { kind: "schedule_update", schedule: { ...roomFields, entries } };
+    }
+    default:
+      return { kind: "other" };
+  }
+}
+
+/** The model's room name first, then anything in the message that names a room. */
+function findRoom(rooms: Room[], hint: string | undefined, text: string): RoomMatch<Room> {
+  const byHint = resolveRoom(rooms, hint);
+  if (byHint.room || byHint.candidates.length) return byHint;
+  return resolveRoom(rooms, text);
+}
+
+/** Two rooms of one chain tied: "Comedy Theatre" is still the name to show. */
+function roomNameOf(candidates: Room[]): string | undefined {
+  const names = new Set(candidates.map((r) => r.name));
+  return names.size === 1 ? candidates[0]?.name : undefined;
+}
+
+function showFor(room: Room | null, hint: string | undefined): string | undefined {
+  if (!room) return undefined;
+  if (hint?.trim()) {
+    const want = slug(hint);
+    const hit = room.shows.find((s) => slug(s.name) === want || s.type === want);
+    if (hit) return hit.id;
+  }
+  return room.shows.length === 1 ? room.shows[0]!.id : undefined;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Alerts
+// ---------------------------------------------------------------------------------------------------------------------------
+
+/** Until when an offer can still be taken: reach-by, else the start of the last time offered, else the end of the day. */
+export function alertExpiry(a: { date: string; times: string[]; reachBy?: string }, tz: string, receivedAt: number): number {
+  if (a.reachBy) {
+    const t = zonedToMs(a.date, a.reachBy, tz);
+    // "reach by 12:10" said at 11:55 PM means after midnight.
+    return t < receivedAt - 60_000 ? t + DAY_MS : t;
+  }
+  if (a.times.length) return zonedToMs(a.date, a.times[a.times.length - 1]!, tz);
+  return zonedToMs(a.date, "23:59", tz);
+}
+
+/** A stable, Firestore-safe document id for the alert a message makes. */
+export const alertIdFor = (groupId: string, messageId: string) => `${groupId}__${messageId}`.replace(/[^A-Za-z0-9_.@-]/g, "_").slice(0, 200);
+
+/** "9:30 / 11 PM", "6 PM", "5:40 PM": no ":00", AM/PM only where it changes. */
+export function timesShort(times: string[]): string {
+  const parts = times.map((t) => {
+    const f = formatTime(t);
+    const [clock, mer] = f.split(" ");
+    return { clock: clock!.replace(/:00$/, ""), mer: mer! };
+  });
+  return parts.map((p, i) => (i === parts.length - 1 || parts[i + 1]!.mer !== p.mer ? `${p.clock} ${p.mer}` : p.clock)).join(" / ");
+}
+
+/** The first name, for "Hi Dhruv". */
+export const givenName = (name: string | undefined) => (name ?? "").replace(/^@/, "").trim().split(/\s+/)[0] ?? "";
+
+/** What the push says: "Spot at TAG today 9:30 / 11 PM", then "DM Dhruv · reach by 5:40 PM". Times that clash with a booked spot are left out. */
+export function alertPush(alert: SpotAlert, mySpots: MySpot[], today: string): { title: string; body: string } {
+  const { free } = alertClash(alert, mySpots);
+  const times = free.length ? free : alert.times;
+  const where = alert.roomName ?? "a room";
+  const kind = alert.busking ? "Busking spot" : alert.long ? "Long spot" : "Spot";
+  const when = [alertDayLabel(alert.date, today), times.length ? timesShort(times) : ""].filter(Boolean).join(" ");
+  const who = alert.contact.name ? `DM ${givenName(alert.contact.name) || alert.contact.name}` : "DM them";
+  return { title: `${kind} at ${where} ${when}`.trim(), body: [who, alert.reachBy ? `reach by ${formatTime(alert.reachBy)}` : ""].filter(Boolean).join(" · ") };
+}
+
+/** The message "Ask for it" starts with: the comic can edit it before it goes. */
+export const ASK_TEMPLATE = "Hi {{name}}, I can do the {{time}} spot at {{room}} {{day}}!";
+export function renderAlertAsk(v: { name?: string; time?: string; room?: string; day: string }): string {
+  const when = v.time ? `the ${formatTime(v.time)} spot` : "a spot";
+  return ASK_TEMPLATE.replace("{{name}}", givenName(v.name) || "there")
+    .replace("the {{time}} spot", when)
+    .replace("{{room}}", v.room || "your room")
+    .replace("{{day}}", /^(today|tomorrow)$/.test(v.day) ? v.day : `on ${v.day}`)
+    .replace(/ {2,}/g, " ");
+}
+
+export type AlertState = "open" | "asked" | "closed" | "expired" | "dismissed";
+/** What an alert is right now: an unexpired one the worker hasn't swept yet still counts as expired. */
+export function alertState(a: Pick<SpotAlert, "status" | "expiresAt">, now: number): AlertState {
+  if (a.status === "closed" || a.status === "dismissed") return a.status;
+  if (a.status === "expired" || a.expiresAt <= now) return "expired";
+  return a.status === "asked" ? "asked" : "open";
+}
+
+/** "34 min left", "2 h left", "ended". */
+export function timeLeft(expiresAt: number, now: number): string {
+  const min = Math.ceil((expiresAt - now) / 60_000);
+  if (min <= 0) return "ended";
+  if (min < 60) return `${min} min left`;
+  const h = Math.floor(min / 60);
+  return min % 60 && h < 6 ? `${h} h ${min % 60} min left` : `${h} h left`;
+}
+
+/** Alerts the comic can still act on, soonest to end first. */
+export const openAlerts = (alerts: SpotAlert[], now: number) =>
+  alerts.filter((a) => ["open", "asked"].includes(alertState(a, now))).sort((a, b) => a.expiresAt - b.expiresAt);
+
+/** The booked spot an alert clashes with, in words, or null. A clash only matters when every offered time clashes. */
+export function clashNote(alert: Pick<SpotAlert, "date" | "times">, mySpots: MySpot[]): { with: string; times: string[] } | null {
+  const r = alertClash(alert, mySpots);
+  if (!r.clash) return null;
+  const other = clashes(mySpots, { date: alert.date, time: r.clashing[0] })[0];
+  return { with: [other?.roomName, other?.time ? formatTime(other.time) : ""].filter(Boolean).join(" ") || "a spot you have", times: r.clashing };
+}

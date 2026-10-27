@@ -254,14 +254,17 @@ export interface MySpot {
   createdAt: number;
 }
 
-/** A spot offer read from a watched group. */
+/** A spot offer read from a watched group (users/{uid}/spotAlerts/{id}, written by the worker, cleared by the comic). */
 export interface SpotAlert {
   id: string;
   groupId: string;
+  groupName?: string;
   messageId: string;
   poster: { id: string; name?: string };
+  /** A short quote of the message (never the whole chat). */
   text?: string;
   roomId?: string;
+  /** The room as the comic knows it, or as the poster wrote it when it isn't one of theirs. */
   roomName?: string;
   showId?: string;
   date: string;
@@ -270,9 +273,18 @@ export interface SpotAlert {
   reachBy?: string;
   /** Who to DM: the sender, or the person mentioned/tagged. */
   contact: { id: string; name?: string; kind: "sender" | "mentioned" };
+  /** Busking and long spots are flagged, never filtered. */
+  busking?: boolean;
+  long?: boolean;
+  /** Every offered time clashes with a spot already booked: no push was sent, the card says so. */
+  clash?: { with: string; times: string[] };
   expiresAt: number;
-  status: "new" | "asked" | "dismissed" | "expired";
+  status: "new" | "asked" | "dismissed" | "expired" | "closed";
   receivedAt: number;
+  closedAt?: number;
+  askedAt?: number;
+  /** What the comic sent. */
+  askText?: string;
 }
 
 export interface WatchedGroup {
