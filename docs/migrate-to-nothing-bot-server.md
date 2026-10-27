@@ -30,7 +30,7 @@ One name, written three ways. Use the right one for the place.
 | Console link helper | `spot-console-url` | `nbs-console-url` |
 | Settings (`.env`, service definitions) | `SPOT_*` | `NBS_*` (the old `SPOT_*` names still work as a fallback, see below) |
 | Downloads | `dl/spot-solutions.tar.gz`, `SpotSolutions-Windows.zip`, `SpotServer-mac.zip`, `dl/version.json` | `dl/nothing-bot-server.tar.gz`, `NothingBotServer-Windows.zip`, `NothingBotServer-mac.zip`, `dl/nothing-bot-server.json` |
-| Where servers update from | `https://spot-solutions.web.app` | `https://nothingbotcurating.web.app` (`DIST_BASE`, or `NBS_DIST_URL` to override) |
+| Where servers update from | `https://spot-solutions.web.app` (now only a forwarding page) | `https://nothingbotcurating.web.app` (`DIST_BASE`, or `NBS_DIST_URL` to override) |
 
 **Not renamed on purpose:** the code packages (`@spot/*`), Firestore collections and paths, Storage paths (`vault/...`), Firebase and IAM names (project `spot-solutions`, service accounts `spot-<device>` and `spot-enroller`), the key folder `~/.spot-keys`, and command names. Nothing on the cloud side changes, which is why a new server can pick up where an old one stopped.
 
@@ -38,15 +38,15 @@ One name, written three ways. Use the right one for the place.
 
 Every setting now reads `NBS_*`. At start the worker, the console, the installers and `nbsctl` copy any `SPOT_X` they find into `NBS_X` when `NBS_X` isn't set, so an old `.env` or service file keeps working. `NBS_X` always wins. When the console saves a setting it also drops the old `SPOT_X` line.
 
-## Old servers are frozen, not updated
+## Old servers: reinstall, they no longer get updates
 
-Servers installed before the rename (release `3c43570` and earlier) check `https://spot-solutions.web.app/dl/version.json` and download `/dl/spot-solutions.tar.gz`. The renamed release would run against their old folders and services and break them, so they must never be offered it.
+Servers installed before the rename (release `3c43570` and earlier) used to check `https://spot-solutions.web.app/dl/version.json` and download `/dl/spot-solutions.tar.gz`. The renamed release would have run against their old folders and services and broken them, so they were frozen on their last release instead.
 
-- Every hosting site serves the same `apps/web/dist`. `deploy/build-dist.sh` copies the **frozen legacy files** from the gitignored folder `deploy/legacy-dl/` into `dist/dl/` on every build: `version.json`, `spot-solutions.tar.gz`, `SpotSolutions-Windows.zip`, `SpotServer-mac.zip`. They are byte for byte what the live site served when the rename was prepared (`version` `3c43570`), so old servers keep seeing "up to date".
-- The build **fails loudly** if one is missing, if `version.json` isn't valid, or if the tarball no longer matches the sha256 in it. If the folder is lost, recover the files from a backup (or from the live site while it still serves them), never from a new build.
-- New files use new names (`dl/nothing-bot-server.json`, `dl/nothing-bot-server.tar.gz`, ...), so the two sets can never collide. New servers read `dl/nothing-bot-server.json` from `nothingbotcurating.web.app`.
-- The install addresses at the site root (`install.sh`, `install.ps1`, `install-mac.sh`) always serve the **new** installers, on every site. Old servers never re-run an installer, so they are unaffected; a fresh install always gets the new layout.
-- The Server page in the app compares each server's version with the latest new release, so an old server shows as out of date. That is true; reinstall it (below) instead of pressing Update.
+**That frozen release is shut down (27 October 2026).** `spot-solutions.web.app` now serves only a forwarding page to nothingbotcurating.web.app and a self-removing service worker (`deploy/retired/`, built into `apps/web/dist-retired` by `deploy/build-dist.sh`). It has no `dl/` files and no installers, and `build-dist.sh` no longer reads `deploy/legacy-dl/`. An old server now sees no updates at all: reinstall it with the new installer (below). Its data and WhatsApp login stay and carry over.
+
+- New files use new names (`dl/nothing-bot-server.json`, `dl/nothing-bot-server.tar.gz`, ...). New servers read `dl/nothing-bot-server.json` from `nothingbotcurating.web.app`.
+- The install addresses at the site root (`install.sh`, `install.ps1`, `install-mac.sh`) serve the new installers on every site except the retired one.
+- The Server page in the app compares each server's version with the latest release, so an old server shows as out of date. That is true; reinstall it instead of pressing Update.
 
 ## Moving your own server
 

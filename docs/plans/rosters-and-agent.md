@@ -1,6 +1,6 @@
 # Plan: rooms roster, community rosters, agent v2
 
-Status: decisions captured, data model not drafted yet (waiting on Amrit's example sheets). 27 October 2026.
+Status: built on 27 October 2026 in Nothing BOT Comedy: My rooms with paste-anything import, asks, community rosters, and the agent's comic commands (see [comic-app.md](comic-app.md) and [../agent.md](../agent.md)). This file is the decision record.
 Builds on [asking-rooms.md](asking-rooms.md) (asking other rooms for spots) and [../agent.md](../agent.md) (the agent today).
 
 ## Phases

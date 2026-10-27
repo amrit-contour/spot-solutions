@@ -2,129 +2,37 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,300..900&display=swap" rel="stylesheet" />
+<!-- Source for apps/web/public/press/cover.jpg (the DEV post cover, 1000x420). Render at 1000x420, device scale factor 2, then export JPEG. -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet" />
 <style>
-  :root { --bg: #120d09; --amber: #e8a33d; --amber-soft: #f3c47c; --ink: #f5e9da; --muted: #a8977f; --card: #1f1812; --line: #3a2e22; }
+  :root { --bg: #0a0a0a; --green: #7ddc5a; --ink: #f2f2f2; --muted: #a8a8a8; --line: #2e2e2e; }
   * { box-sizing: border-box; margin: 0; }
-  html, body { width: 1000px; height: 420px; overflow: hidden; background: var(--bg); font-family: "Roboto Flex", system-ui, sans-serif; color: var(--ink); }
+  html, body { width: 1000px; height: 420px; overflow: hidden; background: var(--bg); font-family: "Poppins", system-ui, sans-serif; color: var(--ink); }
   #stage { position: relative; width: 1000px; height: 420px; overflow: hidden;
     background:
-      radial-gradient(520px 380px at 640px 40px, rgba(232,163,61,.20), transparent 70%),
-      radial-gradient(900px 500px at 200px 520px, rgba(232,163,61,.06), transparent 70%),
+      radial-gradient(520px 360px at 760px 120px, rgba(125,220,90,.16), transparent 70%),
+      radial-gradient(700px 420px at 0 460px, rgba(125,220,90,.07), transparent 70%),
       var(--bg); }
-  /* spotlight cone */
-  #cone { position: absolute; left: 470px; top: -40px; width: 340px; height: 520px; opacity: .55;
-    background: linear-gradient(180deg, rgba(243,196,124,.22), rgba(243,196,124,0) 85%);
-    clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%); filter: blur(6px); }
-  .title { position: absolute; left: 48px; top: 92px; width: 380px; }
-  .kicker { font-size: 13px; letter-spacing: .14em; font-weight: 600; color: var(--amber); text-transform: uppercase; font-variation-settings: "wdth" 110; }
-  .name { margin-top: 12px; font-size: 54px; line-height: 1; font-weight: 750; letter-spacing: -.02em; font-variation-settings: "opsz" 144, "wdth" 92; }
-  .sub { margin-top: 16px; font-size: 18px; line-height: 1.4; color: var(--muted); font-weight: 420; }
+  .logo { position: absolute; left: 48px; top: 44px; width: 60px; height: 60px; border-radius: 15px; border: 1px solid var(--line); overflow: hidden; }
+  .logo img { display: block; width: 60px; height: 60px; }
+  .kicker { position: absolute; left: 48px; top: 126px; font-size: 12px; letter-spacing: .14em; font-weight: 600; color: var(--green); text-transform: uppercase; }
+  .name { position: absolute; left: 48px; top: 150px; font-size: 46px; line-height: 1.04; font-weight: 800; letter-spacing: -.02em; }
+  .sub { position: absolute; left: 48px; top: 262px; width: 360px; font-size: 16px; line-height: 1.45; color: var(--muted); font-weight: 500; }
   .sub b { color: var(--ink); font-weight: 600; }
-  .chip { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; padding: 7px 12px; border-radius: 999px; background: rgba(232,163,61,.12); color: var(--amber-soft); font-size: 13px; font-weight: 600; }
-  .chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); display: block; }
-
-  .bubble { position: absolute; left: 0; top: 0; padding: 9px 13px; border-radius: 16px 16px 16px 5px; background: #2a2119; border: 1px solid #3a2e22; font-size: 14.5px; white-space: nowrap; will-change: transform, opacity; }
-  .bubble small { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; font-weight: 600; }
-  .tag { position: absolute; left: 0; top: 0; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; }
-  .tag.spot { background: var(--amber); color: #2a1a05; }
-  .tag.noise { background: #2b241d; color: var(--muted); }
-
-  #gemma { position: absolute; left: 600px; top: 168px; width: 84px; height: 84px; border-radius: 50%;
-    background: radial-gradient(circle at 40% 35%, #f6cf8f, #e8a33d 55%, #b9761e);
-    display: grid; place-items: center; text-align: center; color: #2a1a05; font-weight: 800; font-size: 14px; line-height: 1.05; }
-  #gemma small { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; opacity: .75; margin-top: 2px; }
-  #halo { position: absolute; left: 642px; top: 210px; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%; border: 2px solid var(--amber); }
-
-  .card { position: absolute; left: 760px; width: 200px; padding: 12px 12px 10px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
-  .card h4 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--amber); font-weight: 700; }
-  .card h3 { font-size: 15px; font-weight: 650; margin: 2px 0 8px; }
-  .slot { height: 30px; border-radius: 9px; border: 1px dashed #3d3126; margin-top: 6px; }
-  .pill { position: absolute; left: 0; top: 0; height: 30px; width: 176px; border-radius: 9px; background: #2a2119; display: flex; align-items: center; gap: 8px; padding: 0 8px; font-size: 13.5px; font-weight: 600; will-change: transform, opacity; }
-  .pill .av { width: 20px; height: 20px; border-radius: 50%; background: #5a3f1c; color: var(--amber-soft); font-size: 11px; display: grid; place-items: center; font-weight: 700; }
-  .pill .ok { margin-left: auto; width: 16px; height: 16px; border-radius: 50%; background: var(--amber); }
-  #wire { position: absolute; inset: 0; }
+  .chip { position: absolute; left: 48px; top: 340px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(125,220,90,.12); color: var(--green); font-size: 12.5px; font-weight: 600; }
+  .chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: block; }
+  .win { position: absolute; left: 452px; top: 52px; width: 600px; height: 375px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(125,220,90,.06); }
+  .win img { display: block; width: 600px; height: 375px; }
 </style>
 </head>
 <body>
 <div id="stage">
-  <div id="cone"></div>
-  <svg id="wire" width="1000" height="420">
-    <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#e8a33d" stop-opacity="0"/><stop offset="1" stop-color="#e8a33d" stop-opacity=".35"/></linearGradient></defs>
-    <path d="M 440 210 C 520 210, 560 210, 600 210" stroke="url(#g)" stroke-width="1.5" fill="none" stroke-dasharray="3 6"/>
-    <path d="M 684 210 C 720 210, 730 128, 760 128" stroke="#e8a33d" stroke-opacity=".28" stroke-width="1.5" fill="none" stroke-dasharray="3 6"/>
-    <path d="M 684 210 C 720 210, 730 300, 760 300" stroke="#e8a33d" stroke-opacity=".28" stroke-width="1.5" fill="none" stroke-dasharray="3 6"/>
-  </svg>
-  <div class="title">
-    <div class="kicker">Slow and steady · Open-mic curation</div>
-    <div class="name">Spot<br/>Solutions</div>
-    <div class="sub">WhatsApp spot requests, sorted by <b>Gemma</b> on an old laptop.</div>
-    <div class="chip"><i></i>Runs locally · no cloud AI reads your chats</div>
-  </div>
-  <div id="halo"></div>
-  <div id="gemma"><div>Gemma 3<small>ON-DEVICE</small></div></div>
-  <div class="card" id="mon" style="top:58px"><h4>Monday</h4><h3>Open Mic · 8 PM</h3><div class="slot"></div><div class="slot"></div></div>
-  <div class="card" id="tue" style="top:230px"><h4>Tuesday</h4><h3>Trial Night · 8:30 PM</h3><div class="slot"></div><div class="slot"></div></div>
+  <div class="logo"><img src="../../apps/web/public/brand/logo.svg" alt="" /></div>
+  <div class="kicker">Slow and steady · Open-mic curation</div>
+  <div class="name">Nothing BOT<br/>Curating</div>
+  <div class="sub">WhatsApp spot requests, sorted by <b>Gemma</b> on an old laptop.</div>
+  <div class="chip"><i></i>Runs locally · no cloud AI reads your chats</div>
+  <div class="win"><img src="../../apps/web/public/press/lineup-after.jpg" alt="" /></div>
 </div>
-<script>
-  const LOOP = 9; // seconds
-  const MSGS = [
-    { at: 0.1, who: "Rohan", text: "bhai monday ka spot milega?", tag: "Spot · Mon", show: "mon", slot: 0 },
-    { at: 1.1, who: "Bank", text: "Your OTP is 482913", tag: "Ignored", noise: true },
-    { at: 2.1, who: "Ananya", text: "put me down for tue pls", tag: "Spot · Tue", show: "tue", slot: 0 },
-    { at: 3.1, who: "Karthik", text: "any day works, new 5 min", tag: "Spot · Mon", show: "mon", slot: 1 },
-    { at: 4.1, who: "Swiggy", text: "50% off tonight 🍕", tag: "Ignored", noise: true },
-    { at: 5.1, who: "Kiran", text: "guru tuesday sigutta?", tag: "Spot · Tue", show: "tue", slot: 1 },
-  ];
-  const stage = document.getElementById("stage");
-  const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
-  const inOut = (x) => { x = Math.min(1, Math.max(0, x)); return x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2; };
-  const clamp01 = (x) => Math.min(1, Math.max(0, x));
-  const els = MSGS.map((m) => {
-    const b = document.createElement("div"); b.className = "bubble"; b.innerHTML = `<small>${m.who}</small>${m.text}`;
-    const t = document.createElement("div"); t.className = "tag " + (m.noise ? "noise" : "spot"); t.textContent = m.tag;
-    const p = document.createElement("div"); p.className = "pill"; p.innerHTML = `<span class="av">${m.who[0]}</span>${m.who}<span class="ok"></span>`;
-    stage.append(b, t, p);
-    return { b, t, p };
-  });
-  const slotPos = (show, slot) => ({ x: 772, y: (show === "mon" ? 58 : 230) + 52 + slot * 36 });
-
-  window.render = (time) => {
-    const t = ((time % LOOP) + LOOP) % LOOP;
-    // Everything placed fades out at the end of the loop, so frame LOOP equals frame 0.
-    const reset = clamp01((t - 8.3) / 0.6);
-    let pulse = 0;
-    MSGS.forEach((m, i) => {
-      const { b, t: tag, p } = els[i];
-      const k = t - m.at;
-      const lane = 150 + (i % 2) * 70;
-      // bubble: slide in from the left, then drift into Gemma and shrink away
-      const enter = ease(k / 0.45), travel = inOut((k - 0.45) / 0.75);
-      const bx = 405 + enter * 30 + travel * 165, by = lane + travel * (196 - lane);
-      const bScale = 1 - travel * 0.75;
-      const bAlpha = k < 0 ? 0 : Math.min(enter, 1 - clamp01((k - 0.95) / 0.25));
-      b.style.opacity = bAlpha;
-      b.style.transform = `translate(${bx}px, ${by}px) scale(${bScale})`;
-      if (k > 0.9 && k < 1.6) pulse = Math.max(pulse, 1 - Math.abs(k - 1.15) / 0.45);
-      // tag pops out of Gemma
-      const tagIn = ease((k - 1.15) / 0.3), tagOut = clamp01((k - 1.75) / 0.3);
-      tag.style.opacity = k < 1.15 ? 0 : tagIn * (1 - tagOut);
-      tag.style.transform = `translate(${606}px, ${m.noise ? 268 + tagOut * 26 : 132 - tagOut * 6}px) scale(${0.8 + 0.2 * tagIn})`;
-      // spot: name pill flies into its lineup slot; noise: nothing more
-      if (m.noise) { p.style.opacity = 0; return; }
-      const s = slotPos(m.show, m.slot);
-      const fly = inOut((k - 1.35) / 0.65);
-      const fx = 640 + (s.x - 640) * fly, fy = 195 + (s.y - 195) * fly - Math.sin(fly * Math.PI) * 30;
-      p.style.opacity = k < 1.35 ? 0 : clamp01((k - 1.35) / 0.15) * (1 - reset);
-      p.style.transform = `translate(${fx}px, ${fy}px) scale(${0.6 + 0.4 * fly})`;
-    });
-    const halo = document.getElementById("halo");
-    halo.style.opacity = pulse * 0.8;
-    halo.style.transform = `scale(${1 + pulse * 0.45})`;
-    document.getElementById("gemma").style.transform = `scale(${1 + pulse * 0.06})`;
-    document.getElementById("cone").style.opacity = 0.45 + 0.12 * Math.sin((t / LOOP) * Math.PI * 2);
-  };
-  window.render(0);
-</script>
 </body>
 </html>

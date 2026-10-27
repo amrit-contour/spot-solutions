@@ -82,7 +82,7 @@ At the end it prints a link like `http://192.168.1.42:7420/?token=…`. Open it 
 
 ## 5. Finish setup in the console
 
-The console shows services, CPU/RAM/disk, installed models and live worker logs, with Restart buttons.
+The console has Setup steps, a Health card (Check and repair), Services with Restart plus Stop and Start for the worker and for Ollama, CPU/RAM/disk, AI models (Gemini key check, local models, routing), live worker logs, and a Display options menu (theme, brand).
 
 1. **Connect with Nothing BOT Curating:** click it, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The server gets its own key and the worker starts by itself. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is only for a brand-new project (see [multi-server.md](multi-server.md)).
 2. **Admins:** signing in adds your email. It opens **Account menu → Server** in the app: the same health stats plus connected curators, from anywhere. Add other admins in the console's **Admin emails**.
@@ -92,7 +92,7 @@ Lost the link? `sudo nbs-console-url`.
 
 ## 6. Link WhatsApp
 
-Open **spot-solutions.web.app → Settings → Show QR code** on a computer and scan it with your phone (WhatsApp → Linked devices). Only messages that arrive after linking are read, and auto-acknowledge stays off until you turn it on.
+Open **nothingbotcurating.web.app → Settings → Show QR code** on a computer and scan it with your phone (WhatsApp → Linked devices). Only messages that arrive after linking are read, and auto-acknowledge stays off until you turn it on.
 
 ## Several curators on one server
 

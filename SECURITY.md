@@ -1,5 +1,7 @@
 # Security
 
+This covers Nothing BOT Curating, Nothing BOT Comedy and Nothing BOT Server. They share one Firebase project, one privacy policy and one set of rules.
+
 ## Report a vulnerability
 
 Use GitHub's private vulnerability reporting: open the [Security tab](https://github.com/amrit-contour/spot-solutions/security/advisories/new) of this repo and choose **Report a vulnerability**. Please don't open a public issue for a security problem.
@@ -21,13 +23,14 @@ Include what you found, the steps to reproduce it, and what an attacker could do
 
 `firestore.rules` is the source of truth. In summary:
 
-- A curator reads and writes only their own `users/{uid}` tree, and only the collections for venues, shows, comics, requests, lineups, actions and notices. They cannot change worker-owned fields (`waEnabled`, `selfId`, `demo`).
+- A curator reads and writes only their own `users/{uid}` tree, and only the collections for venues, shows, comics, requests, lineups, actions and notices. Nothing BOT Comedy adds the comic's own collections (rooms, curators, asks, my spots, regular spots, spot alerts, watched groups, roster follows), also owner-only. The agent log is readable by its owner and written only by servers. They cannot change worker-owned fields (`waEnabled`, `selfId`, `demo`).
 - `session`, `groups`, `contactsImport`, `offers`, `polls`, `fleet/lease` and `fleet/vault` are written only by servers. The owner (and, for `fleet`, admins) can read them.
 - `fleet/prefs` accepts a single key, `pinned`.
 - Commands: only an approved owner can create one, only as `pending`, and only of an allowed type. Admins can read and create `move_account` commands only, never message or contact payloads.
 - `access/{uid}`: a user can create their own `pending` entry. Only admins change `status`.
 - `config/access` (the admin email list) is not readable by anonymous demo visitors. Admins can only change `maxCurators`.
 - `servers/{id}` (logs, admin emails) is readable only by the admins that server lists. `fleetServers/{id}` is a public-to-curators summary with no logs or emails.
+- Community rosters (`publishedRosters`) hold rooms only, in shareable fields. Signed-in approved users can read and follow them and send suggestions; only the owner and co-maintainers edit one, only an admin-listed publisher can create one, and only the owner changes who owns or maintains it. A roster shared with one person lands as a copy in that person's `rosterShares` inbox, which only they can read.
 - `vaultKeys` and all of Cloud Storage: no client access at all.
 - The demo template (`users/demo-curator`) is read-only. Demo visitors sign in anonymously and work in their own copy. The worker never serves anonymous users.
 
@@ -36,5 +39,5 @@ Include what you found, the steps to reproduce it, and what an attacker could do
 - **whatsapp-web.js is unofficial.** It drives WhatsApp Web in a headless browser. WhatsApp can change its web client or enforce its terms against automated accounts, and a linked account can be logged out or restricted. The app sends slowly with a random delay and keeps auto-replies off by default, but this does not remove the risk.
 - **A server's service-account key reads the whole project's data.** Whoever holds a server's key can read and write that project's Firestore data, including `vaultKeys` and the encrypted vault objects. That is enough to decrypt a WhatsApp login. The roles are scoped to what the worker needs, not to one curator. Treat each key like a password, keep servers on machines you control, and revoke a lost device's key at once.
 - **A revoked key keeps working for a while.** A running worker's access token can last up to an hour after the key is deleted.
-- **The server console is plain HTTP on your network.** It listens on port 7420 behind a random access token. Keep that port off the public internet (the Windows installer opens it for private networks only).
+- **The server console is plain HTTP on your network.** It listens on port 7420 behind a random access token. Keep that port off the public internet (the Windows installer opens it for private networks only). Signing a server in uses a one-time link that an admin approves in the app, so no key file has to be copied around; a Gemini key typed into the console is verified with Google, stored only on that server and never shown back in full.
 - **Gemini sees message text.** If a curator uses Gemini (as primary, fallback, or on a Gemini-only server), the text of the messages it reads goes to Google. Use **Local only** to rule that out.

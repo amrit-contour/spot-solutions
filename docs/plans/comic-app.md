@@ -1,6 +1,6 @@
 # Plan: Nothing BOT Comedy (the comic-side app)
 
-Status: context gathered from Amrit, 27 October 2026 (Round 1). Round 2 (community rosters, split, names) open. Nothing built.
+Status: built (27 October 2026) as Nothing BOT Comedy in `apps/comic`: shell and shared UI, Rooms, community rosters, Today with calendar, Asks, My spots, regular spots, group spot alerts with editable rules, and comic commands on the agent number. What it does today is in [apps/comic/README.md](../../apps/comic/README.md) and the root README; this file keeps the context and the decisions behind it. Still open: anything under "Later" below.
 Supersedes the room parts of [asking-rooms.md](asking-rooms.md); decisions in [rosters-and-agent.md](rosters-and-agent.md) still hold.
 Reference data Amrit shared: "Bangalore Open Mics.xlsx", "Mic Venues @ BLR.xlsx" (Mic List v1/v2, a weekly "Spots" log),
 a pasted curator list per venue, and screenshots of the Bangalore Comics WhatsApp group.
@@ -81,7 +81,7 @@ a pasted curator list per venue, and screenshots of the Bangalore Comics WhatsAp
 - **The co-comic's sheet** ("Spots - Arjun") was made by another comic for themselves: a weekly calendar of their spots, a
   spots counter and an asks log. That is what My spots should replace.
 - **Domains**: nothingbotcurating.web.app, nothingbotcomedy.web.app, and hyphenated nothing-bot-curating.web.app,
-  nothing-bot-comedy.web.app. spot-solutions.web.app stays (installed servers update from it).
+  nothing-bot-comedy.web.app (plus nothingbut* and nothing-but-* mirrors). spot-solutions.web.app was kept for a while for installed servers, then retired on 27 October 2026: it only forwards to nothingbotcurating.web.app.
 - **Logo**: minimal first; built from the NBC mark (outlined "n", solid "bc", lime dot) and the current logo; may use the
   NBC wording. Files: Amrit's zip (four PNGs: nbc and "Nothing but comedy." on black and on white).
 - **Order** (my call): split first (shared UI package + comic app shell + the new sites), then the rooms page in the comic

@@ -214,7 +214,7 @@ export function HelpPage() {
                 .
               </li>
               <li>Click <B>Connect with Nothing BOT Curating</B>, open the link (or scan the QR with your phone), sign in with Google and approve. The worker starts by itself, and your email is added as an admin so the server shows in the app under <B>Account → Server</B>. A join code from the app works too; see <a className="underline" href="#get-code">above</a>.</li>
-              <li>Optional: open <B>AI models</B> in the console to add a Gemini key, pick models, test them, or turn the local model on or off.</li>
+              <li>Optional: open <B>AI models</B> in the console to add a Gemini key (it's checked with Google before it's saved), pick models, test them, or turn the local model on or off.</li>
               <li>On any computer, open <Link className="text-primary underline-offset-4 hover:underline" to="/settings">Nothing BOT Curating → Settings</Link> → <B>Show QR code</B>, and scan it from WhatsApp on your phone (<B>Settings → Linked devices → Link a device</B>).</li>
             </Steps>
             <Callout tone="ok">That's it. From now on you can manage the server from the app, from anywhere. The console is only needed to join.</Callout>
@@ -347,6 +347,7 @@ export function HelpPage() {
                 [<B>Show QR code does nothing</B>, "Wait a minute after starting; check the worker log for errors, then restart the worker."],
                 [<B>Asked to scan again</B>, "Scan it. It happens after long phone downtime or a corrupted link the backup couldn't fix."],
                 [<B>Server page empty</B>, "Your email isn't in Admins. Add it in the server console."],
+                [<B>Something on the server looks wrong</B>, "In the server console, open Health and press Check and repair. Services has Stop and Start for the worker and for Ollama (a stopped Ollama stays stopped until you press Start)."],
                 [<B>Replies are slow</B>, <>Switch to a smaller model (Settings → AI models, e.g. <Code>gemma3:1b</Code>) or add Gemini as primary or fallback.</>],
                 [<B>New curator stuck on “Waiting for approval”</B>, "Approve them in Account → Server → Curators. Check the curator limit."],
                 ...(os === "mac" ? [[<B>“Can't verify the developer”</B>, "System Settings → Privacy & Security → Open Anyway, or use the Terminal install."]] : []),

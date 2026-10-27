@@ -199,10 +199,13 @@ Any number of servers share one Firebase project. Each approved account has a le
 
 | Path | What it is |
 | --- | --- |
-| `apps/web` | React 19 + Vite + Tailwind PWA, deployed to Firebase Hosting. |
+| `apps/web` | Nothing BOT Curating: React 19 + Vite + Tailwind PWA, deployed to Firebase Hosting. |
+| `apps/comic` | Nothing BOT Comedy, the comic-side PWA (rooms, asks, my spots, regular spots, group spot alerts, community rosters). Same Firebase project and servers as Curating; its data is owner-only collections under `users/{uid}` plus `publishedRosters`. |
+| `packages/ui` | App-agnostic UI shared by both apps: components, theme (NBC and Classic), shell, Firebase init (with the `VITE_USE_EMULATORS` switch). |
+| `functions` | Cloud Functions: join codes and device links, Google Contacts, roster lookups. |
 | `apps/worker` | The Node worker: WhatsApp sessions, intake, commands, fleet, vault. Also `console/` (the local server console on port 7420) and `scripts/` (demo seed, intent eval). |
 | `packages/shared` | Types, defaults, rules, week maths and fleet rules used by both the app and the worker. Plain TypeScript, no build step. |
 | `deploy` | Installers (`install.sh`, `windows/`, `mac/`), per-device key scripts, `build-dist.sh`, Docker files. |
 | `docs` | These docs. |
 
-Root files: `firestore.rules`, `storage.rules`, `firestore.indexes.json` and `firebase.json` define the Firebase side. `pnpm deploy:web` builds the app, adds the installers and a source tarball to the build (`deploy/build-dist.sh`), and deploys hosting, Firestore rules and Storage rules.
+Root files: `firestore.rules`, `storage.rules`, `firestore.indexes.json` and `firebase.json` define the Firebase side. `pnpm deploy:web` builds Curating, adds the installers and a source tarball to the build (`deploy/build-dist.sh`, which also writes the redirect-only page for the retired spot-solutions.web.app), and deploys the Curating hosting sites, Firestore rules and Storage rules. `pnpm deploy:comic` deploys Nothing BOT Comedy.

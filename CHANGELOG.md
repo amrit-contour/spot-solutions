@@ -1,10 +1,34 @@
 # Changelog
 
+## 27 October 2026 (Nothing BOT Comedy, server console, hosting)
+
+### Nothing BOT Comedy (new, `apps/comic`)
+- **The comic's side of open mics**, at nothingbotcomedy.web.app (also nothing-bot-comedy, nothingbutcomedy and nothing-but-comedy). Same Google account, server and WhatsApp link as Curating, its own name and icon. Shared UI now lives in `packages/ui`.
+- **Today with a calendar** (swipeable week strip, month view, day panel), **Asks** (equal tabs with counts, Skip / Edit / Send), **My spots**, and **regular spots**: weekly or monthly rules computed into occurrences, skip a date, make a regular from a spot, suggestions from your roster. Worker asks and group alerts count regulars.
+- **Group spot alerts, rules first.** Confident offers and closures push instantly with no model call; only doubtful messages go to the model. The weighted rules are editable on the Groups page, with a per-comic threshold, and each alert shows its score. Ambiguous room names (two Comedy Theatres) are settled by area words, remembered picks and the group's usual room, otherwise you get "Which Comedy Theatre?" chips. **Ask for it** creates an ask, so the reply is read: yes makes the spot, no marks the alert declined.
+- **Rooms and rosters.** Rooms page, paste-anything roster import (text, CSV, Excel, PDF, image or link) with the changes shown in plain words, and community rosters: browse by city, follow, update available, suggest, publish, co-maintainers, share with one person. Opening-soon notices push at the opening time with the room's how-to-book note.
+- **Connection status** on Today and Settings, read from the same session, agent and fleet data as Curating.
+- **Agent number commands for comics**: roster edits, spots, regulars, asks and alerts in plain words, rules first then the model, numbered clarifying questions, a confirm step before changing curators, closing a room or messaging (unless you turn on "Do it without asking"), an activity list, and a "What you can say" card.
+
+### Server console and servers
+- **Per-service Stop and Start** for the worker and for Ollama in Services (plus Stop server and Start server). A stopped Ollama stays stopped across restarts and updates until you press Start.
+- **Display options menu** (theme, NBC or Classic brand, customize page), distinct CPU, memory and disk colours, and a **Health** card (Check and repair) that is one slim row when every check passes.
+- **Setup is per-step cards**: connect (or Replace Firebase key), an admins chip editor (saving skips the restart when nothing changed), and the Gemini key.
+- **AI models**: a Gemini key is trimmed, accepts newer key formats and is verified with Google before it is saved. The local model gets up to 5 minutes to answer, and if the AI can't read a burst the server retries (2, 5, 15, 30 minutes) instead of dropping it.
+- **Updater fixes**: updates no longer get stuck after a lockfile change; the Mac updater refreshes the installed app's icons; the Windows and Ubuntu installers and updaters write `VERSION` last, so a half-finished update is retried; the Windows installer and updater remove old Spot Solutions installs, shortcuts and anything holding port 7420, and only remove startup entries named like the old server (never something like Spotify). Data moves stop every browser and skip Chromium caches.
+
+### Hosting
+- **spot-solutions.web.app is retired.** It serves only a forwarding page and a self-removing service worker (no downloads, no installers). The frozen pre-rename release is shut down: servers installed before the rename no longer get updates and must be reinstalled with the new installer (docs/migrate-to-nothing-bot-server.md).
+- One privacy policy and terms cover Curating, Comedy and Server. Icons are versioned and revalidated, and the Waiting and Connect pages drop the logo and show "Signed in as" with Switch account.
+
+### Docs
+- README, CONTRIBUTING, SECURITY, the guides and the press images (screenshots and cover) are updated for the Nothing BOT names, the new domains and the emulator workflow.
+
 ## 27 October 2026 (Nothing BOT Server)
 
 ### Servers
 - **One name: Nothing BOT Server.** The Mac app, Windows folder and tasks, Linux services and paths, downloads and settings (`SPOT_*` is now `NBS_*`, old names still work) all use the new name, with one documented scheme: see docs/migrate-to-nothing-bot-server.md. `spotctl` and `spot-task` are now `nbsctl`.
-- **New servers update from nothingbotcurating.web.app** (`dl/nothing-bot-server.json`, `dl/nothing-bot-server.tar.gz`). Servers installed before the rename are frozen on their last release: `deploy/build-dist.sh` keeps serving their old files (from the gitignored `deploy/legacy-dl/`) and fails if they are missing. The old install addresses serve the new installers.
+- **New servers update from nothingbotcurating.web.app** (`dl/nothing-bot-server.json`, `dl/nothing-bot-server.tar.gz`). The frozen pre-rename release has since been shut down (see the 27 October entry on hosting): servers installed before the rename no longer get updates and have to be reinstalled with the new installer. The old install addresses serve the new installers.
 - **Safe move for your own server.** `deploy/migrate/migrate-mac.sh` checks the account lease, stops the server cleanly so the login is uploaded to the vault, verifies the upload, and makes a local backup; `restore-backup.sh` puts the backup back on the new install if the vault restore ever fails. A new server that joins the same account restores the login from the vault with no QR code.
 - **Uninstallers remove both old and new.** `uninstall.sh` (Ubuntu), `uninstall.ps1` / `Uninstall.cmd` (Windows) and `nbsctl uninstall` (Mac) keep your data unless you pass an explicit flag, and say what they kept. The new installers stop an old server on the same machine first.
 

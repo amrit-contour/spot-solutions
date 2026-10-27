@@ -1,4 +1,4 @@
-# The agent number (phase 1)
+# The agent number
 
 A second WhatsApp number per curator, linked by QR like the first. It talks **only to the curator's own number**, in plain text (no
 buttons: whatsapp-web.js can't send them; see [plans/agent-number.md](plans/agent-number.md) for the Cloud API route).
@@ -16,6 +16,14 @@ Code: `packages/shared/src/agent.ts` (pure: who it obeys, intents, the yes state
 | Morning digest | `digest`, `digestTime` (default 10:00, the account's timezone) | Today's show and who's on, who's waiting, what needs you, tomorrow's show. Skipped when there is nothing to say, and not sent at all if it is more than 4 hours past the time (late link, restart). |
 | Master switch | `enabled` | Off: linked but silent and deaf. |
 | Strangers | `politeNote` (default off) | One fixed line, once per sender. Their message is never read; only a hash of who was told is kept. |
+
+## Comic commands (Nothing BOT Comedy)
+
+The same agent number also takes the comic's side of the app, in plain words: **rooms** ("update TAG Monday to Dhruv", "pause Bloom till Nov 10", "add a 9:30 slot at Banter on Fridays"), **spots** ("I got a spot at Banter tonight 9pm", "add regular Monday 9 PM at Bloom", "how many spots this month?"), **asks** ("ask TAG for Monday", "skip Banter this week") and **alerts** ("any open spots now?", "ask for it"). Code: `packages/shared/src/comicAgent.ts` (pure parsing and plans), `apps/worker/src/comicAgent.ts` and `comicAgentCore.ts`; the examples shown in the app are `apps/comic/src/components/AgentHelp.tsx`.
+
+- Rules first, then the model, as above. Several matches become a numbered clarifying question.
+- Before it changes a curator, closes or pauses a room, or messages anyone, it repeats what it will do and waits for yes. `comicSettings.agentAuto` ("Do it without asking" in Comedy's Settings) skips that.
+- Everything it did is written to `users/{uid}/agentLog` (owner reads, the worker writes) and listed under "What the agent did" in Comedy's Settings.
 
 ## Who it obeys
 

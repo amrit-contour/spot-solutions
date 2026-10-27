@@ -1,6 +1,6 @@
 # Plan: asking other rooms for spots
 
-Status: planned, not built. Captured 26 October 2026 from Amrit's description.
+Status: built, in Nothing BOT Comedy (rooms, ask rules, asks, My spots). Superseded by [comic-app.md](comic-app.md), which has the data model and decisions; kept here as the original problem statement. Captured 26 October 2026 from Amrit's description.
 
 ## The problem
 

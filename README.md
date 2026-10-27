@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="apps/web/public/press/cover.gif" alt="Nothing BOT Curating: WhatsApp spot requests, sorted by Gemma on an old laptop" width="100%" />
+  <img src="apps/web/public/press/cover.jpg" alt="Nothing BOT Curating: WhatsApp spot requests, sorted by Gemma on an old laptop" width="100%" />
 </p>
 
 <p align="center">
-  <a href="https://spot-solutions.web.app"><img alt="Live demo" src="https://img.shields.io/badge/live%20demo-spot--solutions.web.app-E8A33D?style=for-the-badge&labelColor=1f1812" /></a>
-  <img alt="Gemma 3 on Ollama" src="https://img.shields.io/badge/Gemma%203-on%20Ollama-E8A33D?style=for-the-badge&labelColor=1f1812" />
-  <img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-E8A33D?style=for-the-badge&labelColor=1f1812" />
+  <a href="https://nothingbotcurating.web.app"><img alt="Live demo" src="https://img.shields.io/badge/live%20demo-nothingbotcurating.web.app-7DDC5A?style=for-the-badge&labelColor=0a0a0a" /></a>
+  <img alt="Gemma 3 on Ollama" src="https://img.shields.io/badge/Gemma%203-on%20Ollama-7DDC5A?style=for-the-badge&labelColor=0a0a0a" />
+  <img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-7DDC5A?style=for-the-badge&labelColor=0a0a0a" />
 </p>
 
 <p align="center">
@@ -15,7 +15,8 @@
 </p>
 
 <p align="center">
-  <a href="https://spot-solutions.web.app"><b>Try the live demo</b></a> ·
+  <a href="https://nothingbotcurating.web.app"><b>Try the live demo</b></a> ·
+  <a href="https://nothingbotcomedy.web.app">For comics: Nothing BOT Comedy</a> ·
   <a href="https://dev.to/amrit-dash/my-whatsapp-was-my-open-mic-booking-system-so-i-gave-it-to-gemma-5274">The write-up on DEV</a> ·
   <a href="#run-a-server">Run a server</a> ·
   <a href="docs/README.md">Docs</a>
@@ -31,24 +32,17 @@ I'm a stand-up comic in Bangalore and I curate the Monday and Tuesday open-mic l
 
 Version 1 ran for 7 months across 2024 and 2025 on Google Apps Script, Sheets and Twilio (2,200+ requests from 150+ comics). Nothing BOT Curating keeps every rule V1 learned and hands the messy human part to an open-weight model that runs on hardware you already own.
 
-<p align="center">
-  <img src="apps/web/public/press/hero.gif" alt="Gemma tagging DMs and filling the Monday and Tuesday lineups" width="720" />
-</p>
-
 ## See it
 
-<p align="center">
-  <img src="apps/web/public/press/demo.gif" alt="Walkthrough: start the demo, see the triaged requests, drag a comic into a show" width="100%" />
-  <br/><sub><a href="apps/web/public/press/demo.mp4">Watch as video (25 s)</a> · or <a href="https://spot-solutions.web.app">open your own demo sandbox</a>, no sign-up</sub>
-</p>
+<p align="center"><sub>Try your own demo sandbox at <a href="https://nothingbotcurating.web.app">nothingbotcurating.web.app</a>, no sign-up.</sub></p>
 
 <table>
   <tr>
-    <td width="50%"><img src="apps/web/public/press/requests.jpg" alt="Requests inbox" /><br/><sub><b>Requests.</b> Gemma's triage, with replies drafted and waiting for your OK.</sub></td>
-    <td width="50%"><img src="apps/web/public/press/lineup-after.jpg" alt="Lineup board" /><br/><sub><b>Lineup.</b> Drag from Waiting into shows. Last week's performers sink to the bottom.</sub></td>
+    <td width="50%"><img src="apps/web/public/press/requests.jpg" alt="Requests inbox" /><br/><sub><b>Requests.</b> Gemma's triage, with replies drafted and waiting for your OK in the Updates column.</sub></td>
+    <td width="50%"><img src="apps/web/public/press/lineup-after.jpg" alt="Lineup board" /><br/><sub><b>Lineup.</b> Drag from Waiting into shows, or tap + on a phone. Comics already told are marked.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="apps/web/public/press/ai-policy.jpg" alt="AI policy setting" /><br/><sub><b>Your call.</b> "Local only" keeps every chat on a server running Gemma.</sub></td>
+    <td width="50%"><img src="apps/web/public/press/ai-policy.jpg" alt="AI models setting" /><br/><sub><b>Your call.</b> "Local only" keeps every chat on a server running Gemma. Or let Gemini step in as a backup.</sub></td>
     <td width="50%" align="center"><img src="apps/web/public/press/phone-lineup.jpg" alt="Lineup on a phone" width="46%" /> <img src="apps/web/public/press/phone-requests.jpg" alt="Requests on a phone" width="46%" /><br/><sub><b>Built for the phone.</b> Installs as an app.</sub></td>
   </tr>
 </table>
@@ -131,10 +125,23 @@ The laptop never opens a port. The web app writes commands to Firestore and the 
 - One installer each for Ubuntu (even from a USB stick), Windows and macOS, plus Docker.
 - Survives restarts, power cuts and closed lids, and catches up on DMs that arrived while it was down (without auto-replying to any of them).
 - Restart the worker, restart Ollama, read logs and approve curators from the app's **Server** page.
+- The server console (port 7420, on the machine and your home network) has **Setup** steps (connect with Google, admins, optional Gemini key), a **Health** card with Check and repair, **Services** with a Stop and Start button for the worker and for Ollama (a stopped Ollama stays stopped across updates), **AI models** (the Gemini key is checked with Google before it is saved, model tests, local model downloads, default routing), and a **Display options** menu (theme, NBC or Classic brand, customize the page).
 - Invite-only: other curators sign in, an admin approves them, and they link their own WhatsApp.
 - Push notifications for the things you'd want to know: an account moved servers, WhatsApp needs a rescan, a server went quiet.
 - Admin tools for cleaning up: delete a curator's data by scope, remove a user, wipe demo sandboxes.
 </details>
+
+## Nothing BOT Comedy: the comic's side
+
+The sister app, at [nothingbotcomedy.web.app](https://nothingbotcomedy.web.app) (`apps/comic`), is for the comic *asking* rooms for spots. Same Google account, same server, same WhatsApp link, so a curator who also performs uses both. It is a separate app with its own name and icon.
+
+- **Today and a calendar.** What to ask for today, your spots, and what is coming: a swipeable week strip, a month view and a day panel.
+- **Asks.** Each room has its own ask rule (the morning of, the day before, a fixed weekday). The message goes from your own WhatsApp at the right time, either reviewed first (Skip / Edit / Send) or sent on its own. Curators' replies are read and marked Got it, Declined or No reply.
+- **My spots.** Booked spots with room, time and curator, plus notes afterwards. **Regular spots** (a weekly or monthly slot) are computed from their rule, can be skipped for a date, and are suggested from your roster.
+- **Group spot alerts.** Watched WhatsApp groups are read on your server. Clear offers and closures push instantly with no model call (**rules first**); only doubtful messages go to the model. The alert rules are weighted and editable on the Groups page. **Ask for it** on an alert creates an ask.
+- **Rooms and rosters.** Rooms, shows, curators and limits, with paste-anything import (text, CSV or Excel, PDF, image or link) reviewed in plain words before anything is saved. Community rosters let a city share its rooms: browse, follow, see updates, suggest changes, publish.
+- **Connection status.** Settings and Today show whether your server and WhatsApp are linked, from the same session data Curating uses.
+- **Agent number.** Message your agent number to change rooms, spots, regulars and asks in plain words. It checks with you before anything that matters, unless you turn that off.
 
 ## Several laptops, one lineup
 
@@ -168,11 +175,11 @@ The user guide is in [docs/multi-server.md](docs/multi-server.md) and the protoc
 | Platform | How |
 | --- | --- |
 | **Ubuntu** (laptop, mini PC, or a USB stick) | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| sudo bash` · [guide](docs/ubuntu-usb-server.md) |
-| **Windows 10/11** | Download [NothingBotServer-Windows.zip](https://nothingbotcurating.web.app/dl/NothingBotServer-Windows.zip), unzip, double-click **Install Nothing BOT Server.cmd** · [guide](docs/windows-server.md) |
-| **macOS** | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| bash` (installs the Nothing BOT Server menu-bar app; `install-mac.sh` still works) · [guide](docs/mac-server.md) |
+| **Windows 10/11** | PowerShell as Administrator: `irm https://nothingbotcurating.web.app/install.ps1 \| iex`, or download [NothingBotServer-Windows.zip](https://nothingbotcurating.web.app/dl/NothingBotServer-Windows.zip), unzip, double-click **Install Nothing BOT Server.cmd** · [guide](docs/windows-server.md) |
+| **macOS** | `curl -fsSL https://nothingbotcurating.web.app/install.sh \| bash` (installs the Nothing BOT Server menu-bar app; `install-mac.sh` at the same address still works) · [guide](docs/mac-server.md) |
 | **Docker** | `docker compose -f deploy/docker-compose.yml up -d` |
 
-[nothingbotcurating.web.app/install](https://nothingbotcurating.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Nothing BOT Curating** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves.
+[nothingbotcurating.web.app/install](https://nothingbotcurating.web.app/install) picks the right one for the computer you're on. Local model or Gemini only is chosen in the server console (**AI models**) and can be switched any time. After installing, click **Connect with Nothing BOT Curating** in the console and sign in with Google (no key files), then open the app, go to **Settings → Show QR code**, and scan it from WhatsApp → Linked devices. Servers update themselves. Installers and updaters also remove an old pre-rename Spot Solutions install on the same machine and keep its data.
 
 > [!IMPORTANT]
 > Upgrading from an older release? Stop the old server before the new one links. Servers from before multi-server support don't know about leases, so new servers pause and show a notice while one is online.
@@ -191,6 +198,8 @@ pnpm dev:worker
 pnpm dev:web
 ```
 
+No Firebase project yet? Both apps run against the local emulators (Java and firebase-tools needed): `pnpm --filter @spot/comic emulators` starts Auth and Firestore with the `demo-nbot` project id, then run the web app with `VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=demo-nbot pnpm dev:web`, or `pnpm --filter @spot/comic dev:emulator` for Comedy. The switch only works in `vite dev`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ```bash
 pnpm test                       # shared + worker tests
 cd apps/web && npx tsc -b       # strict build check
@@ -198,9 +207,12 @@ pnpm --filter @spot/worker exec tsx scripts/eval-intent.ts gemma3:4b   # intent 
 ```
 
 ```
-apps/web         React + Vite app (Material 3, PWA) on Firebase Hosting
-apps/worker      Node worker: WhatsApp sessions, Gemma intake, commands, fleet, login vault
-packages/shared  Types and pure logic shared by both (templates, weeks, rules, fleet)
+apps/web         Nothing BOT Curating: React + Vite app (Material 3, PWA) on Firebase Hosting
+apps/comic       Nothing BOT Comedy: the comic-side app (rooms, asks, spots, group alerts)
+apps/worker      Node worker: WhatsApp sessions, Gemma intake, commands, fleet, login vault, and the server console
+packages/shared  Types and pure logic shared by the apps and the worker (templates, weeks, rules, rooms, fleet)
+packages/ui      App-agnostic UI shared by both apps (components, theme, shell, Firebase init)
+functions        Cloud Functions: device linking, Google Contacts, roster lookups
 deploy           Installers for Ubuntu, Windows, macOS, Docker, and per-device key scripts
 docs             Guides and the fleet protocol
 ```

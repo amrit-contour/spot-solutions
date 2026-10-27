@@ -28,17 +28,38 @@ pnpm dev:worker   # tsx watch, restarts when you edit the worker
 
 `.env` files are git-ignored. Never commit a service-account key or a Gemini key.
 
+## Run against the emulators (no Firebase project)
+
+For UI work you don't need a real project. Start the Auth and Firestore emulators with the `demo-nbot` project id, then point an app at them. Nothing touches production.
+
+```bash
+pnpm --filter @spot/comic emulators                                                    # terminal 1: Auth 9099, Firestore 8080
+VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=demo-nbot pnpm dev:web                   # terminal 2: Nothing BOT Curating
+pnpm --filter @spot/comic dev:emulator                                                 # or: Nothing BOT Comedy on :5175
+```
+
+The switch only applies in `vite dev` (`packages/ui/src/firebase.ts`). For Curating, seed a demo curator into the emulator and open the printed sign-in link:
+
+```bash
+cd apps/worker
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIREBASE_PROJECT_ID=demo-nbot \
+  pnpm exec tsx scripts/seed-demo.ts my-test-user
+```
+
+Comedy has its own seeds and no-sign-in `/dev` routes: see [apps/comic/README.md](apps/comic/README.md).
+
 ## Checks
 
 Run these before you open a pull request.
 
 ```bash
-pnpm test                     # Vitest in packages/shared and apps/worker
-pnpm typecheck                # tsc --noEmit in packages/shared and apps/worker
-cd apps/web && npx tsc -b     # strict build check for the web app
+pnpm test                     # Vitest across the workspace (shared, worker, functions)
+pnpm typecheck                # tsc --noEmit where a package defines it
+cd apps/web && npx tsc -b     # strict build check for Curating
+cd apps/comic && npx tsc -b   # strict build check for Comedy
 ```
 
-`pnpm typecheck` does not cover the web app, so the `tsc -b` line matters. It is the same check `pnpm --filter @spot/web build` runs before Vite, and it is what catches a broken deploy. `pnpm --filter @spot/web lint` runs oxlint.
+`pnpm typecheck` does not cover the two apps, so the `tsc -b` lines matter. It is the same check `pnpm --filter @spot/web build` (and `@spot/comic`) runs before Vite, and it is what catches a broken deploy. `pnpm --filter @spot/web lint` runs oxlint.
 
 ## Try it with demo data
 
@@ -70,17 +91,17 @@ fix(rules): allow import commands; hide admin list from demo visitors
 docs: demo media for the write-up (press/)
 ```
 
-Use `feat`, `fix` or `docs` (the history also has one `refine`), an optional scope in brackets, and a short lower-case summary. One logical change per commit.
+Use `feat`, `fix`, `docs` or `chore` (the history also has a few `refactor` and `refine`), an optional scope in brackets, and a short lower-case summary. One logical change per commit.
 
 ## Deploy
 
-Maintainers only. It publishes the web app, the installers and the Firestore and Storage rules:
+Maintainers only. Curating (the five Curating Hosting sites), the installers and the Firestore and Storage rules go out with:
 
 ```bash
 pnpm deploy:web
 ```
 
-That runs the web build, adds the installers and a source tarball to the build (`deploy/build-dist.sh`), and runs `firebase deploy --only hosting,firestore:rules,storage`. It needs the Firebase CLI signed in to the production project.
+That runs the Curating build, `deploy/build-dist.sh` (adds the installers and a source tarball, and writes the redirect-only page for the retired `spot-solutions.web.app`), and a `firebase deploy` of the Curating Hosting targets plus `firestore:rules` and `storage`. Nothing BOT Comedy is `pnpm deploy:comic`. Always run `build-dist.sh` after the web build, never deploy `apps/web/dist` without it. It needs the Firebase CLI signed in to the production project.
 
 ## Anything that messages comics must be opt-in
 

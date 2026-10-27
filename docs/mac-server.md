@@ -7,8 +7,10 @@
 Easiest, in Terminal:
 
 ```bash
-curl -fsSL https://nothingbotcurating.web.app/install-mac.sh | bash
+curl -fsSL https://nothingbotcurating.web.app/install.sh | bash
 ```
+
+(`install-mac.sh` at the same address still works. The installer quits a running old app, removes an old Spot Server install and keeps its data.)
 
 Or download [NothingBotServer-mac.zip](https://nothingbotcurating.web.app/dl/NothingBotServer-mac.zip), double-click it, drag **Nothing BOT Server** into Applications, then open it. The first time macOS says it can't verify the developer: open **System Settings → Privacy & Security** and click **Open Anyway**. (The app isn't notarized by Apple; the Terminal install avoids this prompt.)
 
@@ -17,7 +19,7 @@ Or download [NothingBotServer-mac.zip](https://nothingbotcurating.web.app/dl/Not
 1. Open **Nothing BOT Server** and type your email.
 2. Click **Set up this Mac** (the Terminal install command already did this). It downloads Node.js and, on a Mac with about 8 GB of memory or more, Ollama and Gemma (about 3.5 GB) into `~/Library/Application Support/NothingBotServer`. It needs no Homebrew and no admin password. If Ollama is already running on the Mac, it uses that.
 3. The server console appears inside the app. Click **Connect with Nothing BOT Curating**, open the link (or scan the QR with your phone), sign in with Google, check the 4-character code and approve. The worker starts by itself, with a key made for this Mac only, and your email becomes one of its admins. A join code from the app (**Account, Server, Add a server**) works too, and **First server ever? Use a key file** is for a brand-new project (see [multi-server.md](multi-server.md)).
-4. Link WhatsApp at spot-solutions.web.app → Settings → Show QR code.
+4. Link WhatsApp at nothingbotcurating.web.app → Settings → Show QR code.
 
 **Local model or Gemini only.** A Mac with little memory (under about 8 GB) starts on Gemini, and any Mac can switch in the console under **AI models** (**Local model on this computer**, with progress). Add a Gemini key there, or each curator under Settings → AI models. A Gemini-only server can't host accounts set to **Local only**. From Terminal: `nbsctl local on` or `nbsctl local off`. Updates keep the choice.
 
@@ -59,7 +61,7 @@ In the console, **Storage**, type the new folder (for example `/Volumes/Backup H
 
 The server updates itself: the console checks every 30 minutes and installs a new release a few minutes after it appears (turn that off under **Updates** in the console), or press **Update now** there or **Update** on the Server page of the app. A Mac set up before this release needs one manual update first: **More → Update Nothing BOT Server**, or run the install command again. Either keeps your key and WhatsApp session. If you run several servers, stop any still on an older release first, see [multi-server.md](multi-server.md).
 
-**The app's own icon is not part of an update.** Updates replace the server code in `~/Library/Application Support/NothingBotServer/app` (the console page, its favicon and logo included). The app in `/Applications` (Dock icon, window header, menu bar) is never replaced by an update, because re-signing or swapping a running app from a background job is not safe. A Mac installed before the server-rack icon keeps the old Dock icon until you run the install command above once more (it replaces the app and keeps your data).
+**Icons.** Updates replace the server code in `~/Library/Application Support/NothingBotServer/app` (the console page, its favicon and logo included). The app in `/Applications` is not replaced, but an update does refresh its icon files and re-signs it ad hoc, so a new Dock icon and window logo appear the next time you open the app. Running the install command again also replaces the app and keeps your data.
 
 ## For a Mac that stays on
 

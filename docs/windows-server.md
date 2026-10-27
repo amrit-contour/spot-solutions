@@ -40,7 +40,7 @@ There is one installer. A PC with about 8 GB of RAM or more starts with Ollama a
 |---|---|
 | Node.js | Its own copy of the latest Node 22 LTS in `C:\NothingBotServer\node`. The boot task runs as the SYSTEM account, which can't use per-user installs. |
 | Ollama and Gemma | Installs Ollama with winget (skipped if it's already there), keeps models in `C:\NothingBotServer\ollama`, keeps them loaded for 24 hours, and pulls `gemma3:4b`. Skipped on a Gemini-only server. |
-| Code | Downloads the code from spot-solutions.web.app into `C:\NothingBotServer\app` and installs the worker's dependencies with the pinned pnpm. Chrome for WhatsApp Web goes in `C:\NothingBotServer\chrome`. |
+| Code | Downloads the code from nothingbotcurating.web.app into `C:\NothingBotServer\app` and installs the worker's dependencies with the pinned pnpm. Chrome for WhatsApp Web goes in `C:\NothingBotServer\chrome`. |
 | Configuration | Writes `app\apps\worker\.env` and locks `C:\NothingBotServer\data` so only SYSTEM and Administrators can read it. |
 | Worker | A scheduled task `NothingBotServerWorker` that starts at boot as SYSTEM and restarts after a crash. It waits until a Firebase key exists, starts Ollama if needed, and logs to `data\worker.log`. |
 | Console | A second task, `NothingBotServerConsole`, serves the server console on port 7420 (log: `data\console.log`). |
@@ -54,8 +54,8 @@ At the end the console opens and the installer prints a link for a phone on the 
 ## Finish setup in the console
 
 1. Click **Connect with Nothing BOT Curating**, open the link (or scan the QR with your phone), sign in with Google as an admin, check the 4-character code and approve. The worker starts by itself and your email is added as an admin, so the server shows in the app under **Account, Server**. A join code from the app works too; a key file is only for the very first server of a brand-new project (**First server ever?**).
-2. Optional: under **AI models**, add a Gemini key, pick and test models, or turn the local model on or off.
-4. Open **Nothing BOT Curating** from the desktop, go to **Settings, Show QR code**, and scan it from WhatsApp on your phone (**Linked devices**).
+2. Optional: under **AI models**, add a Gemini key (it is checked with Google before it is saved), pick and test models, or turn the local model on or off.
+3. Open **Nothing BOT Curating** from the desktop, go to **Settings, Show QR code**, and scan it from WhatsApp on your phone (**Linked devices**).
 
 ## Everyday
 
@@ -66,7 +66,7 @@ Day to day you manage the server from the app (**Account, Server**: health, logs
 | **Open Server Console.cmd** | Opens `http://localhost:7420` (same as the desktop shortcut). |
 | **View Logs.cmd** | Follows the live worker log. Closing the window doesn't stop the worker. |
 | **Restart Worker.cmd** | Stops the worker and its browsers. The boot task starts it again within 10 seconds. |
-| **Uninstall.cmd** | Removes the tasks, shortcuts, firewall rule and program files, for this server and the old Spot Solutions one. Keeps your data. |
+| **Uninstall.cmd** | Removes the tasks, shortcuts, firewall rule and program files, for this server and for an old pre-rename Spot Solutions install. Keeps your data. |
 
 To stop or start it from PowerShell as Administrator:
 
@@ -111,14 +111,14 @@ If you run other servers too, stop any that are still on an older release first,
 
 ## Uninstall
 
-Double-click **Uninstall.cmd** (in the unzipped folder). It stops the worker and console, removes the scheduled tasks, the firewall rule, the shortcuts and the program files (`app`, `node`, `chrome`), for this server **and** for the old "Spot Solutions" server (`C:\NothingBotServer`) if it is still on the PC. It **keeps** `C:\NothingBotServer\data` (and `C:\NothingBotServer\data`), the AI models and a data folder you moved to another drive, and prints what it kept. To delete the data too, run this in PowerShell as Administrator from the unzipped folder: `.\uninstall.ps1 -DeleteData` (a data folder on another drive is never deleted by it). Ollama itself stays installed (remove it from Settings, Apps). On your phone, remove the old entry under **WhatsApp, Linked devices**.
+Double-click **Uninstall.cmd** (in the unzipped folder). It stops the worker and console, removes the scheduled tasks, the firewall rule, the shortcuts and the program files (`app`, `node`, `chrome`), for this server **and** for an old pre-rename "Spot Solutions" server if one is still on the PC. It **keeps** the data folder (`C:\NothingBotServer\data`), the AI models and a data folder you moved to another drive, and prints what it kept. To delete the data too, run this in PowerShell as Administrator from the unzipped folder: `.\uninstall.ps1 -DeleteData` (a data folder on another drive is never deleted by it). Ollama itself stays installed (remove it from Settings, Apps). On your phone, remove the old entry under **WhatsApp, Linked devices**.
 
 ## If something's off
 
 | Symptom | Fix |
 |---|---|
 | App says "Server offline" | Check the PC is on and online. Double-click **Restart Worker.cmd**, then **View Logs.cmd**. |
-| Nothing starts after install | The worker waits for a Firebase key. Enter a join code in the console (or drop a key file). |
+| Nothing starts after install | The worker waits until the server is connected. Click **Connect with Nothing BOT Curating** in the console (or enter a join code from the app). |
 | The installer says it can't install Ollama | Install it from ollama.com/download, then run the installer again. |
 | The installer says to run as Administrator | Use the `.cmd` and click Yes on the prompt, or open PowerShell as Administrator. |
 | Console doesn't open from a phone | The PC must be on the same Wi-Fi, and that network set to **Private**. Use the link the installer printed. |
