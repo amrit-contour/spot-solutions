@@ -47,3 +47,5 @@ export * from "./memberSearch.ts";
 export * from "./backfill.ts";
 export * from "./lineupActivity.ts";
 export * from "./comicSettings.ts";
+export * from "./peopleSearch.ts";
+export * from "./profilePics.ts";

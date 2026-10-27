@@ -72,6 +72,7 @@ import { clearGroup, keepGroup, readCleanupMembers } from "./groupCleanup.ts";
 import { addDirect, settleRound } from "./replies.ts";
 import { askForSpot } from "./groupWatch.ts";
 import { sendAsk } from "./asks.ts";
+import { profilePics } from "./profilePics.ts";
 
 type Handler = (uid: string, payload: Record<string, unknown>, commandId?: string) => Promise<unknown>;
 
@@ -671,6 +672,8 @@ export async function sendConfirmation(uid: string, client: WAWebJS.Client, show
   const venue = venues.find((v) => v.id === show.venueId);
   const facts = await confirmFacts(uid, client, show, comic, week, minutes);
   return sendRich(client, comic.chatId ?? comic.id, { kind: "text", body: settings.confirm.template, attachLocation: settings.confirm.attachLocation }, facts, venue, {
+  // Profile pictures: queued and fetched in the background (one every couple of seconds); the answer lands on the comic docs.
+  profile_pics: profilePics,
     rewrite: (text) => inVoice(uid, "confirm", text, facts),
   });
 }

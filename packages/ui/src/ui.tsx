@@ -168,11 +168,29 @@ export function sharpPhoto(url: string, px = 240) {
   return url.replace(/=s\d+(-c)?(?=$|\?)/, `=s${px}-c`);
 }
 
-export function Avatar({ name, size = 40, tone = "primary" }: { name: string; size?: number; tone?: "primary" | "tertiary" | "secondary" }) {
+/** Initials, or a picture when `src` is given. A picture that fails to load falls back to the initials and calls `onBroken` once. */
+export function Avatar({ name, size = 40, tone = "primary", src, onBroken }: { name: string; size?: number; tone?: "primary" | "tertiary" | "secondary"; src?: string | null; onBroken?: () => void }) {
   const t = { primary: "bg-primary-container text-on-primary-container", tertiary: "bg-tertiary-container text-on-tertiary-container", secondary: "bg-secondary-container text-on-secondary-container" }[tone];
+  const [failed, setFailed] = useState<string | null>(null);
+  const showImg = Boolean(src) && failed !== src;
   return (
-    <span className={cx("grid flex-none place-items-center rounded-full type-label-l", t)} style={{ width: size, height: size, fontSize: size * 0.36 }} aria-hidden>
+    <span className={cx("relative grid flex-none place-items-center overflow-hidden rounded-full type-label-l", t)} style={{ width: size, height: size, fontSize: size * 0.36 }} aria-hidden>
       {initials(name)}
+      {showImg && (
+        <img
+          src={src ?? undefined}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          draggable={false}
+          onError={() => {
+            setFailed(src ?? null);
+            onBroken?.();
+          }}
+          className="absolute inset-0 size-full object-cover"
+        />
+      )}
     </span>
   );
 }

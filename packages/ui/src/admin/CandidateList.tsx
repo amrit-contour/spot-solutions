@@ -12,7 +12,8 @@ export function CandidateList({ records, exclude = [], excludeEmails = [], actio
   const [query, setQuery] = useState("");
   const out = useMemo(() => new Set(excludeEmails.map(lower)), [excludeEmails]);
   const pool = useMemo(() => records.filter((r) => r.status === "approved" && r.email && !out.has(lower(r.email))).map((r) => ({ ...r, name: displayName(r), email: r.email ?? "" })), [records, out]);
-  const found = useMemo(() => filterMembers(pool, query, exclude).slice(0, 6), [pool, query, exclude]);
+  // Type-first: nobody is listed until something is typed.
+  const found = useMemo(() => (query.trim() ? filterMembers(pool, query, exclude).slice(0, 6) : []), [pool, query, exclude]);
   return (
     <>
       <div className="relative border-b border-outline-variant/40 p-3">
@@ -20,7 +21,7 @@ export function CandidateList({ records, exclude = [], excludeEmails = [], actio
         <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name or email" aria-label="Search approved members" autoComplete="off" spellCheck={false} className="h-11 pl-11" />
       </div>
       {found.length === 0 ? (
-        <p className="px-4 py-6 text-center type-body-m text-on-surface-variant">{query.trim() ? `No approved member matches “${query.trim()}”.` : empty}</p>
+        <p className="px-4 py-6 text-center type-body-m text-on-surface-variant">{query.trim() ? `No approved member matches “${query.trim()}”.` : pool.length ? "Type a name or email" : empty}</p>
       ) : (
         <Rows>
           {found.map((m) => (

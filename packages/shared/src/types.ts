@@ -297,6 +297,10 @@ export interface Comic {
 
 export type IntentKind = "spot_request" | "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "other";
 
+  /** WhatsApp profile picture URL (they expire), or "none" when the person hides it. See profilePics.ts. */
+  photoUrl?: string | null;
+  /** When photoUrl was last fetched (ms). */
+  photoAt?: number | null;
 /** Fixed labels Gemma may attach to a request (see requestTags.ts). */
 export type IntentTag = "new_material" | "flexible_days" | "specific_time" | "longer_set" | "travelling" | "bringing_audience" | "first_time_here";
 
@@ -467,7 +471,8 @@ export type CommandType =
   | "cleanup_group"
   | "settle_round"
   | "send_ask"
-  | "ask_for_spot";
+  | "ask_for_spot"
+  | "profile_pics";
 
 export interface Command {
   type: CommandType;

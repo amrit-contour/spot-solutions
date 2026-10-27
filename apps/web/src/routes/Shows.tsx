@@ -5,11 +5,12 @@ import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { VenuePin } from "@spot/ui";
-import { DAY_SHORT, DEFAULT_CLEANUP, formatTime, groupModeOf, type GroupInfo, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
+import { DAY_SHORT, DEFAULT_CLEANUP, PEOPLE_SEARCH_HINT, formatTime, groupModeOf, searchPeople, type GroupInfo, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
 import { PageHeader } from "@spot/ui";
+import { SearchField } from "../components/PeopleSearch";
 import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
 import { IconAdd, IconBuilding, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "@spot/ui";
 
@@ -377,27 +378,31 @@ function PeoplePicker({ label, people, selected, onToggle, icon, members }: { la
   const [groupOnly, setGroupOnly] = useState(false);
   const sel = new Set(selected);
   const inGroup = new Set(members ?? []);
-  const needle = q.toLowerCase();
-  const rank = (id: string) => Number(sel.has(id)) * 2 + Number(inGroup.has(id));
-  const list = people
-    .filter((p) => (!groupOnly || inGroup.has(p.id) || sel.has(p.id)) && p.name.toLowerCase().includes(needle))
-    .sort((a, b) => rank(b.id) - rank(a.id) || a.name.localeCompare(b.name));
-  const cap = needle ? 80 : 40;
+  const typing = Boolean(q.trim());
+  // Type-first: only who's already chosen is shown until something is typed. "In this group" is an explicit way to browse.
+  const chosen = people.filter((p) => sel.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const pool = people.filter((p) => !sel.has(p.id) && (!groupOnly || inGroup.has(p.id)));
+  const found = typing ? searchPeople(pool, q, 40) : groupOnly ? pool.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 40) : [];
   return (
     <div>
       <div className="mb-2 flex items-center gap-2 type-label-l text-on-surface-variant">
         <span className="flex-1">{label}</span>
         {members && <Chip selected={groupOnly} onClick={() => setGroupOnly(!groupOnly)}>In this group</Chip>}
       </div>
-      <TextInput placeholder="Search comics" value={q} onChange={(e) => setQ(e.target.value)} className="h-10" />
+      <SearchField value={q} onChange={setQ} className="h-10" />
       <div className="mt-2 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
-        {list.slice(0, cap).map((p) => (
-          <Chip key={p.id} selected={sel.has(p.id)} onClick={() => onToggle(p.id)} icon={sel.has(p.id) ? icon : undefined}>
+        {chosen.map((p) => (
+          <Chip key={p.id} selected onClick={() => onToggle(p.id)} icon={icon}>
             {p.name}
           </Chip>
         ))}
-        {list.length > cap && <span className="self-center type-body-s text-on-surface-variant">+{list.length - cap} more. Search to find them.</span>}
-        {!people.length && <span className="type-body-s text-on-surface-variant">Comics appear here once they message you, or when you add or import them in Comics.</span>}
+        {found.map((p) => (
+          <Chip key={p.id} onClick={() => onToggle(p.id)}>
+            {p.name}
+          </Chip>
+        ))}
+        {(typing || groupOnly) && !found.length && <span className="self-center type-body-s text-on-surface-variant">No one matches.</span>}
+        {!typing && !groupOnly && !chosen.length && <span className="self-center type-body-s text-on-surface-variant">{people.length ? PEOPLE_SEARCH_HINT : "Comics appear here once they message you, or when you add or import them in Comics."}</span>}
       </div>
     </div>
   );

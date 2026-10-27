@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ComicAvatar } from "../lib/photos";
 import { where } from "firebase/firestore";
 import { AnimatePresence, motion } from "motion/react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -25,7 +26,7 @@ import { useNeverRead } from "../lib/neverRead";
 import { PageHeader } from "@spot/ui";
 import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "@spot/ui";
-import { Avatar, Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
+import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
 import { ClearOldRequests } from "../components/ClearOldRequests";
 import { ScanHistorySheet } from "../components/ScanHistorySheet";
@@ -330,7 +331,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
       className="overflow-hidden rounded-lg bg-surface-low"
     >
       <div className="flex gap-3 px-4 pt-4 sm:gap-4 sm:px-5 sm:pt-5">
-        <Avatar name={r.comicName} size={44} tone={performedLastWeek ? "secondary" : "primary"} />
+        <ComicAvatar id={r.comicId} name={r.comicName} size={44} tone={performedLastWeek ? "secondary" : "primary"} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <h3 className="min-w-0 flex-1 truncate type-title-m">{r.comicName}</h3>

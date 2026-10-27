@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { ComicAvatar } from "../lib/photos";
 import { doc, getDoc, where } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
 import { Link } from "react-router-dom";
@@ -65,7 +66,7 @@ import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
 import { ActivitySection, Chevron, CollapsedSummary, Reveal, StatePill, useRemembered } from "../components/ShowCardParts";
-import { Avatar, Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "@spot/ui";
+import { Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "@spot/ui";
 import { IconAdd, IconCalendarMark, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "@spot/ui";
 
 const BENCH = "bench";
@@ -390,7 +391,8 @@ function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action
   const pills = comicPills({ comic, request, show, lastWeek, states, adhoc }, id);
   return (
     <div className={cx("flex min-h-14 items-center gap-3 rounded-md py-2 pl-3", action ? "pr-1" : "pr-3", lifted ? "bg-surface-highest" : "bg-surface-container")}>
-      {index !== undefined ? <span className="w-5 text-center type-label-l text-on-surface-variant tabular">{index + 1}</span> : <Avatar name={name} size={32} tone={performed ? "secondary" : "primary"} />}
+      {index !== undefined && <span className="w-5 text-center type-label-l text-on-surface-variant tabular">{index + 1}</span>}
+      <ComicAvatar id={id} name={name} size={index !== undefined ? 28 : 32} tone={performed ? "secondary" : "primary"} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate type-title-s">{name}</span>
@@ -776,7 +778,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                           const known = comicsById.has(h.id);
                           return (
                             <li key={h.id} className="flex min-h-12 items-center gap-2.5 py-1">
-                              <Avatar name={h.name} size={28} tone="secondary" />
+                              <ComicAvatar id={h.id} name={h.name} size={28} tone="secondary" />
                               <span className="min-w-0 flex-1 truncate type-label-l">{h.name}</span>
                               {onLineup ? <Pill tone="told" icon={IconCheck}>On lineup</Pill> : (
                                 <Button size="sm" variant="tonal" disabled={!known || cancelled || ids.length >= show.slotCount} onClick={() => (close(), void onAdd(h.id))}>

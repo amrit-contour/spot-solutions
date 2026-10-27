@@ -2,11 +2,14 @@
 // confirmation. Several: the first yeses fill the slots (auto-add), or the yeses wait in Updates for you to pick.
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { DAY_NAMES, dateInWeek, directPlan, formatDate, formatTime, greetName, lineupId, messageRich, renderRich, OFFER_POLL_OPTIONS, type RichMessage, type Show } from "@spot/shared";
+import { where } from "firebase/firestore";
+import { DAY_NAMES, dateInWeek, directPlan, formatDate, formatTime, greetName, lineupId, messageRich, renderRich, searchPeople, OFFER_POLL_OPTIONS, type SpotRequest, type RichMessage, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { SnippetMenu } from "./SnippetMenu";
-import { runCommand } from "../lib/data";
-import { Avatar, Button, Sheet, Stepper, Switch, TextInput, cx } from "@spot/ui";
+import { runCommand, useCollection } from "../lib/data";
+import { ComicAvatar } from "../lib/photos";
+import { RecentRow, SearchField, SearchHint } from "./PeopleSearch";
+import { Button, Sheet, Stepper, Switch, cx } from "@spot/ui";
 import { MessageComposer, MessagePreview } from "@spot/ui";
 import { IconSend, IconUserPlus } from "@spot/ui";
 
@@ -23,6 +26,7 @@ const readDirect = (uid: string) => {
 export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { open: boolean; onClose: () => void; show: Show; exclude: string[]; onDirectAdded?: () => void }) {
   const { uid, week, comics, settings, venues } = useApp();
   const [q, setQ] = useState("");
+  const requests = useCollection<SpotRequest>(open ? uid : undefined, "requests", [where("weekOf", "==", week)], week);
   const [picks, setPicks] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const open_ = Math.max(1, show.slotCount - exclude.length);
@@ -53,13 +57,21 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
   const fixed = (m: RichMessage): RichMessage => (m.kind === "poll" ? { ...m, poll: { question: m.poll?.question ?? "", options: [...OFFER_POLL_OPTIONS], multi: false } } : m);
   const ready = msg.kind === "poll" ? Boolean(msg.poll?.question.trim()) : Boolean(msg.body.trim());
 
-  const list = useMemo(() => {
+  // Type-first: nobody is listed until something is typed. Before that, this week's requesters are one tap away.
+  const available = useMemo(() => {
     const out = new Set(exclude);
-    return comics
-      .filter((c) => !out.has(c.id) && c.list !== "banned" && c.name.toLowerCase().includes(q.toLowerCase()))
-      .sort((a, b) => (b.history?.[0]?.date ?? "").localeCompare(a.history?.[0]?.date ?? "") || a.name.localeCompare(b.name))
-      .slice(0, 30);
-  }, [comics, exclude, q]);
+    return comics.filter((c) => !out.has(c.id) && c.list !== "banned");
+  }, [comics, exclude]);
+  const list = useMemo(() => searchPeople(available, q), [available, q]);
+  const recent = useMemo(() => {
+    const ok = new Set(available.map((c) => c.id));
+    const seen = new Set<string>();
+    return requests.data
+      .filter((r) => ok.has(r.comicId) && r.status !== "rejected" && r.status !== "dismissed")
+      .map((r) => ({ id: r.comicId, name: comics.find((c) => c.id === r.comicId)?.name ?? r.comicName }))
+      .filter((p) => !seen.has(p.id) && seen.add(p.id))
+      .slice(0, 5);
+  }, [requests.data, available, comics]);
 
   const toggle = (id: string) => {
     const next = picks.includes(id) ? picks.filter((x) => x !== id) : [...picks, id];
@@ -123,23 +135,33 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
         <Switch checked={direct} onChange={chooseDirect} label="Already agreed: add directly" />
       </label>
       <div className="mt-5 flex flex-col gap-4">
-        <TextInput placeholder="Search comics" value={q} onChange={(e) => setQ(e.target.value)} />
-        <ul className="max-h-64 overflow-y-auto rounded-md bg-surface-container">
-          {list.map((c) => (
-            <li key={c.id}>
-              <button
-                onClick={() => toggle(c.id)}
-                aria-pressed={picks.includes(c.id)}
-                className={cx("state-layer flex w-full items-center gap-3 px-3 py-2 text-left", picks.includes(c.id) && "bg-secondary-container text-on-secondary-container")}
-              >
-                <Avatar name={c.name} size={32} />
-                <span className="min-w-0 flex-1 truncate type-body-l">{c.name}</span>
-                {c.history?.[0] && <span className="type-label-s text-on-surface-variant">{formatDate(c.history[0].date)}</span>}
-              </button>
-            </li>
-          ))}
-          {!list.length && <li className="px-3 py-4 type-body-s text-on-surface-variant">No one matches.</li>}
-        </ul>
+        <SearchField value={q} onChange={setQ} />
+        {!q.trim() && <RecentRow people={recent} onPick={toggle} selected={picks} label="Asked this week" />}
+        {picks.length > 0 && !q.trim() && (
+          <p className="type-body-s text-on-surface-variant">
+            Picked: {picks.map((id) => comics.find((c) => c.id === id)?.name ?? id).join(", ")}
+          </p>
+        )}
+        {q.trim() ? (
+          <ul className="max-h-64 overflow-y-auto rounded-md bg-surface-container">
+            {list.map((c) => (
+              <li key={c.id}>
+                <button
+                  onClick={() => toggle(c.id)}
+                  aria-pressed={picks.includes(c.id)}
+                  className={cx("state-layer flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left", picks.includes(c.id) && "bg-secondary-container text-on-secondary-container")}
+                >
+                  <ComicAvatar id={c.id} name={c.name} size={32} />
+                  <span className="min-w-0 flex-1 truncate type-body-l">{c.name}</span>
+                  {c.history?.[0] && <span className="type-label-s text-on-surface-variant">{formatDate(c.history[0].date)}</span>}
+                </button>
+              </li>
+            ))}
+            {!list.length && <li className="px-3 py-4 type-body-s text-on-surface-variant">No one matches.</li>}
+          </ul>
+        ) : (
+          <SearchHint />
+        )}
         {direct && plan.over > 0 && (
           <p role="status" className="rounded-lg bg-tertiary-container px-3 py-2 type-body-s text-on-tertiary-container">
             {show.name} has {show.slotCount} {show.slotCount === 1 ? "spot" : "spots"} and {exclude.length} {exclude.length === 1 ? "is" : "are"} filled. Adding {plan.add.length} puts it {plan.over} over.
