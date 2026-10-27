@@ -17,6 +17,8 @@ import { parseKey } from "./gcrypto";
 import { connect as gcConnect, disconnect as gcDisconnect, onComicWritten as gcOnComic, planContacts as gcPlan, listContacts as gcList, processDue as gcProcess, processUser as gcProcessUser, runContacts as gcRun, type Caller as GcCaller, type GcDeps } from "./googleContacts";
 import { firestoreGcStore } from "./googleStore";
 import type { ComicBits } from "./googleLogic";
+import { lookupRosterUser as lookupUser } from "./rosterUsers";
+import { firestoreDirectory } from "./rosterUsersStore";
 
 initializeApp();
 // A dedicated identity (deploy/setup-functions-iam.sh), not the default compute account.
@@ -265,4 +267,16 @@ export const flushGoogleContacts = onTaskDispatched({ invoker: serviceAccountEma
 export const syncGoogleContacts = onSchedule({ schedule: "every 6 hours", secrets: GC_SECRETS, timeoutSeconds: 300, maxInstances: 1 }, async () => {
   const r = await gcProcess(gcDeps());
   if (r.users) console.log(`[google-contacts] ${r.users} curators, ${r.saved} contacts saved`);
+});
+
+// ---------- Community rosters (functions/src/rosterUsers.ts) ----------
+
+/** Comic app: who is this email? Another approved member's uid and name, for co-maintainers, publishers and sharing a roster. */
+export const lookupRosterUser = onCall(async (req) => {
+  try {
+    const a = req.auth;
+    return await lookupUser(firestoreDirectory(), { uid: a?.uid, email: a?.token.email, verified: a?.token.email_verified === true, anonymous: !a || a.token.firebase?.sign_in_provider === "anonymous" }, (req.data ?? {}) as { email?: unknown });
+  } catch (e) {
+    return rethrow(e);
+  }
 });
