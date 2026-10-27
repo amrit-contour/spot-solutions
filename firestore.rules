@@ -108,15 +108,24 @@ service cloud.firestore {
       allow update: if isAllowedUser() && isMaintainer(id)
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.version is int && request.resource.data.version >= resource.data.version
+        && request.resource.data.rooms is list && request.resource.data.coMaintainers is list
         && (resource.data.ownerUid == request.auth.uid
-          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['coMaintainers']));
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['coMaintainers', 'maintainerNames']));
       allow delete: if isOwner(resource.data.ownerUid);
+
+      // Followers: one doc per follower, written by that person only (the app shows a count). Readable by allowed users.
+      match /followers/{fuid} {
+        allow read: if isAllowedUser();
+        allow create, update: if isAllowedUser() && isOwner(fuid) && exists(/databases/$(database)/documents/publishedRosters/$(id))
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'at']) && request.resource.data.uid == fuid;
+        allow delete: if isAllowedUser() && isOwner(fuid);
+      }
 
       // Suggestions: anyone allowed can make one (as themselves, pending); the proposer and the maintainers read them;
       // maintainers approve or reject; the proposer can withdraw a pending one.
       match /suggestions/{sid} {
         allow read: if isAllowedUser() && (resource.data.byUid == request.auth.uid || isMaintainer(id));
-        allow create: if isAllowedUser()
+        allow create: if isAllowedUser() && exists(/databases/$(database)/documents/publishedRosters/$(id))
           && request.resource.data.byUid == request.auth.uid
           && request.resource.data.status == 'pending'
           && request.resource.data.keys().hasOnly(['byUid', 'byName', 'target', 'kind', 'before', 'after', 'note', 'baseVersion', 'status', 'createdAt'])
@@ -177,7 +186,7 @@ service cloud.firestore {
         // Admins only see move_account commands (the Server page): never message or contact payloads.
         allow read: if isOwner(uid) || (isAdmin() && resource.data.type == 'move_account');
         // Messages page: the result of a chat read holds chat text. The app deletes it as soon as it has it (the expireAt
-        // TTL is the backstop). Only the owner can read or delete it, and only these three command types.
+        // TTL is the backstop). Only the owner can read or delete it, and only these command types.
         allow delete: if isOwner(uid) && resource.data.type in ['list_threads', 'get_thread', 'get_media', 'summarize_thread', 'list_voice_sources', 'parse_roster'];
         allow create: if isOwner(uid) && isApproved(uid)
           && request.resource.data.status == 'pending'
@@ -214,6 +223,16 @@ service cloud.firestore {
         allow create, update: if isOwner(uid)
           && request.resource.data.token == token
           && request.resource.data.keys().hasOnly(['token', 'platform', 'userAgent', 'createdAt', 'lastSeen', 'app']);
+      }
+
+      // A roster shared with one person (docs/plans/comic-app.md): any allowed member can drop a snapshot in another approved member's
+      // inbox, as themselves; only the recipient reads or clears it. It is a copy, so nothing here is editable later.
+      match /rosterShares/{shareId} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isAllowedUser() && isApproved(uid) && request.auth.uid != uid
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['fromUid', 'fromName', 'title', 'note', 'rooms', 'curators', 'createdAt'])
+          && request.resource.data.rooms is list && request.resource.data.curators is list && request.resource.data.createdAt is number;
       }
 
       match /{coll}/{id} {
