@@ -31,6 +31,7 @@ import { useApp } from "../lib/app";
 import { useNow } from "../lib/data";
 import { Menu, MenuItem } from "@spot/ui";
 import { SnippetMenu } from "./SnippetMenu";
+import { ImageField } from "./ImageAttach";
 import { MessageComposer, MessagePreview, messageSummary } from "@spot/ui";
 import { Button, Chip, IconButton, Segmented, Select, Switch, TimePicker, cx } from "@spot/ui";
 import { IconAdd, IconArrowDown, IconCheck, IconClock, IconSparkle, IconTrash } from "@spot/ui";
@@ -278,6 +279,14 @@ function PostRow({ show, post, open, onToggle, onChange, onRemove }: { show: Pos
                 <SnippetMenu vars={groupPostVars(show, venue, showDate, null, pocNames)} messages={[...GROUP_POST_KEYS]} onPick={(m) => setMessage(m)} />
               </div>
               <MessageComposer value={normalizeMessage(post.message, msg)} onChange={setMessage} variables={VARIABLES} extraVars={groupPostVars(show, venue, showDate, ["Rohan", "Priya", "Karthik"], pocNames || "@POC")} idPrefix={`post-${post.id}`} attachLabel="Also send the venue pin" />
+              {msg.kind === "text" && (
+                <ImageField
+                  scope="attachments"
+                  value={normalizeMessage(post.message, msg).image}
+                  onChange={(image) => setMessage({ ...normalizeMessage(post.message, msg), image })}
+                  hint="Sent with every post. The message text goes as its caption."
+                />
+              )}
             </div>
           ) : (
             <div className="rounded-md bg-surface-container p-3">

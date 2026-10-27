@@ -49,3 +49,51 @@ describe("sendRich", () => {
     expect(sent).toHaveLength(0);
   });
 });
+
+describe("sendRich with a picture", () => {
+  const uid = "uidA1";
+  const path = `users/${uid}/attachments/abcDEF1234567890_-xy.jpg`;
+  const calls: { content: unknown; options: unknown }[] = [];
+  const loaded: string[] = [];
+  beforeEach(() => {
+    calls.length = 0;
+    loaded.length = 0;
+  });
+
+  it("sends the picture with the text as its caption: one message", async () => {
+    vi.resetModules();
+    vi.doMock("./sendQueue.ts", () => ({ sendContent: vi.fn(async (_c: unknown, _to: string, content: unknown, _t: number, options: unknown) => (calls.push({ content, options }), { id: { _serialized: "m1" } })) }));
+    vi.doMock("whatsapp-web.js", () => ({ default: { MessageMedia: class { constructor(public mime: string, public data: string, public name: string) {} } } }));
+    vi.doMock("./media.ts", () => ({ loadOutImage: vi.fn(async (u: string, img: { path: string }) => (loaded.push(`${u}:${img.path}`), { mime: "image/jpeg", data: "QUJD", name: "photo.jpg" })) }));
+    const { sendRich: send } = await import("./sendRich.ts");
+    await send(client, "x@c.us", { kind: "text", body: "Hi {{name}}", image: { path } }, { name: "Rohan" }, null, { uid });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].content).toMatchObject({ mime: "image/jpeg", data: "QUJD" });
+    expect(calls[0].options).toEqual({ caption: "Hi Rohan" });
+    expect(loaded).toEqual([`${uid}:${path}`]);
+  });
+
+  it("sends a picture with no text without a caption", async () => {
+    vi.resetModules();
+    vi.doMock("./sendQueue.ts", () => ({ sendContent: vi.fn(async (_c: unknown, _to: string, content: unknown, _t: number, options: unknown) => (calls.push({ content, options }), { id: { _serialized: "m1" } })) }));
+    vi.doMock("whatsapp-web.js", () => ({ default: { MessageMedia: class { constructor(public mime: string, public data: string, public name: string) {} } } }));
+    vi.doMock("./media.ts", () => ({ loadOutImage: vi.fn(async () => ({ mime: "image/jpeg", data: "QUJD", name: "photo.jpg" })) }));
+    const { sendRich: send } = await import("./sendRich.ts");
+    await send(client, "x@c.us", { kind: "text", body: "", image: { path } }, {}, null, { uid, prerendered: true });
+    expect(calls[0].options).toEqual({});
+  });
+
+  it("falls back to the text alone when the picture can't be loaded, unless the picture is required", async () => {
+    vi.resetModules();
+    vi.doMock("./sendQueue.ts", () => ({ sendContent: vi.fn(async (_c: unknown, _to: string, content: unknown, _t: number, options: unknown) => (calls.push({ content, options }), { id: { _serialized: "m1" } })) }));
+    vi.doMock("whatsapp-web.js", () => ({ default: {} }));
+    vi.doMock("./media.ts", () => ({ loadOutImage: vi.fn(async () => Promise.reject(new Error("The picture is no longer there. Attach it again."))) }));
+    const { sendRich: send } = await import("./sendRich.ts");
+    await send(client, "x@c.us", { kind: "text", body: "Hello", image: { path } }, {}, null, { uid });
+    expect(calls.map((c) => c.content)).toEqual(["Hello"]);
+    await expect(send(client, "x@c.us", { kind: "text", body: "Hello", image: { path } }, {}, null, { uid, imageRequired: true })).rejects.toThrow(/no longer there/);
+    // No account to check the path against: the picture is not trusted.
+    await send(client, "x@c.us", { kind: "text", body: "Again", image: { path } }, {}, null, {});
+    expect(calls.map((c) => c.content)).toEqual(["Hello", "Again"]);
+  });
+});

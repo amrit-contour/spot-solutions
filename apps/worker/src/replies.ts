@@ -95,7 +95,7 @@ async function tellFull(uid: string, client: WAWebJS.Client, offerRef: FirebaseF
   await offerRef.update({ status: "full", ...(reply !== null && { reply }) });
   const who = (await col(uid, "comics").doc(offer.comicId).get()).data() as Comic | undefined;
   const name = await greetFor(client, who ?? { id: offer.comicId, name: offer.comicName });
-  await sendRich(client, await chatOf(uid, offer.comicId), messageRich(settings, "offerFull"), { name }, null, { rewrite: (t) => inVoice(uid, "offerFull", t, { name }) });
+  await sendRich(client, await chatOf(uid, offer.comicId), messageRich(settings, "offerFull"), { name }, null, { rewrite: (t) => inVoice(uid, "offerFull", t, { name }), uid });
   if (!quiet) await notice(uid, "info", `${offer.comicName} said yes, but the ${showName(uid, offer.showId)} spot was already filled. They've been told.`, "offer");
 }
 

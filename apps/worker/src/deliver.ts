@@ -2,6 +2,7 @@
 import type WAWebJS from "whatsapp-web.js";
 import { messageRich, renderRich, type ComicAction, type MessageKey, type TemplateVars, type Venue, type VoiceKind } from "@spot/shared";
 import { sendRich } from "./sendRich.ts";
+import { dropSentImage } from "./media.ts";
 import { inVoice } from "./voice.ts";
 import { watchUser } from "./userData.ts";
 
@@ -14,11 +15,13 @@ export async function composeDraft(uid: string, key: Exclude<MessageKey, "groupW
   if (m.kind === "poll" && r.poll) return { draft: "", rich: { kind: "poll", poll: r.poll, venueId } };
   if (m.kind === "location") return { draft: "", rich: { kind: "location", venueId } };
   const draft = await inVoice(uid, key as VoiceKind, r.body, facts as Record<string, string>);
-  return { draft, ...(m.attachLocation && { rich: { kind: "text" as const, attachLocation: true, venueId } }) };
+  return { draft, ...((m.attachLocation || m.image) && { rich: { kind: "text" as const, ...(m.attachLocation && { attachLocation: true }), ...(m.image && { image: m.image }), venueId } }) };
 }
 
 /** Send a draft as the curator left it: its text, plus the poll or pin it carries. */
-export function deliverDraft(uid: string, client: WAWebJS.Client, to: string, body: string, rich?: ComicAction["rich"] | null, mentions?: string[]) {
+export async function deliverDraft(uid: string, client: WAWebJS.Client, to: string, body: string, rich?: ComicAction["rich"] | null, mentions?: string[]) {
   const venue = rich?.venueId ? watchUser(uid).venues.find((v) => v.id === rich.venueId) : null;
-  return sendRich(client, to, { kind: rich?.kind ?? "text", body, poll: rich?.poll, attachLocation: rich?.attachLocation }, {}, venue, { prerendered: true, mentions });
+  const sent = await sendRich(client, to, { kind: rich?.kind ?? "text", body, poll: rich?.poll, attachLocation: rich?.attachLocation, ...(rich?.image && { image: rich.image }) }, {}, venue, { prerendered: true, mentions, uid, imageRequired: Boolean(rich?.image) });
+  if (rich?.image) await dropSentImage(uid, rich.image.path); // a one-time upload; a template's kept picture is left alone
+  return sent;
 }

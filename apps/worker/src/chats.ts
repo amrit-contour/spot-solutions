@@ -14,9 +14,12 @@ import {
   matchGroupThreads,
   matchThreads,
   pageMessages,
+  parseFetchMedia,
+  parseSendImage,
   toThreadMessage,
   type Comic,
   type GetThreadResult,
+  type FetchMediaResult,
   type GroupMember,
   type ListThreadsResult,
   type Show,
@@ -36,6 +39,7 @@ import { watchUser } from "./userData.ts";
 import { isNeverRead, neverReadFor } from "./neverRead.ts";
 import { parseEmoji, parsePhotoPayload, reactTo, sendPhoto } from "./chatActions.ts";
 import { sendContent } from "./sendQueue.ts";
+import { cachePicture, dropSentImage, knownTooBig, loadOutImage } from "./media.ts";
 import { THREAD_ASSIST_SCHEMA, buildThreadPrompt, parseThreadAssist, showLines } from "./threadAssist.ts";
 
 /** Messages the model reads: the newest ASSIST_MAX_MESSAGES, further capped by characters (trimForModel). Enough for a back-and-forth about one spot, small enough for a local model to answer in well under its budget. */
@@ -48,6 +52,7 @@ export const asMessageLike = (m: WAWebJS.Message): WaMessageLike => ({
   fromMe: m.fromMe,
   timestamp: m.timestamp,
   hasMedia: m.hasMedia,
+  size: Number((m as { _data?: { size?: number } })._data?.size) || undefined,
   hasReaction: Boolean((m as { hasReaction?: boolean }).hasReaction),
   mentionedIds: ((m as { mentionedIds?: unknown[] }).mentionedIds ?? []).map((x) => (typeof x === "string" ? x : String((x as { _serialized?: string })?._serialized ?? ""))).filter(Boolean),
   pollName: (m as { pollName?: string }).pollName,
@@ -269,6 +274,36 @@ export async function sendMedia(uid: string, payload: Record<string, unknown>) {
   const chat = await chatFor(uid, payload);
   const client = sessions.require(uid);
   return sendPhoto<WAWebJS.MessageMedia>((to, media, opts) => sendContent(client, to, media, 0, opts), (mime, data, name) => new WAWebJS.MessageMedia(mime, data, name), chat.id._serialized, photo);
+}
+
+/**
+ * send_image: a picture the app uploaded to the account's own Storage folder (users/{uid}/outbox/{id}.jpg), sent to an opened chat
+ * through the same queue and jitter as text, with the caption. A one-time upload is deleted once it is sent; if the send fails it
+ * stays (so Retry works) until the sweep removes it. The picture never travels through Firestore.
+ */
+export async function sendImage(uid: string, payload: Record<string, unknown>) {
+  const img = parseSendImage(uid, payload);
+  const chat = await chatFor(uid, payload);
+  const client = sessions.require(uid);
+  const pic = await loadOutImage(uid, { path: img.path, name: img.name });
+  await sendContent(client, chat.id._serialized, new WAWebJS.MessageMedia(pic.mime, pic.data, pic.name), 0, img.caption ? { caption: img.caption } : undefined);
+  await dropSentImage(uid, img.path);
+  return { sent: true };
+}
+
+/**
+ * fetch_media: the curator tapped View on one message. Download that picture from WhatsApp now, put it in users/{uid}/media-cache
+ * (deleted after an hour, or by the app when the chat is closed) and answer with where it is. Nothing is fetched before this, and
+ * nothing is kept after. Only chats that can be opened here (roster comic or linked group, never Never read).
+ */
+export async function fetchMedia(uid: string, payload: Record<string, unknown>): Promise<FetchMediaResult> {
+  const { messageId } = parseFetchMedia(payload);
+  const chat = await chatFor(uid, payload);
+  const msg = await messageIn(uid, chat, messageId);
+  if (!msg?.hasMedia) return { path: null, reason: "expired" };
+  if (knownTooBig(Number((msg as { _data?: { size?: number } })._data?.size) || undefined)) return { path: null, reason: "too_big" };
+  const media = await msg.downloadMedia().catch(() => undefined);
+  return cachePicture(uid, messageId, media);
 }
 
 /** summarize_thread: a sentence, a suggested reply, and actions backed by quotes. Suggests only; sends and changes nothing. */

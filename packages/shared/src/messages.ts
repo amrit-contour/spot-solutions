@@ -3,6 +3,7 @@
 // Settings → Messages, and saved snippets (custom templates) can be dropped into any reply box.
 import { renderTemplate, type TemplateVars } from "./template.ts";
 import type { Settings } from "./types.ts";
+import { cleanImage, type MessageImage } from "./media.ts";
 
 export type MessageKey =
   | "onboard"
@@ -270,6 +271,8 @@ export interface RichMessage {
   poll?: PollSpec;
   /** Send the venue's location pin after the text. Skipped silently when the venue has no coordinates. */
   attachLocation?: boolean;
+  /** A picture to send; the (rendered) text goes as its caption. See media.ts for where it lives. */
+  image?: MessageImage;
 }
 
 /** What Settings.messages stores per message. Older docs hold a plain string, which means text. */
@@ -287,9 +290,10 @@ export function normalizeMessage(raw: unknown, fallback: RichMessage = { kind: "
   const o = raw as Partial<RichMessage>;
   const kind: MessageKind = o.kind === "poll" || o.kind === "location" ? o.kind : "text";
   const body = typeof o.body === "string" ? o.body : "";
-  if (kind === "text" && !body.trim()) return fallback;
+  const image = kind === "text" ? cleanImage(o.image) : undefined;
+  if (kind === "text" && !body.trim() && !image) return fallback;
   const poll = o.poll && typeof o.poll === "object" ? { question: String(o.poll.question ?? ""), options: Array.isArray(o.poll.options) ? o.poll.options.map(String) : [], multi: Boolean(o.poll.multi) } : undefined;
-  return { kind, body, ...(kind === "poll" && { poll: poll ?? { question: "", options: ["", ""], multi: false } }), ...(o.attachLocation && kind === "text" && { attachLocation: true }) };
+  return { kind, body, ...(kind === "poll" && { poll: poll ?? { question: "", options: ["", ""], multi: false } }), ...(o.attachLocation && kind === "text" && { attachLocation: true }), ...(image && { image }) };
 }
 
 /** Why a poll can't be sent, in words for the curator, or null when it's fine. Variables are checked as written. */
@@ -314,8 +318,8 @@ export function cleanPoll(p: PollSpec): PollSpec {
 
 /** What to save for a message: a plain string while it's just text (so older apps still read it), an object otherwise. */
 export function storeMessage(m: RichMessage): MessageOverride {
-  if (m.kind === "text" && !m.attachLocation) return m.body;
-  return { kind: m.kind, body: m.body, ...(m.kind === "poll" && m.poll && { poll: { ...m.poll, options: m.poll.options.map((o) => o.trim()).filter(Boolean) } }), ...(m.kind === "text" && m.attachLocation && { attachLocation: true }) };
+  if (m.kind === "text" && !m.attachLocation && !m.image) return m.body;
+  return { kind: m.kind, body: m.body, ...(m.kind === "poll" && m.poll && { poll: { ...m.poll, options: m.poll.options.map((o) => o.trim()).filter(Boolean) } }), ...(m.kind === "text" && m.attachLocation && { attachLocation: true }), ...(m.kind === "text" && m.image && { image: m.image }) };
 }
 
 /** The curator's version of a message (or the default) in full. */

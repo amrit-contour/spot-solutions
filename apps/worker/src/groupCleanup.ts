@@ -137,7 +137,7 @@ export async function clearGroup(uid: string, client: WAWebJS.Client, show: Show
 
   if (!retry) {
     const msg = show.cleanup?.message === "" ? null : normalizeMessage(show.cleanup?.message, messageRich(settings, "groupCleanup"));
-    if (msg) await sendRich(client, show.groupId!, renderRich(msg, groupPostVars(show, venue, lineup.date)), {}, venue, { prerendered: true });
+    if (msg) await sendRich(client, show.groupId!, renderRich(msg, groupPostVars(show, venue, lineup.date)), {}, venue, { prerendered: true, uid });
   }
 
   // Anyone already placed on next week's show stays.

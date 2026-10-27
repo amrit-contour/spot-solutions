@@ -17,6 +17,8 @@ export interface WaMessageLike {
   fromMe: boolean;
   timestamp: number;
   hasMedia?: boolean;
+  /** Media messages: the file's size in bytes, when WhatsApp says. */
+  size?: number;
   pollName?: string;
   pollOptions?: string[];
   allowMultipleAnswers?: boolean;
@@ -91,6 +93,8 @@ export interface ThreadMessage {
   mentions?: ThreadMention[];
   /** kind "media": what it is. */
   media?: ThreadMediaKind;
+  /** kind "media" or "sticker": the size in bytes when known, shown on the placeholder before View. */
+  bytes?: number;
 }
 
 export interface ThreadItem {
@@ -177,7 +181,7 @@ export function toThreadMessage(m: WaMessageLike, names?: Map<string, string>): 
   };
   if (m.type === "chat") return m.body?.trim() ? { ...base, kind: "text", text: m.body } : null;
   if (m.type === "revoked") return { ...base, kind: "deleted", text: "[deleted message]" };
-  if (m.type === "sticker") return { ...base, kind: "sticker", text: "[sticker]" };
+  if (m.type === "sticker") return { ...base, kind: "sticker", text: "[sticker]", ...(m.size && { bytes: m.size }) };
   if (m.type === "poll_creation") {
     const options = (m.pollOptions ?? []).map(String);
     return { ...base, kind: "poll", text: `Poll: ${m.pollName ?? ""}`.trim(), poll: { question: m.pollName ?? "", options, multi: Boolean(m.allowMultipleAnswers) } };
@@ -190,7 +194,7 @@ export function toThreadMessage(m: WaMessageLike, names?: Map<string, string>): 
   // A caption on a photo or document is the text worth showing.
   const caption = m.body?.trim();
   const isMedia = Boolean(MEDIA_LABEL[m.type] || m.hasMedia);
-  return { ...base, kind: isMedia ? "media" : "other", ...(isMedia && { media: MEDIA_KIND[m.type] ?? "other" }), text: caption ? `${label} ${caption}` : label };
+  return { ...base, kind: isMedia ? "media" : "other", ...(isMedia && { media: MEDIA_KIND[m.type] ?? "other" }), ...(isMedia && m.size && { bytes: m.size }), text: caption ? `${label} ${caption}` : label };
 }
 
 /**

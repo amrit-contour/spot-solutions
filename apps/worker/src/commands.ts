@@ -58,6 +58,7 @@ import { watchUser } from "./userData.ts";
 import { listContacts, listGroupMembers, pullGroupMembers } from "./people.ts";
 import { deliverableId, enqueueTask, sendQueued } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
+import { dropSentImage } from "./media.ts";
 import { deliverDraft } from "./deliver.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice, learnVoice, listVoiceSourceChats, previewVoice } from "./voice.ts";
@@ -68,7 +69,7 @@ import { safeFetch } from "./safeFetch.ts";
 import { reclassifyRequests } from "./reclassify.ts";
 import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
-import { chatFor, getMedia, getThread, listThreads, reactMessage, sendMedia, summarizeThread } from "./chats.ts";
+import { chatFor, fetchMedia, getMedia, getThread, listThreads, reactMessage, sendImage, sendMedia, summarizeThread } from "./chats.ts";
 import { clearGroup, keepGroup, readCleanupMembers } from "./groupCleanup.ts";
 import { addDirect, settleRound } from "./replies.ts";
 import { askForSpot } from "./groupWatch.ts";
@@ -479,7 +480,7 @@ const handlers: Record<Command["type"], Handler> = {
       for (const d of old.docs) await d.ref.update({ status: "expired" });
       // One comic: the curator's text as typed. Several: the template, filled in for each.
       const out = ids.length === 1 ? msg : renderRich(msg, { name: await greetFor(client, comic) });
-      const sent = await sendRich(client, comic.chatId ?? comic.id, out, {}, venues.find((v) => v.id === show.venueId), { prerendered: true });
+      const sent = await sendRich(client, comic.chatId ?? comic.id, out, {}, venues.find((v) => v.id === show.venueId), { prerendered: true, uid });
       const offer: Omit<SpotOffer, "id"> = {
         comicId: id,
         comicName: comic.name,
@@ -497,6 +498,8 @@ const handlers: Record<Command["type"], Handler> = {
       await col(uid, "offers").add(offer);
       sentCount++;
     }
+    // A one-time picture on the offer was sent once per comic; now it can go. A kept one (a template's) stays.
+    if (msg.image) await dropSentImage(uid, msg.image.path);
     return { sent: sentCount, roundId: round.id };
   },
 
@@ -655,6 +658,9 @@ const handlers: Record<Command["type"], Handler> = {
   get_media: getMedia,
   react_message: reactMessage,
   send_media: sendMedia,
+  // Pictures through Storage (apps/worker/src/media.ts): a picture to send, and a picture fetched only because View was tapped.
+  send_image: sendImage,
+  fetch_media: fetchMedia,
   // Progress lines ("Reading 28 messages…") go on the command document while it runs; the app shows them.
   summarize_thread: (uid, payload, commandId) => summarizeThread(uid, payload, (stage) => void (commandId && col(uid, "commands").doc(commandId).update({ stage }).catch(() => undefined))),
   // Nothing BOT Comedy, Rooms → Import from text, file or link: turns pasted text, a file or a link into rooms. Nothing is saved
@@ -678,7 +684,7 @@ const handlers: Record<Command["type"], Handler> = {
 };
 
 /** Commands whose result holds chat text: it expires fast (TTL_DAYS.messages) and the app deletes it once read. */
-const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "get_media", "react_message", "send_media", "summarize_thread", "list_voice_sources", "parse_roster"]);
+const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thread", "get_media", "react_message", "send_media", "send_image", "fetch_media", "summarize_thread", "list_voice_sources", "parse_roster"]);
 
 /** The confirmation as the curator set it up: the text (in their voice), then the venue pin if that's on. */
 /** Is this comic the curator's own WhatsApp? */
@@ -693,6 +699,7 @@ export async function sendConfirmation(uid: string, client: WAWebJS.Client, show
   const facts = await confirmFacts(uid, client, show, comic, week, minutes);
   return sendRich(client, comic.chatId ?? comic.id, { kind: "text", body: settings.confirm.template, attachLocation: settings.confirm.attachLocation }, facts, venue, {
     rewrite: (text) => inVoice(uid, "confirm", text, facts),
+    uid,
   });
 }
 
@@ -791,7 +798,7 @@ export async function runShowDaySync(uid: string, id: string) {
     const names = lineup.slots.map((s) => comics.get(s.comicId)?.name ?? "TBA");
     const venue = watchUser(uid).venues.find((v) => v.id === show.venueId);
     const vars = groupPostVars(show, venue, dateInWeek(lineup.weekOf, show.weekday), names);
-    await sendRich(client, show.groupId, messageRich(watchUser(uid).settings, "groupLineup"), vars, venue);
+    await sendRich(client, show.groupId, messageRich(watchUser(uid).settings, "groupLineup"), vars, venue, { uid });
     await logActivity(uid, id, { kind: "lineup_post", tone: "done", text: "Posted the lineup in the group" });
   }
   console.log(`[show-day] ${uid} ${show.name}: +${plan.toAdd.length} −${plan.toRemove.length}`);

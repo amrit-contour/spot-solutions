@@ -17,6 +17,7 @@ import { startGroupWatch } from "./groupWatch.ts";
 import { maybeTickAsks } from "./asks.ts";
 import { askRatings } from "./ratings.ts";
 import { maybePhotoSweep } from "./profilePics.ts";
+import { maybeSweepMedia } from "./media.ts";
 
 const TICK_MS = 2 * 60_000;
 const running = new Set<string>();
@@ -63,6 +64,8 @@ export function startScheduler(uids: () => Iterable<string>) {
         // After a yes (given in the app or on WhatsApp): ask how each comic did.
         void askRatings(uid).catch((e) => console.error("[ratings]", e));
       }
+      // Fetched pictures and uploads that were never sent expire even while WhatsApp is down.
+      if (client || fleet.holds(uid)) void maybeSweepMedia(uid).catch((e) => console.error("[media-sweep]", e.message));
       if (!client) continue;
       void tick(uid).catch((e) => console.error("[scheduler]", e));
       void expireOffers(uid).catch((e) => console.error("[offers]", e));

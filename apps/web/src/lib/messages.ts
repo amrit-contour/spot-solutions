@@ -17,13 +17,13 @@ import {
   type Show,
   type SpotRequest,
   type SummarizeThreadResult,
-  type ThreadMediaResult,
   type ThreadMember,
   type ThreadMessage,
   type WaChatLike,
   type WaMessageLike,
 } from "@spot/shared";
 import { runCommand } from "./data";
+import { fetchPicture, type FetchedPicture } from "./pictures";
 
 export interface ChatTarget {
   id: string;
@@ -52,21 +52,24 @@ export interface ChatSource {
   /** A show's group (linked groups only). */
   groupThread: (groupId: string, before?: number) => Promise<GetThreadResult>;
   summarize: (comicId: string, weekOf: string, onStage?: (stage: string) => void) => Promise<SummarizeThreadResult>;
-  /** One sticker as an image (a data URL), read for this request and never stored. */
-  media: (target: MediaTarget, messageId: string) => Promise<ThreadMediaResult>;
+  /**
+   * The curator tapped View on a picture: ask the server for that one message's picture (fetch_media). Nothing is fetched before
+   * this. The picture sits in a short-lived cache file; `forgetPicture` deletes it when the chat is closed.
+   */
+  fetchMedia: (target: MediaTarget, messageId: string) => Promise<FetchedPicture>;
   send: (to: ChatTarget, msg: RichMessage, opts: { voice: boolean; venueId: string | null }) => Promise<{ body: string }>;
   /** React to a message (an empty emoji takes your reaction back). */
   react: (target: MediaTarget, messageId: string, emoji: string) => Promise<unknown>;
   sendImage: (target: MediaTarget, photo: OutPhoto) => Promise<unknown>;
 }
 
-/** A photo ready to send: already squeezed to a JPEG, with an optional caption. */
+/** A photo ready to send: already squeezed to a JPEG and uploaded to the curator's Storage folder (`path`), with an optional caption. */
 export interface OutPhoto {
-  mime: "image/jpeg";
-  data: string;
-  dataUrl: string;
-  filename: string;
+  path: string;
+  name: string;
   caption: string;
+  /** An object URL of the picture, for showing it in the chat (the demo keeps it as the "sent" picture). */
+  previewUrl: string;
 }
 
 /** The send payload: the same shape the reply cards use, plus the voice switch. */
@@ -89,14 +92,14 @@ export function liveSource(uid: string): ChatSource {
     groupThread: (groupId, before) => runCommand<GetThreadResult>(uid, "get_thread", { groupId, ...(before ? { before } : {}) }, 90_000, { ephemeral: true }),
     // The server's model budget is AI_INTERACTIVE_DEADLINE_MS; the app waits that plus a margin, so the server's own (clearer) error wins.
     summarize: (comicId, weekOf, onStage) => runCommand<SummarizeThreadResult>(uid, "summarize_thread", { comicId, weekOf }, AI_APP_WAIT_MS, { ephemeral: true, onStage }),
-    media: (target, messageId) => runCommand<ThreadMediaResult>(uid, "get_media", { ...target, messageId }, 60_000, { ephemeral: true }),
+    fetchMedia: (target, messageId) => fetchPicture(uid, target, messageId),
     send: async (to, msg, opts) => {
       const r = await runCommand<{ body?: string } | null>(uid, "send_message", sendPayload(to, msg, opts), opts.voice ? AI_APP_WAIT_MS : 180_000);
       return { body: r?.body ?? msg.body };
     },
     react: (target, messageId, emoji) => runCommand(uid, "react_message", { ...target, messageId, emoji }, 60_000, { ephemeral: true }),
-    // The photo rides in the command document, which the app deletes as soon as the result is read.
-    sendImage: (target, p) => runCommand(uid, "send_media", { ...target, mime: p.mime, data: p.data, filename: p.filename, caption: p.caption }, 180_000, { ephemeral: true }),
+    // The photo is already in Storage; the command carries only its path. The server sends it and deletes it.
+    sendImage: (target, p) => runCommand(uid, "send_image", { ...target, path: p.path, name: p.name, caption: p.caption }, 180_000, { ephemeral: true }),
   };
 }
 
@@ -141,7 +144,7 @@ export function demoConversations({ comics, requests, lineups, shows, now }: Dem
   // "open on your phone" label.
   const [c, d4] = [chats[2], chats[3]];
   const before = (rows: ThreadMessage[], m: Omit<ThreadMessage, "at">) => [...rows, { ...m, at: (rows[rows.length - 1]?.at ?? 0) - 90_000 }].sort((x, y) => x.at - y.at);
-  if (c) out.set(c[0], before(c[1], { id: `${c[0]}-photo`, fromMe: false, kind: "media", media: "image", text: "[photo] Last night's set 🎤" }));
+  if (c) out.set(c[0], before(c[1], { id: `${c[0]}-photo`, fromMe: false, kind: "media", media: "image", bytes: 214_000, text: "[photo] Last night's set 🎤" }));
   if (d4) out.set(d4[0], before(d4[1], { id: `${d4[0]}-video`, fromMe: false, kind: "media", media: "video", text: "[video]" }));
   // A message with formatting and a tag, so the list preview, the bubble and the chip can be seen: "*Quick one*" and "@<number>" for
   // another comic on the roster.
@@ -270,7 +273,10 @@ export function demoSource(get: () => DemoData): ChatSource {
       const rows = withReacted([...demoGroup(get(), groupId), ...(local.get(groupId) ?? [])]).filter((m) => (before ? m.at < before : true));
       return { comicId: groupId, groupId, chatId: groupId, messages: rows.slice(-50), hasMore: rows.length > 50, members: demoMembers(get().comics), at: Date.now() };
     },
-    media: async (_t, messageId) => ({ dataUrl: localPhotos.get(messageId) ?? (/photo/.test(messageId) ? demoPhoto(messageId) : demoSticker(messageId)) }),
+    fetchMedia: async (_t, messageId) => {
+      await new Promise((r) => setTimeout(r, 600)); // a real fetch takes a moment: show the loading state
+      return { url: localPhotos.get(messageId) ?? (/photo/.test(messageId) ? demoPhoto(messageId) : demoSticker(messageId)), bytes: 0, path: null };
+    },
     react: async (_t, messageId, emoji) => {
       const current = withReacted([...[...all().values()].flat(), ...demoGroupAll(get()), ...[...local.values()].flat()]).find((m) => m.id === messageId)?.reactions;
       const others = (current ?? []).map((c) => (c.byMe ? { ...c, count: c.count - 1, byMe: false } : c)).filter((c) => c.count > 0);
@@ -278,7 +284,7 @@ export function demoSource(get: () => DemoData): ChatSource {
     },
     sendImage: async (target, p) => {
       const id = `local-photo-${Date.now()}`;
-      localPhotos.set(id, p.dataUrl);
+      localPhotos.set(id, p.previewUrl);
       const to = "groupId" in target ? target.groupId : target.comicId;
       local.set(to, [...(local.get(to) ?? []), { id, at: Date.now(), fromMe: true, kind: "media", media: "image", text: p.caption ? `[photo] ${p.caption}` : "[photo]" }]);
     },

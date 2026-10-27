@@ -5,9 +5,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { activeMention, hasPin, highlightSegments, insertMention, liveTags, pollProblem, shortcutOp, suggestTaggable, type PollSpec, type RichMessage, type ThreadMember, type Venue } from "@spot/shared";
 import { Button, FormatBar, IconCheck, IconClose, IconMap, IconSend, IconSparkle, IconTemplate, MessageComposer, Popover, Switch, cx, emptyPoll, useTextEditing, type Icon } from "@spot/ui";
-import { toast } from "sonner";
 import { useApp } from "../lib/app";
-import { preparePhoto, type PreparedPhoto } from "../lib/photo";
+import { IconImageGlyph, PickImage, useImageAttachment } from "./ImageAttach";
 import type { MentionTag } from "../lib/messages";
 
 /** One message to send: what, which venue's pin (if it carries one), whether to reword it, and who it tags. */
@@ -16,8 +15,8 @@ export interface Outgoing {
   venueId: string | null;
   voice: boolean;
   tags: MentionTag[];
-  /** A photo to send; the message text is its caption. */
-  photo?: PreparedPhoto;
+  /** A photo to send, already uploaded to Storage (path); the message text is its caption. `previewUrl` is for the bubble only. */
+  image?: { path: string; name: string; previewUrl: string };
 }
 
 type View = "menu" | "poll" | "pin";
@@ -94,9 +93,10 @@ export function ChatComposer({
   const [pinId, setPinId] = useState<string | null>(null);
   const [voice, setVoice] = useState(false);
   const [fmt, setFmt] = useState(false);
-  const [photo, setPhoto] = useState<PreparedPhoto | null>(null);
-  const [prepping, setPrepping] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
+  // A photo is squeezed and uploaded to the curator's own Storage folder as soon as it is picked; sending passes only its path.
+  const pic = useImageAttachment("outbox");
+  const photo = pic.attachment;
+  const prepping = pic.busy;
   const [sheet, setSheet] = useState<View | null>(null);
   const [pollDraft, setPollDraft] = useState<PollSpec>(emptyPoll);
   const [picked, setPicked] = useState<MentionTag[]>([]);
@@ -146,30 +146,22 @@ export function ChatComposer({
   const canSend = (Boolean(body) || Boolean(pinId) || Boolean(poll) || Boolean(photo)) && pollOk && !prepping;
 
   const pickPhoto = async (file: File | undefined) => {
-    if (!file) return;
-    setPrepping(true);
-    try {
-      setPhoto(await preparePhoto(file));
-      focusEnd();
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setPrepping(false);
-    }
+    await pic.pick(file);
+    focusEnd();
   };
 
   const send = () => {
     if (!canSend) return;
     const tags = liveTags(body, [...baseTags, ...picked]);
     const items: Outgoing[] = [];
-    if (photo) items.push({ msg: { kind: "text", body: text.trim() }, venueId: null, voice: false, tags: [], photo });
+    if (photo) items.push({ msg: { kind: "text", body: text.trim() }, venueId: null, voice: false, tags: [], image: { path: photo.path, name: photo.name, previewUrl: photo.previewUrl } });
     else if (body) items.push({ msg: { kind: "text", body: text.trimEnd(), ...(pinId && { attachLocation: true }) }, venueId: pinId, voice, tags });
     else if (pinId) items.push({ msg: { kind: "location", body: "" }, venueId: pinId, voice: false, tags: [] });
     if (poll) items.push({ msg: { kind: "poll", body: "", poll }, venueId: null, voice: false, tags: [] });
     const go = () => {
       onSend(items);
       setText("");
-      setPhoto(null);
+      pic.release(); // sent: the server deletes the upload
       setPoll(null);
       setPinId(null);
       setPicked([]);
@@ -239,12 +231,12 @@ export function ChatComposer({
 
       {(pinId || poll || photo || prepping || (voice && voiceReady)) && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {prepping && <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-secondary-container px-3 type-label-l text-on-secondary-container">Preparing photo…</span>}
+          {prepping && <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-secondary-container px-3 type-label-l text-on-secondary-container">{pic.status === "uploading" ? "Uploading photo…" : "Preparing photo…"}</span>}
           {photo && (
             <span className="inline-flex h-12 items-center gap-2 rounded-xl bg-secondary-container pr-1 text-on-secondary-container">
-              <img src={photo.dataUrl} alt="Photo to send" className="size-12 rounded-l-xl object-cover" />
+              <img src={photo.previewUrl} alt="Photo to send" className="size-12 rounded-l-xl object-cover" />
               <span className="type-label-l">Photo{body ? " + caption" : ""}</span>
-              <button type="button" onClick={() => setPhoto(null)} aria-label="Remove the photo" className="state-layer grid size-8 flex-none place-items-center rounded-full">
+              <button type="button" onClick={pic.remove} aria-label="Remove the photo" className="state-layer grid size-8 flex-none place-items-center rounded-full">
                 <IconClose className="icon size-4" />
               </button>
             </span>
@@ -261,7 +253,6 @@ export function ChatComposer({
         </div>
       )}
 
-      <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => (void pickPhoto(e.target.files?.[0]), (e.target.value = ""))} />
       <div className="flex items-end gap-1.5">
         <Popover
           title={TITLE[sheet ?? "menu"]}
@@ -316,7 +307,7 @@ export function ChatComposer({
               </div>
             ) : (
               <div className="flex flex-col gap-0.5">
-                <Row icon={IconPhotoGlyph} label="Photo" hint={photo ? "Added. Your text goes as its caption" : "Pick one from your device"} onClick={() => (close(), fileInput.current?.click())} />
+                <PickImage onPick={(f) => void pickPhoto(f)}>{(open) => <Row icon={IconImageGlyph} label="Photo" hint={photo ? "Added. Your text goes as its caption" : "Take one or pick from your device"} onClick={() => (close(), open())} />}</PickImage>
                 <Row label="Poll" hint={poll ? `Added: ${poll.question}` : "Ask a question with answers to tap"} icon={IconPollGlyph} onClick={() => openSheet("poll")} />
                 <Row icon={IconMap} label="Venue pin" hint={pinVenue ? `Added: ${pinVenue.name}` : pinVenues.length ? "On its own, or after your text" : "No venue has a map pin yet"} onClick={choosePin} disabled={!pinVenues.length} />
                 {templates((m) => (apply(m), close()), (toggle) => <Row icon={IconTemplate} label="Templates" hint="Saved replies and your messages" onClick={toggle} />)}
@@ -384,6 +375,20 @@ export function ChatComposer({
             className="relative max-h-[9.5rem] min-h-10 min-w-0 flex-1 resize-none bg-transparent py-2 pr-1 pl-4 text-base leading-6 outline-none placeholder:text-on-surface-variant/70 sm:type-body-m sm:leading-6"
           />
           </div>
+          <PickImage onPick={(f) => void pickPhoto(f)}>
+            {(open) => (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={open}
+                aria-label={photo ? "Change the photo" : "Attach a photo"}
+                title="Attach a photo"
+                className={cx("state-layer pressable mb-0.5 grid size-9 flex-none place-items-center rounded-full", photo ? "bg-secondary-container text-on-secondary-container" : "text-on-surface-variant")}
+              >
+                <IconImageGlyph className="icon size-5" />
+              </button>
+            )}
+          </PickImage>
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
@@ -412,15 +417,6 @@ export function ChatComposer({
   );
 }
 
-function IconPhotoGlyph({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
-      <circle cx="9" cy="10" r="1.6" />
-      <path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5" />
-    </svg>
-  );
-}
 function IconPollGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">

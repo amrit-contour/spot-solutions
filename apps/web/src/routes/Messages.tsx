@@ -41,7 +41,6 @@ import {
   type SpotRequest,
   type SummarizeThreadResult,
   type ThreadAction,
-  type ThreadMediaResult,
   type ThreadMember,
   type ThreadItem,
   type ThreadMessage,
@@ -59,7 +58,8 @@ import { listKey, readCached, saveList, saveThread, threadKey as threadCacheKey 
 import { useChatMarks } from "../lib/chatMarks";
 import { useMediaQuery, useVisualViewportFrame } from "../lib/viewport";
 import { Bubble, PendingBubble } from "../components/chat/Bubble";
-import { PhotoViewer } from "../components/chat/media";
+import { PhotoViewer, usePictures } from "../components/chat/media";
+import { deleteImage, type FetchedPicture } from "../lib/pictures";
 import { PullIndicator, usePullToRefresh } from "../components/chat/PullToRefresh";
 import { SwipeRow, type SwipeAction } from "../components/chat/SwipeRow";
 import { SyncBanner, useSyncGate } from "../components/chat/SyncGate";
@@ -537,7 +537,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
     <Conversation
       threadKey={comic.id}
       load={(before) => source.thread(comic.id, before)}
-      media={(id) => source.media({ comicId: comic.id }, id)}
+      fetchMedia={(id) => source.fetchMedia({ comicId: comic.id }, id)}
       send={(msg, opts) => source.send({ id: comic.id, chatId: comic.chatId, comicId: comic.id, name: comic.name, tags: opts.tags }, msg, opts)}
       sendImage={(p) => source.sendImage({ comicId: comic.id }, p)}
       react={(id, emoji) => source.react({ comicId: comic.id }, id, emoji)}
@@ -642,7 +642,7 @@ function GroupView({ source, group, lineups, onBack, onChanged }: { source: Chat
     <Conversation
       threadKey={group.groupId}
       load={(before) => source.groupThread(group.groupId, before)}
-      media={(id) => source.media({ groupId: group.groupId }, id)}
+      fetchMedia={(id) => source.fetchMedia({ groupId: group.groupId }, id)}
       send={(msg, opts) => source.send({ id: group.groupId, chatId: group.groupId, groupId: group.groupId, name: "everyone", tags: opts.tags }, msg, opts)}
       sendImage={(p) => source.sendImage({ groupId: group.groupId }, p)}
       react={(id, emoji) => source.react({ groupId: group.groupId }, id, emoji)}
@@ -778,7 +778,7 @@ function GroupContext({ group, show, groupShows, onShow, posts, draftPosts, onDr
 function Conversation({
   threadKey,
   load,
-  media,
+  fetchMedia,
   send: sendMsg,
   sendImage,
   react,
@@ -802,8 +802,8 @@ function Conversation({
 }: {
   threadKey: string;
   load: (before?: number) => Promise<GetThreadResult>;
-  /** A sticker's or photo's image, read on demand. */
-  media: (messageId: string) => Promise<ThreadMediaResult>;
+  /** A photo's or sticker's image, fetched only when View is tapped (fetch_media), and deleted when the chat is closed. */
+  fetchMedia: (messageId: string) => Promise<FetchedPicture>;
   send: (msg: RichMessage, opts: { voice: boolean; venueId: string | null; tags: MentionTag[] }) => Promise<unknown>;
   sendImage: (photo: OutPhoto) => Promise<unknown>;
   /** An empty emoji takes your reaction back. */
@@ -870,6 +870,12 @@ function Conversation({
   // Your reaction shows at once too, until WhatsApp's own answer agrees (or 30 s pass).
   const [mineNow, setMineNow] = useState<Record<string, { chips: ReactionChip[]; sent: string; at: number }>>({});
   const [photo, setPhoto] = useState<string | null>(null);
+  const pictures = usePictures(fetchMedia, threadKey);
+  // View: fetch this one picture, then show a photo full screen (a sticker just appears in its bubble).
+  const viewPicture = async (m: ThreadMessage) => {
+    const pic = await pictures.view(m.id);
+    if (pic && m.kind !== "sticker") setPhoto(pic.url);
+  };
 
   const firstLoad = useRef(true);
   const older = useRef<{ h: number; top: number } | null>(null);
@@ -914,7 +920,7 @@ function Conversation({
   const deliver = async (p: Pending) => {
     setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "sending", error: undefined } : y)));
     try {
-      if (p.out.photo) await sendImage({ mime: p.out.photo.mime, data: p.out.photo.data, dataUrl: p.out.photo.dataUrl, filename: p.out.photo.filename, caption: p.out.msg.body });
+      if (p.out.image) await sendImage({ path: p.out.image.path, name: p.out.image.name, previewUrl: p.out.image.previewUrl, caption: p.out.msg.body });
       else await sendMsg(p.out.msg, { voice: p.out.voice && p.out.msg.kind === "text", venueId: p.out.venueId, tags: p.out.tags });
       const sentAt = Date.now();
       setPending((x) => x.map((y) => (y.id === p.id ? { ...y, state: "sent", sentAt } : y)));
@@ -1069,7 +1075,8 @@ function Conversation({
                       m={r.m}
                       label={firstOfRun ? (r.m.fromMe ? "You" : labelFor(r.m)) : undefined}
                       tz={tz}
-                      media={media}
+                      picture={pictures.get(r.m.id)}
+                      onView={() => void viewPicture(r.m)}
                       reactions={mineNow[r.m.id]?.chips}
                       onReact={r.m.kind === "deleted" ? undefined : (e) => reactTo(r.m, e)}
                       reactor={isGroup ? undefined : labelFor(r.m)}
@@ -1084,7 +1091,10 @@ function Conversation({
                   <PendingBubble
                     p={{ id: p.id, state: p.state, error: p.error, body: <PendingBody out={p.out} /> }}
                     onRetry={() => gate.guard(() => void deliver(p), { verb: "send", anyway: "Send anyway" })}
-                    onDiscard={() => setPending((x) => x.filter((y) => y.id !== p.id))}
+                    onDiscard={() => {
+                      setPending((x) => x.filter((y) => y.id !== p.id));
+                      if (p.out.image && !isDemoUser()) void deleteImage(uid, p.out.image.path); // never sent: the upload goes too
+                    }}
                   />
                 </li>
               ))}
@@ -1122,10 +1132,10 @@ function Conversation({
 
 function PendingBody({ out }: { out: Outgoing }) {
   const m = out.msg;
-  if (out.photo) {
+  if (out.image) {
     return (
       <div className="flex flex-col gap-1.5">
-        <img src={out.photo.dataUrl} alt="Photo being sent" className="max-h-64 w-full max-w-[16rem] rounded-md object-cover" />
+        <img src={out.image.previewUrl} alt="Photo being sent" className="max-h-64 w-full max-w-[16rem] rounded-md object-cover" />
         {m.body && <WaText text={m.body} />}
       </div>
     );

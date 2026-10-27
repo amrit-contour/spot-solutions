@@ -51,6 +51,7 @@ import { VoiceSourcesSheet } from "../components/VoiceSourcesSheet";
 import { NeverReadCard } from "../components/NeverReadCard";
 import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "@spot/ui";
+import { ImageField } from "../components/ImageAttach";
 import { AppVersionRow, Bubble, Button, Collapsible, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose, IconWarn, IconRefresh, IconArrowRight } from "@spot/ui";
 
@@ -134,7 +135,7 @@ const ALL_VARIABLES: { key: string; label: string }[] = [...TEMPLATE_VARIABLES, 
 const asText = (body: string): RichMessage => ({ kind: "text", body });
 
 /** Edits one message: text with formatting, or (where allowed) a poll or a venue pin, with a live WhatsApp preview. */
-function TemplateEditor({ value, onSave, fallback, extraVars, disabled, keys, kinds = ["text"], attach, offer, savedLabel = "Template saved" }: { value: RichMessage; onSave: (v: RichMessage) => Promise<void>; fallback: RichMessage; extraVars?: Record<string, string | number | null | undefined>; disabled?: boolean; keys?: readonly string[]; kinds?: MessageKind[]; attach?: boolean; offer?: boolean; savedLabel?: string }) {
+function TemplateEditor({ value, onSave, fallback, extraVars, disabled, keys, kinds = ["text"], attach, offer, images, savedLabel = "Template saved" }: { value: RichMessage; onSave: (v: RichMessage) => Promise<void>; fallback: RichMessage; extraVars?: Record<string, string | number | null | undefined>; disabled?: boolean; keys?: readonly string[]; kinds?: MessageKind[]; attach?: boolean; offer?: boolean; /** Offer "Add a photo" (text messages that go out through the shared sender: the picture is kept and sent every time). */ images?: boolean; savedLabel?: string }) {
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
   const stamp = JSON.stringify(value);
@@ -154,6 +155,7 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled, keys, ki
         extraVars={extraVars}
         idPrefix={`tpl-${stamp.length}`}
       />
+      {images && draft.kind === "text" && <ImageField scope="attachments" value={draft.image} onChange={(image) => setDraft((d) => ({ ...d, image }))} disabled={disabled} hint="Sent with this message every time. The text above goes as its caption." />}
       <div className="flex items-center gap-2">
         <Button size="sm" variant="text" className="-ml-3" onClick={() => setDraft(fallback)} disabled={JSON.stringify(draft) === JSON.stringify(fallback)}>
           Reset to default
@@ -571,6 +573,7 @@ function MessageSection({ type }: { type: MessageKey }) {
         disabled={off}
         kinds={type === "groupWelcome" ? ["text"] : type === "offer" ? ["text", "poll"] : ["text", "poll", "location"]}
         offer={type === "offer"}
+        images={type !== "groupWelcome"}
         onSave={(msg) => saveSettings({ messages: { ...settings.messages, [type]: storeMessage(msg) } })}
       />
     </Section>

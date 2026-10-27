@@ -12,6 +12,7 @@ import { ComicAvatar } from "../lib/photos";
 import { RecentRow, SearchField, SearchHint } from "./PeopleSearch";
 import { Button, Sheet, Stepper, Switch, cx } from "@spot/ui";
 import { MessageComposer, MessagePreview } from "@spot/ui";
+import { ImageField } from "./ImageAttach";
 import { IconSend, IconUserPlus } from "@spot/ui";
 
 // Remembered per curator, in this browser: whether the sheet opens on "Already agreed".
@@ -119,7 +120,7 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
         onClose();
         return;
       }
-      await runCommand(uid, "send_offer", { comicIds: picks, lineupId: lineupId(week, show.id), body: msg.body, rich: { kind: msg.kind, body: msg.body, ...(msg.kind === "poll" && { poll: { question: msg.poll?.question ?? "", options: [...OFFER_POLL_OPTIONS], multi: false } }) }, slots: fill, autoAdd, ...(over && { overfill: true }) }, 180_000);
+      await runCommand(uid, "send_offer", { comicIds: picks, lineupId: lineupId(week, show.id), body: msg.body, rich: { kind: msg.kind, body: msg.body, ...(msg.kind === "text" && msg.image && { image: msg.image }), ...(msg.kind === "poll" && { poll: { question: msg.poll?.question ?? "", options: [...OFFER_POLL_OPTIONS], multi: false } }) }, slots: fill, autoAdd, ...(over && { overfill: true }) }, 180_000);
       toast.success(comic ? `Offer sent to ${comic.name.split(" ")[0]}` : `Offer sent to ${picks.length} comics`);
       setPicks([]);
       setMsg({ kind: "text", body: "" });
@@ -233,6 +234,7 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
               <SnippetMenu name={comic?.name ?? "{{name}}"} vars={vars} onPick={(m) => setMsg(fixed(m))} kinds={["text", "poll"]} />
             </div>
             <MessageComposer value={msg} onChange={(m) => setMsg(fixed(m))} kinds={["text", "poll"]} offer compact={false} preview={false} idPrefix="offer" />
+            {msg.kind === "text" && <ImageField scope="outbox" value={msg.image} onChange={(image) => setMsg((m) => fixed({ ...m, image }))} />}
             <MessagePreview value={msg} vars={{ ...vars, name: greetName(comic?.name ?? comics.find((c) => c.id === picks[0])?.name ?? "") }} className="mt-2" />
           </div>
         )}

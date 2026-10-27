@@ -9,6 +9,7 @@ import { dismissAction } from "../../lib/updates";
 import { Bubble, Button, Chip } from "@spot/ui";
 import { WaText } from "@spot/ui";
 import { MessageComposer } from "@spot/ui";
+import { ImageField } from "../ImageAttach";
 import { SnippetMenu } from "../SnippetMenu";
 import { IconArrowRight, IconCancel, IconChat, IconChatCheck, IconClock, IconMap, IconMic, IconSkip } from "@spot/ui";
 import { UpdateItem } from "./shared";
@@ -34,11 +35,11 @@ function cancelEffect(a: ComicAction, lineups: Lineup[], shows: Show[]) {
 
 export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] }) {
   const { uid, shows, venues } = useApp();
-  const [msg, setMsg] = useState<RichMessage>({ kind: a.rich?.kind ?? "text", body: a.draft, poll: a.rich?.poll, attachLocation: a.rich?.attachLocation });
+  const [msg, setMsg] = useState<RichMessage>({ kind: a.rich?.kind ?? "text", body: a.draft, poll: a.rich?.poll, attachLocation: a.rich?.attachLocation, image: a.rich?.image });
   // The venue a pin would point at: the one named on the draft, else the show this comic is on.
   const venueId = a.rich?.venueId ?? shows.find((s) => s.id === lineups.find((l) => l.id === a.lineupId)?.showId)?.venueId ?? null;
   const pinned = hasPin(venues.find((v) => v.id === venueId));
-  const ready = msg.kind === "poll" ? !pollProblem(msg.poll) : msg.kind === "location" ? pinned : Boolean(msg.body.trim()) || (Boolean(msg.attachLocation) && pinned);
+  const ready = msg.kind === "poll" ? !pollProblem(msg.poll) : msg.kind === "location" ? pinned : Boolean(msg.body.trim()) || Boolean(msg.image) || (Boolean(msg.attachLocation) && pinned);
   const [busy, setBusy] = useState(false);
   const kind = KIND[a.kind] ?? KIND.status_query;
   const cancel = a.kind === "cancel_spot";
@@ -46,7 +47,7 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
   const send = async () => {
     setBusy(true);
     try {
-      await runCommand(uid, "send_action", { actionId: a.id, body: msg.body, rich: { kind: msg.kind, ...(msg.poll && msg.kind === "poll" && { poll: msg.poll }), attachLocation: Boolean(msg.attachLocation), venueId } }, 120_000);
+      await runCommand(uid, "send_action", { actionId: a.id, body: msg.body, rich: { kind: msg.kind, ...(msg.poll && msg.kind === "poll" && { poll: msg.poll }), attachLocation: Boolean(msg.attachLocation), ...(msg.image && msg.kind === "text" && { image: msg.image }), venueId } }, 120_000);
       toast.success(cancel && a.lineupId ? `${a.comicName.split(" ")[0]}'s spot is freed and they've been told` : "Reply sent");
     } catch (e) {
       toast.error((e as Error).message);
@@ -78,6 +79,7 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
               <SnippetMenu name={a.comicName} onPick={setMsg} />
             </div>
             <MessageComposer value={msg} onChange={setMsg} compact preview={false} canPin={pinned} idPrefix={`reply-${a.id}`} />
+            {msg.kind === "text" && <ImageField scope="outbox" value={msg.image} onChange={(image) => setMsg((m) => ({ ...m, image }))} className="mt-2" />}
             {msg.kind === "location" && !pinned && <p className="mt-1.5 type-body-s text-error">This venue has no map pin yet, so nothing would be sent. Add one under Shows → Venues.</p>}
           </div>
           {cancel && (

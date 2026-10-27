@@ -2,9 +2,9 @@
 // (long-press on a phone, a smiley button on hover for a mouse, right-click). Your own unsent messages are PendingBubble.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { groupReactions, type ReactionChip, type ThreadMessage, type ThreadMediaResult } from "@spot/shared";
+import { groupReactions, type ReactionChip, type ThreadMessage } from "@spot/shared";
 import { PinCard, PollCard, WaText, Button, IconCheck, IconWarn, Spinner, cx } from "@spot/ui";
-import { MediaLabel, Photo, Sticker } from "./media";
+import { MediaLabel, MediaPlaceholder, type PictureState } from "./media";
 import { ReactionDetails, ReactionPicker } from "./ReactionPicker";
 
 const clock = (at: number, tz: string) => new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", timeZone: tz }).format(new Date(at));
@@ -25,7 +25,8 @@ export function Bubble({
   m,
   label,
   tz,
-  media,
+  picture,
+  onView,
   reactions,
   onReact,
   reactor,
@@ -35,7 +36,10 @@ export function Bubble({
   m: ThreadMessage;
   label?: string;
   tz: string;
-  media: (id: string) => Promise<ThreadMediaResult>;
+  /** Where this message's picture is: not fetched (idle), being fetched, shown, or failed. Nothing is fetched until View is tapped. */
+  picture: PictureState;
+  /** View was tapped: fetch this message's picture. */
+  onView: () => void;
   /** What to show on the bubble (the app's own reaction applied at once). */
   reactions?: ReactionChip[];
   /** Omit to switch reacting off. Picking the emoji you already have takes it back (the caller works that out). */
@@ -155,16 +159,9 @@ export function Bubble({
           )}
         >
           {sticker ? (
-            <Sticker id={m.id} media={media} />
+            <MediaPlaceholder kind="sticker" status={picture} bytes={m.bytes} onView={onView} onOpen={onOpenPhoto} />
           ) : photo ? (
-            <>
-              <Photo id={m.id} media={media} onOpen={onOpenPhoto} />
-              {caption && (
-                <div className="px-2.5 pt-1.5">
-                  <WaText text={caption} />
-                </div>
-              )}
-            </>
+            <MediaPlaceholder kind="image" status={picture} bytes={m.bytes} caption={caption ? <WaText text={caption} /> : undefined} onView={onView} onOpen={onOpenPhoto} />
           ) : m.kind === "poll" && m.poll ? (
             <PollCard poll={m.poll} />
           ) : m.kind === "location" && m.pin ? (

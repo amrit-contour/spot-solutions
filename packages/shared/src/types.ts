@@ -210,7 +210,7 @@ export interface ComicAction {
   message: string;
   draft: string;
   /** The draft goes out as more than text: a poll, a pin, or a pin after the text. */
-  rich?: { kind: import("./messages.ts").MessageKind; poll?: import("./messages.ts").PollSpec; attachLocation?: boolean; venueId?: string | null };
+  rich?: { kind: import("./messages.ts").MessageKind; poll?: import("./messages.ts").PollSpec; attachLocation?: boolean; image?: import("./media.ts").MessageImage; venueId?: string | null };
   /** For cancel_spot: which lineup the comic is in. */
   lineupId?: string | null;
   status: "pending" | "sent" | "dismissed";
@@ -547,6 +547,8 @@ export type CommandType =
   | "get_media"
   | "react_message"
   | "send_media"
+  | "send_image"
+  | "fetch_media"
   | "summarize_thread"
   | "list_voice_sources"
   | "parse_roster"

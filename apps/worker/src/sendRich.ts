@@ -3,6 +3,7 @@
 import WAWebJS from "whatsapp-web.js";
 import { cleanPoll, hasPin, pollProblem, renderRich, type RichMessage, type TemplateVars, type Venue } from "@spot/shared";
 import { sendContent } from "./sendQueue.ts";
+import { loadOutImage } from "./media.ts";
 
 export interface SendRichOpts {
   /** Rewrites the rendered text (the "your voice" step). Text only; polls and pins are never rewritten. */
@@ -11,6 +12,13 @@ export interface SendRichOpts {
   prerendered?: boolean;
   /** Group messages: people tagged in the text ("@<number>" in the text, their ids here). */
   mentions?: string[];
+  /**
+   * Whose message this is. A message with a picture needs it: the picture's path is only trusted when it is inside this account's
+   * own folders (a path in a settings document could name anyone's file).
+   */
+  uid?: string;
+  /** The picture is part of the message: if it can't be loaded the send fails (a scheduled post says so) instead of going out as text alone. */
+  imageRequired?: boolean;
 }
 
 type VenuePin = Pick<Venue, "name" | "area" | "lat" | "lng">;
@@ -32,8 +40,14 @@ export async function sendRich(client: WAWebJS.Client, to: string, msg: RichMess
   }
   if (r.kind === "location") return hasPin(venue) ? sendContent(client, to, venuePin({ ...venue, name: venue.name, area: venue.area })) : undefined;
   let main: WAWebJS.Message | undefined;
-  if (r.body.trim()) {
-    const text = opts.rewrite ? await opts.rewrite(r.body) : r.body;
+  const text = r.body.trim() ? (opts.rewrite ? await opts.rewrite(r.body) : r.body) : "";
+  const pic = r.image ? await loadPicture(r.image, opts) : null;
+  if (pic) {
+    // The text is the picture's caption: one message, not two. Deleting a one-time upload is the caller's job (dropSentImage), once
+    // the last copy is out: an offer to five comics sends the same file five times.
+    const options = { ...(text && { caption: text }), ...(opts.mentions?.length && { mentions: opts.mentions }) };
+    main = await sendContent(client, to, new WAWebJS.MessageMedia(pic.mime, pic.data, pic.name), text.length, options);
+  } else if (text) {
     main = await sendContent(client, to, text, text.length, opts.mentions?.length ? { mentions: opts.mentions } : undefined);
   }
   if (r.attachLocation && hasPin(venue)) {
@@ -41,4 +55,15 @@ export async function sendRich(client: WAWebJS.Client, to: string, msg: RichMess
     main ??= pin;
   }
   return main;
+}
+
+async function loadPicture(image: NonNullable<RichMessage["image"]>, opts: SendRichOpts) {
+  try {
+    if (!opts.uid) throw new Error("This message has a picture but no account to check it against.");
+    return await loadOutImage(opts.uid, image);
+  } catch (e) {
+    if (opts.imageRequired) throw e;
+    console.warn(`[send] picture skipped, sending the text alone: ${(e as Error).message}`);
+    return null;
+  }
 }

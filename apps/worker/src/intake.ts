@@ -315,7 +315,7 @@ async function explainHold(uid: string, client: WAWebJS.Client, r: SpotRequest, 
     console.log(`[held] drafted for ${comic?.name ?? r.comicName} (${hold})`);
     return;
   }
-  await sendRich(client, comic?.chatId ?? r.comicId, messageRich(settings, kind), facts, null, { rewrite: (t) => inVoice(uid, kind, t, facts) });
+  await sendRich(client, comic?.chatId ?? r.comicId, messageRich(settings, kind), facts, null, { rewrite: (t) => inVoice(uid, kind, t, facts), uid });
   console.log(`[held] told ${comic?.name ?? r.comicName} (${hold})`);
 }
 

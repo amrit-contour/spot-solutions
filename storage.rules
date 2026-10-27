@@ -1,7 +1,36 @@
 rules_version = '2';
-// Servers use the admin SDK (bypasses rules). No client ever reads or writes Storage (the login vault lives here).
+// Servers use the admin SDK (bypasses rules). The login vault lives here and no client touches it. The only client access is a
+// signed-in (non-demo) curator's own picture folders under users/{uid}/ (docs/architecture.md, "Pictures in messages"):
+//   outbox        a picture to send once. The owner writes and reads it; the server deletes it after the send (and sweeps leftovers).
+//   attachments   a picture kept on a template or a scheduled group post. Owner writes and reads it.
+//   media-cache   a picture the server fetched from WhatsApp because you tapped View. Only the server writes it; the owner reads
+//                 and deletes it. The server deletes it after an hour.
+// Nobody else can read any of it, and every upload is a small picture.
 service firebase.storage {
   match /b/{bucket}/o {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    // A picture of at most 4 MB (IMAGE_SEND_MAX_BYTES in packages/shared/src/media.ts) with a generated name.
+    function smallPicture(file) {
+      return request.resource != null
+        && request.resource.size > 0 && request.resource.size <= 4 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)')
+        && file.matches('[A-Za-z0-9_-]{8,64}[.]jpg');
+    }
+
+    match /users/{uid}/outbox/{file} {
+      allow read, delete: if owner(uid);
+      allow create, update: if owner(uid) && smallPicture(file);
+    }
+    match /users/{uid}/attachments/{file} {
+      allow read, delete: if owner(uid);
+      allow create, update: if owner(uid) && smallPicture(file);
+    }
+    match /users/{uid}/media-cache/{file} {
+      allow read, delete: if owner(uid);
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

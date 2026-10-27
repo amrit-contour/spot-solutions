@@ -59,3 +59,4 @@ export * from "./comicMerge.ts";
 export * from "./chatName.ts";
 export * from "./showRatings.ts";
 export * from "./revealPolicy.ts";
+export * from "./media.ts";

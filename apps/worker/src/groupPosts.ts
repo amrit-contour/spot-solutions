@@ -65,9 +65,9 @@ async function sendOne(uid: string, client: WAWebJS.Client, show: Show, post: Gr
   const tags = usesVar(msg, "pocs") ? await pocTags(uid, client, show) : { text: "", mentions: [] };
   const vars = groupPostVars(show, venue, showDate, names, tags.text);
   const rendered = renderRich(msg, vars);
-  if (rendered.kind === "text" && !rendered.body.trim() && !rendered.attachLocation) return;
+  if (rendered.kind === "text" && !rendered.body.trim() && !rendered.attachLocation && !rendered.image) return;
   const voiced = post.voice && rendered.kind === "text" && rendered.body.trim() ? { ...rendered, body: await inVoice(uid, "reply", rendered.body, { ...vars, name: "everyone" } as unknown as Record<string, string>) } : rendered;
-  await sendRich(client, show.groupId!, voiced, {}, venue, { prerendered: true, mentions: tags.mentions });
+  await sendRich(client, show.groupId!, voiced, {}, venue, { prerendered: true, mentions: tags.mentions, uid, imageRequired: true });
   if (lineup) await logActivity(uid, lineupIdFor(show, showDate), { kind: "post", tone: "done", text: `Posted the ${POST_LABEL[post.template]} in the group`, ref: post.id });
   console.log(`[group-post] ${uid} ${show.name}: ${POST_LABEL[post.template]} for ${showDate} sent`);
 }
