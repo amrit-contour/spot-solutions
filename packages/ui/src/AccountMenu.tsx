@@ -55,9 +55,9 @@ export function AccountMenu({
             </div>
           </div>
           <div className="border-t border-outline-variant/60 px-4 py-3">
-            <div className="mb-2 type-label-m text-on-surface-variant">Theme</div>
             <Segmented
               size="sm"
+              full
               value={mode}
               onChange={(m) => {
                 setMode(m);
