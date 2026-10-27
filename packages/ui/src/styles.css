@@ -130,6 +130,9 @@
 }
 
 @layer base {
+  /* The app shell scrolls inside <main>; the document must never scroll (iOS 26 draws a system blur under the status bar for any
+     document scroll). Locked whenever the shell is mounted. */
+  html:has(#app-scroll), html:has(#app-scroll) body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; background: var(--md-sys-color-surface); }
   body {
     margin: 0;

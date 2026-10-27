@@ -98,10 +98,32 @@ export function AppShell({
   useEffect(() => {
     appScroller()?.scrollTo(0, 0);
   }, [loc.pathname]);
+  // Nothing may ever scroll the document or the shell frame (scrollIntoView, focus(), drag autoscroll and keyboard all can, even
+  // on overflow:hidden boxes). If anything does, put it back at once and say so in dev, so a page that does it is found.
+  const frame = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const se = () => document.scrollingElement as HTMLElement;
+    const fix = (what: string) => {
+      if (import.meta.env.DEV) console.warn(`[shell] ${what} scrolled; resetting. Something called scrollIntoView/focus/scrollTo on a page.`, document.activeElement);
+      window.scrollTo(0, 0);
+      se().scrollTop = 0;
+      if (frame.current) frame.current.scrollTop = 0;
+    };
+    const onDoc = () => se().scrollTop !== 0 && fix("the document");
+    const onFrame = () => frame.current && frame.current.scrollTop !== 0 && fix("the shell frame");
+    window.addEventListener("scroll", onDoc, { passive: true });
+    frame.current?.addEventListener("scroll", onFrame, { passive: true });
+    const f = frame.current;
+    if (import.meta.env.DEV && se().scrollHeight > innerHeight + 1) console.warn("[shell] the document is taller than the viewport; something sits outside main#app-scroll.");
+    return () => {
+      window.removeEventListener("scroll", onDoc);
+      f?.removeEventListener("scroll", onFrame);
+    };
+  }, []);
   return (
     <ShellContext.Provider value={{ accountMenu, phoneStatus }}>
       {/* One viewport tall, and padded below the status bar: the scroller (main) starts under it, so nothing ever scrolls beneath the notch. */}
-      <div className="flex h-dvh overflow-hidden bg-surface pt-[env(safe-area-inset-top)]">
+      <div ref={frame} className="flex h-dvh overflow-clip bg-surface pt-[env(safe-area-inset-top)]">
         {/* Rail >= 600px */}
         <nav aria-label="Main" className="hidden h-full w-24 flex-none flex-col items-center gap-3 bg-surface pt-5 pb-5 sm:flex">
           <NavLink to="/" aria-label={`${appName} home`} className="mb-5">
@@ -144,7 +166,11 @@ let headerOwner: HTMLElement | null = null;
 export function PageHeader({ title, subtitle, actions, trailing, bar, children, width = "full" }: { title: ReactNode; /** "narrow" keeps the header on the same centred column as a max-w-3xl page body. */ width?: "full" | "narrow"; /** A toolbar pinned as part of the header (e.g. date nav). Same sticky box, so it can never drift from the title bar. */ bar?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
   const { accountMenu, phoneStatus } = useContext(ShellContext);
   const ref = useRef<HTMLElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const subRef = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(false);
+  const collapsible = !!(phoneStatus || subtitle);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -156,11 +182,8 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
     const ro = new ResizeObserver(() => headerOwner === el || !headerOwner?.isConnected ? publish() : undefined);
     publish();
     ro.observe(el);
-    // Also after the shrink/grow transition settles, in case the last resize frame was mid-animation.
-    el.addEventListener("transitionend", publish);
     return () => {
       ro.disconnect();
-      el.removeEventListener("transitionend", publish);
       // Only the header that set the value clears it: a page re-rendering its header must not wipe the new one's.
       if (headerOwner === el) {
         headerOwner = null;
@@ -168,22 +191,50 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       }
     };
   }, []);
-  // Frosted as soon as anything scrolls under it. The bar's height never changes, so there's no threshold dance.
+  // Phone collapse. Layout is measured, never animated: the header's box is its COLLAPSED height (so --page-header-h is what
+  // sticky sub-bars need) plus a bottom margin of the collapsible height D, so the page always flows at the expanded height and
+  // scrolling never jumps. The status line and subtitle are overlay: scroll progress p (0..1 over the first D pixels of scroll)
+  // drives only transforms and opacity, so the pinned bar lands exactly on the content edge at every frame.
   useEffect(() => {
-    let frame = 0;
+    const el = ref.current;
+    const inner = innerRef.current;
+    if (!el || !inner) return;
     const sc: HTMLElement | Window = appScroller() ?? window;
-    const read = () => {
+    let d = 0;
+    let frame = 0;
+    const top = () => (sc instanceof Window ? window.scrollY : sc.scrollTop);
+    const apply = () => {
       frame = 0;
-      setStuck((sc instanceof Window ? window.scrollY : sc.scrollTop) > 2);
+      const y = top();
+      const p = d > 0 ? Math.min(1, Math.max(0, y / d)) : 0;
+      el.style.setProperty("--p", p.toFixed(3));
+      if ((p > 0.5) !== (el.dataset.collapsed === "1")) el.dataset.collapsed = p > 0.5 ? "1" : "0";
+      setStuck(y > Math.max(2, d - 1));
     };
-    const onScroll = () => (frame ||= requestAnimationFrame(read));
-    read();
+    const measure = () => {
+      const h1 = statusRef.current?.offsetHeight ?? 0;
+      const s = subRef.current?.offsetHeight ?? 0;
+      d = h1 + s;
+      el.style.setProperty("--h1", `${h1}px`);
+      el.style.setProperty("--d", `${d}px`);
+      el.style.setProperty("--hh", `${Math.max(0, inner.offsetHeight - d)}px`);
+      apply();
+    };
+    const onScroll = () => (frame ||= requestAnimationFrame(apply));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(inner);
+    if (statusRef.current) ro.observe(statusRef.current);
+    if (subRef.current) ro.observe(subRef.current);
     sc.addEventListener("scroll", onScroll, { passive: true });
     return () => {
+      ro.disconnect();
       sc.removeEventListener("scroll", onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [collapsible]);
+  // Everything that moves is a transform or opacity of --p (set on the header), so scrolling never triggers layout.
+  const lift = (v: string): React.CSSProperties => ({ transform: `translate3d(0, calc(var(--p, 0) * ${v} * -1), 0)` });
   return (
     <>
     {/* Desktop breathing room above the title. Outside the sticky bar, so the bar itself never changes height. */}
@@ -191,37 +242,58 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
     <header
       ref={ref}
       data-stuck={stuck || undefined}
-      // One sticky box for the title bar AND any `bar` under it, with a solid surface (no backdrop-filter: iOS repaints it every
-      // scroll frame, which flickers). Fixed height: only the hairline/shadow changes when stuck (box-shadow never affects layout).
-      // Nothing above it but the notch strip, so the avatar always sits on plain surface, never under glass.
-      className={cx(
-        "sticky top-0 z-30 bg-surface px-4 pt-3 pb-2 transition-shadow duration-200 motion-reduce:transition-none sm:px-8 sm:pt-4 sm:pb-3",
-        stuck ? "shadow-[0_1px_0_var(--color-outline-variant),0_6px_12px_-8px_rgb(0_0_0/0.5)]" : "shadow-[0_1px_0_transparent]",
-      )}
+      data-collapsible={collapsible || undefined}
+      style={{ height: "var(--hh, auto)", marginBottom: "var(--d, 0px)" }}
+      className="group/hdr sticky top-0 z-30 sm:mb-0! sm:h-auto!"
     >
+      {/* Solid surface (no backdrop-filter: iOS repaints it every scroll frame, which flickers) that rides up with the scroll,
+          so its bottom edge is always exactly where the page content begins. Only the hairline/shadow changes when stuck. */}
+      <div
+        aria-hidden
+        style={{ ...lift("var(--d, 0px)"), height: "calc(var(--hh, 100%) + var(--d, 0px))" }}
+        className={cx(
+          "absolute inset-x-0 top-0 -z-10 bg-surface transition-shadow duration-200 will-change-transform motion-reduce:transition-none sm:h-full! sm:transform-none!",
+          stuck ? "shadow-[0_1px_0_var(--color-outline-variant),0_6px_12px_-8px_rgb(0_0_0/0.5)]" : "shadow-[0_1px_0_transparent]",
+        )}
+      />
+      <div ref={innerRef} className="relative px-4 pt-3 pb-2 sm:px-8 sm:pt-4 sm:pb-3">
       <div className={cx(width === "narrow" && "mx-auto w-full max-w-[44rem]")}>
+      {/* Phones: the account button owns the top-right corner (desktop keeps it in the nav rail). It never moves, because the
+          status line (expanded) and the compact title line (collapsed) are the same line. */}
+      <div className="absolute top-3 right-4 z-10 flex h-11 items-center sm:hidden">{accountMenu()}</div>
+      {phoneStatus && (
+        <div ref={statusRef} style={{ opacity: "clamp(0, calc(1 - var(--p, 0) * 2.5), 1)" }} className="flex h-11 min-w-0 items-center pr-[3.25rem] will-change-[opacity] group-data-[collapsed=1]/hdr:pointer-events-none sm:hidden">
+          <div className="flex min-w-0 max-w-full flex-none">{phoneStatus}</div>
+        </div>
+      )}
       {/* Wraps instead of squeezing: the title keeps its natural width, so a wide action (week switcher) drops to a second line
-          rather than turning "Requests" into "Re…". Phones reserve the top-right corner for the account button (absolute),
-          so small actions still sit just left of it on the title's line. */}
-      <div className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 max-sm:pr-[3.25rem]">
-        <h1 className="min-w-0 max-w-full flex-auto truncate type-headline-m sm:type-display-s">{title}</h1>
+          rather than turning "Requests" into "Re…". */}
+      <div style={phoneStatus ? lift("var(--h1, 0px)") : undefined} className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 will-change-transform max-sm:pr-[3.25rem] sm:transform-none!">
+        <h1
+          style={collapsible ? { transform: "scale(calc(1 - var(--p, 0) * 0.2))", transformOrigin: "left center" } : undefined}
+          className="min-w-0 max-w-full flex-auto truncate type-headline-m will-change-transform motion-reduce:transform-none! sm:type-display-s sm:transform-none!"
+        >
+          {title}
+        </h1>
         {trailing && <div className="flex flex-none items-center">{trailing}</div>}
         {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
-        {/* Phones: the account button rides the title's line (desktop keeps it in the nav rail), so the pinned header stays one row tall. */}
-        <div className="absolute top-0 right-0 flex h-11 items-center sm:hidden">{accountMenu()}</div>
       </div>
-      {children}
-      {bar && <div className="mt-2 sm:mt-3">{bar}</div>}
+      {subtitle && (
+        <div ref={subRef} style={{ ...lift("var(--h1, 0px)"), opacity: "clamp(0, calc(1 - var(--p, 0) * 2), 1)" }} className="pt-0.5 pb-1.5 will-change-[transform,opacity] group-data-[collapsed=1]/hdr:pointer-events-none sm:hidden">
+          <p className="min-w-0 max-w-full type-body-m text-on-surface-variant">{subtitle}</p>
+        </div>
+      )}
+      <div style={lift("var(--d, 0px)")} className="will-change-transform sm:transform-none!">
+        {children}
+        {bar && <div className="mt-2 sm:mt-3">{bar}</div>}
+      </div>
+      </div>
       </div>
     </header>
-    {/* One meta row under the title: connection chip (phones) and the subtitle share a left edge with the title, 8px under it.
-        On phones they stack (chip, then the subtitle on its own line, never a paragraph beside a pill); from 600px they share a line. It scrolls away with the page. */}
-    {(phoneStatus || subtitle) && (
-      <div className="px-4 pt-0.5 pb-3 sm:px-8">
-        <div className={cx("flex min-w-0 flex-col items-start gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3", width === "narrow" && "mx-auto w-full max-w-[44rem]")}>
-          {phoneStatus && <div className="flex min-w-0 max-w-full flex-none sm:hidden">{phoneStatus}</div>}
-          {subtitle && <p className="min-w-0 max-w-full type-body-m sm:flex-1 sm:basis-48 text-on-surface-variant">{subtitle}</p>}
-        </div>
+    {/* Desktop and tablets: the subtitle sits under the pinned title bar and scrolls away with the page. */}
+    {subtitle && (
+      <div className="hidden px-4 pt-0.5 pb-3 sm:block sm:px-8">
+        <p className={cx("min-w-0 max-w-full type-body-m text-on-surface-variant", width === "narrow" && "mx-auto w-full max-w-[44rem]")}>{subtitle}</p>
       </div>
     )}
     </>
