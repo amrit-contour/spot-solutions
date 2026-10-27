@@ -131,7 +131,8 @@ export function Shows() {
 
 function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: () => void }) {
   const { uid, venues, comics, session } = useApp();
-  const groups = useCollection<GroupInfo>(uid, "groups");
+  // Only while the sheet is open: the groups list is large and nothing else on this page uses it.
+  const groups = useCollection<GroupInfo>(value ? uid : undefined, "groups");
   const [draft, setDraft] = useState<Partial<Show>>({});
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [pulling, setPulling] = useState(false);

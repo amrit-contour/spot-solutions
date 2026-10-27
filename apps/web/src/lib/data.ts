@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   addDoc,
   collection,
@@ -6,7 +6,9 @@ import {
   doc,
   onSnapshot,
   query,
+  queryEqual,
   Timestamp,
+  type Query,
   type QueryConstraint,
 } from "firebase/firestore";
 import { TTL_DAYS, ttlMs, type Command, type CommandType } from "@spot/shared";
@@ -19,34 +21,123 @@ export const expireAt = (days: number) => Timestamp.fromMillis(ttlMs(days));
 export const userCol = (uid: string, name: string) => collection(db, "users", uid, name);
 export const userDoc = (uid: string, name: string, id: string) => doc(db, "users", uid, name, id);
 
-/** Live collection under users/{uid}. `key` re-subscribes when constraints change. */
-export function useCollection<T>(uid: string | undefined, name: string, constraints: QueryConstraint[] = [], key = "") {
-  const [state, setState] = useState<{ data: T[]; loading: boolean }>({ data: [], loading: true });
-  useEffect(() => {
-    if (!uid) return;
-    setState((s) => ({ ...s, loading: true }));
-    return onSnapshot(
-      query(userCol(uid, name), ...constraints),
-      (q) => setState({ data: q.docs.map((d) => ({ ...(d.data() as T), id: d.id })), loading: false }),
-      (e) => {
-        console.error(name, e);
-        setState({ data: [], loading: false });
-      },
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid, name, key]);
-  return state;
+/* ---------- Shared live subscriptions ----------
+ * Every useCollection/useDocument call with the same query shares one Firestore listener and one copy of the data. A listener
+ * is opened by the first component that needs it and kept for KEEP_MS after the last one unmounts, so going back to a page
+ * shows its data at once (no loading state, no re-read) and a page nobody is looking at costs nothing. Unchanged documents
+ * keep the same object between snapshots, so memoised rows don't re-render when a neighbour changes. */
+const KEEP_MS = 120_000;
+
+class Shared<S> {
+  subs = new Set<() => void>();
+  stop?: () => void;
+  timer?: ReturnType<typeof setTimeout>;
+  state: S;
+  private open: (set: (s: S) => void) => () => void;
+  private drop: () => void;
+  constructor(state: S, open: (set: (s: S) => void) => () => void, drop: () => void) {
+    this.state = state;
+    this.open = open;
+    this.drop = drop;
+    this.arm();
+  }
+  set = (s: S) => {
+    this.state = s;
+    this.subs.forEach((f) => f());
+  };
+  private arm() {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      if (this.subs.size) return;
+      this.stop?.();
+      this.stop = undefined;
+      this.drop();
+    }, KEEP_MS);
+  }
+  subscribe = (cb: () => void) => {
+    this.subs.add(cb);
+    clearTimeout(this.timer);
+    this.stop ??= this.open(this.set);
+    return () => {
+      this.subs.delete(cb);
+      if (!this.subs.size) this.arm();
+    };
+  };
+  getSnapshot = () => this.state;
 }
 
+type ColState<T> = { data: T[]; loading: boolean };
+const LOADING: ColState<never> = { data: [], loading: true };
+const noop = () => undefined;
+const idle = { subscribe: () => noop, getSnapshot: () => LOADING };
+
+const collections: { q: Query; shared: Shared<ColState<never>> }[] = [];
+function sharedCollection(q: Query, name: string) {
+  const hit = collections.find((c) => queryEqual(c.q, q));
+  if (hit) return hit.shared;
+  const byId = new Map<string, unknown>();
+  const shared: Shared<ColState<never>> = new Shared<ColState<never>>(
+    LOADING,
+    (set) =>
+      onSnapshot(
+        q,
+        (snap) => {
+          const changed = new Set(snap.docChanges().filter((c) => c.type !== "removed").map((c) => c.doc.id));
+          const next = new Map<string, unknown>();
+          const data = snap.docs.map((d) => {
+            const old = byId.get(d.id);
+            const v = old && !changed.has(d.id) ? old : { ...d.data(), id: d.id };
+            next.set(d.id, v);
+            return v;
+          });
+          byId.clear();
+          next.forEach((v, k) => byId.set(k, v));
+          set({ data: data as never[], loading: false });
+        },
+        (e) => {
+          console.error(name, e);
+          set({ data: [], loading: false });
+        },
+      ),
+    () => collections.splice(collections.findIndex((c) => c.shared === shared), 1),
+  );
+  collections.push({ q, shared });
+  return shared;
+}
+
+/** Live collection under users/{uid}. `key` says when the constraints change; identical queries share one listener. */
+export function useCollection<T>(uid: string | undefined, name: string, constraints: QueryConstraint[] = [], key = "") {
+  const shared = useMemo(() => (uid ? sharedCollection(query(userCol(uid, name), ...constraints), name) : null), // eslint-disable-line react-hooks/exhaustive-deps
+    [uid, name, key]);
+  const store = shared ?? idle;
+  const cur = useSyncExternalStore(store.subscribe, store.getSnapshot) as ColState<T>;
+  // Changing the constraints (another week) keeps showing the last rows, marked loading, until the new ones arrive.
+  const last = useRef<ColState<T>>(undefined);
+  if (!cur.loading) last.current = cur;
+  const prev = last.current;
+  return useMemo(() => (cur.loading && prev ? { data: prev.data, loading: true } : cur), [cur, prev]);
+}
+
+const documents = new Map<string, Shared<{ data: unknown; loading: boolean }>>();
+const DOC_LOADING = { data: null, loading: true };
+
 export function useDocument<T>(path: string[] | null) {
-  const [state, setState] = useState<{ data: T | null; loading: boolean }>({ data: null, loading: true });
   const k = path?.join("/");
-  useEffect(() => {
-    if (!path) return;
-    return onSnapshot(doc(db, path.join("/")), (s) => setState({ data: (s.data() as T) ?? null, loading: false }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const shared = useMemo(() => {
+    if (!k) return null;
+    let s = documents.get(k);
+    if (!s) {
+      s = new Shared<{ data: unknown; loading: boolean }>(
+        DOC_LOADING,
+        (set) => onSnapshot(doc(db, k), (d) => set({ data: d.data() ?? null, loading: false })),
+        () => documents.delete(k),
+      );
+      documents.set(k, s);
+    }
+    return s;
   }, [k]);
-  return state;
+  const store = shared ?? { subscribe: () => noop, getSnapshot: () => DOC_LOADING };
+  return useSyncExternalStore(store.subscribe, store.getSnapshot) as { data: T | null; loading: boolean };
 }
 
 /** Drop a command for the worker and resolve when it finishes. */

@@ -39,6 +39,8 @@ export interface UpdatesState {
   needsYou: number;
 }
 
+/** How far back an unanswered mic check is still asked about. */
+const MIC_CHECK_DAYS = 30;
 const INTRO = /^(.+?) introduced themselves(?:: (.+?))?\.(?:\s|$)/;
 
 /** Intro notices carry no kind field, so they are told apart by their text (written in apps/worker/src/replies.ts). */
@@ -54,10 +56,12 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
   const { uid, week, shows, settings } = useApp();
   const actions = useCollection<ComicAction>(uid, "actions", [where("weekOf", "==", week), where("status", "==", "pending"), orderBy("createdAt", "desc")], week);
   const notices = useCollection<AppNotice>(uid, "notices", [where("read", "==", false)]);
-  const confirmed = useCollection<Lineup>(uid, "lineups", [where("status", "==", "confirmed")]);
+  // Mic checks only look back a month. An unbounded "every confirmed lineup ever" read grows with the account and ships each lineup's whole activity log.
+  const today = localNow(new Date(), settings.timezone).date;
+  const since = new Date(Date.parse(`${today}T00:00:00Z`) - MIC_CHECK_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const confirmed = useCollection<Lineup>(uid, "lineups", [where("date", ">=", since)], `since:${since}`);
   const asked = useCollection<Lineup>(uid, "lineups", [where("cleanup.status", "in", ["asked", "partial"])]);
   const interested = useCollection<SpotOffer>(uid, "offers", [where("status", "==", "interested")]);
-  const today = localNow(new Date(), settings.timezone).date;
 
   const value = useMemo<UpdatesState>(() => {
     const replies = actions.data.filter((a) => a.kind !== "onboard" && a.kind !== "follow_up");
@@ -70,7 +74,7 @@ export function UpdatesProvider({ children }: { children: ReactNode }) {
       if (intro) introductions.push(intro);
       else server.push(n);
     }
-    const micChecks = settings.micCheck.enabled ? confirmed.data.filter((l) => !l.outcome && !l.backfilled && l.date && l.date < today && shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5) : [];
+    const micChecks = settings.micCheck.enabled ? confirmed.data.filter((l) => l.status === "confirmed" && !l.outcome && !l.backfilled && l.date && l.date < today && shows.some((s) => s.id === l.showId)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5) : [];
     // "asked": waiting for an answer. "partial": a pass left people in the group (shown with who and why); one that is still running has nobody pending yet.
     const cleanups = asked.data.filter((l) => shows.some((s) => s.id === l.showId) && (l.cleanup?.status === "asked" || Boolean(l.cleanup?.pending?.length))).sort((a, b) => b.date.localeCompare(a.date));
     const rounds = new Map<string, SpotOffer[]>();

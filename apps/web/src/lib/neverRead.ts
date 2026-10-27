@@ -41,7 +41,8 @@ export function useLinkedGroups(uid: string | undefined, shows: Show[], settings
  * watched in Comedy), take it off the list and say so. Mounted once, app-wide.
  */
 export function useNeverReadLinkSync(uid: string, shows: Show[], settings: Settings, save: (patch: Partial<Settings>) => Promise<void>) {
-  const { linked, loaded } = useLinkedGroups(uid, shows, settings);
+  // Nothing on the list, nothing to prune: don't hold a listener open for it.
+  const { linked, loaded } = useLinkedGroups(settings.neverRead?.length ? uid : undefined, shows, settings);
   const busy = useRef(false);
   useEffect(() => {
     if (!loaded || busy.current || !settings.neverRead?.length) return;
