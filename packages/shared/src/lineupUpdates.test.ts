@@ -21,6 +21,19 @@ describe("diffLineup", () => {
     expect(d).toMatchObject({ added: [], removed: [], moved: [], minutes: [], total: 0 });
   });
 
+  it("treats a told ad hoc slot as unchanged: never added, moved or resent, and the others aren't moved by it", () => {
+    const base = sentSnapshot(slots("a", "b"), show, 100);
+    const withAdhoc = { ...base, z: { at: 200, minutes: 5, order: 0 } }; // draft-style entry: order doesn't match
+    const live = [{ comicId: "a" }, { comicId: "b" }, { comicId: "z", adhoc: true, minutes: 9 }];
+    const d = diffLineup(live, withAdhoc, show);
+    expect(d).toMatchObject({ added: [], removed: [], moved: [], minutes: [], total: 0 });
+  });
+
+  it("still lists an ad hoc slot that was never told", () => {
+    const d = diffLineup([...slots("a", "b", "c"), { comicId: "z", adhoc: true }], sent, show);
+    expect(d.added).toEqual(["z"]);
+  });
+
   it("finds adds and removes", () => {
     const d = diffLineup(slots("a", "c", "d"), sent, show);
     expect(d.added).toEqual(["d"]);

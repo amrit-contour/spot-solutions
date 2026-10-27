@@ -65,6 +65,21 @@ export function inGroup(id: string, members: { id: string; alt?: string[] }[], a
 }
 
 /**
+ * Does a computed group plan hold anything the curator has to review: someone to add (a lapsed invite counts, it is offered again)
+ * or remove? People already in the group, and invites still waiting ("Invite sent · waiting"), are not work.
+ * `members` (the cached member list) drops anyone the plan only lists because it is a little old.
+ */
+export function groupPlanNeedsReview(
+  plan: { toAdd?: string[]; toRemove?: string[]; invited?: Record<string, number> } | null | undefined,
+  opts: { members?: { id: string; alt?: string[] }[]; aliases?: Record<string, string[]>; lapsed?: string[] } = {},
+): boolean {
+  if (!plan) return false;
+  const lapsed = new Set(opts.lapsed ?? []);
+  const adds = (plan.toAdd ?? []).filter((id) => (!plan.invited?.[id] || lapsed.has(id)) && !(opts.members && inGroup(id, opts.members, opts.aliases)));
+  return adds.length + (plan.toRemove ?? []).length > 0;
+}
+
+/**
  * Which invites are still good. `lapsed`: invited more than a day ago and still not in, offered again with "Resend invite".
  * Anyone in the group (or off the lineup) drops out of the record.
  */

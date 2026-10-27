@@ -143,13 +143,13 @@ function zonedNow(timeZone: string, at: number) {
   return { date: f[0].format(at), time: f[1].format(at) };
 }
 
-export function ActivitySection({ lineup, show, offers, nameOf, over }: { lineup?: Lineup; show: Show; offers: SpotOffer[]; nameOf: (id: string) => string; over: boolean }) {
+export function ActivitySection({ lineup, show, offers, nameOf }: { lineup?: Lineup; show: Show; offers: SpotOffer[]; nameOf: (id: string) => string; over?: boolean }) {
   const { uid, settings } = useApp();
   const nowMs = Date.now();
   const now = zonedNow(settings.timezone, nowMs);
   const rows = lineupActivity({ lineup, show, offers, now, nameOf });
   const key = `${lineup?.id ?? show.id}:activity`;
-  const [open, setOpen] = useRemembered(key, !over);
+  const [open, setOpen] = useRemembered(key, false); // collapsed for every show until opened; the choice is kept per lineup
   const panel = useId();
   const [busy, setBusy] = useState(false);
   if (!rows.length) return null;

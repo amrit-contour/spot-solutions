@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupPanel } from "./groupSync.ts";
+import { groupPanel, groupPlanNeedsReview } from "./groupSync.ts";
 
 describe("POCs in the group panel", () => {
   it("tags POCs (not also co-host), keeps them in a sync, and never marks them leaving", () => {
@@ -66,5 +66,20 @@ describe("invites and verifying a sync", () => {
     const p = groupPanel({ members: [], lineup: ["a@c.us"], regulars: [], protected: [], invited: { "a@c.us": now } });
     expect(p.toAdd).toEqual([]);
     expect(p.rows[0].tags).toEqual(["invited"]);
+  });
+});
+
+describe("groupPlanNeedsReview", () => {
+  it("is false when nothing to add or remove", () => {
+    expect(groupPlanNeedsReview({ toAdd: [], toRemove: [] })).toBe(false);
+    expect(groupPlanNeedsReview(null)).toBe(false);
+  });
+  it("ignores people with an invite still waiting, counts lapsed ones", () => {
+    expect(groupPlanNeedsReview({ toAdd: ["a"], toRemove: [], invited: { a: 1 } })).toBe(false);
+    expect(groupPlanNeedsReview({ toAdd: ["a"], toRemove: [], invited: { a: 1 } }, { lapsed: ["a"] })).toBe(true);
+  });
+  it("ignores adds already in the cached group, counts removes", () => {
+    expect(groupPlanNeedsReview({ toAdd: ["61400000001@c.us"], toRemove: [] }, { members: [{ id: "61400000001@c.us" }] })).toBe(false);
+    expect(groupPlanNeedsReview({ toAdd: [], toRemove: ["x"] })).toBe(true);
   });
 });

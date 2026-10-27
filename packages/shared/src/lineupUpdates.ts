@@ -48,7 +48,10 @@ export function diffLineup(slots: Slot[], sent: SentMap | null | undefined, show
   const now = slots.map((s) => s.comicId);
   const added = now.filter((id) => !told[id]);
   const removed = Object.keys(told).filter((id) => !now.includes(id)).sort((a, b) => told[a].order - told[b].order);
-  const kept = now.filter((id) => told[id]);
+  // An ad hoc comic who was told when booked is settled: their slot never moves, and a later reorder or set length change
+  // around them is not an update for them (they were told one thing, once). They are never listed in the send preview.
+  const adhocTold = new Set(slots.filter((s) => s.adhoc && told[s.comicId]).map((s) => s.comicId));
+  const kept = now.filter((id) => told[id] && !adhocTold.has(id));
   const wasRank = new Map([...kept].sort((a, b) => told[a].order - told[b].order).map((id, i) => [id, i]));
   const moved: MovedChange[] = [];
   const minutes: MinutesChange[] = [];

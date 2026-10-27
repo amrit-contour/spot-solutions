@@ -10,6 +10,7 @@ import {
   formatTime,
   groupModeOf,
   sentSnapshot,
+  groupPlanNeedsReview,
   shiftWeek,
   type Comic,
   type Lineup,
@@ -27,7 +28,7 @@ import { BackfillSheet } from "../BackfillSheet";
 import { GroupSyncSheet } from "../GroupSyncSheet";
 import { PillRow, comicPills, type TellState } from "../Pills";
 import { Button, Chip, buttonClass, cx } from "@spot/ui";
-import { IconArrowRight, IconCheck, IconClock, IconHistory, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "@spot/ui";
+import { IconAdd, IconArrowRight, IconCheck, IconClock, IconHistory, IconInbox, IconMap, IconMic, IconSend, IconSparkle, IconUserPlus } from "@spot/ui";
 import { laneOf } from "../../lib/lanes";
 import { ComicAvatar } from "../../lib/photos";
 
@@ -84,7 +85,9 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
     seen.current.status = syncStatus;
     if (before !== "pending" && syncStatus === "pending" && armed.current) {
       armed.current = false;
-      setSyncOpen(true);
+      const cachedMembers = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.members : undefined;
+      if (groupPlanNeedsReview(lineup?.groupSync, { members: cachedMembers, lapsed: lineup?.groupSync?.lapsed })) setSyncOpen(true);
+      else toast("Group already up to date");
     }
   }, [syncStatus, lineupLoaded]);
 
@@ -223,6 +226,18 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
             >
               <IconUserPlus className="icon size-4" />
               <span className="@max-[24rem]:hidden">Offer a spot</span>
+            </button>
+          )}
+          {canAct && (
+            <button
+              type="button"
+              onClick={() => setOfferOpen(true)}
+              aria-label={open ? "Ad hoc spot" : "Ad hoc spot (lineup is full, asks first)"}
+              title={open ? "Ad hoc spot" : "Lineup is full: asks before adding"}
+              className={buttonClass({ size: "sm", variant: "outlined", icon: true, className: "flex-none @max-[24rem]:size-8 @max-[24rem]:px-0" })}
+            >
+              <IconAdd className="icon size-4" />
+              <span className="@max-[24rem]:hidden">Ad hoc{!open && <span className="ml-1 text-on-surface-variant">· Full</span>}</span>
             </button>
           )}
           <Link to="/lineup" aria-label="Open lineup" title="Open lineup" className="state-layer pressable -mr-2 ml-auto grid size-10 flex-none place-items-center rounded-full text-primary">

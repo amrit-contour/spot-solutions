@@ -40,6 +40,7 @@ import {
   planWeekReset,
   showState,
   sentSnapshot,
+  groupPlanNeedsReview,
   shiftWeek,
   type Comic,
   type GroupTag,
@@ -468,6 +469,8 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
   const showDate = dateInWeek(week, show.weekday);
   const today = localNow(new Date(), settings.timezone).date;
   const past = today >= showDate;
+  // Ad hoc spots are most needed on the day itself: only a show that is over (or called off, or recorded) shuts them.
+  const ended = showDate < today;
   // Past and never sent (or already a record): who performed is recorded in the backfill sheet; nothing is sent.
   const record = showDate < today && (Boolean(lineup?.backfilled) || !lineup || lineup.status === "draft");
   const [backfillOpen, setBackfillOpen] = useState(false);
@@ -569,7 +572,9 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
     seen.current.status = syncStatus;
     if (before !== "pending" && syncStatus === "pending" && armed.current) {
       armed.current = false;
-      setSyncOpen(true);
+      const cachedMembers = show.groupId && show.groupMembers?.groupId === show.groupId ? show.groupMembers.members : undefined;
+      if (groupPlanNeedsReview(lineup?.groupSync, { members: cachedMembers, lapsed: lineup?.groupSync?.lapsed })) setSyncOpen(true);
+      else toast("Group already up to date");
     }
   }, [syncStatus, lineupsLoaded]);
 
@@ -627,7 +632,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
     <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="Show options" onClick={t} className="size-9" />}>
               {(close) => (
                 <>
-                <MenuItem disabled={past} hint={ids.length >= show.slotCount ? "full: asks first" : undefined} onClick={() => (close(), setOfferOpen(true))}>
+                <MenuItem disabled={ended} hint={ids.length >= show.slotCount ? "full: asks first" : undefined} onClick={() => (close(), setOfferOpen(true))}>
                   Offer a spot…
                 </MenuItem>
                 {groupItems(close)}
@@ -804,7 +809,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                       <ul className="flex flex-col">
                         {pendingOffers.map((o) => <NoteRow key={o.id} name={o.comicName} pill={<Pill tone="reading">Waiting for a reply</Pill>} />)}
                       </ul>
-                      <Button size="sm" variant="tonal" icon={IconUserPlus} className="mt-2" disabled={past || cancelled} onClick={() => (close(), setOfferOpen(true))}>
+                      <Button size="sm" variant="tonal" icon={IconUserPlus} className="mt-2" disabled={ended || cancelled} onClick={() => (close(), setOfferOpen(true))}>
                         Offer another spot…
                       </Button>
                     </div>
@@ -844,7 +849,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
                 <GroupPopover show={show} lineup={lineup} ids={ids} pendingLeave={pendingLeave} onLeaveHandled={onLeaveHandled} onRemoveFromLineup={onRemove} onAddToLineup={onAddTold} onSync={syncGroup} onReview={() => setSyncOpen(true)} />
               )}
               {!cancelled && !record && (
-                <ToolButton icon={IconAdd} label="Ad hoc spot: offer or add someone to this show" text="Ad hoc" disabled={past} onClick={() => setOfferOpen(true)} />
+                <ToolButton icon={IconAdd} label="Ad hoc spot: offer or add someone to this show" text="Ad hoc" disabled={ended} onClick={() => setOfferOpen(true)} />
               )}
                   </div>
           {record ? (
