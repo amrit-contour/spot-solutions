@@ -292,7 +292,7 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       <div className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 max-sm:pr-[3.25rem]">
         <h1
           // Title stays its natural width so the week selector sits beside it instead of floating far to the right.
-          className="min-w-0 max-w-full flex-none truncate type-headline-m sm:type-display-s"
+          className="min-w-0 max-w-full flex-auto truncate type-headline-m sm:type-display-s"
         >
           {title}
         </h1>

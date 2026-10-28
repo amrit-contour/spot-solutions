@@ -31,7 +31,6 @@ import { setRequestsCleared } from "../lib/cleanup";
 import { useNeverRead } from "../lib/neverRead";
 import { PageHeader, enumPref, usePref } from "@spot/ui";
 import { WaText } from "@spot/ui";
-import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "@spot/ui";
 import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
@@ -70,7 +69,7 @@ const LANE_PREF = enumPref<Lane>("requestsLane", "spot.requests.lane", LANES.map
 
 export function Requests() {
   const { uid, week, session, shows, comicsById } = useApp();
-  const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
+  const requests = useCollection<SpotRequest>(uid, "requests", [], "all");
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const [lane, setLane] = usePref(LANE_PREF);
   // Messages links here with ?q=name to land on that person's card.
@@ -149,7 +148,6 @@ export function Requests() {
         subtitle={requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
         actions={
           <>
-            <WeekSwitcher />
             <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="More" onClick={t} className="size-9" />}>
               {(close) => (
                 <>
