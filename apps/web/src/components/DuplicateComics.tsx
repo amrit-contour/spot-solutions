@@ -26,6 +26,8 @@ export function DuplicateComics() {
   const sets = useDuplicateComics();
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState<DuplicateSet<Comic> | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const visible = sets.filter((s) => !dismissed.has(s.keep.id));
   if (!sets.length && !open) return null;
   // The name they end up with (the best-sourced one), not necessarily the kept doc's.
   const result = target ? mergeComics(target.keep, target.others).name : "";
@@ -37,11 +39,11 @@ export function DuplicateComics() {
   };
   return (
     <>
-      {sets.length > 0 && (
+      {visible.length > 0 && (
         <div className="mb-2 flex items-center gap-3 rounded-xl bg-tertiary-container px-4 py-3 text-on-tertiary-container">
           <IconWarn className="icon size-5 flex-none" />
           <p className="min-w-0 flex-1 type-body-m">
-            {sets.length} possible duplicate{sets.length === 1 ? "" : "s"}
+            {visible.length} possible duplicate{visible.length === 1 ? "" : "s"}
           </p>
           <Button size="sm" variant="tonal" onClick={() => setOpen(true)}>Review</Button>
         </div>
@@ -66,9 +68,12 @@ export function DuplicateComics() {
                     </li>
                   ))}
                 </ul>
-                <Button className="mt-3 w-full" variant="tonal" disabled={isDemoUser()} onClick={() => setTarget(s)}>
-                  {s.why === "name" ? "Same person" : "Merge into one"}
-                </Button>
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" variant="text" onClick={() => setDismissed((d) => new Set(d).add(s.keep.id))}>Not same person</Button>
+                  <Button size="sm" variant="tonal" className="flex-1" disabled={isDemoUser()} onClick={() => setTarget(s)}>
+                    {s.why === "name" ? "Same person" : "Merge into one"}
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
