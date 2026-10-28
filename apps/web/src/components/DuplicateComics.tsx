@@ -55,7 +55,6 @@ export function DuplicateComics() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [keepChoice, setKeepChoice] = useState<Record<string, string>>({});
   const [restoring, setRestoring] = useState(false);
-  const [certainty, setCertainty] = useState<"all" | "certain" | "name">("all");
 
   useEffect(() => {
     setIgnored(loadIgnored(uid));
@@ -71,12 +70,7 @@ export function DuplicateComics() {
     const id = keepChoice[setKey(s)];
     return ([s.keep, ...s.others].find((c) => c.id === id) ?? s.keep);
   };
-  const visible = useMemo(() => {
-    const base = visibleSets;
-    if (certainty === "certain") return base.filter((s) => s.why !== "name");
-    if (certainty === "name") return base.filter((s) => s.why === "name");
-    return base;
-  }, [visibleSets, certainty]);
+  const visible = visibleSets;
 
   if (!sets.length && !open && !ignoredSets.length) return null;
   const result = target ? mergeComics(chosenKeep(target), target.others.filter((o) => o.id !== chosenKeep(target).id)).name : "";
@@ -137,18 +131,10 @@ export function DuplicateComics() {
   return (
     <>
       {visible.length > 0 && (
-        <div className="mb-2 flex items-center gap-3 rounded-xl bg-tertiary-container px-4 py-3 text-on-tertiary-container">
+        <button type="button" className="state-layer fixed bottom-6 right-6 z-20 flex items-center gap-3 rounded-full bg-tertiary-container px-4 py-3 text-on-tertiary-container shadow-lg" onClick={() => setOpen(true)}>
           <IconWarn className="icon size-5 flex-none" />
-          <p className="min-w-0 flex-1 type-body-m">
-            {visible.length} possible duplicate{visible.length === 1 ? "" : "s"}
-          </p>
-          <select className="h-8 rounded-md bg-surface px-2 text-sm" value={certainty} onChange={(e) => setCertainty(e.target.value as "all" | "certain" | "name")}>
-            <option value="all">All</option>
-            <option value="certain">Certain (phone/WhatsApp)</option>
-            <option value="name">Name matches</option>
-          </select>
-          <Button size="sm" variant="tonal" onClick={() => setOpen(true)}>Review</Button>
-        </div>
+          <span className="type-body-m">{visible.length}</span>
+        </button>
       )}
       <Sheet open={open} onClose={() => setOpen(false)} title="Possible duplicates">
         <p className="mb-5 type-body-m text-on-surface-variant">WhatsApp sometimes gives the same person as a phone number and as a hidden ID, so they end up on your roster twice. Merging keeps the one WhatsApp can reach.</p>
