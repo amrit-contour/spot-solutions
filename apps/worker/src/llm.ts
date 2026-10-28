@@ -10,7 +10,9 @@ import { AiPolicyError, IMPLICIT_GEMINI_MODEL, canAutoSwitch, isKept, keepMissin
 import { DEFAULT_LOCAL_MODEL } from "./serverAi.ts";
 import { SERVER_ID } from "./serverIdentity.ts";
 
-export const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
+export const OLLAMA_URL = process.env.OLLAMA_URL ?? process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
+/** Optional API key for remote/cloud Ollama endpoints (Ollama Cloud, Beam, etc.). Sent as `Authorization: Bearer`. Kept in env; never written to files or logs. */
+export const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY ?? process.env.OLLAMA_KEY ?? null;
 // Slow laptops (an old i5 with 8 GB) can take a few minutes on a cold model. Waiting longer beats failing: messages are
 // read in the background, and a failed read is retried anyway (intake.ts). NBS_OLLAMA_TIMEOUT_MS overrides.
 const OLLAMA_TIMEOUT_MS = Number(process.env.NBS_OLLAMA_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS ?? 300_000);
@@ -54,10 +56,12 @@ const noSchema = new Set<string>(); // Ollama models that reject JSON-schema out
 
 async function ollama(model: string, prompt: string, schema: Schema, temperature = 0, timeoutMs = OLLAMA_TIMEOUT_MS) {
   if (NO_LOCAL_MODEL) throw new Error("This server has no local model (Gemini-only)");
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (OLLAMA_API_KEY) headers.authorization = `Bearer ${OLLAMA_API_KEY}`;
   const call = (structured: boolean) =>
     fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         model,
@@ -269,7 +273,8 @@ async function readOllamaState() {
 /** Download a model into Ollama (used by the "Pull" button in the app). */
 export async function ollamaPull(model: string) {
   if (NO_LOCAL_MODEL) throw new Error("This server runs without a local model (Gemini-only)");
-  const res = await fetch(`${OLLAMA_URL}/api/pull`, { method: "POST", body: JSON.stringify({ model, stream: false }), signal: AbortSignal.timeout(60 * 60_000) });
+  const h: Record<string,string> = OLLAMA_API_KEY ? { authorization: `Bearer ${OLLAMA_API_KEY}` } : {};
+  const res = await fetch(`${OLLAMA_URL}/api/pull`, { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ model, stream: false }), signal: AbortSignal.timeout(60 * 60_000) });
   if (!res.ok) throw new Error(`pull failed: ${(await res.text()).slice(0, 200)}`);
 }
 
