@@ -1,35 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  RATING_ASK_GAP_MS, RATING_POLL_TTL_MS, addRatingPolls, applySlotReviews, inQuiet, isCatchUp, overallPollSpec, rateAfterMinutes, ratingDue, ratingDueAt, ratingAskGate, ratingHeader, ratingPollRef, ratingPollSpec, slotsToRate, voteOverall, voteReview,
+  WHY_PRESETS, cleanReasonOptions, composeNoNotes, parseNoNote, repeatSlots, voteRepeat,
+  RATING_ASK_GAP_MS, RATING_POLL_TTL_MS, addRatingPolls, applySlotReviews, inQuiet, isCatchUp, overallPollSpec,  ratingAskGate, ratingHeader, ratingPollRef, ratingPollSpec, slotsToRate, voteOverall, voteReview,
   type Comic, type Slot,
 } from "./index.ts";
 
 const comic = (id: string, name: string, extra: Partial<Comic> = {}) => ({ id, name, phone: id.split("@")[0], ...extra }) as Comic;
 
-describe("when the polls are due", () => {
-  it("start + afterHours + rateAfterMin, 5 minutes after the mic check by default", () => {
-    expect(rateAfterMinutes(undefined)).toBe(5);
-    expect(rateAfterMinutes({ rateAfterMin: 0 })).toBe(0);
-    expect(rateAfterMinutes({ rateAfterMin: 999 })).toBe(5);
-    expect(ratingDueAt("2026-10-27", "20:00", 2, 5)).toBe("2026-10-27 22:05");
-    expect(ratingDueAt("2026-10-27", "20:00", 2, 0)).toBe("2026-10-27 22:00");
-    expect(ratingDueAt("2026-10-27", "19:30", 3, 45)).toBe("2026-10-27 23:15");
-  });
-  it("rolls past midnight", () => {
-    expect(ratingDueAt("2026-10-27", "22:30", 2, 5)).toBe("2026-10-28 00:35");
-    expect(ratingDueAt("2026-10-31", "23:00", 1, 90)).toBe("2026-11-01 01:30");
-  });
-  it("due from that minute on; a yes after the time is simply already due", () => {
-    const due = "2026-10-27 22:05";
-    expect(ratingDue(due, { date: "2026-10-27", time: "22:04" })).toBe(false);
-    expect(ratingDue(due, { date: "2026-10-27", time: "22:05" })).toBe(true);
-    expect(ratingDue(due, { date: "2026-10-28", time: "01:00" })).toBe(true);
-  });
-});
-
-describe("scheduled asks versus catch-ups, quiet hours and no bursts", () => {
+describe("fresh answers versus catch-ups, quiet hours and no bursts", () => {
   const now = 1e12;
-  it("a scheduled ask goes at any hour: the curator chose that time and shows end late", () => {
+  it("a fresh answer goes at any hour", () => {
     for (const t of ["22:35", "23:59", "00:35", "03:47", "09:00"]) expect(ratingAskGate({ time: t, nowMs: now, catchUp: false })).toBe("go");
     expect(ratingAskGate({ time: "00:35", nowMs: now, catchUp: false, lastAskAt: now - 1000 })).toBe("go");
   });
@@ -44,10 +24,14 @@ describe("scheduled asks versus catch-ups, quiet hours and no bursts", () => {
     expect(ratingAskGate({ time: "10:00", nowMs: now, catchUp: true, lastAskAt: now - RATING_ASK_GAP_MS })).toBe("go");
     expect(ratingAskGate({ time: "03:47", nowMs: now, catchUp: true, lastAskAt: now - 1e9 })).toBe("quiet");
   });
-  it("more than 12 hours past due is a catch-up", () => {
-    expect(isCatchUp("2026-10-27 22:05", { date: "2026-10-28", time: "10:05" })).toBe(false);
-    expect(isCatchUp("2026-10-27 22:05", { date: "2026-10-28", time: "10:06" })).toBe(true);
-    expect(isCatchUp("2026-10-27 22:05", { date: "2026-10-27", time: "22:10" })).toBe(false);
+  it("a fresh answer is never a catch-up; a yes older than 12 hours is", () => {
+    const now = { date: "2026-10-28", time: "10:00" };
+    const nowMs = Date.parse("2026-10-28T04:30:00Z");
+    expect(isCatchUp({ outcomeAt: nowMs - 60_000 }, "2026-10-26 22:00", now, nowMs)).toBe(false);
+    expect(isCatchUp({ outcomeAt: nowMs - 13 * 3_600_000 }, "2026-10-27 22:00", now, nowMs)).toBe(true);
+    // no recorded answer time: measured from when the mic check was due
+    expect(isCatchUp({}, "2026-10-27 22:00", now, nowMs)).toBe(false);
+    expect(isCatchUp({}, "2026-10-27 21:59", now, nowMs)).toBe(true);
   });
 });
 
@@ -120,5 +104,34 @@ describe("remembering which poll is which", () => {
     const list = addRatingPolls(first, [ref("p1", RATING_POLL_TTL_MS + 6)], RATING_POLL_TTL_MS + 10);
     expect(list.map((r) => r.id)).toEqual(["p1"]);
     expect(list[0]!.at).toBe(RATING_POLL_TTL_MS + 6);
+  });
+});
+
+describe("the didn't-happen questions", () => {
+  it("model reasons are cleaned (3 to 8, no repeats, Other last); unusable ones fall back", () => {
+    expect(cleanReasonOptions({ reasons: ["Rain", "rain", "No audience", "Other", "Venue shut", " "] })).toEqual(["Rain", "No audience", "Venue shut", "Other"]);
+    expect(cleanReasonOptions(["a b", "c d", "e f"])).toEqual(["a b", "c d", "e f", "Other"]);
+    expect(cleanReasonOptions({ reasons: ["Only one"] })).toBeNull();
+    expect(cleanReasonOptions("nope")).toBeNull();
+    expect(WHY_PRESETS.at(-1)).toBe("Other");
+  });
+  it("votes, notes and typed notes", () => {
+    expect(voteRepeat(["Repeat"])).toBe("repeat");
+    expect(voteRepeat(["Don't repeat"])).toBe("no");
+    expect(voteRepeat(["Not decided"])).toBe("later");
+    expect(voteRepeat([])).toBeNull();
+    expect(composeNoNotes(["No audience", "Weather/rain"], "road flooded")).toBe("Didn't happen: No audience, Weather/rain. road flooded");
+    expect(composeNoNotes([], "")).toBeNull();
+    expect(parseNoNote("note: rain all day")).toBe("rain all day");
+    expect(parseNoNote("because the venue flooded")).toBe("the venue flooded");
+    expect(parseNoNote("Monday lineup?")).toBeNull();
+    expect(parseNoNote("notes are great")).toBeNull();
+  });
+  it("only seeds an empty next week, with who and how long and nothing else", () => {
+    const prev = { slots: [{ comicId: "a", minutes: 5, rating: 3, note: "x" }, { comicId: "b" }] };
+    expect(repeatSlots(prev, undefined)).toEqual([{ comicId: "a", minutes: 5 }, { comicId: "b" }]);
+    expect(repeatSlots(prev, { slots: [] })).toHaveLength(2);
+    expect(repeatSlots(prev, { slots: [{ comicId: "z" }] })).toBeNull();
+    expect(repeatSlots({ slots: [] }, undefined)).toBeNull();
   });
 });

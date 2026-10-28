@@ -294,11 +294,11 @@ export async function recordOutcome(uid: string, lineupId: string, outcome: "hap
   const ref = col(uid, "lineups").doc(lineupId);
   const lineup = (await ref.get()).data() as Lineup | undefined;
   if (!lineup) return;
-  if (outcome === "happened") return void (await ref.update({ outcome }));
+  if (outcome === "happened") return void (await ref.update({ outcome, outcomeAt: Date.now() }));
   const { shows } = watchUser(uid);
   const show = shows.find((s) => s.id === lineup.showId);
   const date = show ? dateInWeek(lineup.weekOf, show.weekday) : lineup.date;
-  await ref.update({ outcome, status: "canned" });
+  await ref.update({ outcome, status: "canned", outcomeAt: Date.now() });
   for (const s of lineup.slots) {
     const cref = col(uid, "comics").doc(s.comicId);
     const c = (await cref.get()).data() as Comic | undefined;

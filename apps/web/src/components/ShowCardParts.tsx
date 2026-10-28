@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { formatDate, lineupActivity, type ActivityRow, type Lineup, type Show, type ShowState, type SpotOffer } from "@spot/shared";
 import { updateDoc } from "firebase/firestore";
 import { Button, Chip, Switch, cx, type Icon } from "@spot/ui";
-import { IconArrowDown, IconCancel, IconCheck, IconChat, IconClock, IconGroup, IconHistory, IconLogout, IconMic, IconSend, IconUserMinus, IconUserPlus, IconWarn } from "@spot/ui";
+import { IconArrowDown, IconCancel, IconCheck, IconChat, IconClock, IconGroup, IconHistory, IconLogout, IconMic, IconRepeat, IconSend, IconUserMinus, IconUserPlus, IconWarn } from "@spot/ui";
 import { useApp } from "../lib/app";
 import { ComicAvatar } from "../lib/photos";
 import { runCommand, timeAgo, userDoc } from "../lib/data";
@@ -28,6 +28,16 @@ export function StatePill({ state, sent }: { state: ShowState; sent?: boolean })
     <Chip tone={p.tone} icon={p.icon} title={sent && !state.over ? `${state.label}. The lineup has been sent` : state.label} className="flex-none">
       {state.label}
       {sent && !state.over && <IconCheck className="icon ml-0.5 size-3.5" aria-hidden />}
+    </Chip>
+  );
+}
+
+/** "Repeat of 27 Oct": this lineup was brought forward from a show that didn't happen. Nothing when it wasn't. */
+export function RepeatOfPill({ lineup, className }: { lineup?: Pick<Lineup, "repeatOf"> | null; className?: string }) {
+  if (!lineup?.repeatOf) return null;
+  return (
+    <Chip tone="neutral" icon={IconRepeat} title={`Seeded from the lineup of ${formatDate(lineup.repeatOf)}`} className={cx("flex-none", className)}>
+      Repeat of {formatDate(lineup.repeatOf)}
     </Chip>
   );
 }

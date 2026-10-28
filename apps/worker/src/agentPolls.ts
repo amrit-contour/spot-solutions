@@ -2,7 +2,7 @@
 // number and goes through the same handlers as a message. A vote counts only while the question it belongs to is still waiting;
 // anything else (answered, replaced, timed out) gets one "That question already closed", then silence. Dependencies are passed in
 // so the tests wire fakes; agent.ts wires the real ones.
-import { MIC_POLL_TTL_MS, logPoll, ratingPollRef, voteAnswer, voteOverall, voteReview, type AskKind, type PollRecord, type SpotReview } from "@spot/shared";
+import { MIC_POLL_TTL_MS, logPoll, ratingPollRef, voteAnswer, voteOverall, voteRepeat, voteReview, type AskKind, type PollRecord, type SpotReview } from "@spot/shared";
 import type { AgentMemory } from "./agentOutbox.ts";
 
 export interface VoteDeps {
@@ -18,6 +18,9 @@ export interface VoteDeps {
   overall?(lineupId: string, rating: number): Promise<boolean>;
   /** A comic's name, for the one-line note when two ratings were ticked. */
   nameOf?(comicId: string): Promise<string>;
+  /** "Didn't happen" polls: the reasons ticked (the whole set), and the repeat-next-week answer (returns what to say). */
+  why?(lineupId: string, reasons: string[]): Promise<boolean>;
+  repeat?(lineupId: string, choice: "repeat" | "no" | "later"): Promise<string | null>;
 }
 
 export const POLL_CLOSED = "That question already closed. Ask me again if you still want it.";
@@ -67,7 +70,15 @@ export async function applyVote(d: VoteDeps, pollId: string, selected: string[])
  * A vote on one of the rating polls (one per comic, plus the show overall). Counts at any time inside the poll's window, and a
  * changed vote replaces the earlier one: the current pick is the truth. Silent (the tap is the feedback). True when something was saved.
  */
-async function applyRatingVote(d: VoteDeps, ref: { lineupId: string; comicId: string | null }, selected: string[]): Promise<boolean> {
+async function applyRatingVote(d: VoteDeps, ref: { lineupId: string; comicId: string | null; kind?: "rate" | "why" | "repeat" }, selected: string[]): Promise<boolean> {
+  if (ref.kind === "why") return d.why ? d.why(ref.lineupId, selected) : false;
+  if (ref.kind === "repeat") {
+    const c = voteRepeat(selected);
+    if (!c || !d.repeat) return false;
+    const said = await d.repeat(ref.lineupId, c);
+    if (said) await d.say(said);
+    return true;
+  }
   if (ref.comicId === null) {
     const v = voteOverall(selected);
     return v && "rating" in v && d.overall ? d.overall(ref.lineupId, v.rating) : false;

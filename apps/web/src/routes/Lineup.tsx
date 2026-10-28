@@ -71,7 +71,7 @@ import { listNames } from "../components/calendar/EventCard";
 import { SendUpdatesSheet } from "../components/SendUpdatesSheet";
 import { ReconcileButton } from "../components/ReconcileSheet";
 import { ResetDialog } from "../components/ResetDialog";
-import { ActivitySection, Chevron, CollapsedSummary, RepeatNextToggle, Reveal, StatePill, useRemembered } from "../components/ShowCardParts";
+import { ActivitySection, Chevron, CollapsedSummary, RepeatNextToggle, RepeatOfPill, Reveal, StatePill, useRemembered } from "../components/ShowCardParts";
 import { Button, Chip, Empty, IconButton, Segmented, Stepper, cx } from "@spot/ui";
 import { IconAdd, IconCalendarMark, IconChatCross, IconCheck, IconClose, IconClock, IconGroup, IconHistory, IconMenuDots, IconPen, IconRepeat, IconSend, IconSofa, IconStar, IconUserCheck, IconUserPlus } from "@spot/ui";
 
@@ -686,6 +686,7 @@ function ShowColumn({ dragKind, shared, lineupsLoaded, pendingLeave, onLeaveHand
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <StatePill state={state} sent={confirmed && !record} />
+              <RepeatOfPill lineup={lineup} />
               <p className="type-label-m text-primary">
                 <span className="sm:hidden">{DAY_SHORT[show.weekday]}</span><span className="hidden sm:inline">{DAY_NAMES[show.weekday]}</span> · {formatDate(dateInWeek(week, show.weekday))} · {formatTime(show.startTime)}
               </p>

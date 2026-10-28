@@ -71,6 +71,7 @@ import { scanHistory } from "./scanHistory.ts";
 import { applyReconcile, reconcileWaiting } from "./reconcile.ts";
 import { chatFor, fetchMedia, getMedia, getThread, listThreads, reactMessage, sendImage, sendMedia, summarizeThread } from "./chats.ts";
 import { clearGroup, keepGroup, readCleanupMembers } from "./groupCleanup.ts";
+import { seedAfterKeep } from "./repeatNext.ts";
 import { addDirect, settleRound } from "./replies.ts";
 import { askForSpot } from "./groupWatch.ts";
 import { sendAsk } from "./asks.ts";
@@ -643,6 +644,7 @@ const handlers: Record<Command["type"], Handler> = {
     }
     if (keep) {
       await keepGroup(uid, String(lineupId));
+      await seedAfterKeep(uid, String(lineupId)); // kept for a show that didn't happen = repeating: next week's lineup comes along
       return void (await answered());
     }
     const show = watchUser(uid).shows.find((s) => s.id === lineup.showId);

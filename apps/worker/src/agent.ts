@@ -8,7 +8,7 @@ import type WAWebJS from "whatsapp-web.js";
 import {
   ACTION_INTENTS, DAY_NAMES, HELP_TEXT, lineupId, offerPayload, pastShowReason, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
   formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, rolloverDayFor, senderIsCurator, showDay,
-  stepPending, strictNo, pollForPending, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, type SpotReview, performed, isRating, type YesterdayShow, digestActionPoll, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
+  stepPending, strictNo, pollForPending, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, parseNoNote, type SpotReview, performed, isRating, type YesterdayShow, digestActionPoll, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
 } from "@spot/shared";
 import { col, userRef } from "./firebase.ts";
 import { agentSessions } from "./agentSession.ts";
@@ -22,6 +22,8 @@ import { adminEmail, membersWaitingText, planMemberChange, runMemberChange } fro
 import { recordOutcome, settleRound } from "./replies.ts";
 import { answerRatings, askRatings, reviewComics, reviewLineup } from "./ratings.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
+import { seedAfterKeep } from "./repeatNext.ts";
+import { answerNoText, answerRepeat, askDidntHappen, askRepeatAgain, setWhy } from "./noShow.ts";
 import { sessions } from "./sessions.ts";
 import { sendQueued } from "./sendQueue.ts";
 import { comicFor, scopeFor } from "./comicAgent.ts";
@@ -84,6 +86,8 @@ const voteDeps = (uid: string) => ({
   // A tap on a rating poll saves straight to the lineup slot / show (any time inside the poll's window; a changed vote replaces the old one).
   review: (lineupId: string, comicId: string, review: SpotReview) => reviewComics(uid, lineupId, { [comicId]: review }),
   overall: (lineupId: string, rating: number) => reviewLineup(uid, lineupId, { rating }),
+  why: (lineupId: string, reasons: string[]) => setWhy(uid, lineupId, reasons),
+  repeat: (lineupId: string, choice: "repeat" | "no" | "later") => answerRepeat(uid, lineupId, choice),
   nameOf: async (comicId: string) => (await loadComics(uid, [comicId])).get(comicId)?.name ?? "them",
   answer: async (kind: string, text: string) => {
     if (kind === "mic") {
@@ -167,6 +171,7 @@ async function curatePending(uid: string, text: string, A: AgentSettings): Promi
     // "no" to "clear the group?" means keep everyone for next week.
     if (mem.pending?.stage === "confirm" && mem.pending.plan.type === "cleanup") {
       await keepGroup(uid, mem.pending.plan.lineupId);
+      await seedAfterKeep(uid, mem.pending.plan.lineupId).catch((e) => console.warn(`[agent] ${uid} seeding next week failed:`, (e as Error).message));
       return void (await say(uid, "Okay, I left the group as it is. Your scheduled group posts go out for next week's show as usual.")), true;
     }
     return void (await say(uid, "Okay, cancelled. Nothing changed.")), true;
@@ -190,12 +195,16 @@ async function curateMic(uid: string, text: string, A: AgentSettings): Promise<b
   // "1 4, 2 5": ratings for the lineup the agent just asked about (only when it is waiting for them).
   const rated = await answerRatings(uid, text);
   if (rated) return void (await say(uid, rated)), true;
+  // "note: rain" / "repeat" after a "didn't happen" question.
+  const noReply = await answerNoText(uid, text, parseNoNote);
+  if (noReply) return void (await say(uid, noReply)), true;
   const yn = micAnswer(text);
   if (yn === null) return false;
   const done = await answerMicCheck(uid, yn);
   if (done) await closeMicPolls({ readMemory: () => readMemory(uid), writeMemory: (p) => writeMemory(uid, p) });
   await say(uid, done ?? "Nothing is waiting on a yes or no right now.");
   // It happened: ask how each comic did, right away (the scheduler also does this for a yes given in the app).
+  if (done && !yn) await askDidntHappen(uid, { immediate: true }).catch((e) => console.warn(`[agent] ${uid} follow-up questions failed:`, (e as Error).message));
   if (done && yn) await askRatings(uid, { immediate: true }).catch((e) => console.warn(`[agent] ${uid} rating question failed:`, (e as Error).message));
   return true;
 }
@@ -549,6 +558,8 @@ async function maybeDigest(uid: string, mem: AgentMemory, settings: Settings) {
     const poll = digestActionPoll(input);
     if (poll) await sendCommandPoll(uid, poll).catch((e) => console.warn(`[agent] ${uid} digest poll failed:`, (e as Error).message));
   }
+  // A show answered "Not decided" on repeating next week is asked once more.
+  await askRepeatAgain(uid, local.date).catch((e) => console.warn(`[agent] ${uid} repeat question failed:`, (e as Error).message));
   await writeMemory(uid, { lastDigestOn: local.date });
 }
 

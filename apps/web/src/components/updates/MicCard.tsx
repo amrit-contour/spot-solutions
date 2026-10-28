@@ -20,7 +20,7 @@ export function MicCard({ lineup: l, show, onHappened }: { lineup: Lineup; show:
         </p>
       </div>
       <div className="mt-3 flex items-center justify-end gap-2 px-3 pb-3">
-        <Button variant="text" className="text-on-secondary-container" onClick={() => void markCanned(uid, l, show, comicsById).then(() => updateDoc(userDoc(uid, "lineups", l.id), { outcome: "canned" }))}>
+        <Button variant="text" className="text-on-secondary-container" onClick={() => void markCanned(uid, l, show, comicsById).then(() => updateDoc(userDoc(uid, "lineups", l.id), { outcome: "canned", outcomeAt: Date.now() }))}>
           No
         </Button>
         <Button icon={IconCheck} onClick={() => (answerMicCheck(uid, l, "happened"), onHappened?.(l, show))} data-primary>

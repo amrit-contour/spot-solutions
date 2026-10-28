@@ -22,6 +22,8 @@ export interface AgentMemory {
   ratingPolls?: RatingPollRef[];
   /** When rating questions last went out about a show (epoch ms): the next show waits a while, so a restart never bursts. */
   lastRatingAskAt?: number | null;
+  /** The show answered "didn't happen" that the agent last asked about, and whether the repeat question is part of it (typed replies go there). */
+  noAsk?: { lineupId: string; at: number; repeat: boolean } | null;
   lastDigestOn?: string | null;
   /** How far the new-request, follow-up and notice scans have got (epoch ms). Moves only after a successful send. */
   cursor?: { requests?: number; actions?: number; notices?: number };

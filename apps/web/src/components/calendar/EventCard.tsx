@@ -31,6 +31,7 @@ import { BackfillSheet } from "../BackfillSheet";
 import { GroupSyncSheet } from "../GroupSyncSheet";
 import { PillRow, comicPills, type TellState } from "../Pills";
 import { LiveChip, liveOf } from "../LiveChip";
+import { RepeatOfPill } from "../ShowCardParts";
 import { Button, Chip, buttonClass, cx } from "@spot/ui";
 import { IconAdd, IconArrowRight, IconCancel, IconCheck, IconClock, IconClose, IconGroup, IconHistory, IconInbox, IconMic, IconRoom, IconPen, IconSend, IconSparkle, type Icon } from "@spot/ui";
 import { laneOf } from "../../lib/lanes";
@@ -160,7 +161,10 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
           </p>
         </div>
         <div className="flex-none">
-          {statusChip}
+          <div className="flex flex-col items-end gap-1">
+            {statusChip}
+            <RepeatOfPill lineup={lineup} />
+          </div>
           {isToday && <span className="sr-only"> Today</span>}
         </div>
       </header>
@@ -223,7 +227,7 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
         <div className="mt-3 rounded-md bg-secondary-container p-3 text-on-secondary-container">
           <p className="type-body-m">Did <span className="type-title-s">{show.name}</span> happen?</p>
           <div className="mt-2 flex items-center justify-end gap-2">
-            <Button size="sm" variant="text" className="text-on-secondary-container" onClick={() => void markCanned(uid, mic, show, comicsById).then(() => updateDoc(userDoc(uid, "lineups", mic.id), { outcome: "canned" })).catch((e: Error) => toast.error(e.message))}>
+            <Button size="sm" variant="text" className="text-on-secondary-container" onClick={() => void markCanned(uid, mic, show, comicsById).then(() => updateDoc(userDoc(uid, "lineups", mic.id), { outcome: "canned", outcomeAt: Date.now() })).catch((e: Error) => toast.error(e.message))}>
               No
             </Button>
             <Button size="sm" icon={IconCheck} onClick={() => answerMicCheck(uid, mic, "happened")}>

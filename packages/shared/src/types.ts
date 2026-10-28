@@ -65,9 +65,8 @@ export interface Settings {
    * rate: after a yes, ask how each comic did (missing: on). */
   /** The curator's own performance tags for the post-show review, added to the built-in set. */
   reviewTags?: string[];
-  /** rateAfterMin: the "how did everyone do" polls go out this many minutes after the mic-check question (missing: 5).
-   * quiet: no catch-up rating asks (shows long past due, e.g. after a restart) between these local times; they wait until `to`. Scheduled asks ignore it. */
-  micCheck: { enabled: boolean; time: string; whatsapp: boolean; afterHours?: number; rate?: boolean; rateAfterMin?: number; quiet?: { from: string; to: string } | null };
+  /** quiet: no catch-up rating asks (shows long past due, e.g. after a restart) between these local times; they wait until `to`. Scheduled asks ignore it. */
+  micCheck: { enabled: boolean; time: string; whatsapp: boolean; afterHours?: number; rate?: boolean; quiet?: { from: string; to: string } | null };
   /** Group where hosts/POCs vote on which shows they can take. */
   hostPoll: { groupId: string | null };
   /** autoAdd: in an offer to several comics, the first yeses fill the slots. Off: yeses come to Updates and you pick. An offer
@@ -496,6 +495,15 @@ export interface Lineup {
   outcome?: "happened" | "canned" | null;
   /** The same lineup runs again next week (set when the show didn't happen and the curator keeps the group, or on the card). Drives "repeats next week" post criteria. */
   repeatNext?: boolean | null;
+  /** This lineup was seeded from the show's lineup on this date ("Repeat of 27 Oct"). */
+  repeatOf?: string | null;
+  /** When the show was marked happened / didn't happen (epoch ms), so a late answer is not mistaken for a backlog. */
+  outcomeAt?: number | null;
+  /** Why it didn't happen: the reasons ticked on the agent's poll, and the curator's own note. Both are also written into review.notes. */
+  noReasons?: string[] | null;
+  noNote?: string | null;
+  /** Date the agent asked what happened and whether to repeat, so it asks once. */
+  noAskedOn?: string | null;
   /** The day-after group cleanup for this show date. */
   cleanup?: LineupCleanup | null;
   /** POCs, regulars, co-hosts and group admins were put on this lineup when it was first opened. Not redone after you remove someone. */

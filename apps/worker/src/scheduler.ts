@@ -17,6 +17,7 @@ import { startGroupWatch } from "./groupWatch.ts";
 import { startShowGroupWatch } from "./showGroupWatch.ts";
 import { maybeTickAsks } from "./asks.ts";
 import { askRatings } from "./ratings.ts";
+import { askDidntHappen } from "./noShow.ts";
 import { maybePhotoSweep } from "./profilePics.ts";
 import { maybeSweepMedia } from "./media.ts";
 
@@ -66,6 +67,8 @@ export function startScheduler(uids: () => Iterable<string>) {
         void runCleanups(uid, client).catch((e) => console.error("[cleanup]", e));
         // After a yes (given in the app or on WhatsApp): ask how each comic did.
         void askRatings(uid).catch((e) => console.error("[ratings]", e));
+        // After a no: what happened, and repeat next week?
+        void askDidntHappen(uid).catch((e) => console.error("[no-show]", e));
       }
       // Fetched pictures and uploads that were never sent expire even while WhatsApp is down.
       if (client || fleet.holds(uid)) void maybeSweepMedia(uid).catch((e) => console.error("[media-sweep]", e.message));

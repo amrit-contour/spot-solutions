@@ -131,7 +131,7 @@ export function dismissNotices(uid: string, list: AppNotice[]) {
 }
 
 export function answerMicCheck(uid: string, l: Lineup, outcome: "happened") {
-  void updateDoc(userDoc(uid, "lineups", l.id), { outcome });
+  void updateDoc(userDoc(uid, "lineups", l.id), { outcome, outcomeAt: Date.now() });
   toast("Saved", { description: "Marked as happened", action: { label: "Undo", onClick: () => void updateDoc(userDoc(uid, "lineups", l.id), { outcome: deleteField() }) } });
 }
 

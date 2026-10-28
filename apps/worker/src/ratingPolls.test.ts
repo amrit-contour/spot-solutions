@@ -39,7 +39,7 @@ vi.mock("./sendQueue.ts", () => ({
 vi.mock("./commands.ts", () => ({ loadComics: async (u: string, ids: string[]) => new Map(ids.map((id) => [id, store.get(`${u}/comics/${id}`)]).filter(([, v]) => v) as [string, unknown][]) }));
 vi.mock("./userData.ts", () => ({
   settingsFromDoc: (d: unknown) => d,
-  watchUser: () => ({ settings: { timezone: "Asia/Kolkata", micCheck: { enabled: true, rate: true, afterHours: 2, rateAfterMin: 5 } }, shows: [{ id: "mon", name: "Open Mic - Monday", startTime: "20:00" }, { id: "tue", name: "Open Mic - Tuesday", startTime: "20:00" }], venues: [] }),
+  watchUser: () => ({ settings: { timezone: "Asia/Kolkata", micCheck: { enabled: true, rate: true, afterHours: 2 } }, shows: [{ id: "mon", name: "Open Mic - Monday", startTime: "20:00" }, { id: "tue", name: "Open Mic - Tuesday", startTime: "20:00" }], venues: [] }),
 }));
 
 const { askRatings } = await import("./ratings.ts");
@@ -68,16 +68,15 @@ beforeEach(() => {
 
 describe("when rating questions go out", () => {
   const asked = (id: string) => (store.get(`${U}/lineups/${id}`) as { ratingAskedOn?: string }).ratingAskedOn;
-  it("start + 2h + 5 min: not a minute before, and then it asks", async () => {
-    lineup("t1", "tue", "2026-10-27");
-    at("2026-10-27T22:04:00+05:30");
+  it("a yes sends the header and polls right away (no waiting for a due time), at any hour", async () => {
+    lineup("t1", "tue", "2026-10-27", { outcomeAt: Date.now() });
+    at("2026-10-28T00:35:00+05:30");
+    store.set(`${U}/lineups/t1`, { ...(store.get(`${U}/lineups/t1`) as object), outcomeAt: Date.now() });
     await askRatings(U);
-    expect(out).toHaveLength(0);
-    at("2026-10-27T22:05:00+05:30");
-    await askRatings(U);
+    expect(out[0]!.kind).toBe("text");
     expect(polls().length).toBeGreaterThan(0);
   });
-  it("a scheduled ask goes even at night (shows end late), quiet hours or not", async () => {
+  it("a yes in the small hours is not held back by quiet hours", async () => {
     lineup("t1", "tue", "2026-10-27");
     at("2026-10-28T00:35:00+05:30");
     await askRatings(U);
