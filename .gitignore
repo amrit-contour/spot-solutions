@@ -13,3 +13,7 @@ service-account*.json
 deploy/mac/dist/
 apps/worker/live-stats.json
 deploy/legacy-dl/
+
+# local build artifacts
+*.tsbuildinfo
+live-stats.json
