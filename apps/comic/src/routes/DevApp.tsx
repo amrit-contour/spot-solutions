@@ -12,6 +12,7 @@ import { Asks } from "./Asks";
 import { MySpots } from "./MySpots";
 import { Rooms } from "./Rooms";
 import { Today } from "./Today";
+import { DevPickers } from "./DevPickers";
 
 function Demo({ initial }: { initial: Roster }) {
   const seed = useMemo(() => demoAsksAndSpots(initial), [initial]);
@@ -25,6 +26,7 @@ function Demo({ initial }: { initial: Roster }) {
           <Route path="/dev/rooms/*" element={<Rooms base="/dev/rooms" />} />
           <Route path="/dev/asks" element={<Asks />} />
           <Route path="/dev/spots" element={<MySpots />} />
+          <Route path="/dev/pickers" element={<DevPickers />} />
         </Routes>
       </AsksProvider>
     </RosterProvider>

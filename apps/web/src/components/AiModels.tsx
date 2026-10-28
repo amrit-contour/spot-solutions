@@ -7,7 +7,7 @@ import { useApp } from "../lib/app";
 import { db } from "@spot/ui/firebase";
 import { runCommand, timeAgo, useDocument, userDoc } from "../lib/data";
 import { serverName, useAllServers, useLease } from "../lib/fleet";
-import { Button, Chip, IconButton, Info, Segmented, Select, Spinner, Switch, TextInput, cx } from "@spot/ui";
+import { Button, Chip, IconButton, Info, SearchSelect, Segmented, Spinner, Switch, TextInput, cx } from "@spot/ui";
 import { IconCheck, IconCpu, IconRefresh, IconShield, IconSparkle, IconTrash, IconWarn } from "@spot/ui";
 
 interface UserAiDoc {
@@ -319,7 +319,9 @@ function RouteCard({ title, host, info, route, lists, onChange, onKeep, kept, to
         />
         <div className="flex gap-2">
           <div className="min-w-0 flex-1">
-            <Select
+            <SearchSelect
+              label="Model"
+              searchPlaceholder="Search models"
               value={valid ? route!.model : ""}
               onChange={(m) => route && onChange({ ...route, model: m })}
               placeholder={list.models.length ? "Choose a model" : "No models fetched"}
@@ -406,7 +408,7 @@ function OllamaPanel({ ollama, loading, onRefresh, onPulled, online }: { ollama:
       </div>
       <div className="mt-3 flex gap-2">
         <div className="min-w-0 flex-1">
-          <Select value={name} onChange={setName} placeholder={choices.length ? "Add a model…" : "All suggested models installed"} options={choices.map((m) => ({ value: m.name, label: `${m.name} · ${m.note}` }))} className="font-mono text-sm" />
+          <SearchSelect label="Add a model" searchPlaceholder="Search models" value={name} onChange={setName} placeholder={choices.length ? "Add a model…" : "All suggested models installed"} options={choices.map((m) => ({ value: m.name, label: `${m.name} · ${m.note}` }))} className="font-mono text-sm" />
         </div>
         <Button variant="tonal" className="h-12 flex-none" onClick={pull} loading={pulling} disabled={!online || !name}>
           Download

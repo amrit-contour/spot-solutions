@@ -12,7 +12,7 @@ import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
 import { GroupAvatar } from "../lib/photos";
 import { PageHeader } from "@spot/ui";
 import { ShowPeoplePicker } from "../components/ShowPeoplePicker";
-import { Button, Chip, Empty, Field, IconButton, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
+import { Button, Chip, Empty, Field, IconButton, SearchSelect, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
 import { IconAdd, IconRoom, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "@spot/ui";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
@@ -206,7 +206,6 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
     else cur.add(rep);
     set(k, [...cur]);
   };
-
   // Who is in the show's WhatsApp group: the cached members read from the group, plus anyone just pulled with "Get members from group".
   const groupMembers = useMemo<GroupMember[] | null>(() => {
     const cache = draft.groupId && value?.groupMembers?.groupId === draft.groupId ? value.groupMembers.members : [];
@@ -215,6 +214,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
     return [...cache, ...(memberIds ?? []).filter((id) => !have.has(id)).map((id) => ({ id, name: "", isAdmin: false }))];
   }, [draft.groupId, value?.groupMembers, memberIds]);
   const roles = useMemo(() => ({ pocs: draft.pocs, regulars: draft.regulars, cohosts: draft.protected }), [draft.pocs, draft.regulars, draft.protected]);
+
   return (
     <Sheet
       open={Boolean(value)}
@@ -234,7 +234,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
           <TextInput value={draft.name ?? ""} onChange={(e) => set("name", e.target.value)} placeholder="Monday Mic" autoFocus />
         </Field>
         <Field label="Venue">
-          <Select value={draft.venueId ?? ""} onChange={(v) => set("venueId", v)} options={venues.map((v) => ({ value: v.id, label: v.name }))} />
+          <SearchSelect label="Venue" value={draft.venueId ?? ""} onChange={(v) => set("venueId", v)} placeholder="Choose a venue" searchPlaceholder="Search venues" options={venues.map((v) => ({ value: v.id, label: v.name }))} />
         </Field>
         <div className="flex items-center gap-3" role="group" aria-label="Day">
           <span className="flex-none type-label-l text-on-surface-variant">Day</span>
@@ -289,7 +289,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
           <div className="flex items-center gap-3">
             {draft.groupId && <GroupAvatar groupId={draft.groupId} name={group?.name ?? "Group"} size={40} />}
             <div className="min-w-0 flex-1">
-              <Select value={draft.groupId ?? ""} onChange={(v) => set("groupId", v || null)} placeholder="No group" options={groups.data.map((g) => ({ value: g.id, label: `${g.name} · ${g.participants}` }))} />
+              <SearchSelect label="Show group" value={draft.groupId ?? ""} onChange={(v) => set("groupId", v || null)} noneLabel="No group" searchPlaceholder="Search your groups" options={groups.data.map((g) => ({ value: g.id, label: g.name, hint: `${g.participants} members` }))} renderOption={(o) => (o.value ? <GroupAvatar groupId={o.value} name={o.label} size={32} /> : null)} />
             </div>
           </div>
           {group && !group.isAdmin && (

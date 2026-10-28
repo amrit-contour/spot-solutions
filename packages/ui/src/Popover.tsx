@@ -10,7 +10,7 @@ const GAP = 6;
 const MARGIN = 12;
 const PHONE = "(max-width: 639px)";
 
-function usePhone() {
+export function usePhone() {
   const [phone, setPhone] = useState(() => (typeof window === "undefined" ? false : window.matchMedia(PHONE).matches));
   useEffect(() => {
     const m = window.matchMedia(PHONE);
@@ -51,14 +51,19 @@ export function Popover({ trigger, title, children, width = 340, controlledOpen,
       const top = up ? a.top - GAP - hh : a.bottom + GAP;
       // Right edges line up by default; when that would run off the left, line the left edges up instead.
       const left = Math.min(Math.max(MARGIN, a.right - w < MARGIN ? a.left : a.right - w), vw - MARGIN - w);
-      setPos({ top, left, maxH, origin: `${up ? "bottom" : "top"} right` });
+      const next = { top: Math.round(top), left: Math.round(left), maxH, origin: `${up ? "bottom" : "top"} right` };
+      setPos((prev) => (prev && prev.top === next.top && prev.left === next.left && prev.maxH === next.maxH && prev.origin === next.origin ? prev : next));
+    };
+    // Not for scrolls inside the panel itself: re-measuring and re-rendering on every frame of its own list scroll made it flicker.
+    const onScroll = (e: Event) => {
+      if (!(e.target instanceof Node && panel.current?.contains(e.target))) place();
     };
     place();
     window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open, phone]);
 
@@ -93,7 +98,7 @@ export function Popover({ trigger, title, children, width = 340, controlledOpen,
         <h3 className="min-w-0 flex-1 truncate type-title-s">{title}</h3>
         <IconButton icon={IconClose} label="Close" onClick={close} className="size-9" />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">{children(close)}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] px-4 pb-4">{children(close)}</div>
     </>
   );
 

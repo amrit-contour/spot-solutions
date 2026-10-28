@@ -38,6 +38,7 @@ import { runCommand } from "../lib/data";
 import { useCollection } from "../lib/data";
 import { useInstall } from "../lib/install";
 import { PageHeader } from "@spot/ui";
+import { GroupAvatar } from "../lib/photos";
 import { StickyBar } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
 import { AgentCard } from "../components/AgentCard";
@@ -53,7 +54,7 @@ import { ShowWatchCard } from "../components/ShowWatchCard";
 import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "@spot/ui";
 import { useMessageImage } from "../components/ImageAttach";
-import { AppVersionRow, Bubble, Button, Collapsible, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
+import { AppVersionRow, Bubble, Button, Collapsible, Field, Info, SearchSelect, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose, IconWarn, IconRefresh, IconArrowRight } from "@spot/ui";
 
 const TABS = [
@@ -476,7 +477,7 @@ function AfterShowSection() {
     <Section title="Around the show" icon={IconMic} description="Hosts' availability, last-minute spot offers, and checking the mic actually happened.">
       <div className="flex flex-col gap-4">
         <Field label="Hosts group" info="“Ask hosts” on the Lineup page sends this group a poll of the week's shows. Votes show up on each show as “Hosts free”.">
-          <Select value={settings.hostPoll.groupId ?? ""} onChange={(v) => saveSettings({ hostPoll: { groupId: v || null } })} placeholder="None" options={groups.data.map((g) => ({ value: g.id, label: g.name }))} />
+          <SearchSelect label="Hosts group" value={settings.hostPoll.groupId ?? ""} onChange={(v) => saveSettings({ hostPoll: { groupId: v || null } })} noneLabel="None" searchPlaceholder="Search your groups" options={groups.data.map((g) => ({ value: g.id, label: g.name, hint: `${g.participants} members` }))} renderOption={(o) => (o.value ? <GroupAvatar groupId={o.value} name={o.label} size={32} /> : null)} />
         </Field>
         <div className="grid gap-x-8 gap-y-2 rounded-lg bg-surface-container px-4 py-2 md:grid-cols-2">
           <SettingRow label="Spot offers expire after" info="Offer a spot from a show's menu on the Lineup page. No reply in time and the offer lapses.">

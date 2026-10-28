@@ -10,7 +10,7 @@ import { Menu, MenuItem } from "@spot/ui";
 import { ConfirmDialog } from "@spot/ui";
 import { Popover, ToolButton } from "@spot/ui";
 import { Pill, PillRow, type PillSpec } from "./Pills";
-import { Avatar, Button, IconButton, Select, Spinner, TextInput, cx } from "@spot/ui";
+import { Avatar, Button, IconButton, SearchSelect, Spinner, TextInput, cx } from "@spot/ui";
 import { IconAdd, IconCrown, IconUserCheck, IconGroup, IconMenuDots, IconMic, IconRefresh, IconSearch, IconShield, IconStar, IconUserMinus } from "@spot/ui";
 import { ComicAvatar } from "../lib/photos";
 
@@ -265,7 +265,7 @@ export function GroupTab({ shows, idsOf, lineupOf, dragging, openShows, onAddTol
   return (
     <div className="flex flex-col gap-2">
       {shows.length > 1 && (
-        <Select label="Group" value={show.id} onChange={setPick} options={shows.map((s) => ({ value: s.id, label: s.name }))} />
+        <SearchSelect label="Group" value={show.id} onChange={setPick} searchPlaceholder="Search shows" options={shows.map((s) => ({ value: s.id, label: s.name }))} />
       )}
       <GroupTabBody key={show.id} show={show} ids={idsOf(show.id)} lineup={lineupOf(show.id)} dragging={dragging} openShows={openShows} onAddTold={onAddTold} />
     </div>

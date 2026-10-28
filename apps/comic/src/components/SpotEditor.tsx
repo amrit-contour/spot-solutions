@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DAY_NAMES, SPOT_SOURCE_LABEL, formatTime, materializeRegular, mergeRegulars, regularFromSpot, regularLabel, regularWindow, spotClashes, validateSpot, type MySpot, type RegularSpot, type SpotNotes } from "@spot/shared";
-import { Button, ConfirmDialog, Field, IconRepeat, IconStar, IconTrash, Segmented, Select, Sheet, TextArea, TextInput, TimePicker } from "@spot/ui";
+import { Button, ConfirmDialog, Field, IconRepeat, IconStar, IconTrash, Segmented, Sheet, TextArea, TextInput, SearchSelect, TimePicker } from "@spot/ui";
 import { ToggleRow } from "./ui";
 import { useAsks } from "../lib/asks";
 import { useRoster } from "../lib/roster";
@@ -108,7 +108,9 @@ export function SpotEditor({ value, onClose, today }: { value: MySpot | null; on
         </div>
 
         <Field label="Room">
-          <Select
+          <SearchSelect
+            label="Room"
+            searchPlaceholder="Search rooms"
             value={roomValue}
             placeholder="Pick a room"
             onChange={(v) => {

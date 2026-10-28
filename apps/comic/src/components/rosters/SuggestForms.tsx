@@ -5,7 +5,7 @@ import {
   suggestRoomField, suggestShowField, type AskRule, type CuratorShared, type DayProposal, type RoomShared, type RoomField, type ShowField, type ShowShared, type SharedRoster,
   type SuggestionDraft, type Weekday,
 } from "@spot/shared";
-import { Button, Chip, Field, IconPlus, IconButton, IconClose, Segmented, Select, TextInput, TimePicker } from "@spot/ui";
+import { Button, Chip, Field, IconPlus, IconButton, IconClose, SearchSelect, Segmented, Select, TextInput, TimePicker } from "@spot/ui";
 import { Card, ToggleRow } from "../ui";
 import { AskRuleEditor } from "../AskRuleEditor";
 import { LimitsEditor } from "../LimitsEditor";
@@ -229,7 +229,7 @@ export function CuratorFieldForm({ roster, room, onDraft }: { roster: SharedRost
   const read = (c: CuratorShared | undefined, f: "phone" | "instagram") => c?.[f] ?? "";
   return (
     <div className="flex min-w-0 flex-col gap-5">
-      <Select label="Which curator" value={cid} onChange={(id) => { setCid(id); setValue(read(used.find((c) => c.id === id), field)); }} options={used.map((c) => ({ value: c.id, label: c.name }))} />
+      <SearchSelect label="Which curator" searchPlaceholder="Search curators" value={cid} onChange={(id) => { setCid(id); setValue(read(used.find((c) => c.id === id), field)); }} options={used.map((c) => ({ value: c.id, label: c.name }))} />
       <Segmented full value={field} onChange={(f) => { setField(f); setValue(read(cur, f)); }} options={[{ value: "phone", label: "Number" }, { value: "instagram", label: "Instagram" }]} />
       <Field label={field === "phone" ? "New number" : "New handle"} hint={field === "instagram" ? "Without the @." : undefined}>
         <TextInput value={value} onChange={(e) => setValue(field === "instagram" ? e.target.value.replace(/^@/, "") : e.target.value)} inputMode={field === "phone" ? "tel" : "text"} autoCapitalize="none" autoComplete="off" />

@@ -5,7 +5,7 @@ import { DAY_NAMES, dateInWeek, formatDate, localNow, weekOfDate, type Comic, ty
 import { useApp } from "../lib/app";
 import { backfillAdd } from "../lib/backfill";
 import { PAST_SHOW_NOTE } from "./BackfillSheet";
-import { Button, Segmented, Select, Sheet } from "@spot/ui";
+import { Button, SearchSelect, Segmented, Select, Sheet } from "@spot/ui";
 import { IconHistory } from "@spot/ui";
 
 export function PastSpotSheet({ open, onClose, comic }: { open: boolean; onClose: () => void; comic: Comic }) {
@@ -56,7 +56,7 @@ export function PastSpotSheet({ open, onClose, comic }: { open: boolean; onClose
         <div className="mt-5 flex flex-col gap-5">
           <label className="flex flex-col gap-1.5">
             <span className="type-label-l text-on-surface-variant">Show</span>
-            <Select label="Show" value={show.id} onChange={setShowId} options={list.map((s) => ({ value: s.id, label: `${s.name} · ${DAY_NAMES[s.weekday]}` }))} />
+            <SearchSelect label="Show" value={show.id} onChange={setShowId} searchPlaceholder="Search shows" options={list.map((s) => ({ value: s.id, label: `${s.name} · ${DAY_NAMES[s.weekday]}` }))} />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="type-label-l text-on-surface-variant">Date</span>

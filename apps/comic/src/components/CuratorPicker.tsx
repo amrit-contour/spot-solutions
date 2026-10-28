@@ -1,21 +1,24 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Button, IconPlus, IconSearch, TextInput } from "@spot/ui";
+import { Button, IconPlus, SearchSelect } from "@spot/ui";
 import type { Curator } from "@spot/shared";
 import { auth } from "@spot/ui/firebase";
 import { CuratorAvatar } from "../lib/photos";
 import { useRoster } from "../lib/roster";
 import { CuratorForm } from "./CuratorForm";
 
-/** Pick a curator from the list, or add a new one right here. Inline (no popup), so it works inside a full-screen editor. */
+/** Pick a curator (type to search) or add a new one right here. Opens straight away; closing it without a choice calls onClose. */
 export function CuratorPicker({ exclude, onPick, onClose }: { exclude: string[]; onPick: (id: string) => void; onClose: () => void }) {
   const store = useRoster();
-  const [q, setQ] = useState("");
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
-  const list = store.curators
-    .filter((c) => !exclude.includes(c.id) && c.name.toLowerCase().includes(q.trim().toLowerCase()))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Closing the list to open the "new curator" form is not a cancel.
+  const switching = useRef(false);
+  const options = store.curators
+    .filter((c) => !exclude.includes(c.id))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c) => ({ value: c.id, label: c.name, hint: c.instagram ? `@${c.instagram}` : undefined, keywords: `${c.phone ?? ""} ${c.instagram ?? ""}` }));
+  const byId = new Map(store.curators.map((c) => [c.id, c]));
 
   const create = async (c: Curator) => {
     setSaving(true);
@@ -33,32 +36,45 @@ export function CuratorPicker({ exclude, onPick, onClose }: { exclude: string[];
   if (adding) {
     return (
       <div className="rounded-md bg-surface-container p-3">
-        <CuratorForm existingIds={store.curators.map((c) => c.id)} onSave={(c) => void create(c)} onCancel={() => setAdding(false)} saving={saving} />
+        <CuratorForm existingIds={store.curators.map((c) => c.id)} onSave={(c) => void create(c)} onCancel={() => { switching.current = false; setAdding(false); }} saving={saving} />
       </div>
     );
   }
   return (
-    <div className="flex min-w-0 flex-col gap-2 rounded-md bg-surface-container p-3">
-      <div className="relative">
-        <IconSearch aria-hidden className="icon pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-on-surface-variant" />
-        <TextInput value={q} onChange={(e) => setQ(e.target.value)} className="pl-11" placeholder="Search curators" type="search" autoFocus />
-      </div>
-      <ul className="max-h-52 overflow-y-auto overscroll-contain">
-        {list.map((c) => (
-          <li key={c.id}>
-            <button onClick={() => { onPick(c.id); onClose(); }} className="state-layer flex min-h-12 w-full min-w-0 items-center gap-2 rounded-sm px-3 text-left type-body-l">
-              <CuratorAvatar uid={auth.currentUser?.uid} curator={c} size={32} />
-              <span className="min-w-0 flex-1 truncate">{c.name}</span>
-              {c.instagram && <span className="max-w-[40%] truncate type-label-m text-on-surface-variant">@{c.instagram}</span>}
-            </button>
-          </li>
-        ))}
-        {list.length === 0 && <li className="px-3 py-3 type-body-m text-on-surface-variant">{store.curators.length ? "No one by that name." : "No curators yet."}</li>}
-      </ul>
-      <div className="flex justify-between gap-2">
-        <Button variant="text" onClick={onClose}>Cancel</Button>
-        <Button variant="tonal" icon={IconPlus} onClick={() => setAdding(true)}>New curator</Button>
-      </div>
-    </div>
+    <SearchSelect
+      defaultOpen
+      label="Curator"
+      value=""
+      placeholder="Search curators"
+      searchPlaceholder="Search curators"
+      emptyText={store.curators.length ? "No one by that name." : "No curators yet."}
+      options={options}
+      onChange={(id) => {
+        switching.current = true;
+        onPick(id);
+        onClose();
+      }}
+      onOpenChange={(o) => {
+        if (!o && !switching.current) onClose();
+      }}
+      renderOption={(o) => {
+        const c = byId.get(o.value);
+        return c ? <CuratorAvatar uid={auth.currentUser?.uid} curator={c} size={32} /> : null;
+      }}
+      footer={(close) => (
+        <Button
+          variant="tonal"
+          icon={IconPlus}
+          className="w-full"
+          onClick={() => {
+            switching.current = true;
+            setAdding(true);
+            close();
+          }}
+        >
+          New curator
+        </Button>
+      )}
+    />
   );
 }

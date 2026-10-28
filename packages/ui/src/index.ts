@@ -5,6 +5,7 @@ export * from "./ui";
 export type { SelectOption } from "./Pickers";
 export * from "./icons";
 export * from "./Popover";
+export * from "./SearchSelect";
 export * from "./Menu";
 export * from "./Collapsible";
 export * from "./RoomIcon";

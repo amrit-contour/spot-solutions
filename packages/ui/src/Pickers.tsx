@@ -12,9 +12,29 @@ const MARGIN = 12;
 const TRIGGER =
   "state-layer flex h-12 w-full items-center gap-2 rounded-sm border border-outline bg-transparent pr-2.5 pl-4 text-left type-body-l text-on-surface outline-none transition-[border-color,box-shadow] duration-150 focus-visible:border-primary focus-visible:shadow-[inset_0_0_0_1px_var(--md-sys-color-primary)] aria-expanded:border-primary aria-expanded:shadow-[inset_0_0_0_1px_var(--md-sys-color-primary)] disabled:opacity-40";
 
-/** Anchored, portalled popover: flips above when short on space, clamps to the viewport, closes on outside press. */
-function usePopover(open: boolean, close: () => void, anchor: RefObject<HTMLElement | null>, panel: RefObject<HTMLDivElement | null>, matchWidth: boolean) {
-  const [pos, setPos] = useState<{ top: number; left: number; width?: number; maxHeight: number; origin: string } | null>(null);
+export interface PopoverPos {
+  top: number;
+  left: number;
+  width?: number;
+  maxHeight: number;
+  /** The height the panel settled at when it opened, for panels that keep it fixed while their content filters. */
+  height: number;
+  origin: string;
+}
+
+/** A scroll that happened inside the open panel (its own list) says nothing about where the anchor is. */
+export function scrollIsInside(e: Event, panel: RefObject<HTMLElement | null>) {
+  return e.target instanceof Node && !!panel.current?.contains(e.target);
+}
+
+/**
+ * Anchored, portalled popover: flips above when short on space, clamps to the viewport, closes on outside press.
+ * Re-placing listens to the CAPTURE phase of every scroll on the page, which includes the panel's own list scrolling. It used to
+ * re-measure (forced layout) and setPos with a fresh object on every one of those events, so each frame of a touch scroll
+ * re-rendered the panel and the list jittered. Scrolls inside the panel are ignored now and an unchanged position keeps the old state.
+ */
+export function usePopover(open: boolean, close: () => void, anchor: RefObject<HTMLElement | null>, panel: RefObject<HTMLDivElement | null>, matchWidth: boolean) {
+  const [pos, setPos] = useState<PopoverPos | null>(null);
 
   useLayoutEffect(() => {
     if (!open) return setPos(null);
@@ -33,14 +53,18 @@ function usePopover(open: boolean, close: () => void, anchor: RefObject<HTMLElem
       const h = Math.min(natural, maxHeight);
       const top = Math.max(MARGIN, Math.min(up ? a.top - GAP - h : a.bottom + GAP, vh - MARGIN - h));
       const left = Math.min(Math.max(MARGIN, a.left), vw - MARGIN - w);
-      setPos({ top, left, width: matchWidth ? a.width : undefined, maxHeight, origin: `${up ? "bottom" : "top"} left` });
+      const next: PopoverPos = { top: Math.round(top), left: Math.round(left), width: matchWidth ? Math.round(a.width) : undefined, maxHeight, height: Math.round(h), origin: `${up ? "bottom" : "top"} left` };
+      setPos((prev) => (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width && prev.maxHeight === next.maxHeight && prev.origin === next.origin ? prev : next));
+    };
+    const onScroll = (e: Event) => {
+      if (!scrollIsInside(e, panel)) place();
     };
     place();
     window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open, anchor, panel, matchWidth]);
 
@@ -67,7 +91,7 @@ function Panel({ open, pos, panel, children, className, ...aria }: { open: boole
           animate={{ opacity: 1, transform: "scale(1)", transition: { duration: 0.14, ease: [0.23, 1, 0.32, 1] } }}
           exit={{ opacity: 0, transition: { duration: 0.1 } }}
           style={{ position: "fixed", visibility: pos ? "visible" : "hidden", top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: pos?.width, maxHeight: pos?.maxHeight, transformOrigin: pos?.origin }}
-          className={cx("z-[70] max-w-[calc(100vw-24px)] overflow-y-auto overscroll-contain rounded-md bg-surface-container shadow-xl ring-1 ring-outline-variant/40", className)}
+          className={cx("z-[70] max-w-[calc(100vw-24px)] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] rounded-md bg-surface-container shadow-xl ring-1 ring-outline-variant/40", className)}
           {...(aria as object)}
         >
           {children}
@@ -116,15 +140,36 @@ export function Select({ value, onChange, options, className, wrapperClassName, 
     trigger.current?.focus();
   };
 
+  // Keep the highlighted row in view for the KEYBOARD only, by moving the panel's own scrollTop. scrollIntoView also scrolls every
+  // ancestor (the shell, a Sheet) and, run on each hover/touch "pointerenter" and every re-position, it fought the finger mid-scroll.
+  const byKeys = useRef(false);
   useEffect(() => {
-    if (open) panel.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [open, active, pos]);
+    const pn = panel.current;
+    if (!open || !pn || !byKeys.current) return;
+    byKeys.current = false;
+    const el = pn.querySelector<HTMLElement>(`[data-i="${active}"]`);
+    if (!el) return;
+    if (el.offsetTop < pn.scrollTop) pn.scrollTop = el.offsetTop;
+    else if (el.offsetTop + el.offsetHeight > pn.scrollTop + pn.clientHeight) pn.scrollTop = el.offsetTop + el.offsetHeight - pn.clientHeight;
+  }, [open, active]);
+  // Open on the selected row, before paint, so the list never visibly jumps.
+  useLayoutEffect(() => {
+    const pn = panel.current;
+    if (!open || !pn || !pos) return;
+    const el = pn.querySelector<HTMLElement>(`[data-i="${selectedIndex}"]`);
+    if (el && pn.dataset.placed !== "1") {
+      pn.scrollTop = Math.max(0, el.offsetTop - pn.clientHeight / 2 + el.offsetHeight / 2);
+      pn.dataset.placed = "1";
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pos !== null]);
 
   const onKeyDown = (e: KeyboardEvent) => {
     const n = all.length;
     if (!n) return;
     const move = (i: number) => {
       e.preventDefault();
+      byKeys.current = true;
       if (!open) {
         setActive(Math.min(n - 1, Math.max(0, i)));
         return setOpen(true);
@@ -194,7 +239,7 @@ export function Select({ value, onChange, options, className, wrapperClassName, 
               role="option"
               aria-selected={on}
               data-i={i}
-              onPointerEnter={() => setActive(i)}
+              onPointerMove={(e) => e.pointerType === "mouse" && i !== active && setActive(i)}
               onClick={() => choose(i)}
               className={cx("relative flex min-h-12 cursor-pointer items-center gap-3 px-4 py-2.5 type-body-l select-none", on && "bg-secondary-container/60 text-on-secondary-container", i === active && "after:absolute after:inset-0 after:bg-current after:opacity-[0.08]", o.value === "" && placeholder && "text-on-surface-variant")}
             >

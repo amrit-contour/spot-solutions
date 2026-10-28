@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { DAY_NAMES, NTH_LABEL, nthWeekdayOf, regularLabel, spotDateLabel, validateRegular, weekdayOf, type RegularCadence, type RegularSpot, type Weekday } from "@spot/shared";
-import { Button, ConfirmDialog, Field, Segmented, Select, Sheet, TextArea, TextInput, TimePicker, IconTrash } from "@spot/ui";
+import { Button, ConfirmDialog, Field, Segmented, Select, Sheet, TextArea, TextInput, SearchSelect, TimePicker, IconTrash } from "@spot/ui";
 import { Card, Notice, SectionHeader, ToggleRow } from "../ui";
 import { useAsks } from "../../lib/asks";
 import { useRoster } from "../../lib/roster";
@@ -101,7 +101,9 @@ export function RegularEditor({ value, onClose, today }: { value: RegularSpot | 
         </Card>
 
         <Field label="Room">
-          <Select
+          <SearchSelect
+            label="Room"
+            searchPlaceholder="Search rooms"
             value={roomValue}
             placeholder="Pick a room"
             onChange={(v) => {

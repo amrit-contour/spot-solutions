@@ -193,17 +193,42 @@
 .indeterminate { animation: indeterminate 1.4s var(--ease-emphasized) infinite; }
 @media (prefers-reduced-motion: reduce) { .indeterminate { animation: none; transform: none; } }
 
-/* Date and time inputs: iOS Safari gives them an intrinsic width that ignores w-full inside flex/grid, which made sheets scroll sideways. */
-input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"] {
-  display: block;
-  min-width: 0;
-  max-width: 100%;
-  -webkit-appearance: none;
-  appearance: none;
-}
-input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value {
-  min-width: 0;
-  text-align: start;
+/* Date, time and datetime-local inputs. Two iOS Safari quirks, fixed once here for every app:
+   1. an intrinsic width that ignores w-full inside flex/grid (sheets scrolled sideways), hence min-width:0 / max-width:100%;
+   2. the native value lives in a block (::-webkit-date-and-time-value) that sits at the TOP of the box with its own min-height,
+      margin and line-height, so in a fixed-height field (h-12) the text hugged the top edge instead of the middle. The input is a
+      flex row that centres its value, the value block has no margin/padding and the field's own line-height, and an empty value
+      keeps the same line box. Heights, side padding and borders still come from the field's utilities (this is in @layer base). */
+@layer base {
+  input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"] {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+    padding-block: 0;
+    line-height: 1.5rem;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value, input[type="datetime-local"]::-webkit-date-and-time-value, input[type="month"]::-webkit-date-and-time-value {
+    min-width: 0;
+    min-height: 1.5rem;
+    margin: 0;
+    padding: 0;
+    line-height: 1.5rem;
+    text-align: start;
+  }
+  input[type="date"]::-webkit-datetime-edit, input[type="time"]::-webkit-datetime-edit, input[type="datetime-local"]::-webkit-datetime-edit, input[type="month"]::-webkit-datetime-edit {
+    padding: 0;
+    line-height: 1.5rem;
+    flex: 1 1 auto;
+  }
+  /* Where there is a calendar / clock glyph (desktop), keep it on the same centre line as the value. */
+  input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator, input[type="datetime-local"]::-webkit-calendar-picker-indicator, input[type="month"]::-webkit-calendar-picker-indicator {
+    margin: 0 0 0 auto;
+    padding: 0;
+    align-self: center;
+  }
 }
 
 /* ---- iOS text editing (caret drag / selection) ------------------------------------------------------------------------------

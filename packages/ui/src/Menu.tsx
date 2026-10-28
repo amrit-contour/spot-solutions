@@ -31,14 +31,19 @@ export function Menu({ trigger, children, align = "left" }: { trigger: (open: ()
       const top = up ? Math.max(MARGIN, a.top - GAP - h) : Math.min(a.bottom + GAP, vh - MARGIN - h);
       let left = align === "right" ? a.right - w : a.left;
       left = Math.min(Math.max(MARGIN, left), vw - MARGIN - w);
-      setPos({ top, left, origin: `${up ? "bottom" : "top"} ${align === "right" ? "right" : "left"}` });
+      const next = { top: Math.round(top), left: Math.round(left), origin: `${up ? "bottom" : "top"} ${align === "right" ? "right" : "left"}` };
+      setPos((prev) => (prev && prev.top === next.top && prev.left === next.left && prev.origin === next.origin ? prev : next));
+    };
+    // Not for scrolls inside the panel itself: re-measuring and re-rendering on every frame of its own list scroll made it flicker.
+    const onScroll = (e: Event) => {
+      if (!(e.target instanceof Node && panel.current?.contains(e.target))) place();
     };
     place();
     window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open, align]);
 
@@ -70,7 +75,7 @@ export function Menu({ trigger, children, align = "left" }: { trigger: (open: ()
               animate={{ opacity: pos ? 1 : 0, transform: "scale(1)", transition: { duration: 0.16, ease: [0.23, 1, 0.32, 1] } }}
               exit={{ opacity: 0, transition: { duration: 0.1 } }}
               style={{ position: "fixed", top: pos?.top ?? -9999, left: pos?.left ?? -9999, transformOrigin: pos?.origin }}
-              className={cx("z-[60] max-h-[min(70dvh,420px)] max-w-[calc(100vw-24px)] min-w-56 overflow-y-auto rounded-md bg-surface-container py-2 shadow-xl ring-1 ring-outline-variant/40")}
+              className={cx("z-[60] max-h-[min(70dvh,420px)] max-w-[calc(100vw-24px)] min-w-56 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] rounded-md bg-surface-container py-2 shadow-xl ring-1 ring-outline-variant/40")}
             >
               {children(() => setOpen(false))}
             </motion.div>
