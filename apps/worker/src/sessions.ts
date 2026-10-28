@@ -64,8 +64,22 @@ export async function killOrphanChromium(uid: string) {
   try {
     let lines: string[];
     if (process.platform === "win32") {
-      const ps = `Get-CimInstance Win32_Process -Filter "CommandLine like '%--user-data-dir=%'" | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }`;
-      lines = (await run("powershell", ["-NoProfile", "-Command", ps], { timeout: 15_000, maxBuffer: 8 * 1024 * 1024 })).stdout.split(/\r?\n/);
+      // Some Windows builds deny the Cim provider, and a stressed machine takes longer than its default 15 s. Try the
+      // modern query, then CIM (older machines), then a raw `wmic`; a merged de-duplicated list is enough for orphanPids.
+      lines = [];
+      const candidates: Array<() => Promise<string[]>> = [
+        async () => (await run("powershell", ["-NoProfile", "-Command", `Get-CimInstance Win32_Process -Filter "CommandLine like '%--user-data-dir=%'" | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }`], { timeout: 30_000, maxBuffer: 16 * 1024 * 1024 })).stdout.split(/\r?\n/),
+        async () => (await run("powershell", ["-NoProfile", "-Command", `Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -like '*--user-data-dir=*' } | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }`], { timeout: 30_000, maxBuffer: 16 * 1024 * 1024 })).stdout.split(/\r?\n/),
+        async () => (await run("wmic", ["process", "where", `name='chrome.exe' or name='msedge.exe'`, "get", "ProcessId,CommandLine", "/FORMAT:CSV"], { timeout: 60_000, maxBuffer: 32 * 1024 * 1024 })).stdout.replace(/\r/g, "").split("\n").map((l) => { const m = /,(\d+)\s*$/.exec(l); return m ? `${m[1]} ${l}` : l; }),
+      ];
+      for (const tryOne of candidates) {
+        try {
+          const l = await tryOne();
+          if (l.length > 1) { lines = lines.concat(l); }
+        } catch (e) {
+          /* provider missing or timed out: try the next */
+        }
+      }
     } else {
       lines = (await run("ps", ["-axo", "pid=,command="], { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 })).stdout.split("\n");
     }
@@ -73,12 +87,16 @@ export async function killOrphanChromium(uid: string) {
     for (const pid of pids) {
       console.warn(`[session] ${uid} killing leftover browser process ${pid} on its profile`);
       try {
-        process.kill(pid, "SIGKILL");
+        if (process.platform === "win32") {
+          await run("taskkill", ["/F", "/PID", String(pid)], { timeout: 5_000 }).catch(() => undefined);
+        } else {
+          process.kill(pid, "SIGKILL");
+        }
       } catch {
         /* already gone */
       }
     }
-    if (pids.length) await new Promise((r) => setTimeout(r, 1_000)); // let the OS release the profile files
+    if (pids.length) await new Promise((r) => setTimeout(r, 2_000)); // let the OS release the profile files
   } catch (e) {
     console.warn(`[session] ${uid} couldn't look for leftover browser processes:`, (e as Error).message);
   }
@@ -449,9 +467,13 @@ class SessionManager {
     this.clients.delete(uid);
     this.ready.delete(uid);
     c.removeAllListeners();
+    const proc = c.pupBrowser?.process();
     try {
-      c.pupBrowser?.process()?.kill("SIGKILL");
+      // Node on Windows has no SIGKILL; .kill() with no arg is the forceful form there, so use it always.
+      if (proc) proc.kill();
     } catch (e) {
+      // Last resort: ask taskkill. Then suppress.
+      try { if (proc?.pid) void run("taskkill", ["/F", "/PID", String(proc.pid)], { timeout: 5_000 }).catch(() => undefined); } catch { /* gone */ }
       console.warn(`[session] ${uid} kill failed:`, (e as Error).message);
     }
   }
