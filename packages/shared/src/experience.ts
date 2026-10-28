@@ -46,7 +46,6 @@ export function experienceOf(comic: Partial<Pick<Comic, "comedySince" | "history
   const months = since ? Math.max(0, monthsBetween(since, now)) : 0;
   const years = since ? months / 12 : 0;
   const rated = ratedHistory(hist).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  const rr = rated.slice(0, 5);
   const average = rated.length ? rated.reduce((s, x) => s + (x.rating as number), 0) / rated.length : null;
   const last5 = rated.slice(0, 5);
   const older5 = rated.slice(5, 10);

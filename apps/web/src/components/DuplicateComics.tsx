@@ -2,7 +2,7 @@
 // saved twice). Merge keeps the doc WhatsApp can reach and moves everything onto it (worker command merge_comics).
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { findDuplicateComics, linksFromMembers, memberKeySet, mergeComics, type Comic, type DuplicateSet } from "@spot/shared";
+import { findDuplicateComics, findSamePersonByName, linksFromMembers, memberKeySet, mergeComics, type Comic, type DuplicateSet } from "@spot/shared";
 import { Button, ConfirmDialog, Sheet } from "@spot/ui";
 import { IconUserCheck, IconWarn } from "@spot/ui";
 import { useApp } from "../lib/app";
@@ -17,7 +17,7 @@ export function useDuplicateComics(): DuplicateSet<Comic>[] {
   return useMemo(() => {
     // Every show's cached group members link a phone id to the @lid WhatsApp also knows them by.
     const members = shows.flatMap((s) => s.groupMembers?.members ?? []);
-    return findDuplicateComics(comics, linksFromMembers(members), memberKeySet(members));
+    return [...findDuplicateComics(comics, linksFromMembers(members), memberKeySet(members)), ...findSamePersonByName(comics, linksFromMembers(members), memberKeySet(members))];
   }, [comics, shows]);
 }
 
@@ -41,7 +41,7 @@ export function DuplicateComics() {
         <div className="mb-2 flex items-center gap-3 rounded-xl bg-tertiary-container px-4 py-3 text-on-tertiary-container">
           <IconWarn className="icon size-5 flex-none" />
           <p className="min-w-0 flex-1 type-body-m">
-            {sets.length} possible duplicate{sets.length === 1 ? "" : "s"}: the same person saved twice.
+            {sets.length} possible duplicate{sets.length === 1 ? "" : "s"}
           </p>
           <Button size="sm" variant="tonal" onClick={() => setOpen(true)}>Review</Button>
         </div>
@@ -54,7 +54,7 @@ export function DuplicateComics() {
           <ul className="flex flex-col gap-4">
             {sets.map((s) => (
               <li key={s.keep.id} className="rounded-lg bg-surface-container p-4">
-                <p className="mb-2 type-label-l text-on-surface-variant">{s.why === "number" ? "Same number" : "Same WhatsApp contact"}</p>
+                <p className="mb-2 type-label-l text-on-surface-variant">{s.why === "number" ? "Same number" : s.why === "name" ? "Same name, different number" : "Same WhatsApp contact"}</p>
                 <ul className="divide-y divide-outline-variant/50">
                   {[s.keep, ...s.others].map((c) => (
                     <li key={c.id} className="flex items-center gap-3 py-2">
@@ -67,7 +67,7 @@ export function DuplicateComics() {
                   ))}
                 </ul>
                 <Button className="mt-3 w-full" variant="tonal" disabled={isDemoUser()} onClick={() => setTarget(s)}>
-                  Merge into one
+                  {s.why === "name" ? "Same person" : "Merge into one"}
                 </Button>
               </li>
             ))}
