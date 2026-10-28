@@ -157,9 +157,11 @@ const workerCtl = createWorkerControl({
 });
 // Stay on (power.mjs): sleep, lid, Wi-Fi, Windows Update restarts. The keep-awake fallback runs while this console does; settings Windows Update
 // (or anything) reverts are put back every 30 minutes, once the owner has applied them.
-const { power, keepAwake } = createMachinePower({ env: process.env, dry: DRY, withKeepAwake: true, log: console.warn });
+const { power, keepAwake, watchdog } = createMachinePower({ env: process.env, dry: DRY, withKeepAwake: true, log: console.warn });
 if (!DRY) {
   keepAwake.start();
+  watchdog.start(); // internet probe every 30 s, outage log, Wi-Fi restart after 3 min down (power.json: enforce.watchdog turns it off)
+  setInterval(() => { keepAwake.check(); }, 30_000).unref(); // a keep-awake helper that stopped ticking is restarted
   setTimeout(() => { power.reassert().catch(() => {}); }, 60_000).unref();
   setInterval(() => { power.reassert().catch(() => {}); }, 30 * 60_000).unref();
 }
@@ -588,13 +590,16 @@ createServer(async (req, res) => {
       }
     }
 
-    // Stay on: GET reads every row; POST {action: "fix", id} | {action: "all"} | {action: "options", battery?, activeHours?: {start, end}}.
+    // Stay on: GET reads every row; POST {action: "fix", id} | {action: "all"} | {action: "options", battery?, displayNever?, activeHours?: {start, end}} | {action: "enforce", id, on} | {action: "ui", open} | {action: "restart-net"}.
     if (url.pathname === "/api/power" && req.method === "GET") return json(res, 200, await power.view());
     if (url.pathname === "/api/power" && req.method === "POST") {
       const b = await body(req);
       try {
         if (b.action === "fix") return json(res, 200, await power.fix(String(b.id)));
         if (b.action === "all") return json(res, 200, await power.applyAll());
+        if (b.action === "enforce") return json(res, 200, { view: await power.setEnforce(String(b.id), b.on), results: [] });
+        if (b.action === "ui") return json(res, 200, { view: await power.setUi(b.open), results: [] });
+        if (b.action === "restart-net") return json(res, 200, await power.restartNet());
         if (b.action === "options") return json(res, 200, { view: await power.setOptions(b), results: [] });
       } catch (e) { return json(res, e.status ?? 500, { error: e.message }); }
       return json(res, 400, { error: "Unknown action" });

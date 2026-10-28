@@ -9,7 +9,8 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPower, createKeepAwake } from "./power.mjs";
+import { createPower, createKeepAwake, createNetOps, createWatchdog } from "./power.mjs";
+import { probeInternet } from "./netprobe.mjs";
 import { machinePaths } from "./doctor-run.mjs";
 
 const exec = promisify(execFile);
@@ -18,26 +19,35 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export function createMachinePower({ env = process.env, dry = false, withKeepAwake = false, log = console.log } = {}) {
   const platform = process.platform;
   const paths = machinePaths(env);
+  const sep = platform === "win32" ? "\\" : "/";
+  const readText = (p) => { try { return readFileSync(p, "utf8"); } catch { return null; } };
+  const writeText = (p, t) => { mkdirSync(path.dirname(p), { recursive: true }); writeFileSync(p, t); };
+  const run = async (cmd, args, { timeout = 15000 } = {}) => {
+    try { return { ok: true, out: (await exec(cmd, args, { timeout, maxBuffer: 4 << 20, windowsHide: true })).stdout.trim() }; }
+    catch (e) { return { ok: false, out: ((e.stdout ?? "").toString() || (e.stderr ?? "").toString() || (e.message ?? "")).trim() }; }
+  };
   const keepAwake = createKeepAwake({
-    platform, log,
+    platform, log, readText,
+    tickFile: `${paths.dataDir}${sep}keepawake.tick`,
     spawn: (cmd, args) => spawn(cmd, args, { stdio: "ignore", windowsHide: true }),
     enabled: () => !dry && withKeepAwake && power.state().keepAwake,
   });
+  const netOps = createNetOps({ platform, run });
+  const watchdog = createWatchdog({
+    probe: probeInternet, link: () => netOps.link(), restart: () => netOps.restartWifi(), log, readText, writeText,
+    file: `${paths.dataDir}${sep}network-outages.json`,
+    enabled: () => !dry && withKeepAwake && power.state().enforce.watchdog !== false,
+  });
   const power = createPower({
-    platform, dry, keepAwake, dataDir: paths.dataDir, home: os.homedir(),
+    platform, dry, keepAwake, watchdog, netOps, dataDir: paths.dataDir, home: os.homedir(),
     macRoot: path.join(os.homedir(), "Library", "Application Support", "NothingBotServer"),
     nbsctl: path.join(paths.appDir, "deploy", "mac", "nbsctl"),
-    run: async (cmd, args, { timeout = 15000 } = {}) => {
-      try { return { ok: true, out: (await exec(cmd, args, { timeout, maxBuffer: 4 << 20, windowsHide: true })).stdout.trim() }; }
-      catch (e) { return { ok: false, out: ((e.stdout ?? "").toString() || (e.stderr ?? "").toString()).trim() }; }
-    },
-    readText: (p) => { try { return readFileSync(p, "utf8"); } catch { return null; } },
-    writeText: (p, t) => { mkdirSync(path.dirname(p), { recursive: true }); writeFileSync(p, t); },
+    run, readText, writeText,
     listDir: (p) => readdirSync(p),
     exists: (p) => existsSync(p),
     uptime: () => os.uptime(),
   });
-  return { power, keepAwake };
+  return { power, keepAwake, watchdog };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

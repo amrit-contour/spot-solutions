@@ -6,6 +6,8 @@ import {
   parsePowercfg, getSetting, powercfgZero, psArgs, decodePs, parseRegQuery, updateCommands, updateStatus, parseRestartEvents, describeRestart, who1074,
   windowsItems, windowsFix, normaliseState, readState, validActiveHours, hoursSpan, lastIni, logindLid, aptAutoReboot, linuxItems, linuxFix,
   parsePmsetCustom, macItems, keepAwakeCommand, createKeepAwake, summarise, createPower, parseJsonList, clock, LINUX_HELPER, DEFAULT_ACTIVE_HOURS,
+  parsePowercfgA, powercfgSet, adapterStatus, netStatus, netFixOutcome, PS_NET_READ, PS_NET_FIX, parseLink, parseMacWifiDevice, createNetOps, watchdogStep, describeOutage, createWatchdog,
+  parseSleepEvents, parseSleepJournal, parsePmsetLog, describeSleep, blockOpen, applyEnforce, keepAwakeItem, WD,
 } from "./power.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -155,8 +157,8 @@ describe("boot tasks and net adapters", () => {
 
 describe("state file", () => {
   it("defaults, and repairs bad values", () => {
-    expect(normaliseState(null)).toEqual({ battery: false, activeHours: { start: 12, end: 6 }, keepAwake: true, applied: false, appliedAt: null });
-    expect(normaliseState({ battery: "yes", activeHours: { start: 6, end: 1 }, keepAwake: false, applied: true, appliedAt: 5 })).toEqual({ battery: false, activeHours: { start: 12, end: 6 }, keepAwake: false, applied: true, appliedAt: 5 });
+    expect(normaliseState(null)).toEqual({ battery: false, activeHours: { start: 12, end: 6 }, keepAwake: true, displayNever: false, enforce: {}, ui: null, applied: false, appliedAt: null });
+    expect(normaliseState({ battery: "yes", activeHours: { start: 6, end: 1 }, keepAwake: false, applied: true, appliedAt: 5 })).toMatchObject({ battery: false, activeHours: { start: 12, end: 6 }, keepAwake: false, applied: true, appliedAt: 5 });
   });
   it("reads a missing or corrupt file as defaults", () => {
     expect(readState(() => null, "x")).toEqual(normaliseState(null));
@@ -201,7 +203,7 @@ describe("createPower (Windows, fake machine)", () => {
     const before = ran.length;
     const r = await p.applyAll({ force: true });
     expect(r.results.every((x) => x.dry)).toBe(true);
-    expect(ran.slice(before).every((c) => c[1] === "/q" || c[1] === "query" || c[0] === "powershell.exe")).toBe(true);
+    expect(ran.slice(before).every((c) => c[1] === "/q" || c[1] === "/qh" || c[1] === "/a" || c[1] === "query" || c[0] === "powershell.exe")).toBe(true);
     expect(files.size).toBe(0);
   });
   it("reasserts only after the owner applied, and rejects bad options", async () => {
@@ -316,5 +318,340 @@ describe("installers", () => {
     const html = text("apps", "worker", "console", "index.html");
     expect(html).toContain("powerBlock()");
     expect(html).toContain("data-pw-all");
+  });
+});
+
+const fx = (n) => readFileSync(path.join(here, "fixtures", n), "utf8");
+
+describe("powercfg /a: Modern Standby", () => {
+  it("sees S0 Low Power Idle when it is available", () => {
+    expect(parsePowercfgA(fx("powercfg-a-s0.txt"))).toMatchObject({ s0: true, s0Network: true, s3: false, s3Missing: true, hibernate: true });
+  });
+  it("sees classic S3 and no S0 (the S0 line is only in the not-available list)", () => {
+    expect(parsePowercfgA(fx("powercfg-a-s3.txt"))).toMatchObject({ s0: false, s3: true });
+  });
+  it("is null for text that isn't powercfg's", () => {
+    expect(parsePowercfgA("[]")).toBeNull();
+    expect(parsePowercfgA(null)).toBeNull();
+  });
+  const s0 = parsePowercfgA(fx("powercfg-a-s0.txt"));
+  it("adds the Modern Standby row only on S0, and fixes networking-in-standby (plus the screen only if opted in)", () => {
+    const ids = (m) => windowsItems({ cfg: parsePowercfg(fixture), modern: m, state: st() }).map((i) => i.id);
+    expect(ids(s0)).toContain("modern");
+    expect(ids(parsePowercfgA(fx("powercfg-a-s3.txt")))).not.toContain("modern");
+    expect(ids(null)).not.toContain("modern");
+    const flat = (stt) => windowsFix("modern", stt).map((c) => c.args.join(" ")).join("\n");
+    expect(flat(st())).toMatch(/SUB_NONE f15576e8-98b7-4186-b944-eafa664402d9 1/);
+    expect(flat(st())).not.toMatch(/3c0bc021/);
+    expect(flat(st({ displayNever: true }))).toMatch(/7516b95f-f776-4464-8c53-06167f40cc99 3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e 0/);
+    expect(windowsFix("modern", st()).at(-1).args).toEqual(["/setactive", "SCHEME_CURRENT"]);
+  });
+  it("is fine once networking in standby is on or managed", () => {
+    const row = (ac) => { const cfg = parsePowercfg(fixture); cfg.settings["f15576e8-98b7-4186-b944-eafa664402d9"] = { ac, dc: ac }; return windowsItems({ cfg, modern: s0, state: st() }).find((i) => i.id === "modern"); };
+    expect(row(0).ok).toBe(false);
+    expect(row(1).ok).toBe(true);
+    expect(row(2).ok).toBe(true);
+  });
+  it("powercfgSet sets AC, DC on request, then activates", () => {
+    expect(powercfgSet("display", 0, { battery: true }).map((c) => c.args[0])).toEqual(["/setacvalueindex", "/setdcvalueindex", "/setactive"]);
+  });
+});
+
+describe("Wi-Fi row: the check reads where the fix writes", () => {
+  const wifiPm0 = { ac: 0, dc: 0 }, wifiPm3 = { ac: 3, dc: 3 };
+  it("accepts the PnPCapabilities registry value (0x18, also 24 as text) by itself", () => {
+    expect(adapterStatus({ wifi: true, allow: "Enabled", pnp: "24" }, wifiPm3).ok).toBe(true);
+    expect(adapterStatus({ wifi: true, allow: "Enabled", pnp: "56" }, wifiPm3).ok).toBe(true); // 0x38 includes both bits
+    expect(adapterStatus({ wifi: true, allow: "Enabled", pnp: "16" }, wifiPm0).ok).toBe(false);
+    expect(adapterStatus({ wifi: true, allow: "Enabled", pnp: "" }, wifiPm0).ok).toBe(false);
+  });
+  it("says the registry change applies after the adapter restarts", () => {
+    const r = netStatus([{ name: "Wi-Fi", wifi: true, allow: "Enabled", pnp: "24" }], null, false);
+    expect(r).toMatchObject({ ok: true, pending: true });
+    expect(r.detail).toMatch(/applies after the adapter restarts/);
+  });
+  it("accepts Disabled or Unsupported only together with powercfg maximum performance", () => {
+    for (const allow of ["Disabled", "Unsupported"]) {
+      expect(adapterStatus({ wifi: true, allow, pnp: "" }, wifiPm0).ok).toBe(true);
+      expect(adapterStatus({ wifi: true, allow, pnp: "" }, wifiPm3).ok).toBe(false);
+    }
+    expect(adapterStatus({ wifi: false, allow: "Unsupported", pnp: "" }, wifiPm3).ok).toBe(true); // Ethernet: no powercfg Wi-Fi setting
+  });
+  it("reads the Unsupported fixture (the old check never turned green on Enabled, and the driver refuses the setter)", () => {
+    const net = parseJsonList(fx("net-pm-wifi-unsupported.json"));
+    const wifi = netStatus([net[0]], wifiPm3, false);
+    expect(wifi.ok).toBe(false);
+    expect(wifi.detail).toMatch(/Wi-Fi power saving is on/);
+    expect(netStatus([net[0]], wifiPm0, false).ok).toBe(true);
+    const eth = netStatus([net[1]], null, false);
+    expect(eth.ok).toBe(false);
+    expect(eth.detail).toMatch(/Windows said: Set failed/); // the real error text reaches the row
+  });
+  it("shows the PowerShell error instead of a silent row when the query itself failed", () => {
+    const row = windowsItems({ cfg: parsePowercfg(fixture), net: [], netErr: "Get-NetAdapter : Access is denied", state: st() }).find((i) => i.id === "net");
+    expect(row.ok).toBe(false);
+    expect(row.detail).toMatch(/Access is denied/);
+  });
+  it("the scripts match adapters by NetCfgInstanceId, set PnPCapabilities 24, and report real errors", () => {
+    expect(PS_NET_READ).toMatch(/NetCfgInstanceId/);
+    expect(PS_NET_READ).toMatch(/\{4d36e972-e325-11ce-bfc1-08002be10318\}/);
+    expect(PS_NET_READ).toMatch(/InterfaceGuid/);
+    expect(PS_NET_READ).toMatch(/Exception\.Message/);
+    expect(PS_NET_FIX).toMatch(/Set-ItemProperty[^;]*PnPCapabilities -Value 24 -Type DWord/);
+    expect(PS_NET_FIX).toMatch(/AllowComputerToTurnOffDevice Disabled/);
+  });
+  it("the fix: a driver refusal is a note; only a registry failure on every adapter is an error", () => {
+    expect(netFixOutcome(JSON.stringify([{ name: "Wi-Fi", setError: "Not supported", regError: "", changed: true }]))).toMatchObject({ restartNeeded: true, note: expect.stringMatching(/after the adapter restarts.*Not supported/) });
+    expect(netFixOutcome(JSON.stringify([{ name: "Wi-Fi", setError: "", regError: "Access denied", changed: false }])).error).toMatch(/Wi-Fi: Access denied/);
+    expect(netFixOutcome("boom").error).toBe("boom");
+    expect(netFixOutcome("").error).toMatch(/printed nothing/);
+  });
+  it("a fix run through createPower surfaces the note, and a failed registry write as the row's error", async () => {
+    const mk = (out) => createPower({ platform: "win32", dataDir: "C:\\d", now: () => 1, readText: () => null, writeText: () => {}, run: async (cmd, args) => (cmd === "powershell.exe" && decodePs(args).includes("Set-ItemProperty") ? { ok: true, out } : { ok: true, out: cmd === "powercfg" && args[0] === "/q" ? fixture : "[]" }) });
+    const okRun = await mk(JSON.stringify([{ name: "Wi-Fi", setError: "x", regError: "", changed: true }])).fix("net");
+    expect(okRun.results[0]).toMatchObject({ ok: true, note: expect.stringMatching(/restarts/) });
+    const bad = await mk(JSON.stringify([{ name: "Wi-Fi", setError: "", regError: "Access denied", changed: false }])).fix("net");
+    expect(bad.results[0]).toMatchObject({ ok: false, error: expect.stringMatching(/Access denied/) });
+  });
+});
+
+describe("keep-awake helper ticks", () => {
+  it("writes a tick file, asks for away mode and falls back", () => {
+    const sc = decodePs(keepAwakeCommand("win32", 7, "C:\\d\\keepawake.tick").args);
+    expect(sc).toMatch(/Set-Content -LiteralPath 'C:\\d\\keepawake\.tick'/);
+    expect(sc).toMatch(/2147483713/); // ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED
+    expect(sc).toMatch(/if \(\$r -eq 0\)[^}]*2147483649/);
+  });
+  it("shows pid and last tick in the row, and restarts a helper that stopped ticking", () => {
+    let t = 1_000_000, tick = String(t), kills = 0, spawned = 0;
+    const spawn = () => { spawned++; const k = { pid: 100 + spawned, on() {}, kill: () => { kills++; } }; return k; };
+    const ka = createKeepAwake({ platform: "win32", spawn, tickFile: "t", readText: () => tick, now: () => t, staleMs: 90_000 });
+    ka.start();
+    t += 20_000;
+    const s = ka.status();
+    expect(s).toMatchObject({ running: true, pid: 101, stale: false });
+    const row = keepAwakeItem(s, "ok", t);
+    expect(row.ok).toBe(true);
+    expect(row.detail).toMatch(/helper running · pid 101 · last tick 20s ago/);
+    t += 200_000; // never ticked again
+    expect(ka.status().stale).toBe(true);
+    expect(keepAwakeItem(ka.status(), "ok", t).ok).toBe(false);
+    ka.check();
+    expect(kills).toBe(1);
+    expect(spawned).toBe(2);
+    expect(ka.status()).toMatchObject({ pid: 102, stale: false });
+  });
+});
+
+describe("network watchdog", () => {
+  const M = 60_000;
+  const run = (steps) => {
+    let w = null; const actions = [];
+    for (const [at, online, link] of steps) { const r = watchdogStep(w, { online, link }, at, WD); w = r.w; actions.push(r.action); }
+    return { w, actions };
+  };
+  const ticks = (from, to, online, link) => { const a = []; for (let t = from; t <= to; t += 30_000) a.push([t, online, link]); return a; };
+  it("does nothing while online, and logs a short blip without restarting", () => {
+    const r = run([...ticks(0, 60_000, true, "up"), ...ticks(90_000, 150_000, false, "limited"), ...ticks(180_000, 240_000, true, "up")]);
+    expect(r.actions.every((a) => a === null)).toBe(true);
+    expect(r.w.outages).toHaveLength(1);
+    expect(r.w.outages[0]).toMatchObject({ kind: "offline", start: 90_000, end: 180_000, restarts: 0 });
+  });
+  it("restarts Wi-Fi once after 3 minutes down with the link disconnected or limited", () => {
+    const r = run(ticks(0, 6 * M, false, "disconnected"));
+    expect(r.actions.filter(Boolean)).toEqual(["restart"]);
+    expect(r.actions.indexOf("restart")).toBe(6); // t = 180 s
+  });
+  it("then waits at least 15 minutes between restarts", () => {
+    const r = run(ticks(0, 40 * M, false, "limited"));
+    const times = r.actions.map((a, i) => (a ? i * 30_000 : null)).filter((x) => x !== null);
+    expect(times).toEqual([180_000, 180_000 + 15 * M, 180_000 + 30 * M]);
+    expect(r.w.outages[0].restarts).toBe(3);
+  });
+  it("does not restart when the adapter looks fine (the internet is down upstream)", () => {
+    const r = run(ticks(0, 10 * M, false, "up"));
+    expect(r.actions.every((a) => a === null)).toBe(true);
+    expect(r.w.outages[0].link).toBe("up");
+  });
+  it("keeps the restart backoff across outages", () => {
+    const r = run([...ticks(0, 4 * M, false, "disconnected"), ...ticks(4.5 * M, 5 * M, true, "up"), ...ticks(5.5 * M, 12 * M, false, "disconnected")]);
+    expect(r.actions.filter(Boolean)).toHaveLength(1);
+  });
+  it("logs a silence between ticks as a heartbeat gap (asleep, off, or the console stopped)", () => {
+    const r = run([[0, true, "up"], [30_000, true, "up"], [30_000 + 14 * M, true, "up"]]);
+    expect(r.w.outages).toEqual([{ kind: "gap", start: 30_000, end: 30_000 + 14 * M, restarts: 0, link: null }]);
+  });
+  it("keeps only the last 20 outages", () => {
+    let w = null;
+    for (let i = 0; i < 30; i++) w = watchdogStep(w, { online: true, link: "up" }, i * 10 * M, WD).w;
+    expect(w.outages).toHaveLength(WD.keep);
+  });
+  it("words outages the way the block shows them", () => {
+    const now = new Date(2026, 9, 28, 12, 0).getTime(), at = (h, m) => new Date(2026, 9, 28, h, m).getTime();
+    expect(describeOutage({ kind: "offline", start: at(2, 10), end: at(2, 24), restarts: 1 }, now)).toBe("Offline 02:10–02:24, Wi-Fi restarted");
+    expect(describeOutage({ kind: "offline", start: at(2, 10), end: null, restarts: 0, link: "up" }, now)).toMatch(/^Offline since 02:10 \(still\), Wi-Fi connected/);
+    expect(describeOutage({ kind: "gap", start: at(2, 10), end: at(2, 24) }, now)).toMatch(/^No heartbeat 02:10–02:24/);
+  });
+  it("createWatchdog probes, restarts, persists and reports the last five", async () => {
+    let t = 0, online = false, restarts = 0; const files = new Map();
+    const wd = createWatchdog({
+      probe: async () => online, link: async () => "disconnected", restart: async () => { restarts++; return { ok: true, out: "" }; },
+      readText: (f) => files.get(f) ?? null, writeText: (f, x) => files.set(f, x), file: "o.json", now: () => t,
+    });
+    for (t = 0; t <= 4 * M; t += 30_000) await wd.tick();
+    expect(restarts).toBe(1);
+    online = true; t += 30_000; await wd.tick();
+    const s = wd.status();
+    expect(s.outages).toHaveLength(1);
+    expect(s.outages[0].text).toMatch(/^Offline .*, Wi-Fi restarted$/);
+    // a new process reads the same log
+    const again = createWatchdog({ probe: async () => true, link: async () => "up", restart: async () => ({ ok: true }), readText: (f) => files.get(f) ?? null, writeText: () => {}, file: "o.json", now: () => t });
+    expect(again.status().outages).toHaveLength(1);
+  });
+  it("is off when disabled", async () => {
+    let probed = 0;
+    const wd = createWatchdog({ probe: async () => { probed++; return true; }, link: async () => "up", restart: async () => ({ ok: true }), readText: () => null, writeText: () => {}, file: "x", enabled: () => false });
+    await wd.tick();
+    expect(probed).toBe(0);
+  });
+});
+
+describe("link and restart per OS", () => {
+  it("reads the Windows link: not Up is disconnected; Up without an Internet profile is limited", () => {
+    expect(parseLink("win32", '{"status":"Disconnected","net":""}')).toBe("disconnected");
+    expect(parseLink("win32", '{"status":"Up","net":"LocalNetwork"}')).toBe("limited");
+    expect(parseLink("win32", '{"status":"Up","net":"Internet"}')).toBe("up");
+    expect(parseLink("win32", "garbage")).toBe("unknown");
+  });
+  it("reads nmcli and networksetup", () => {
+    expect(parseLink("linux", "connected")).toBe("up");
+    expect(parseLink("linux", "connected (site only)")).toBe("limited");
+    expect(parseLink("linux", "disconnected")).toBe("disconnected");
+    expect(parseLink("darwin", "You are not associated with an AirPort network.")).toBe("disconnected");
+    expect(parseLink("darwin", "Current Wi-Fi Network: Home")).toBe("limited");
+    expect(parseMacWifiDevice("Hardware Port: Ethernet\nDevice: en5\n\nHardware Port: Wi-Fi\nDevice: en0\nEthernet Address: aa")).toBe("en0");
+  });
+  it("restarts Wi-Fi: Restart-NetAdapter on Windows, the root helper on Ubuntu, networksetup off/on on a Mac", async () => {
+    const calls = [];
+    const mk = (platform) => createNetOps({ platform, wait: async () => {}, run: async (cmd, args) => { calls.push([cmd, ...args]); return { ok: true, out: cmd === "networksetup" && args[0] === "-listallhardwareports" ? "Hardware Port: Wi-Fi\nDevice: en1\n" : "" }; } });
+    await mk("win32").restartWifi();
+    expect(decodePs(calls.at(-1).slice(1))).toMatch(/Restart-NetAdapter/);
+    await mk("linux").restartWifi();
+    expect(calls.at(-1)).toEqual(["sudo", "-n", LINUX_HELPER, "wifi-restart"]);
+    calls.length = 0;
+    await mk("darwin").restartWifi();
+    expect(calls.filter((c) => c[1] === "-setairportpower")).toEqual([["networksetup", "-setairportpower", "en1", "off"], ["networksetup", "-setairportpower", "en1", "on"]]);
+  });
+  it("the Ubuntu helper and sudoers know wifi-restart (nmcli radio wifi off/on)", () => {
+    const sh = text("deploy", "install.sh");
+    expect(sh).toContain("/usr/local/sbin/nbs-power wifi-restart");
+    expect(sh).toMatch(/nmcli radio wifi off; sleep 3; nmcli radio wifi on/);
+  });
+});
+
+describe("last sleep and wake", () => {
+  it("reads the Windows events (Power-Troubleshooter 1 carries the wake source)", () => {
+    const ev = parseSleepEvents(JSON.stringify([
+      { id: 1, at: 2000, message: "The system has resumed from sleep.\nWake Source: Device -Intel(R) Wireless" }, { id: 42, at: 1000, message: "" }, { id: 107, at: 1999, message: "" }, { id: 4, at: 5, message: "" },
+    ]));
+    expect(ev).toHaveLength(3);
+    const d = describeSleep(ev, 3000);
+    expect(d).toMatchObject({ sleptAt: 1000, wokeAt: 2000, source: "Device -Intel(R) Wireless" });
+    expect(d.text).toMatch(/^Last slept .*, woke .*\(Device -Intel/);
+  });
+  it("says so when the log has nothing", () => {
+    expect(describeSleep([], 1).text).toMatch(/No sleep or wake/);
+  });
+  it("reads journal and pmset lines", () => {
+    expect(parseSleepJournal("1761600000.123 host kernel: PM: suspend entry (deep)\n1761600600.5 host kernel: PM: suspend exit")).toEqual([{ kind: "sleep", at: 1761600000000, source: null }, { kind: "wake", at: 1761600600000, source: null }]);
+    const p = parsePmsetLog("2026-10-28 02:10:11 +0100 Sleep               \tEntering Sleep state due to 'Clamshell Sleep'\n2026-10-28 02:24:00 +0100 Wake                \tWake from Deep Idle [CDNVA] due to EC.LidOpen");
+    expect(p.map((e) => e.kind)).toEqual(["sleep", "wake"]);
+    expect(p[1].source).toBe("Deep Idle");
+  });
+});
+
+describe("collapsible and customisable", () => {
+  it("is collapsed when everything is fine and open when something needs fixing", () => {
+    expect(blockOpen(null, 0)).toBe(false);
+    expect(blockOpen(null, 2)).toBe(true);
+  });
+  it("remembers the owner's choice while the state is the same, and goes back to automatic when it changes", () => {
+    expect(blockOpen({ open: true, forNeeds: false }, 0)).toBe(true);
+    expect(blockOpen({ open: false, forNeeds: true }, 3)).toBe(false);
+    expect(blockOpen({ open: false, forNeeds: false }, 1)).toBe(true); // a problem appeared: open again
+  });
+  it("ignored rows never warn and are never fixed", () => {
+    const items = applyEnforce([{ id: "net", ok: false, fixable: true }, { id: "lid", ok: false, fixable: true }, { id: "boot", ok: false, fixable: false }], st({ enforce: { net: false } }));
+    expect(items[0]).toMatchObject({ ok: true, fixable: false, ignored: true });
+    expect(items[1]).toMatchObject({ ok: false, fixable: true, ignored: false });
+    expect(summarise(items, null).needs).toBe(1);
+  });
+  function machine() {
+    const files = new Map();
+    const run = async (cmd, args) => ({ ok: true, out: cmd === "powercfg" && args[0] === "/q" ? fixture : "[]" });
+    const ka = { starts: 0, stops: 0, start() { this.starts++; return true; }, stop() { this.stops++; }, status: () => ({ running: true, pid: 5 }), supported: () => true };
+    const p = createPower({ platform: "win32", run, readText: (f) => files.get(f) ?? null, writeText: (f, t) => files.set(f, t), dataDir: "C:\\d", now: () => 1_000_000, keepAwake: ka });
+    return { p, files, ka };
+  }
+  it("persists the choices in power.json and applies only the enabled items", async () => {
+    const { p, files } = machine();
+    const v0 = await p.view();
+    expect(v0.open).toBe(true); // the fixture has things to fix
+    expect(v0.toggles.map((t) => t.id)).toEqual(expect.arrayContaining(["sleep", "lid", "net", "update", "keepawake", "watchdog"]));
+    await p.setEnforce("lid", false);
+    await p.setEnforce("net", false);
+    const v = await p.view();
+    expect(v.items.find((i) => i.id === "lid")).toMatchObject({ ignored: true, ok: true });
+    expect(v.toggles.find((t) => t.id === "lid").on).toBe(false);
+    expect(JSON.parse(files.get("C:\\d\\power.json")).enforce).toEqual({ lid: false, net: false });
+    const ran = [];
+    const run2 = async (cmd, args) => { ran.push([cmd, ...args]); return { ok: true, out: cmd === "powercfg" && args[0] === "/q" ? fixture : "[]" }; };
+    const p2 = createPower({ platform: "win32", run: run2, readText: (f) => files.get(f) ?? null, writeText: (f, t) => files.set(f, t), dataDir: "C:\\d", now: () => 1 });
+    const r = await p2.applyAll({ force: true });
+    expect(r.results.map((x) => x.id)).not.toContain("lid");
+    expect(r.results.map((x) => x.id)).not.toContain("net");
+    expect(r.results.map((x) => x.id)).toContain("sleep");
+    const lidSet = ran.filter((c) => c[0] === "powercfg" && c.includes("5ca83367-6e45-459f-a27b-476b1d01c936"));
+    expect(lidSet).toHaveLength(0);
+    const n = ran.length;
+    await p2.reassert();
+    expect(ran.slice(n).some((c) => c.includes("5ca83367-6e45-459f-a27b-476b1d01c936"))).toBe(false);
+  });
+  it("turning keep-awake off stops the helper and turning it on starts it", async () => {
+    const { p, ka } = machine();
+    await p.setEnforce("keepawake", false);
+    expect(ka.stops).toBe(1);
+    expect(p.state().keepAwake).toBe(false);
+    await p.setEnforce("keepawake", true);
+    expect(ka.starts).toBe(1);
+    expect(p.state().keepAwake).toBe(true);
+    await expect(p.setEnforce("boot", false)).rejects.toThrow(/Unknown/);
+    await expect(p.setEnforce("lid", "x")).rejects.toThrow();
+  });
+  it("remembers collapse in power.json, per good/bad state", async () => {
+    const { p, files } = machine();
+    await p.setUi(false);
+    expect(JSON.parse(files.get("C:\\d\\power.json")).ui).toEqual({ open: false, forNeeds: true });
+    expect((await p.view()).open).toBe(false);
+    await expect(p.setUi("no")).rejects.toThrow();
+  });
+  it("the block is collapsible with a toggle, a customise list and a Restart Wi-Fi button", () => {
+    const html = text("apps", "worker", "console", "index.html");
+    for (const k of ["data-pw-toggle", "data-pw-enf", "data-pw-restartnet", "aria-expanded"]) expect(html).toContain(k);
+    const s = text("apps", "worker", "console", "server.mjs");
+    expect(s).toMatch(/b\.action === "enforce"/);
+    expect(s).toMatch(/b\.action === "restart-net"/);
+    expect(s).toMatch(/watchdog\.start\(\)/);
+    expect(s).toMatch(/keepAwake\.check\(\)/);
+  });
+  it("Ubuntu and Mac get the same toggles and the watchdog row", async () => {
+    for (const platform of ["linux", "darwin"]) {
+      const p = createPower({ platform, run: async () => ({ ok: true, out: "" }), readText: () => null, writeText: () => {}, dataDir: "/d", home: "/h", now: () => 1, watchdog: { status: () => ({ outages: [{ text: "Offline 02:10–02:24, Wi-Fi restarted" }], link: null, online: true }) } });
+      const v = await p.view();
+      expect(v.toggles.map((t) => t.id)).toContain("watchdog");
+      expect(v.toggles.map((t) => t.id)).toContain("lid");
+      expect(v.items.find((i) => i.id === "watchdog").detail).toMatch(/Offline 02:10–02:24, Wi-Fi restarted/);
+      expect(typeof v.open).toBe("boolean");
+    }
   });
 });

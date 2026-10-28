@@ -225,7 +225,7 @@ EOF
 
 # The console may restart the worker and Ollama, and start the five tasks above: nothing else.
 cat > /etc/sudoers.d/nothing-bot-server-console <<EOF
-${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl disable --now nothing-bot-server-worker, /usr/bin/systemctl enable --now nothing-bot-server-worker, /usr/bin/systemctl kill --signal=SIGKILL nothing-bot-server-worker, /usr/bin/systemctl disable --now ollama, /usr/bin/systemctl enable --now ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service, /usr/local/sbin/nbs-power lid, /usr/local/sbin/nbs-power sleep, /usr/local/sbin/nbs-power wifi, /usr/local/sbin/nbs-power autoreboot
+${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl disable --now nothing-bot-server-worker, /usr/bin/systemctl enable --now nothing-bot-server-worker, /usr/bin/systemctl kill --signal=SIGKILL nothing-bot-server-worker, /usr/bin/systemctl disable --now ollama, /usr/bin/systemctl enable --now ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service, /usr/local/sbin/nbs-power lid, /usr/local/sbin/nbs-power sleep, /usr/local/sbin/nbs-power wifi, /usr/local/sbin/nbs-power wifi-restart, /usr/local/sbin/nbs-power autoreboot
 EOF
 chmod 440 /etc/sudoers.d/nothing-bot-server-console
 visudo -cf /etc/sudoers.d/nothing-bot-server-console >/dev/null
@@ -314,8 +314,11 @@ case "${1:-}" in
     nmcli general reload conf 2>/dev/null || true ;;
   autoreboot)
     printf 'Unattended-Upgrade::Automatic-Reboot "false";\n' > /etc/apt/apt.conf.d/99nbs-no-auto-reboot ;;
+  wifi-restart)
+    # The console's network watchdog and its Restart Wi-Fi button: radio off, then on.
+    nmcli radio wifi off; sleep 3; nmcli radio wifi on ;;
   all) "$0" lid; "$0" sleep; [[ -d /etc/NetworkManager ]] && "$0" wifi; "$0" autoreboot; true ;;
-  *) echo "usage: nbs-power lid|sleep|wifi|autoreboot|all" >&2; exit 2 ;;
+  *) echo "usage: nbs-power lid|sleep|wifi|wifi-restart|autoreboot|all" >&2; exit 2 ;;
 esac
 HELPER
 chmod 755 /usr/local/sbin/nbs-power
