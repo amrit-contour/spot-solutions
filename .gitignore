@@ -17,3 +17,6 @@ deploy/legacy-dl/
 # local build artifacts
 *.tsbuildinfo
 live-stats.json
+
+# agent/runtime state
+/.claude/

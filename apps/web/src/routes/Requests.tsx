@@ -148,12 +148,10 @@ export function Requests() {
       <PageHeader
         title="Requests"
         // Phones: the counts and the week move down under the tabs (one row), so the header is just the title and the menu.
-        subtitle={phone ? undefined : requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
+        subtitle={requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
         actions={
           <>
-            <div className="max-sm:hidden">
-              <WeekSwitcher />
-            </div>
+            <WeekSwitcher />
             <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="More" onClick={t} className="size-9" />}>
               {(close) => (
                 <>
@@ -212,13 +210,6 @@ export function Requests() {
       <ScanHistorySheet open={scanOpen} onClose={() => setScanOpen(false)} />
       <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className={cx("min-w-0", view === "updates" && "hidden lg:block")}>
-          {/* Phones, Requests tab only (this column is hidden on the Updates tab): the week and the counts share one row under the tabs. */}
-          <div className="mb-3 flex items-center justify-between gap-3 sm:hidden">
-            <WeekSwitcher />
-            <p className="min-w-0 truncate text-right type-label-l text-on-surface-variant tabular" aria-live="polite">
-              {grouped.asked.length} waiting · {grouped.placed.length} placed
-            </p>
-          </div>
           <div className="sticky top-[var(--page-header-h,0px)] z-20 -mx-4 mb-4 border-b border-outline-variant bg-surface px-4 pt-2 sm:mx-0 sm:px-0">
             <div className="flex flex-col gap-2 2xl:flex-row-reverse 2xl:items-center">
               <div className="flex items-center gap-2 2xl:flex-none">
