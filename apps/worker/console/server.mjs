@@ -531,7 +531,10 @@ createServer(async (req, res) => {
     }
     if (url.pathname === "/api/admin/models" && (req.method === "GET" || req.method === "POST")) {
       try {
-        const r = await fetch(`${OLLAMA}/api/tags`, { signal: AbortSignal.timeout(5000) });
+        const env = readEnv();
+        const headers = (env.OLLAMA_API_KEY ?? env.OLLAMA_KEY) ? { authorization: `Bearer ${env.OLLAMA_API_KEY ?? env.OLLAMA_KEY}` } : {};
+        const base = env.OLLAMA_URL ?? env.OLLAMA_BASE_URL ?? OLLAMA;
+        const r = await fetch(`${base}/api/tags`, { headers, signal: AbortSignal.timeout(5000) });
         const j = await r.json().catch(() => ({}));
         const models = (j.models ?? []).map((m) => ({ name: m.name, size: m.size }));
         return json(res, 200, { ok: true, up: r.ok, models, cloudEnabled: Boolean(readEnv().OLLAMA_API_KEY ?? readEnv().OLLAMA_KEY) });
