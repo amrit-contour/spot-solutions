@@ -981,12 +981,13 @@ function aiCard(s) {
     </div>` : ""}
     </div>
 
-    <div class="blk"><h3 class="grp">Ollama Cloud (free or paid models, e.g. beam:cloud)</h3>
-      <div class="row2"><span class="lbl">URL</span><input id="cloudurl" class="mono" type="text" value="https://ollama.com" placeholder="https://ollama.com"></div>
-      <div class="row2"><span class="lbl">API key</span><input id="cloudkey" class="mono" type="password" placeholder="key" ${(s && s.ollamaCloudEnabled) ? 'value="••••saved"' : ""}></div>
-      <div class="actions" style="margin-top:10px"><button class="tonal" onclick="(async()=>{const u=document.getElementById(&quot;cloudurl&quot;).value,k=document.getElementById(&quot;cloudkey&quot;).value;try{const r=await fetch('/api/admin/env?token='+encodeURIComponent(new URL(location.href).searchParams.get('token')||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({OLLAMA_URL:u,OLLAMA_API_KEY:k})});const t=await r.json();if(!r.ok)throw new Error(t.error||r.status);alert('Saved. Restarted automatically. Cloud is '+(t.cloudEnabled?'on':'off') + (t.restarted ? '' : ' — restart required.'));}catch(e){alert('Couldn’t save: '+e.message);}})()">Save and use Ollama Cloud</button>
-        <button onclick="document.getElementById('cloudkey').value=''">Clear</button></div>
-      <div class="muted small" style="margin-top:8px">Model tags from the remote endpoint will appear in the server model picker and Curate (after reload).</div>
+    <div class="blk"><h3 class="grp">Ollama Cloud (e.g. beam:cloud)</h3>
+      <div class="row2" style="gap:10px; flex-wrap:wrap;">
+        <div class="grow" style="min-width:220px"><input id="cloudurl" class="mono" type="text" value="https://ollama.com" placeholder="https://ollama.com"></div>
+        <div class="grow" style="min-width:220px"><input id="cloudkey" class="mono" type="password" placeholder="Ollama API key" ${(s && s.ollamaCloudEnabled) ? 'value="••••saved"' : ""}></div>
+        <button class="tonal" onclick="(async()=>{const u=document.getElementById(&quot;cloudurl&quot;).value,k=(document.getElementById(&quot;cloudkey&quot;).value||'').trim();if(k==='••••saved'){alert('Enter a new key (or clear) first');return;}try{const r=await fetch('/api/admin/env?token='+encodeURIComponent(new URL(location.href).searchParams.get('token')||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({OLLAMA_URL:u,OLLAMA_API_KEY:k})});const t=await r.json();if(!r.ok)throw new Error(t.error||r.status);alert('Saved. Restarted automatically. Cloud is '+(t.cloudEnabled?'on':'off') + (t.restarted ? '' : ' — restart required.'));}catch(e){alert('Couldn’t save: '+e.message);}})()">Save / use Ollama Cloud</button>
+      </div>
+      <div class="muted small" style="margin-top:8px">Enter URL + API key, then verify with /api/admin/models.</div>
     </div>
 
     <div class="blk"><h3 class="grp">Which one answers</h3>
