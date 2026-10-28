@@ -5,7 +5,7 @@ import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { PlacePicker } from "@spot/ui";
-import { DAY_SHORT, DEFAULT_CLEANUP, DIDNT_RULE_OPTIONS, HAPPENED_RULE_OPTIONS, cleanupRules, cleanupSummary, cleanupTriggerPost, withCleanupRules, formatTime, migrateCleanupTrigger, whenLabel, groupModeOf, type GroupInfo, type GroupMember, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
+import { DAY_NAMES, DAY_SHORT, DEFAULT_CLEANUP, DIDNT_RULE_OPTIONS, HAPPENED_RULE_OPTIONS, cleanupRules, cleanupSummary, cleanupTriggerPost, withCleanupRules, formatTime, migrateCleanupTrigger, whenLabel, groupModeOf, type GroupInfo, type GroupMember, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
@@ -35,7 +35,7 @@ const newShow = (venueId: string): Omit<Show, "id"> => ({
 const GROUP_MODE_LABEL: Record<GroupMode, string> = { manual: "Sync: when I sync", confirm: "Sync: on confirm", show_day: "Sync: show day" };
 
 export function Shows() {
-  const { shows, venues } = useApp();
+  const { uid, shows, venues } = useApp();
   const [editingShow, setEditingShow] = useState<Partial<Show> | null>(null);
   const [editingVenue, setEditingVenue] = useState<Partial<Venue> | null>(null);
   // The lineup page links here (?edit=showId) to link a group.
@@ -106,8 +106,16 @@ export function Shows() {
                           </span>
                         </span>
                       </button>
+                      <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
+                        <Switch checked={Boolean(s.active)} onChange={async (v) => {
+                          try {
+                            await import("firebase/firestore").then(({ setDoc }) => setDoc(userDoc(uid, "shows", s.id), { active: v }, { merge: true }));
+                            toast.success(v ? "Show activated" : "Show paused", { action: { label: "Undo", onClick: async () => { await import("firebase/firestore").then(({ setDoc }) => setDoc(userDoc(uid, "shows", s.id), { active: !v }, { merge: true })); } } });
+                          } catch (e) { toast.error((e as Error).message); }
+                        }} label="Active" />
+                      </div>
                       {s.groupId && (
-                        <Link to={`/messages?g=${encodeURIComponent(s.groupId)}`} aria-label={`Open the ${s.name} group chat`} title="Group chat" className="state-layer absolute top-3 right-3 grid size-10 place-items-center rounded-full text-primary">
+                        <Link to={`/messages?g=${encodeURIComponent(s.groupId)}`} aria-label={`Open the ${s.name} group chat`} title="Group chat" className="state-layer absolute top-3 right-14 grid size-10 place-items-center rounded-full text-primary">
                           <IconChat className="icon size-5" />
                         </Link>
                       )}
@@ -131,7 +139,7 @@ export function Shows() {
 }
 
 function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: () => void }) {
-  const { uid, venues, comics, session } = useApp();
+  const { uid, shows, venues, comics, session } = useApp();
   // Only while the sheet is open: the groups list is large and nothing else on this page uses it.
   const groups = useCollection<GroupInfo>(value ? uid : undefined, "groups");
   const [draft, setDraft] = useState<Partial<Show>>({});
@@ -277,6 +285,28 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
             <div className="type-body-s text-on-surface-variant">Paused shows are hidden from the lineup board.</div>
           </div>
           <Switch checked={draft.active ?? true} onChange={(v) => set("active", v)} label="Active" />
+        </div>
+
+        <div className="rounded-lg bg-surface-container p-4">
+          <div className="mb-2 type-title-s">Request window</div>
+          <Segmented full compact value={(draft.requestWindow?.mode ?? "default")} onChange={(v) => set("requestWindow", v === "default" ? { mode: "default" } : v === "always" ? { mode: "always" } : v === "weekly" ? { mode: "weekly", startDay: 6 as Weekday, startTime: "10:00", endDay: 1 as Weekday, endTime: "17:00" } : { mode: "before", opensDaysBefore: 2, opensAt: "10:00", closesHoursBefore: 3 })} options={[{ value: "default", label: "Default" }, { value: "before", label: "Before show" }, { value: "weekly", label: "Weekly" }, { value: "always", label: "Always" }]} />
+          <p className="mt-2 type-body-s text-on-surface-variant">
+            {(() => {
+              const rw = draft.requestWindow ?? { mode: "default" };
+              if (rw.mode === "default") return "Uses the default request window from Settings.";
+              if (rw.mode === "always") return "Requests always open.";
+              if (rw.mode === "before") return `Opens ${rw.opensDaysBefore} day(s) before at ${rw.opensAt}, closes ${rw.closesHoursBefore}h before the show.`;
+              return `Opens ${DAY_NAMES[rw.startDay]} ${formatTime(rw.startTime)}, closes ${DAY_NAMES[rw.endDay]} ${formatTime(rw.endTime)}.`;
+            })()}
+          </p>
+          <div className="mt-3">
+            <Field label="Copy request window from another show">
+              <SearchSelect label="Copy from" value="" onChange={(v) => {
+                const src = shows.find((x) => x.id === v);
+                if (src) set("requestWindow", src.requestWindow ?? { mode: "default" });
+              }} placeholder="Choose a show" searchPlaceholder="Search shows" options={shows.filter((x) => x.id !== draft.id).map((x) => ({ value: x.id, label: x.name }))} />
+            </Field>
+          </div>
         </div>
 
         <section className="border-t border-outline-variant pt-6">

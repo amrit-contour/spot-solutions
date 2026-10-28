@@ -177,15 +177,6 @@ function beforeWindow(show: Show, rw: Extract<Show["requestWindow"], { mode: "be
   return { enabled: true, startDay: openDay as Weekday, startTime: rw.opensAt, endDay: closeDay as Weekday, endTime: closeTime };
 }
 
-function showWindowResolved(show: Show, settings: Settings): { mode: string } & Partial<RuleSettings["window"]> {
-  const rw = show.requestWindow ?? { mode: "default" };
-  if (rw.mode === "default") return settings.rules.window;
-  if (rw.mode === "weekly") return { enabled: true, startDay: rw.startDay, startTime: rw.startTime, endDay: rw.endDay, endTime: rw.endTime };
-  if (rw.mode === "always") return { enabled: false, startDay: 0 as Weekday, startTime: "00:00", endDay: 6 as Weekday, endTime: "23:59" };
-  const w = beforeWindow(show, rw as any);
-  return w;
-}
-
 export function showWindowOpen(show: Show, at: Date, settings: Settings, tz: string): boolean {
   const rw = show.requestWindow ?? { mode: "default" };
   if (rw.mode === "always") return true;
