@@ -42,10 +42,13 @@ describe("crisp header on iPhone", () => {
     expect(trigger).not.toMatch(/pressable|scale-|translate|will-change|transform/);
   });
 
-  it("the sticky page header carries its own opaque background (iOS 26 extends it under the status bar instead of blurring)", () => {
-    const h = pageHeader(ui("Shell.tsx"));
-    const cls = h.match(/className="group\/hdr sticky top-0[^"]*"/)?.[0] ?? "";
-    expect(cls).toMatch(/\bbg-surface\b/);
+  it("the page header renders above the scroller (never sticky inside it) and carries its own opaque background", () => {
+    const src = ui("Shell.tsx");
+    // AppShell: the header slot is a solid sibling placed before main#app-scroll, so content never scrolls under the header.
+    expect(src).toMatch(/id=\{APP_HEADER_ID\} className="[^"]*\bbg-surface\b[^"]*"\s*\/>\s*<main id=\{APP_SCROLL_ID\}/);
+    const h = pageHeader(src);
+    expect(h).toContain("createPortal(titleBar, slot)");
+    expect(h).toMatch(/className=\{cx\("group\/hdr[^"]*\bbg-surface\b/);
   });
 
   it("the page header has no scroll-linked transforms, scale, will-change or backdrop blur", () => {

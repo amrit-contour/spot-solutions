@@ -231,7 +231,7 @@ export function Messages() {
         />
       </div>
 
-      <div className={cx("px-4 sm:px-8 lg:grid lg:h-[calc(100dvh-var(--page-header-h,0px)-1.5rem)] lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] lg:gap-6", anyOpen ? "pb-0 lg:pb-6" : "pb-6")}>
+      <div className={cx("px-4 sm:px-8 lg:grid lg:h-[calc(100dvh-var(--app-header-h,0px)-1.5rem)] lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] lg:gap-6", anyOpen ? "pb-0 lg:pb-6" : "pb-6")}>
         <section aria-label="Chats" className={cx("min-h-0 flex-col lg:flex", anyOpen ? "hidden" : "flex")}>
           {!ready ? (
             <Unavailable offline={!workerOnline} cantTell={server.reach === "unknown"} />

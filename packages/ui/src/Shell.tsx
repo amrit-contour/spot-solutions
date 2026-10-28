@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { cx, type Icon } from "./ui";
@@ -28,6 +29,12 @@ const ShellContext = createContext<ShellCtx>({ accountMenu: () => null });
  * tall and this element scrolls inside it, below the safe area, where the system draws no effect.
  */
 export const APP_SCROLL_ID = "app-scroll";
+/**
+ * Where every page's title bar is rendered (a portal), ABOVE the scroller rather than sticky inside it. The page content then
+ * never scrolls underneath the header, so iOS 26 has nothing to draw its top "scroll edge" blur over: on long pages the
+ * blur used to appear exactly where content slid under the pinned header, below the status bar.
+ */
+export const APP_HEADER_ID = "app-header";
 export function appScroller(): HTMLElement | null {
   return typeof document === "undefined" ? null : document.getElementById(APP_SCROLL_ID);
 }
@@ -143,13 +150,17 @@ export function AppShell({
           {railFooter}
         </nav>
 
-        <main id={APP_SCROLL_ID} className="min-w-0 flex-1 overflow-x-clip overflow-y-auto overscroll-y-contain pb-[calc(var(--nav-h)+1rem)] [-webkit-overflow-scrolling:touch] sm:pb-0">
-          {banner}
-          {/* CSS keyframes, not AnimatePresence: they always run to the end, so a route can never get stuck invisible. */}
-          <div key={loc.pathname} className="page-enter">
-            {children}
-          </div>
-        </main>
+        {/* The header slot sits above the scroller in a column: the scroller starts below the header, so nothing scrolls under it. */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div id={APP_HEADER_ID} className="relative z-30 flex-none bg-surface" />
+          <main id={APP_SCROLL_ID} className="min-h-0 min-w-0 flex-1 overflow-x-clip overflow-y-auto overscroll-y-contain pb-[calc(var(--nav-h)+1rem)] [-webkit-overflow-scrolling:touch] sm:pb-0">
+            {banner}
+            {/* CSS keyframes, not AnimatePresence: they always run to the end, so a route can never get stuck invisible. */}
+            <div key={loc.pathname} className="page-enter">
+              {children}
+            </div>
+          </main>
+        </div>
 
         {/* Bottom bar < 600px */}
         <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex h-[var(--nav-h)] items-center bg-surface-container px-1 pb-[var(--nav-pad)] sm:hidden">
@@ -176,13 +187,20 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
   const subRef = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(false);
   const collapsible = !!subtitle;
+  // Inside AppShell the bar renders into the header slot above the scroller (see APP_HEADER_ID); elsewhere it stays inline and sticky.
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => setSlot(document.getElementById(APP_HEADER_ID)), []);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const root = document.documentElement;
+    // --page-header-h is what sticky bars INSIDE the scroller offset by: 0 when the header lives above the scroller.
+    // --app-header-h is the header's real height, for layouts sized against the viewport (100dvh minus the header).
     const publish = () => {
       headerOwner = el;
-      root.style.setProperty("--page-header-h", `${el.getBoundingClientRect().height}px`);
+      const h = `${el.getBoundingClientRect().height}px`;
+      root.style.setProperty("--page-header-h", slot ? "0px" : h);
+      root.style.setProperty("--app-header-h", h);
     };
     const ro = new ResizeObserver(() => headerOwner === el || !headerOwner?.isConnected ? publish() : undefined);
     publish();
@@ -193,9 +211,10 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       if (headerOwner === el) {
         headerOwner = null;
         root.style.removeProperty("--page-header-h");
+        root.style.removeProperty("--app-header-h");
       }
     };
-  }, []);
+  }, [slot]);
   // Phone collapse. Layout is measured, never animated: the header's box is its COLLAPSED height (so --page-header-h is what
   // sticky sub-bars need) plus a bottom margin of the collapsible height D, so the page always flows at the expanded height and
   // scrolling never jumps. The subtitle is an overlay: scroll progress p (0..1 over the first D pixels of scroll)
@@ -233,10 +252,10 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       sc.removeEventListener("scroll", onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [collapsible]);
-  return (
+  }, [collapsible, slot]);
+  const titleBar = (
     <>
-    {/* Desktop breathing room above the title. Outside the sticky bar, so the bar itself never changes height. */}
+    {/* Desktop breathing room above the title. Outside the bar, so the bar itself never changes height. */}
     <div aria-hidden className="hidden h-6 sm:block" />
     <header
       ref={ref}
@@ -246,7 +265,7 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       // top with an opaque background-color and extends that colour under the status bar; when it finds none (our colour used
       // to live only on the child layer below, so this element was transparent) it draws its frosted "scroll edge" blur over
       // the title and avatar instead. Requests and Chats looked fine only because their own sticky strips carry bg-surface.
-      className="group/hdr sticky top-0 z-30 bg-surface"
+      className={cx("group/hdr z-30 bg-surface", slot ? "relative" : "sticky top-0")}
     >
       {/* Hairline/shadow layer (no backdrop-filter: iOS repaints it every scroll frame, which flickers). Only this changes when stuck. */}
       <div
@@ -281,6 +300,11 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
       </div>
       </div>
     </header>
+    </>
+  );
+  return (
+    <>
+    {slot ? createPortal(titleBar, slot) : titleBar}
     {/* The subtitle sits under the pinned title bar and scrolls away with the page (phones and desktop alike). */}
     {subtitle && (
       <div ref={subRef} className="px-4 pt-0.5 pb-3 sm:px-8">
