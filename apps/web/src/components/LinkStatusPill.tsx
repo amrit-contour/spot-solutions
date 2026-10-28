@@ -1,6 +1,6 @@
 // Compact connection status for the WhatsApp and Agent cards. Replaces the big empty hero box: the status is one small pill
 // beside the heading; the large box now only exists while there is a QR code to show.
-import type { LinkView as SharedLinkView } from "@spot/shared";
+import { phoneHeadline, type LinkView as SharedLinkView } from "@spot/shared";
 import { cx } from "@spot/ui";
 import { IconCheck, IconPhone, IconRefresh, IconServer, IconWarn } from "@spot/ui";
 
@@ -38,4 +38,4 @@ export function cardView(link: SharedLinkView, busy: boolean): LinkView {
 }
 
 /** Pill label for the two states that aren't about WhatsApp itself. */
-export const phoneLabel = (phone: "ok" | "offline" | "reconnecting") => (phone === "offline" ? "You're offline" : "Reconnecting…");
+export const phoneLabel = (d: { phone: "ok" | "offline" | "reconnecting"; checking?: boolean }) => phoneHeadline(d);

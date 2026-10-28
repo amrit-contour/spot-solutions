@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot } from "firebase/firestore";
 import { db } from "@spot/ui/firebase";
-import { reportSnapshot, usePhoneLink } from "@spot/ui/phoneLink";
+import { registerProbe, reportSnapshot, useKnownLinks, usePhoneLink, useRememberLink } from "@spot/ui/phoneLink";
 import type { AccountStatus } from "@spot/ui";
-import { clock, deriveLink, deriveServer, maskPhoneTail, netNotice, restartLabel, type Derived, type FleetServerSummary, type Lease, type LinkView, type RestartMarker, type SessionState } from "@spot/shared";
+import { clock, deriveLink, phoneHeadline, deriveServer, maskPhoneTail, netNotice, restartLabel, type Derived, type FleetServerSummary, type Lease, type LinkView, type RestartMarker, type SessionState } from "@spot/shared";
 import { useClock } from "./alerts";
 
 /** Where linking, relinking, choosing a server and installing one happen. */
@@ -67,10 +67,16 @@ export function useConnection(uid: string): Connection {
   useEffect(() => onSnapshot(collection(db, "fleetServers"), (q) => setServers(q.docs.map((d) => ({ ...(d.data() as FleetServerSummary), id: d.id }))), () => setServers([])), []);
 
   const phone = usePhoneLink();
-  const server = deriveServer(session.data, now, phone);
+  const known = useKnownLinks(uid);
+  useEffect(() => registerProbe("session", doc(db, `users/${uid}/session/state`)), [uid]);
+  const server = deriveServer(session.data, now, phone, known);
   const serverUp = server.up;
   const restarting = server.restarting;
   const whatsapp = deriveLink(session.data, server);
+  const agentLink = deriveLink(agent.data, server, "agent");
+  // Remember the live link views per account: the next cold open shows them as the last known status.
+  useRememberLink(uid, "main", whatsapp, server.checking);
+  useRememberLink(uid, "agent", agentLink, server.checking);
   const id = lease.data?.server ?? null;
   const serverName = id ? servers.find((s) => s.id === id)?.hostname ?? id : null;
   const loading = session.loading || lease.loading;
@@ -78,7 +84,7 @@ export function useConnection(uid: string): Connection {
   return {
     loading,
     whatsapp,
-    agent: deriveLink(agent.data, server),
+    agent: agentLink,
     serverName,
     serverUp,
     restarting,
@@ -99,7 +105,7 @@ export function connectionStatus(c: Connection): AccountStatus | undefined {
   const to = "/settings";
   const linkLabel = "Connection";
   const phone = c.phone ? maskPhoneTail(c.phone) : undefined;
-  if (c.server.reach === "unknown") return { tone: "idle", label: c.server.phone === "offline" ? "You're offline" : "Reconnecting…", detail: `last known status${c.server.asOf ? `, as of ${clock(c.server.asOf)}` : ""}`, to, linkLabel };
+  if (c.server.reach === "unknown") return { tone: "idle", label: phoneHeadline(c.server), detail: `last known status${c.server.asOf ? `, as of ${clock(c.server.asOf)}` : ""}`, to, linkLabel };
   if (c.restarting) return { tone: "wait", label: restartLabel(c.restarting.reason), detail: "WhatsApp reconnects by itself", to, linkLabel };
   if (!c.serverUp) return { tone: "error", label: "Server offline", detail: c.lastSeen ? `not reachable since ${clock(c.lastSeen)}` : phone, to, linkLabel };
   switch (c.whatsapp) {

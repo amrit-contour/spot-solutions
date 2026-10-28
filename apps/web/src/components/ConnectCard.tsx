@@ -46,7 +46,7 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
 
   const showQr = view === "qr" && Boolean(session?.qr);
   const unlinkShown = view === "ready" || ((view === "offline" || view === "restarting" || view === "unknown") && status === "ready");
-  const pillLabel = view === "ready" ? (stuck ? "Not responding" : "Connected") : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "unknown" ? phoneLabel(server.phone) : view === "starting" ? "Starting WhatsApp…" : view === "qr" ? "Waiting for scan" : "Not linked";
+  const pillLabel = view === "ready" ? (stuck ? "Not responding" : "Connected") : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "unknown" ? phoneLabel(server) : view === "starting" ? "Starting WhatsApp…" : view === "qr" ? "Waiting for scan" : "Not linked";
 
   return (
     <section id="whatsapp" className={cx("overflow-hidden rounded-xl bg-surface-low", compact ? "p-5 sm:p-8" : "p-4 sm:p-6")}>

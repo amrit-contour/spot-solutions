@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { maskPhoneTail, phoneNotice, restartLabel, unreachableNotice } from "@spot/shared";
+import { maskPhoneTail, phoneHeadline, phoneNotice, restartLabel, unreachableNotice } from "@spot/shared";
 import { Chip, IconArrowRight, IconChatCheck, IconCheck, IconPhone, IconQr, IconServer, IconWarn, Spinner, cx } from "@spot/ui";
 import { CURATING_AGENT, CURATING_SERVER, CURATING_WHATSAPP, useConnection, type Connection } from "../lib/connection";
 import { useClock } from "../lib/alerts";
@@ -36,7 +36,7 @@ export function ConnectionCard({ uid }: { uid: string }) {
   const stuck = c.whatsapp === "unresponsive" && !bad && !unknown;
   const ok = c.whatsapp === "connected" && !bad && !wait && !unknown;
   const seen = c.lastSeen ? ago(c.lastSeen, now) : null;
-  const title = unknown ? (c.server.phone === "offline" ? "You're offline" : "Reconnecting…") : wait ? (c.restarting?.reason === "update" ? "Updating server…" : "Restarting server…") : ok ? `WhatsApp connected · ${maskPhoneTail(c.phone)}` : stuck ? "WhatsApp stopped responding" : bad ? "Server offline" : c.whatsapp === "qr" ? "WhatsApp needs a scan" : c.whatsapp === "starting" ? "Starting WhatsApp…" : "WhatsApp isn't linked";
+  const title = unknown ? phoneHeadline(c.server) : wait ? (c.restarting?.reason === "update" ? "Updating server…" : "Restarting server…") : ok ? `WhatsApp connected · ${maskPhoneTail(c.phone)}` : stuck ? "WhatsApp stopped responding" : bad ? "Server offline" : c.whatsapp === "qr" ? "WhatsApp needs a scan" : c.whatsapp === "starting" ? "Starting WhatsApp…" : "WhatsApp isn't linked";
   const detail = unknown
     ? `${phoneNotice(c.server)}.`
     : wait
@@ -62,7 +62,7 @@ export function ConnectionCard({ uid }: { uid: string }) {
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className="type-title-m">{title}</h3>
-              {!ok && <Chip tone={wait ? "tertiary" : bad || stuck ? "error" : "neutral"} className="flex-none">{unknown ? "Last known" : wait ? "Restarting" : stuck ? "Not responding" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>}
+              {!ok && <Chip tone={wait ? "tertiary" : bad || stuck ? "error" : "neutral"} className="flex-none">{unknown ? (c.server.checking ? "Checking" : "Last known") : wait ? "Restarting" : stuck ? "Not responding" : bad ? "Offline" : c.whatsapp === "qr" ? "Needs QR" : c.whatsapp === "starting" ? "Starting" : "Not linked"}</Chip>}
             </div>
             {detail && <p className="mt-1 break-words type-body-m text-on-surface-variant">{detail}</p>}
             {c.serverName && (

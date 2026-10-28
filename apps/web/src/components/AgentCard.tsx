@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import { DEFAULT_SETTINGS, OTHER_APP_NOTE, deriveLink, phoneNotice, restartLabel, type AgentSettings, type SessionState } from "@spot/shared";
 import { useAgentScope } from "@spot/ui/agentScope";
+import { useRememberLink } from "@spot/ui/phoneLink";
 import { useApp } from "../lib/app";
 import { runCommand, useDocument } from "../lib/data";
 import { isDemoUser } from "../lib/demo";
@@ -30,12 +31,14 @@ export function AgentCard() {
 
   const mainReady = session?.status === "ready";
   const status = agent?.status ?? "idle";
-  const view = cardView(deriveLink(agent, server), busy === "link");
+  const agentLink = deriveLink(agent, server, "agent");
+  useRememberLink(uid, "agent", agentLink, server.checking);
+  const view = cardView(agentLink, busy === "link");
 
   const showQr = view === "qr" && Boolean(agent?.qr);
   // Unlink (and Send me a hello) live in the header while the agent is linked; off, with a reason underneath, when the server or phone is unreachable.
   const unlinkShown = view === "ready" || ((view === "offline" || view === "restarting" || view === "unknown") && status === "ready");
-  const pillLabel = view === "ready" ? "Connected" : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "unknown" ? phoneLabel(server.phone) : view === "starting" ? "Starting the agent…" : view === "qr" ? "Waiting for scan" : "Not linked";
+  const pillLabel = view === "ready" ? "Connected" : view === "restarting" ? (serverRestarting?.reason === "update" ? "Updating server…" : "Restarting server…") : view === "offline" ? "Server offline" : view === "unknown" ? phoneLabel(server) : view === "starting" ? "Starting the agent…" : view === "qr" ? "Waiting for scan" : "Not linked";
 
   const run = async (kind: "link" | "unlink" | "test", type: "connect_agent" | "logout_agent" | "test_agent", done?: string) => {
     setBusy(kind);

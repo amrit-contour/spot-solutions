@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CACHE_GRACE_MS, NET_NOTE_MS, RESTART_GRACE_MS, clock, deriveLink, deriveServer, isServerUp, linkView, maskPhoneTail, netNotice, phoneNotice, restartLabel, restartMarker, restartingNow, serverLastSeen, serverState, shouldNudge, unreachableNotice } from "./connection.ts";
+import { CACHE_GRACE_MS, LIVE_WAIT_MS, NET_NOTE_MS, RESTART_GRACE_MS, clock, deriveLink, deriveServer, isServerUp, knownLinksKey, linkView, maskPhoneTail, netNotice, parseKnownLinks, phoneHeadline, phoneNotice, restartLabel, restartMarker, restartingNow, serverLastSeen, serverState, shouldNudge, unreachableNotice } from "./connection.ts";
 
 describe("linkView", () => {
   it("ready is connected, even if the heartbeat is old (the card says so separately)", () => {
@@ -171,5 +171,76 @@ describe("netNotice", () => {
     expect(netNotice(net, net.since + NET_NOTE_MS + 1)).toBeNull();
     expect(netNotice(null, T)).toBeNull();
     expect(netNotice({ ok: true, since: T }, T)).toBeNull();
+  });
+});
+
+describe("cold open: no live snapshot yet shows the last known status, never connecting", () => {
+  const T = 90_000_000;
+  const cold = (since = T - 1_000) => ({ online: true, fromCache: true, cachedSince: since, liveAt: null, awaitingLive: true, awaitingSince: since });
+  const oldBeat = { status: "ready" as const, lastSeen: T - 3 * 3600_000 };
+
+  it("a cached old heartbeat is not 'Server offline' while waiting for the live snapshot", () => {
+    const d = deriveServer(oldBeat, T, cold());
+    expect([d.reach, d.checking, d.phone]).toEqual(["up", true, "ok"]);
+    expect(deriveLink(oldBeat, d)).toBe("connected");
+  });
+  it("a cached 'starting' or 'authenticated' doc never reads as connecting/linking: last known wins", () => {
+    for (const status of ["starting", "authenticated", "qr"] as const) {
+      const d = deriveServer({ status, lastSeen: T - 5_000 }, T, cold(), { main: "connected" });
+      expect(deriveLink({ status, lastSeen: T - 5_000 }, d)).toBe("connected");
+      expect(d.reach).toBe("up");
+    }
+  });
+  it("a remembered 'starting', 'qr', 'offline' or 'restarting' is not trusted: Checking, not a wait state", () => {
+    for (const k of ["starting", "qr", "offline", "restarting", "unknown"] as const) {
+      const s = { status: "starting" as const, lastSeen: T - 5_000 };
+      const d = deriveServer(s, T, cold(), { main: k });
+      expect([d.reach, d.checking, d.up]).toEqual(["unknown", true, false]);
+      expect(deriveLink(s, d)).toBe("unknown");
+      expect(phoneHeadline(d)).toBe("Checking…");
+    }
+  });
+  it("nothing known and no doc yet is Checking…, not offline or not linked", () => {
+    const d = deriveServer(null, T, cold());
+    expect(deriveLink(null, d)).toBe("unknown");
+    expect(phoneNotice(d)).toBe("Checking… showing the last known status");
+  });
+  it("remembered unlinked and unresponsive show as they were", () => {
+    const d = deriveServer(null, T, cold(), { main: "unlinked", agent: "connected" });
+    expect(deriveLink(null, d)).toBe("unlinked");
+    expect(deriveLink(null, d, "agent")).toBe("connected");
+    expect(deriveLink(null, deriveServer(null, T, cold(), { main: "unresponsive" }))).toBe("unresponsive");
+  });
+  it("the cache grace does not cut the window short, and the window is 10 s", () => {
+    expect(deriveServer(oldBeat, T, cold(T - CACHE_GRACE_MS - 1_000)).checking).toBe(true);
+    const late = deriveServer(oldBeat, T, cold(T - LIVE_WAIT_MS));
+    expect([late.reach, late.checking, late.phone]).toEqual(["unknown", false, "reconnecting"]);
+    expect(deriveLink(oldBeat, late)).toBe("unknown");
+    expect(phoneHeadline(late)).toBe("Reconnecting…");
+  });
+  it("offline during the window is offline, not checking", () => {
+    const d = deriveServer(oldBeat, T, { ...cold(), online: false });
+    expect([d.phone, d.checking]).toEqual(["offline", false]);
+    expect(phoneHeadline(d)).toBe("You're offline");
+  });
+  it("the first live snapshot ends the window: server state is real again (offline, restarting, connecting)", () => {
+    const live = { online: true, fromCache: false, cachedSince: null, liveAt: T, awaitingLive: false, awaitingSince: null };
+    expect(deriveServer(oldBeat, T, live, { main: "connected" }).reach).toBe("offline");
+    const restarting = { status: "ready" as const, lastSeen: 0, restarting: restartMarker(T - 10_000, "update") };
+    expect(deriveServer(restarting, T, live, { main: "connected" }).reach).toBe("restarting");
+    const starting = { status: "starting" as const, lastSeen: T - 5_000 };
+    const d = deriveServer(starting, T, live, { main: "connected" });
+    expect(deriveLink(starting, d)).toBe("starting");
+    const qr = { status: "qr" as const, lastSeen: T - 5_000 };
+    expect(deriveLink(qr, deriveServer(qr, T, live))).toBe("qr");
+  });
+  it("without awaiting info (older callers, other apps) nothing changes", () => {
+    expect(deriveServer(oldBeat, T, { online: true, fromCache: true, cachedSince: T - 1_000, liveAt: null }).reach).toBe("offline");
+  });
+  it("parseKnownLinks tolerates garbage", () => {
+    expect(parseKnownLinks(null)).toBeNull();
+    expect(parseKnownLinks("{nope")).toBeNull();
+    expect(parseKnownLinks('{"main":"connected","agent":5}')).toEqual({ main: "connected", agent: null });
+    expect(knownLinksKey("u1")).toBe("spot.link.u1");
   });
 });

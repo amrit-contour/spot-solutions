@@ -60,6 +60,10 @@ export const serverLastSeen = (s: Beat | null | undefined): number | null => s?.
 
 /** Cached snapshots shorter than this are a normal cold start, not a lost connection. */
 export const CACHE_GRACE_MS = 6_000;
+/** On a cold open or a resume the app shows the last known status until the first live (non-cache) snapshot arrives. Past this, "Reconnecting…". */
+export const LIVE_WAIT_MS = 10_000;
+/** Backgrounded at least this long: on resume the status docs are re-checked against the server before they are believed. */
+export const RESUME_RECHECK_MS = 15_000;
 /** Still cached this long while the browser says it is online: the listeners are stuck, reconnect them. */
 export const NUDGE_AFTER_MS = 20_000;
 
@@ -72,6 +76,10 @@ export interface PhoneLink {
   cachedSince: number | null;
   /** When a snapshot last came from the server: "as of" in the offline note. */
   liveAt: number | null;
+  /** No live (non-cache) snapshot has arrived since the app opened or resumed. Absent = false. */
+  awaitingLive?: boolean;
+  /** When that wait began. */
+  awaitingSince?: number | null;
 }
 export const PHONE_LIVE: PhoneLink = { online: true, fromCache: false, cachedSince: null, liveAt: null };
 
@@ -79,6 +87,8 @@ export type PhoneState = "ok" | "offline" | "reconnecting";
 export function phoneState(p: PhoneLink | null | undefined, now: number): PhoneState {
   if (!p) return "ok";
   if (!p.online) return "offline";
+  // Cold open or resume: the first live snapshot has the say. Until then (LIVE_WAIT_MS) this is "checking", not a lost connection.
+  if (p.awaitingLive) return now - (p.awaitingSince ?? now) >= LIVE_WAIT_MS ? "reconnecting" : "ok";
   if (p.fromCache && now - (p.cachedSince ?? now) >= CACHE_GRACE_MS) return "reconnecting";
   return "ok";
 }
@@ -104,19 +114,50 @@ export interface Derived {
   phone: PhoneState;
   /** For "unknown": when this phone last had live data (falls back to the last heartbeat it holds). */
   asOf: number | null;
+  /** Cold open or resume, no live snapshot yet: what is shown is the last known status, not a verdict. */
+  checking: boolean;
+  /** The last known link per slot (persisted per account), used while checking. */
+  known: KnownLinks | null;
+}
+
+/** The link views worth showing while the app has no live data: settled ones. Never connecting/linking, offline or restarting. */
+export type SettledLink = "connected" | "unresponsive" | "unlinked";
+export const isSettledLink = (v: unknown): v is SettledLink => v === "connected" || v === "unresponsive" || v === "unlinked";
+/** Last known link views, per account: the main number and the agent number. */
+export interface KnownLinks {
+  main?: LinkView | null;
+  agent?: LinkView | null;
+}
+
+/** The link view to show while checking: the remembered one, else a cached doc that says ready. Never starting/qr/offline/restarting. */
+function knownLink(s: Beat | null | undefined, known: LinkView | null | undefined): SettledLink | null {
+  if (isSettledLink(known)) return known;
+  if (s?.status === "ready") {
+    const v = linkView(s as SessionState, true);
+    if (isSettledLink(v)) return v;
+  }
+  return null;
 }
 
 /** Server state from its heartbeat doc (session/state or servers/{id}) and the phone's own connection. */
-export function deriveServer(beat: Beat | null | undefined, now: number, phone?: PhoneLink | null): Derived {
+export function deriveServer(beat: Beat | null | undefined, now: number, phone?: PhoneLink | null, known?: KnownLinks | null): Derived {
   const ph = phoneState(phone, now);
   const lastSeen = serverLastSeen(beat);
-  if (ph !== "ok") return { reach: "unknown", up: false, restarting: null, lastSeen, phone: ph, asOf: phone?.liveAt ?? lastSeen };
+  const k = known ?? null;
+  if (ph !== "ok") return { reach: "unknown", up: false, restarting: null, lastSeen, phone: ph, asOf: phone?.liveAt ?? lastSeen, checking: false, known: k };
+  // Cold open or resume, no live snapshot yet: the heartbeat on the cache is old by nature, so it proves nothing. Show the last known status.
+  if (phone?.awaitingLive) {
+    const seen = knownLink(beat, k?.main);
+    return { reach: seen ? "up" : "unknown", up: Boolean(seen), restarting: null, lastSeen, phone: ph, asOf: phone.liveAt ?? lastSeen, checking: true, known: k };
+  }
   const state = serverState(beat as SessionState | null, now);
-  return { reach: state, up: state === "up", restarting: state === "restarting" ? (beat?.restarting ?? null) : null, lastSeen, phone: ph, asOf: null };
+  return { reach: state, up: state === "up", restarting: state === "restarting" ? (beat?.restarting ?? null) : null, lastSeen, phone: ph, asOf: null, checking: false, known: k };
 }
 
 /** The WhatsApp link (main or agent session doc) given the server derivation. A silent server is never "connected". */
-export function deriveLink(s: SessionState | null | undefined, d: Derived): LinkView {
+export function deriveLink(s: SessionState | null | undefined, d: Derived, slot: keyof KnownLinks = "main"): LinkView {
+  // While checking only the last known, settled status shows: "starting"/"qr" on a cached doc is history, not news.
+  if (d.checking) return knownLink(s, d.known?.[slot]) ?? "unknown";
   if (d.reach === "unknown") return "unknown";
   if (d.reach === "restarting") return "restarting";
   if (d.reach === "offline") return "offline";
@@ -130,9 +171,26 @@ export const clock = (ms: number) => {
 };
 
 /** The neutral line for a phone that can't tell: never says the server is down. */
-export function phoneNotice(d: Pick<Derived, "phone" | "asOf">): string {
+export function phoneNotice(d: Pick<Derived, "phone" | "asOf"> & { checking?: boolean }): string {
   const asOf = d.asOf ? ` (as of ${clock(d.asOf)})` : "";
+  if (d.checking) return `Checking… showing the last known status${asOf}`;
   return d.phone === "offline" ? `You're offline: showing the last known status${asOf}` : `Reconnecting… showing the last known status${asOf}`;
+}
+
+/** The headline for a phone that can't tell: offline, still checking (cold open), or reconnecting. */
+export const phoneHeadline = (d: Pick<Derived, "phone"> & { checking?: boolean }) => (d.phone === "offline" ? "You're offline" : d.checking ? "Checking…" : "Reconnecting…");
+
+/** Where the last known link views live in localStorage, per account. */
+export const knownLinksKey = (uid: string) => `spot.link.${uid}`;
+/** Parse what was stored; anything odd is "nothing known". Only settled views are used while checking (see knownLink). */
+export function parseKnownLinks(raw: string | null | undefined): KnownLinks | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as KnownLinks;
+    return v && typeof v === "object" ? { main: typeof v.main === "string" ? v.main : null, agent: typeof v.agent === "string" ? v.agent : null } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** "Server not reachable since 10:42" for a silent server. */

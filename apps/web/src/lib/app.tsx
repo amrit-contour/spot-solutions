@@ -9,6 +9,7 @@ import {
   aiFromLegacy,
   rolloverDayFor,
   weekOf,
+  deriveLink,
   deriveServer,
   type Derived,
   type PhoneLink,
@@ -21,7 +22,7 @@ import {
   type Venue,
 } from "@spot/shared";
 import { auth, db } from "@spot/ui/firebase";
-import { reportSnapshot, usePhoneLink } from "@spot/ui/phoneLink";
+import { registerProbe, reportSnapshot, useKnownLinks, usePhoneLink, useRememberLink } from "@spot/ui/phoneLink";
 import { useCollection, useDocument, useNow } from "./data";
 import { cloneDemo, needsDemoClone } from "./demo";
 import { useForegroundPush } from "./push";
@@ -90,6 +91,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
   const comics = useCollection<Comic>(uid, "comics");
   const now = useNow(10_000);
   const phone = usePhoneLink();
+  const known = useKnownLinks(uid);
   useForegroundPush();
 
   // Tell phoneLink whether the session listener is getting server data or only the cache (metadata changes arrive when it flips).
@@ -103,6 +105,8 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       ),
     [uid],
   );
+  // On resume after a while the cached status is re-read from the server before it is believed.
+  useEffect(() => registerProbe("session", doc(db, "users", uid, "session", "state")), [uid]);
 
   // First sign-in: create the user doc so the worker starts listening for this curator.
   useEffect(() => {
@@ -160,7 +164,9 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
     [shows.data],
   );
   const comicsById = useMemo(() => new Map(comics.data.map((c) => [c.id, c])), [comics.data]);
-  const server = useMemo(() => deriveServer(session.data, now, phone), [session.data, now, phone]);
+  const server = useMemo(() => deriveServer(session.data, now, phone, known), [session.data, now, phone, known]);
+  // Remember the live WhatsApp state per account so the next cold open can show it (as the last known status) before Firestore answers.
+  useRememberLink(uid, "main", deriveLink(session.data, server), server.checking);
   const workerOnline = server.up;
   const serverRestarting = server.restarting;
 

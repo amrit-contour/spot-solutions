@@ -1,4 +1,4 @@
-import { clock, deriveLink, restartLabel } from "@spot/shared";
+import { clock, deriveLink, phoneHeadline, restartLabel } from "@spot/shared";
 import { type ReactNode } from "react";
 import { signInWithPopup } from "firebase/auth";
 import { toast } from "sonner";
@@ -34,12 +34,12 @@ export function useConnection(): { tone: "ok" | "wait" | "error" | "idle"; label
   if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode", detail: "your own sandbox", short: "Demo" };
   // Same derivation as every other page (shared deriveServer/deriveLink). A phone that can't tell is neutral, never "Server offline".
   const link = deriveLink(session, server);
-  if (link === "unknown") return { tone: "idle" as const, label: server.phone === "offline" ? "You're offline" : "Reconnecting…", detail: `last known status${server.asOf ? `, as of ${clock(server.asOf)}` : ""}`, short: server.phone === "offline" ? "Offline" : "Syncing" };
+  if (link === "unknown") return { tone: "idle" as const, label: phoneHeadline(server), detail: `last known status${server.asOf ? `, as of ${clock(server.asOf)}` : ""}`, short: server.phone === "offline" ? "Offline" : server.checking ? "Checking" : "Syncing" };
   if (link === "restarting") return { tone: "wait" as const, label: restartLabel(server.restarting?.reason), detail: "WhatsApp reconnects by itself", short: "Updating" };
   if (link === "offline") return { tone: "error" as const, label: "Server offline", detail: server.lastSeen ? `not reachable since ${clock(server.lastSeen)}` : undefined, short: "Offline" };
-  if (session?.status === "ready" && session.health && session.health !== "ok") return { tone: "wait" as const, label: "WhatsApp not responding", detail: "the server is restarting it", short: "Stuck" };
-  if (session?.status === "ready") return { tone: "ok" as const, label: "WhatsApp connected", detail: maskPhone(session.phone), short: "Live" };
-  if (session?.status === "qr" || session?.status === "starting" || session?.status === "authenticated") return { tone: "wait" as const, label: "Linking WhatsApp…", short: "Linking" };
+  if (link === "unresponsive") return { tone: "wait" as const, label: "WhatsApp not responding", detail: "the server is restarting it", short: "Stuck" };
+  if (link === "connected") return { tone: "ok" as const, label: "WhatsApp connected", detail: maskPhone(session?.phone), short: "Live" };
+  if (link === "qr" || link === "starting") return { tone: "wait" as const, label: "Linking WhatsApp…", short: "Linking" };
   return { tone: "idle" as const, label: "WhatsApp not linked", short: "Unlinked" };
 }
 
