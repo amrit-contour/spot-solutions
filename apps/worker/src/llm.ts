@@ -10,9 +10,32 @@ import { AiPolicyError, IMPLICIT_GEMINI_MODEL, canAutoSwitch, isKept, keepMissin
 import { DEFAULT_LOCAL_MODEL } from "./serverAi.ts";
 import { SERVER_ID } from "./serverIdentity.ts";
 
-export const OLLAMA_URL = process.env.OLLAMA_URL ?? process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
-/** Optional API key for remote/cloud Ollama endpoints (Ollama Cloud, Beam, etc.). Sent as `Authorization: Bearer`. Kept in env; never written to files or logs. */
-export const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY ?? process.env.OLLAMA_KEY ?? null;
+export let OLLAMA_URL = process.env.OLLAMA_URL ?? process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
+/** Optional API key for remote/cloud Ollama endpoints (Ollama Cloud, Beam, etc.). Sent as `Authorization: Bearer`. Kept in env; never written to files or logs. Hot-loaded on SIGHUP or env reload. */
+export let OLLAMA_API_KEY: string | null = process.env.OLLAMA_API_KEY ?? process.env.OLLAMA_KEY ?? null;
+
+import { readFileSync } from "node:fs";
+export function reloadOllamaEnv() {
+  try {
+    const envFile = process.env.NBS_ENV_FILE ?? process.env.NBS_ENV_FILE ?? ".env";
+    // Best effort: read .env into process.env so a key saved by the server console takes effect without a restart.
+    try {
+      const raw = readFileSync(envFile, "utf8");
+      for (const line of raw.split("\n")) {
+        const i = line.indexOf("=");
+        if (i <= 0) continue;
+        const k = line.slice(0, i).trim();
+        if (!k || k.startsWith("#")) continue;
+        process.env[k] = line.slice(i + 1).trim();
+      }
+    } catch { /* .env may be absent */ }
+  } catch { /* ignore */ }
+  OLLAMA_URL = process.env.OLLAMA_URL ?? process.env.OLLAMA_BASE_URL ?? OLLAMA_URL;
+  OLLAMA_API_KEY = process.env.OLLAMA_API_KEY ?? process.env.OLLAMA_KEY ?? null;
+  return { ollamaUrl: OLLAMA_URL, cloudEnabled: Boolean(OLLAMA_API_KEY) };
+}
+// Hot-load hook: a change to the .env can take effect without a full restart. Falls back to a restart notice on failure.
+process.on("SIGHUP", () => { try { reloadOllamaEnv(); console.log("[llm] reloaded Ollama env via SIGHUP"); } catch (e) { console.warn("[llm] SIGHUP reload failed:", (e as Error)?.message); } });
 // Slow laptops (an old i5 with 8 GB) can take a few minutes on a cold model. Waiting longer beats failing: messages are
 // read in the background, and a failed read is retried anyway (intake.ts). NBS_OLLAMA_TIMEOUT_MS overrides.
 const OLLAMA_TIMEOUT_MS = Number(process.env.NBS_OLLAMA_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS ?? 300_000);

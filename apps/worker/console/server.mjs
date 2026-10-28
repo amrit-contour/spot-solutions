@@ -307,6 +307,8 @@ async function status() {
       key: keyInfo(),
       admins: (env.NBS_ADMIN_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
       geminiServerKey: gk ? `••••${gk.slice(-4)}` : null,
+      ollamaCloudEnabled: Boolean((env.OLLAMA_API_KEY ?? env.OLLAMA_KEY) ),
+      cloud: { enabled: Boolean((env.OLLAMA_API_KEY ?? env.OLLAMA_KEY)) },
       serverId: env.NBS_SERVER_ID || os.hostname(),
     },
     logs: logs ?? (WIN ? "No logs yet. The worker starts once a Firebase key is added." : "No logs yet (or this account can't read the journal)."),
@@ -507,6 +509,37 @@ createServer(async (req, res) => {
         return json(res, 400, { error: e.message });
       }
     }
+    // Server-console admin env: paste cloud/API keys (Ollama Cloud, etc.) instead of editing .env. Reuse console auth token.
+    if (url.pathname === "/api/admin/env" && req.method === "POST") {
+      const b = await body(req);
+      const patch = {};
+      if (b && typeof b.patch === "object" && b.patch) Object.assign(patch, b.patch);
+      if (typeof b?.key === "string" && b.key) patch[b.key] = b.value ?? "";
+      // also accept flat { OLLAMA_API_KEY: "..." } etc.
+      if (b && typeof b === "object") for (const [k, v] of Object.entries(b)) if (k !== "patch" && k !== "key" && k !== "value" && /^[A-Za-z0-9_]+$/.test(k)) patch[k] = v;
+      const secrets = (k) => /KEY|TOKEN|SECRET|PASSWORD/i.test(k);
+      const safe = {};
+      for (const [k, v] of Object.entries(patch)) {
+        const val = v == null ? "" : String(v).trim();
+        safe[k] = secrets(k) ? (val ? `••••${val.slice(-4)}` : null) : val;
+      }
+      if (!Object.keys(patch).length) return json(res, 400, { error: "Nothing to save" });
+      try { writeEnv(patch); } catch (e) { return json(res, 500, { error: e.message }); }
+      let restarted = false;
+      if (!DRY && !isStopped(readEnv())) { try { await restart("nothing-bot-server-worker"); restarted = true; } catch { restarted = false; } }
+      return json(res, 200, { ok: true, restarted, cloudEnabled: Boolean(readEnv().OLLAMA_API_KEY ?? readEnv().OLLAMA_KEY), values: safe });
+    }
+    if (url.pathname === "/api/admin/models" && (req.method === "GET" || req.method === "POST")) {
+      try {
+        const r = await fetch(`${OLLAMA}/api/tags`, { signal: AbortSignal.timeout(5000) });
+        const j = await r.json().catch(() => ({}));
+        const models = (j.models ?? []).map((m) => ({ name: m.name, size: m.size }));
+        return json(res, 200, { ok: true, up: r.ok, models, cloudEnabled: Boolean(readEnv().OLLAMA_API_KEY ?? readEnv().OLLAMA_KEY) });
+      } catch (e) {
+        return json(res, 200, { ok: false, up: false, models: [], error: e.message, cloudEnabled: Boolean(readEnv().OLLAMA_API_KEY ?? readEnv().OLLAMA_KEY) });
+      }
+    }
+
     // Turn the local model on or off on this computer (installs or stops Ollama; the platform's helper does it).
     if (url.pathname === "/api/local" && req.method === "POST") {
       const b = await body(req);
