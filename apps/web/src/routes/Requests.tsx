@@ -98,7 +98,7 @@ export function Requests() {
     // Fairness first: people who didn't perform last week float up, then first-come.
     for (const k of Object.keys(g) as Lane[])
       g[k].sort((a, b) => {
-        const latest = (r: SpotRequest) => r.messages[r.messages.length - 1]?.at ?? r.updatedAt ?? r.createdAt;
+        const latest = (r: SpotRequest) => r.messages?.length ? r.messages[r.messages.length - 1]?.at ?? r.updatedAt ?? r.createdAt : (r.updatedAt ?? r.createdAt);
         if (sort === "newest") return latest(b) - latest(a);
         if (sort === "oldest") return a.createdAt - b.createdAt;
         if (sort === "confidence") return b.intent.confidence - a.intent.confidence || a.createdAt - b.createdAt;
@@ -321,7 +321,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
   const placedShow = shows.find((s) => s.id === placedIn?.showId);
   const preferred = new Set(r.intent?.preferredDays ?? []);
   const sortedShows = [...shows].sort((a, b) => Number(preferred.has(b.weekday)) - Number(preferred.has(a.weekday)));
-  const last = r.messages[r.messages.length - 1];
+  const last = (r.messages ?? []).length ? r.messages[r.messages.length - 1] : undefined;
   const venueName = showVenue ? venues.find((v) => v.id === r.intent.venueId)?.name : undefined;
   const pills = requestPills({ r, comic, shows: allShows, today, venueName });
 
@@ -424,7 +424,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
             <div className="mt-4 max-h-80 overflow-y-auto overscroll-contain border-t border-outline-variant/40 bg-surface-lowest">
               {/* Pinned inside the box, so it can be folded from anywhere while scrolling through long chats. */}
               <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-surface-lowest/95 px-4 py-2 backdrop-blur sm:px-5">
-                <span className="type-label-m text-on-surface-variant">{r.messages.length} message{r.messages.length > 1 ? "s" : ""}</span>
+                <span className="type-label-m text-on-surface-variant">{(r.messages ?? []).length} message{(r.messages ?? []).length > 1 ? "s" : ""}</span>
                 <IconButton icon={IconArrowDown} label="Hide messages" onClick={() => setOpen(false)} className="size-8 rotate-180" />
               </div>
               <div className="flex flex-col gap-2 px-4 pb-4 sm:px-5">
@@ -446,7 +446,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
         {/* Reading tools stay together on the left; the actions sit on the right and drop to their own line when they don't fit. */}
         <div className="flex flex-none items-center sm:gap-2">
         <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="state-layer inline-flex h-10 flex-none whitespace-nowrap items-center gap-1 rounded-full px-2 type-label-l sm:gap-1.5 sm:px-3 text-on-surface-variant">
-          {r.messages.length} message{r.messages.length > 1 ? "s" : ""}
+          {(r.messages ?? []).length} message{(r.messages ?? []).length > 1 ? "s" : ""}
           <IconArrowDown className={cx("icon size-4 transition-transform duration-200", open && "rotate-180")} />
         </button>
         <Confidence value={r.intent.confidence} />
