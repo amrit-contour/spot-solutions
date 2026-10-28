@@ -32,7 +32,6 @@ import { useNeverRead } from "../lib/neverRead";
 import { PageHeader, enumPref, usePref } from "@spot/ui";
 import { WaText } from "@spot/ui";
 import { WeekSwitcher } from "../components/WeekSwitcher";
-import { useMedia } from "../lib/calendarDates";
 import { Menu, MenuItem } from "@spot/ui";
 import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
@@ -88,7 +87,6 @@ export function Requests() {
   const view: "requests" | "updates" = params.get("view") === "updates" ? "updates" : "requests";
   const setView = (v: "requests" | "updates") => setParams(v === "updates" ? { view: "updates" } : {}, { replace: true });
   const updates = useUpdates();
-  const phone = useMedia("(max-width: 639px)");
 
   const grouped = useMemo(() => {
     const g: Record<Lane, SpotRequest[]> = { asked: [], maybe: [], held: [], placed: [], closed: [] };
