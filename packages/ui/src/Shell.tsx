@@ -114,6 +114,8 @@ export function AppShell({
   // Nothing may ever scroll the document or the shell frame (scrollIntoView, focus(), drag autoscroll and keyboard all can, even
   // on overflow:hidden boxes). If anything does, put it back at once and say so in dev, so a page that does it is found.
   const frame = useRef<HTMLDivElement>(null);
+  // The fixed header slot's content height (without its safe-area padding, which the frame already reserves): the spacer in the
+  // column matches it, so the scroller always starts exactly under whatever header the page rendered (or none).
   useEffect(() => {
     const se = () => document.scrollingElement as HTMLElement;
     const fix = (what: string) => {
@@ -152,7 +154,13 @@ export function AppShell({
 
         {/* The header slot sits above the scroller in a column: the scroller starts below the header, so nothing scrolls under it. */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div id={APP_HEADER_ID} className="relative z-30 flex-none bg-surface" />
+          {/* FIXED and solid, starting at the very top edge (y 0, behind the status bar), like the chat thread screen, which never
+              blurred. Safari on iOS 26 takes the status-bar colour from a fixed/sticky opaque bar touching the top edge and only
+              draws its frosted "scroll edge" blur when it finds none: a plain in-flow header (no position) made every screen blur.
+              The spacer below reserves its height, so the scroller still starts under the header and nothing scrolls beneath it. */}
+          <div id={APP_HEADER_ID} className="fixed inset-x-0 top-0 z-30 bg-surface pt-[env(safe-area-inset-top)] sm:left-24" />
+          {/* Same height as the slot's content: the page header publishes --app-header-h; desktop adds its 1.5rem gap above. */}
+          <div aria-hidden className="h-[var(--app-header-h,0px)] flex-none sm:h-[calc(var(--app-header-h,0px)+1.5rem)]" />
           <main id={APP_SCROLL_ID} className="min-h-0 min-w-0 flex-1 overflow-x-clip overflow-y-auto overscroll-y-contain pb-[calc(var(--nav-h)+1rem)] [-webkit-overflow-scrolling:touch] sm:pb-0">
             {banner}
             {/* CSS keyframes, not AnimatePresence: they always run to the end, so a route can never get stuck invisible. */}

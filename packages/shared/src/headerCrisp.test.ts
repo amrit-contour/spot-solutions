@@ -45,7 +45,13 @@ describe("crisp header on iPhone", () => {
   it("the page header renders above the scroller (never sticky inside it) and carries its own opaque background", () => {
     const src = ui("Shell.tsx");
     // AppShell: the header slot is a solid sibling placed before main#app-scroll, so content never scrolls under the header.
-    expect(src).toMatch(/id=\{APP_HEADER_ID\} className="[^"]*\bbg-surface\b[^"]*"\s*\/>\s*<main id=\{APP_SCROLL_ID\}/);
+    // The slot is FIXED at the very top edge with a solid surface (what Safari samples for the status-bar colour), and is
+    // followed by a spacer and then main#app-scroll, so the scroller starts below it.
+    const slotCls = src.match(/id=\{APP_HEADER_ID\} className="([^"]*)"/)?.[1] ?? "";
+    expect(slotCls).toMatch(/\bfixed\b/);
+    expect(slotCls).toMatch(/\btop-0\b/);
+    expect(slotCls).toMatch(/\bbg-surface\b/);
+    expect(src.indexOf("id={APP_HEADER_ID}")).toBeLessThan(src.indexOf("<main id={APP_SCROLL_ID}"));
     const h = pageHeader(src);
     expect(h).toContain("createPortal(titleBar, slot)");
     expect(h).toMatch(/className=\{cx\("group\/hdr[^"]*\bbg-surface\b/);
