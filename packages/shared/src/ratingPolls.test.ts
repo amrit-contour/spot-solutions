@@ -1,25 +1,53 @@
 import { describe, expect, it } from "vitest";
 import {
-  RATING_ASK_GAP_MS, RATING_POLL_TTL_MS, addRatingPolls, applySlotReviews, inQuietHours, overallPollSpec, ratingAskGate, ratingHeader, ratingPollRef, ratingPollSpec, slotsToRate, voteOverall, voteReview,
+  RATING_ASK_GAP_MS, RATING_POLL_TTL_MS, addRatingPolls, applySlotReviews, inQuiet, isCatchUp, overallPollSpec, rateAfterMinutes, ratingDue, ratingDueAt, ratingAskGate, ratingHeader, ratingPollRef, ratingPollSpec, slotsToRate, voteOverall, voteReview,
   type Comic, type Slot,
 } from "./index.ts";
 
 const comic = (id: string, name: string, extra: Partial<Comic> = {}) => ({ id, name, phone: id.split("@")[0], ...extra }) as Comic;
 
-describe("quiet hours and no bursts", () => {
-  it("nothing between 22:30 and 09:30 (held until 09:30, since nothing is marked asked)", () => {
-    for (const t of ["22:30", "23:59", "00:00", "03:47", "08:59", "09:00", "09:29"]) expect(ratingAskGate({ time: t, nowMs: 1e12 })).toBe("quiet");
-    for (const t of ["09:30", "10:00", "15:00", "22:29"]) expect(ratingAskGate({ time: t, nowMs: 1e12 })).toBe("go");
-    expect(inQuietHours("22:30")).toBe(true);
-    expect(inQuietHours("09:00")).toBe(false);
+describe("when the polls are due", () => {
+  it("start + afterHours + rateAfterMin, 5 minutes after the mic check by default", () => {
+    expect(rateAfterMinutes(undefined)).toBe(5);
+    expect(rateAfterMinutes({ rateAfterMin: 0 })).toBe(0);
+    expect(rateAfterMinutes({ rateAfterMin: 999 })).toBe(5);
+    expect(ratingDueAt("2026-10-27", "20:00", 2, 5)).toBe("2026-10-27 22:05");
+    expect(ratingDueAt("2026-10-27", "20:00", 2, 0)).toBe("2026-10-27 22:00");
+    expect(ratingDueAt("2026-10-27", "19:30", 3, 45)).toBe("2026-10-27 23:15");
   });
-  it("the next show waits out the gap after the last one was asked", () => {
-    const now = 1e12;
-    expect(ratingAskGate({ time: "10:00", nowMs: now, lastAskAt: now - 2 * 60_000 })).toBe("spaced");
-    expect(ratingAskGate({ time: "10:00", nowMs: now, lastAskAt: now - RATING_ASK_GAP_MS })).toBe("go");
-    expect(ratingAskGate({ time: "10:00", nowMs: now, lastAskAt: null })).toBe("go");
-    // quiet hours win over everything
-    expect(ratingAskGate({ time: "03:47", nowMs: now, lastAskAt: now - 1e9 })).toBe("quiet");
+  it("rolls past midnight", () => {
+    expect(ratingDueAt("2026-10-27", "22:30", 2, 5)).toBe("2026-10-28 00:35");
+    expect(ratingDueAt("2026-10-31", "23:00", 1, 90)).toBe("2026-11-01 01:30");
+  });
+  it("due from that minute on; a yes after the time is simply already due", () => {
+    const due = "2026-10-27 22:05";
+    expect(ratingDue(due, { date: "2026-10-27", time: "22:04" })).toBe(false);
+    expect(ratingDue(due, { date: "2026-10-27", time: "22:05" })).toBe(true);
+    expect(ratingDue(due, { date: "2026-10-28", time: "01:00" })).toBe(true);
+  });
+});
+
+describe("scheduled asks versus catch-ups, quiet hours and no bursts", () => {
+  const now = 1e12;
+  it("a scheduled ask goes at any hour: the curator chose that time and shows end late", () => {
+    for (const t of ["22:35", "23:59", "00:35", "03:47", "09:00"]) expect(ratingAskGate({ time: t, nowMs: now, catchUp: false })).toBe("go");
+    expect(ratingAskGate({ time: "00:35", nowMs: now, catchUp: false, lastAskAt: now - 1000 })).toBe("go");
+  });
+  it("a catch-up waits out quiet hours (22:30 to 09:30 by default)", () => {
+    for (const t of ["22:30", "23:59", "00:00", "03:47", "09:29"]) expect(ratingAskGate({ time: t, nowMs: now, catchUp: true })).toBe("quiet");
+    for (const t of ["09:30", "10:00", "22:29"]) expect(ratingAskGate({ time: t, nowMs: now, catchUp: true })).toBe("go");
+    expect(inQuiet("23:00", { from: "23:30", to: "07:00" })).toBe(false);
+    expect(ratingAskGate({ time: "08:00", nowMs: now, catchUp: true, quiet: { from: "23:30", to: "07:00" } })).toBe("go");
+  });
+  it("catch-ups are spaced one show at a time", () => {
+    expect(ratingAskGate({ time: "10:00", nowMs: now, catchUp: true, lastAskAt: now - 2 * 60_000 })).toBe("spaced");
+    expect(ratingAskGate({ time: "10:00", nowMs: now, catchUp: true, lastAskAt: now - RATING_ASK_GAP_MS })).toBe("go");
+    expect(ratingAskGate({ time: "03:47", nowMs: now, catchUp: true, lastAskAt: now - 1e9 })).toBe("quiet");
+  });
+  it("more than 12 hours past due is a catch-up", () => {
+    expect(isCatchUp("2026-10-27 22:05", { date: "2026-10-28", time: "10:05" })).toBe(false);
+    expect(isCatchUp("2026-10-27 22:05", { date: "2026-10-28", time: "10:06" })).toBe(true);
+    expect(isCatchUp("2026-10-27 22:05", { date: "2026-10-27", time: "22:10" })).toBe(false);
   });
 });
 

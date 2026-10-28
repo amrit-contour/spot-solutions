@@ -65,7 +65,9 @@ export interface Settings {
    * rate: after a yes, ask how each comic did (missing: on). */
   /** The curator's own performance tags for the post-show review, added to the built-in set. */
   reviewTags?: string[];
-  micCheck: { enabled: boolean; time: string; whatsapp: boolean; afterHours?: number; rate?: boolean };
+  /** rateAfterMin: the "how did everyone do" polls go out this many minutes after the mic-check question (missing: 5).
+   * quiet: no catch-up rating asks (shows long past due, e.g. after a restart) between these local times; they wait until `to`. Scheduled asks ignore it. */
+  micCheck: { enabled: boolean; time: string; whatsapp: boolean; afterHours?: number; rate?: boolean; rateAfterMin?: number; quiet?: { from: string; to: string } | null };
   /** Group where hosts/POCs vote on which shows they can take. */
   hostPoll: { groupId: string | null };
   /** autoAdd: in an offer to several comics, the first yeses fill the slots. Off: yeses come to Updates and you pick. An offer

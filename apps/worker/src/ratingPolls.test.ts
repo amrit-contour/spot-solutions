@@ -39,7 +39,7 @@ vi.mock("./sendQueue.ts", () => ({
 vi.mock("./commands.ts", () => ({ loadComics: async (u: string, ids: string[]) => new Map(ids.map((id) => [id, store.get(`${u}/comics/${id}`)]).filter(([, v]) => v) as [string, unknown][]) }));
 vi.mock("./userData.ts", () => ({
   settingsFromDoc: (d: unknown) => d,
-  watchUser: () => ({ settings: { timezone: "Asia/Kolkata", micCheck: { enabled: true, rate: true } }, shows: [{ id: "mon", name: "Open Mic - Monday" }, { id: "tue", name: "Open Mic - Tuesday" }], venues: [] }),
+  watchUser: () => ({ settings: { timezone: "Asia/Kolkata", micCheck: { enabled: true, rate: true, afterHours: 2, rateAfterMin: 5 } }, shows: [{ id: "mon", name: "Open Mic - Monday", startTime: "20:00" }, { id: "tue", name: "Open Mic - Tuesday", startTime: "20:00" }], venues: [] }),
 }));
 
 const { askRatings } = await import("./ratings.ts");
@@ -67,35 +67,57 @@ beforeEach(() => {
 });
 
 describe("when rating questions go out", () => {
-  it("never in the middle of the night: nothing is sent or marked asked, and it goes at 09:30", async () => {
+  const asked = (id: string) => (store.get(`${U}/lineups/${id}`) as { ratingAskedOn?: string }).ratingAskedOn;
+  it("start + 2h + 5 min: not a minute before, and then it asks", async () => {
     lineup("t1", "tue", "2026-10-27");
-    for (const t of ["03:47", "22:30", "09:15"]) {
+    at("2026-10-27T22:04:00+05:30");
+    await askRatings(U);
+    expect(out).toHaveLength(0);
+    at("2026-10-27T22:05:00+05:30");
+    await askRatings(U);
+    expect(polls().length).toBeGreaterThan(0);
+  });
+  it("a scheduled ask goes even at night (shows end late), quiet hours or not", async () => {
+    lineup("t1", "tue", "2026-10-27");
+    at("2026-10-28T00:35:00+05:30");
+    await askRatings(U);
+    expect(asked("t1")).toBe("2026-10-28");
+    expect(polls().length).toBeGreaterThan(0);
+  });
+  it("a catch-up (over 12h past due, e.g. a 3:45 AM restart) waits until 09:30", async () => {
+    lineup("m1", "mon", "2026-10-26");
+    for (const t of ["03:47", "09:15"]) {
       at(`2026-10-28T${t}:00+05:30`);
       await askRatings(U);
     }
     expect(out).toHaveLength(0);
-    expect((store.get(`${U}/lineups/t1`) as { ratingAskedOn?: string }).ratingAskedOn).toBeUndefined();
+    expect(asked("m1")).toBeUndefined();
     at("2026-10-28T09:30:00+05:30");
     await askRatings(U);
     expect(polls().length).toBeGreaterThan(0);
-    expect((store.get(`${U}/lineups/t1`) as { ratingAskedOn?: string }).ratingAskedOn).toBe("2026-10-28");
+    expect(asked("m1")).toBe("2026-10-28");
   });
-  it("two shows due at once (a restart): one is asked, the next only after the gap, and neither is ever asked twice", async () => {
+  it("answering yes late sends right away, even for a catch-up in the small hours", async () => {
+    lineup("m1", "mon", "2026-10-26");
+    at("2026-10-28T03:47:00+05:30");
+    await askRatings(U, { immediate: true });
+    expect(polls().length).toBeGreaterThan(0);
+  });
+  it("catch-ups: one show now, the next only after the gap, and neither is ever asked twice", async () => {
     lineup("t1", "tue", "2026-10-27");
     lineup("m1", "mon", "2026-10-26");
+    at("2026-10-28T10:30:00+05:30"); // both are catch-ups now
     await askRatings(U);
     const first = out.length;
     expect(out[0]!.text).toContain("Open Mic - Tuesday");
-    // the next tick, two minutes later, and a "restart" in between (the state is in Firestore): still waiting
-    at("2026-10-28T10:02:00+05:30");
+    at("2026-10-28T10:32:00+05:30");
     await askRatings(U);
     expect(out).toHaveLength(first);
-    at("2026-10-28T10:22:00+05:30");
+    at("2026-10-28T10:52:00+05:30");
     await askRatings(U);
-    expect(out.length).toBeGreaterThan(first);
     expect(out[first]!.text).toContain("Open Mic - Monday");
     const total = out.length;
-    at("2026-10-28T11:30:00+05:30");
+    at("2026-10-28T12:00:00+05:30");
     await askRatings(U);
     await askRatings(U);
     expect(out).toHaveLength(total);

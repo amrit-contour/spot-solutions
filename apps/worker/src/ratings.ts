@@ -17,6 +17,11 @@ import {
   richReply,
   overallPollSpec,
   ratingAskGate,
+  ratingDue,
+  ratingDueAt,
+  isCatchUp,
+  rateAfterMinutes,
+  micDelayHours,
   ratingHeader,
   ratingPollSpec,
   slotsToRate,
@@ -67,10 +72,11 @@ export async function reviewLineup(uid: string, lineupId: string, patch: { ratin
 
 /**
  * Ask for ratings for the newest happened show that hasn't been asked about. Once per show (ratingAskedOn); only when the agent is linked.
- * Never in the middle of the night (it waits for 09:30), and one show at a time with a gap between shows, so a restart that finds
- * several shows due asks about them one after another, never in a burst. Each comic is a tap-to-answer poll; the typed answer still works.
+ * Due at start + "ask after the start" + rateAfterMin (default 2h + 5 min), and only once the show is marked happened (a yes after
+ * that time sends right away: `immediate`). On-time asks always go. A catch-up (more than 12 h past due, e.g. found after a restart)
+ * waits out quiet hours and goes one show at a time with a gap, so it never bursts. Each comic is a tap-to-answer poll; typing works too.
  */
-export async function askRatings(uid: string): Promise<void> {
+export async function askRatings(uid: string, o: { immediate?: boolean } = {}): Promise<void> {
   if (asking.has(uid) || !(await agentOn(uid, "notify"))) return;
   const { settings, shows } = watchUser(uid);
   if (settings.micCheck.rate === false || !settings.micCheck.enabled) return;
@@ -79,14 +85,23 @@ export async function askRatings(uid: string): Promise<void> {
     const local = localNow(new Date(), settings.timezone);
     const today = local.date;
     const mem = await readMemory(uid);
-    if (ratingAskGate({ time: local.time, nowMs: Date.now(), lastAskAt: mem.lastRatingAskAt }) !== "go") return;
+    const afterH = micDelayHours(settings.micCheck);
+    const rateMin = rateAfterMinutes(settings.micCheck);
+    // Is this lineup's question due, and may it go out now? (the gate only holds back catch-ups, and never a fresh "yes")
+    const ready = (l: Lineup): boolean => {
+      const show = shows.find((sh) => sh.id === l.showId);
+      if (!show) return false;
+      const dueAt = ratingDueAt(l.date, show.startTime, afterH, rateMin);
+      if (!ratingDue(dueAt, local)) return false;
+      return ratingAskGate({ time: local.time, nowMs: Date.now(), lastAskAt: mem.lastRatingAskAt, catchUp: !o.immediate && isCatchUp(dueAt, local), quiet: settings.micCheck.quiet }) === "go";
+    };
     const snap = await col(uid, "lineups").where("outcome", "==", "happened").get();
     const mine = (d: { data: () => unknown }) => shows.some((sh) => sh.id === (d.data() as Lineup).showId);
     const newest = (a: { data: () => unknown }, b: { data: () => unknown }) => (b.data() as Lineup).date.localeCompare((a.data() as Lineup).date);
     let due: (typeof snap.docs)[number] | undefined;
     let rows: ReturnType<typeof slotsToRate> = [];
     let names = new Map<string, Comic>();
-    for (const d of snap.docs.filter((x) => ratingAskDue(x.data() as Lineup, today) && mine(x)).sort(newest)) {
+    for (const d of snap.docs.filter((x) => ratingAskDue(x.data() as Lineup, today) && mine(x) && ready(x.data() as Lineup)).sort(newest)) {
       const l = d.data() as Lineup;
       const got = await loadComics(uid, l.slots.map((s) => s.comicId));
       const r = slotsToRate(l, got).map((x) => ({ ...x, id: got.get(x.comicId)?.chatId ?? (x.comicId.includes("@") ? x.comicId : undefined) }));
@@ -99,7 +114,7 @@ export async function askRatings(uid: string): Promise<void> {
     }
     if (!due) {
       // Every comic already rated (in the app, say): the overall question can still be asked, once.
-      const reviewDue = snap.docs.filter((d) => reviewAskDue(d.data() as Lineup, today) && mine(d)).sort(newest)[0];
+      const reviewDue = snap.docs.filter((d) => reviewAskDue(d.data() as Lineup, today) && mine(d) && ready(d.data() as Lineup)).sort(newest)[0];
       if (!reviewDue) return;
       const rl = reviewDue.data() as Lineup;
       const showName = shows.find((s) => s.id === rl.showId)!.name;

@@ -196,7 +196,7 @@ async function curateMic(uid: string, text: string, A: AgentSettings): Promise<b
   if (done) await closeMicPolls({ readMemory: () => readMemory(uid), writeMemory: (p) => writeMemory(uid, p) });
   await say(uid, done ?? "Nothing is waiting on a yes or no right now.");
   // It happened: ask how each comic did, right away (the scheduler also does this for a yes given in the app).
-  if (done && yn) await askRatings(uid).catch((e) => console.warn(`[agent] ${uid} rating question failed:`, (e as Error).message));
+  if (done && yn) await askRatings(uid, { immediate: true }).catch((e) => console.warn(`[agent] ${uid} rating question failed:`, (e as Error).message));
   return true;
 }
 

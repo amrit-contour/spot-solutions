@@ -75,7 +75,7 @@ beforeEach(() => {
   store.clear();
   sent.length = 0;
   vi.useFakeTimers({ toFake: ["Date"] });
-  at("2026-10-26T21:00:00+05:30");
+  at("2026-10-26T22:10:00+05:30");
 });
 
 describe("the mic check is asked 2 hours after the start", () => {

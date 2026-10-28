@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS: Settings = {
   selfService: { enabled: true, autoSend: false },
   showWatch: DEFAULT_SHOW_WATCH,
   onboarding: { enabled: true },
-  micCheck: { enabled: true, time: "10:00", whatsapp: false, afterHours: 2, rate: true },
+  micCheck: { enabled: true, time: "10:00", whatsapp: false, afterHours: 2, rate: true, rateAfterMin: 5 },
   hostPoll: { groupId: null },
   offers: { expiryHours: 3 },
   googleContacts: { enabled: false },

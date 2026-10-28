@@ -3,28 +3,57 @@
 // time inside the window, even a changed vote, sets that slot's rating or attendance. Typed replies ("1 4, 2 no show") still work.
 // Also: when rating questions may go out (quiet hours) and how fast (never a burst, e.g. after a restart).
 import type { Comic, Lineup } from "./types.ts";
-import type { SpotReview } from "./showRatings.ts";
+import { micCheckDueAt, type SpotReview } from "./showRatings.ts";
 import { POLL_QUESTION_MAX } from "./messages.ts";
 
 // ---------------------------------------------------------------- when to ask
 
-/** No rating question between these local times; whatever is due waits for RATING_ASK_RELEASE. */
+/** The polls go out this long after the mic-check question (start + afterHours + this), unless the curator changed it. */
+export const RATE_AFTER_DEFAULT_MIN = 5;
+export const RATE_AFTER_MAX_MIN = 120;
+/** Quiet hours for CATCH-UP asks only (a show long past its due time, e.g. found after a restart). Overridable by settings.micCheck.quiet. */
 export const QUIET_FROM = "22:30";
-export const QUIET_UNTIL = "09:00";
-export const RATING_ASK_RELEASE = "09:30";
-/** After asking about one show, wait this long before the next show's questions (a restart with two shows due never bursts). */
+export const QUIET_UNTIL = "09:30";
+/** A rating ask more than this long past its due time is a catch-up, not a scheduled ask. */
+export const CATCH_UP_AFTER_MIN = 12 * 60;
+/** Between catch-up asks about different shows. */
 export const RATING_ASK_GAP_MS = 20 * 60_000;
 /** How long a rating poll keeps counting. */
 export const RATING_POLL_TTL_MS = 3 * 86_400_000;
 
-export const inQuietHours = (time: string): boolean => time >= QUIET_FROM || time < QUIET_UNTIL;
+/** Minutes after the mic-check question from the account's setting (missing or silly values: 5). */
+export function rateAfterMinutes(m: { rateAfterMin?: number | null } | undefined): number {
+  const v = m?.rateAfterMin;
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= RATE_AFTER_MAX_MIN ? Math.round(v) : RATE_AFTER_DEFAULT_MIN;
+}
+
+const wallMs = (d: string) => Date.parse(`${d.replace(" ", "T")}:00Z`);
+
+/** When the rating polls are due, as local wall clock "YYYY-MM-DD HH:MM": the mic-check time plus rateAfterMin (rolls past midnight). */
+export function ratingDueAt(date: string, startTime: string, afterHours: number, rateAfterMin: number): string {
+  return new Date(wallMs(micCheckDueAt(date, startTime, afterHours)) + rateAfterMin * 60_000).toISOString().slice(0, 16).replace("T", " ");
+}
+
+/** Is it time? `now` is the curator's local {date, time}. A show marked happened late (a yes after the due time) is due at once. */
+export const ratingDue = (dueAt: string, now: { date: string; time: string }): boolean => dueAt <= `${now.date} ${now.time}`;
+
+/** More than 12 hours past its due time: found late (restart, server down), so it is a catch-up. */
+export const isCatchUp = (dueAt: string, now: { date: string; time: string }): boolean => wallMs(`${now.date} ${now.time}`) - wallMs(dueAt) > CATCH_UP_AFTER_MIN * 60_000;
+
+export function inQuiet(time: string, q?: { from: string; to: string } | null): boolean {
+  const from = q?.from ?? QUIET_FROM;
+  const to = q?.to ?? QUIET_UNTIL;
+  return from <= to ? time >= from && time < to : time >= from || time < to;
+}
 
 /**
- * May a rating question go out right now? "quiet": it is the middle of the night (it is sent from RATING_ASK_RELEASE on, because
- * nothing is marked asked until it is actually sent); "spaced": another show was asked about less than the gap ago; "go".
+ * May a rating question go out right now? Scheduled asks (on time, or answered "yes" just now) always go: shows end late and the
+ * curator chose that time. Catch-up asks wait out quiet hours ("quiet": sent from the end of them) and go one show at a time
+ * with a gap ("spaced"), so a restart that finds several shows due never bursts.
  */
-export function ratingAskGate(o: { time: string; nowMs: number; lastAskAt?: number | null }): "go" | "quiet" | "spaced" {
-  if (o.time >= QUIET_FROM || o.time < RATING_ASK_RELEASE) return "quiet";
+export function ratingAskGate(o: { time: string; nowMs: number; lastAskAt?: number | null; catchUp?: boolean; quiet?: { from: string; to: string } | null }): "go" | "quiet" | "spaced" {
+  if (!o.catchUp) return "go";
+  if (inQuiet(o.time, o.quiet)) return "quiet";
   if (o.lastAskAt && o.nowMs - o.lastAskAt < RATING_ASK_GAP_MS) return "spaced";
   return "go";
 }
