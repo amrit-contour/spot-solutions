@@ -17,7 +17,7 @@ import {
   renderMessage,
   renderTemplate,
   windowOpensLabel,
-  rolloverDayFor,
+  curationWeek,
   weekOf,
   type ComicAction,
   type Intent,
@@ -174,7 +174,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   // Added to Never read while this burst was waiting (or being retried): drop it unread.
   if (await isNeverRead(uid, client, p.contact.id, p.contact.chatId)) return;
   const { settings, shows } = watchUser(uid);
-  const week = weekOf(new Date(), settings.timezone, rolloverDayFor(shows));
+  const week = curationWeek(new Date(), settings.timezone, shows);
   const reqRef = col(uid, "requests").doc(`${week}_${p.contact.id}`);
   const existing = (await reqRef.get()).data() as SpotRequest | undefined;
 

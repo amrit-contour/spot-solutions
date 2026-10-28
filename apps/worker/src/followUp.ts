@@ -6,7 +6,7 @@ import type WAWebJS from "whatsapp-web.js";
 import {
   isGroupMember,
   renderMessage,
-  rolloverDayFor,
+  curationWeek,
   suggestReconcile,
   waitingRequests,
   weekOf,
@@ -51,7 +51,7 @@ export async function maybeCheckFollowUps(uid: string, client: WAWebJS.Client) {
 export async function checkFollowUps(uid: string, client: WAWebJS.Client) {
   const { settings, shows: allShows } = watchUser(uid);
   const shows = allShows.filter((s) => s.active);
-  const week = weekOf(new Date(), settings.timezone, rolloverDayFor(allShows));
+  const week = curationWeek(new Date(), settings.timezone, allShows);
   const [reqSnap, lineupSnap] = await Promise.all([col(uid, "requests").where("weekOf", "==", week).get(), col(uid, "lineups").where("weekOf", "==", week).get()]);
   const placed = new Set(lineupSnap.docs.flatMap((d) => (d.data() as Lineup).slots.map((s) => s.comicId)));
   const waiting = waitingRequests(reqSnap.docs.map((d) => d.data() as SpotRequest), placed);

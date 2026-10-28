@@ -4,7 +4,7 @@
 //   (each account has exactly one holder, so each is handled once per day);
 // - demo sandboxes older than 7 days, by exactly one server per day (a date lock in config/demoCleanup).
 // Lineups and comics are never touched.
-import { DEFAULT_SETTINGS, DEMO_SANDBOX_MAX_AGE_DAYS, closedRequestsWeeks, requestsToExpire, rolloverDayFor, weekOf, type Settings, type Show, type SpotRequest } from "@spot/shared";
+import { DEFAULT_SETTINGS, DEMO_SANDBOX_MAX_AGE_DAYS, closedRequestsWeeks, requestsToExpire, curationWeek, weekOf, type Settings, type Show, type SpotRequest } from "@spot/shared";
 import { col, db, userRef } from "./firebase.ts";
 import { SERVER_ID } from "./serverIdentity.ts";
 import { demoSandboxUids, userData } from "./adminData.ts";
@@ -22,7 +22,7 @@ export async function expireRequests(uid: string, now = new Date()): Promise<num
   const weeks = closedRequestsWeeks(settings);
   if (weeks === 0) return 0;
   const shows = (await col(uid, "shows").get()).docs.map((d) => d.data() as Show);
-  const current = weekOf(now, settings?.timezone ?? DEFAULT_SETTINGS.timezone, rolloverDayFor(shows));
+  const current = curationWeek(now, settings?.timezone ?? DEFAULT_SETTINGS.timezone, shows);
   // Same week arithmetic as requestsToExpire; the query narrows by week, the shared function picks by status.
   const snap = await col(uid, "requests").where("weekOf", "<", current).get();
   const docs = snap.docs.map((d) => ({ ref: d.ref, ...(d.data() as Pick<SpotRequest, "weekOf" | "status">) }));

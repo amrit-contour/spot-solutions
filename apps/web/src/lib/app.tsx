@@ -7,7 +7,7 @@ import {
   DEFAULT_AI_POLICY,
   DEFAULT_SETTINGS,
   aiFromLegacy,
-  weekOf,
+  curationWeek,
   deriveLink,
   deriveServer,
   type Derived,
@@ -155,8 +155,13 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
     if (brandReady) setBrand(brand, { animate: true });
   }, [brand, brandReady]);
 
-  const currentWeek = weekOf(new Date(now), settings.timezone, 0);
-  const [week, setWeek] = useState(currentWeek);
+  // The week being curated: this week through the day of its last show (one-off dates count), then next week. Until you pick
+  // another week, `week` follows it, so it's right once the shows load (not frozen at the first render, before they arrive)
+  // and it moves on by itself after the last show.
+  const currentWeek = useMemo(() => curationWeek(new Date(now), settings.timezone, shows.data), [now, settings.timezone, shows.data]);
+  const [pickedWeek, setPickedWeek] = useState<string | null>(null);
+  const week = pickedWeek ?? currentWeek;
+  const setWeek = useCallback((w: string) => setPickedWeek(w === currentWeek ? null : w), [currentWeek]);
 
   const sortedShows = useMemo(
     () => [...shows.data].sort((a, b) => ((a.weekday + 6) % 7) - ((b.weekday + 6) % 7) || a.startTime.localeCompare(b.startTime)),
@@ -197,7 +202,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       // prefs are saved on their own (debounced, see ViewPrefsProvider): a stale copy here must never overwrite a newer choice.
       saveSettings: (patch) => setDoc(doc(db, "users", uid), { settings: { ...settingsWithoutPrefs, ...patch } }, { merge: true }),
     }),
-    [user, uid, settings, settingsWithoutPrefs, session.data, workerOnline, server, phone, serverRestarting, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, currentWeek],
+    [user, uid, settings, settingsWithoutPrefs, session.data, workerOnline, server, phone, serverRestarting, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, setWeek, currentWeek],
   );
 
   return (

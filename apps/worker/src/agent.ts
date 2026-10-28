@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import type WAWebJS from "whatsapp-web.js";
 import {
   ACTION_INTENTS, numbersOf, DAY_NAMES, HELP_TEXT, lineupId, offerPayload, pastShowReason, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
-  formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, rolloverDayFor, senderIsCurator, showDay,
+  formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, curationWeek, senderIsCurator, showDay,
   stepPending, strictNo, pollForPending, DISMISS_REACTIONS, conflictText, judgeLateVote, mirrorKey, type ChangeAsk, type PollRecord, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, parseNoNote, type SpotReview, performed, isRating, type YesterdayShow, digestActionPoll, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
 } from "@spot/shared";
 import { col, userRef } from "./firebase.ts";
@@ -352,7 +352,7 @@ async function world(uid: string): Promise<World> {
   const shows = all.filter((s) => s.active);
   const venues = venueSnap.docs.map((d) => ({ ...(d.data() as Venue), id: d.id }));
   const now = new Date();
-  const week = weekOf(now, settings.timezone, rolloverDayFor(all));
+  const week = curationWeek(now, settings.timezone, all);
   const [lineupSnap, reqSnap] = await Promise.all([col(uid, "lineups").where("weekOf", "==", week).get(), col(uid, "requests").where("weekOf", "==", week).get()]);
   const lineups = lineupSnap.docs.map((d) => ({ ...(d.data() as Lineup), id: d.id }));
   const requests = reqSnap.docs.map((d) => ({ ...(d.data() as SpotRequest), id: d.id }));
@@ -557,7 +557,7 @@ async function scan(uid: string, mem: AgentMemory, settings: Settings) {
   const from = prev ? { requests: Math.max(prev.requests, persisted.requests), actions: Math.max(prev.actions, persisted.actions), notices: Math.max(prev.notices, persisted.notices) } : persisted;
   const next = { ...from };
   const all = (await col(uid, "shows").get()).docs.map((d) => d.data() as Show);
-  const week = weekOf(new Date(), settings.timezone, rolloverDayFor(all.map((s) => ({ ...s }))));
+  const week = curationWeek(new Date(), settings.timezone, all.map((s) => ({ ...s })));
 
   const reqs = (await col(uid, "requests").where("weekOf", "==", week).get()).docs.map((d) => d.data() as SpotRequest);
   for (const r of reqs.filter((x) => x.createdAt > from.requests).sort((a, b) => a.createdAt - b.createdAt)) {
