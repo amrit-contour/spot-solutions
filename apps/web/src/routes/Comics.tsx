@@ -313,7 +313,7 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
             <ul className="flex flex-col gap-2">
               {numbersOf(d as Comic).map((n) => (
                 <li key={n.phone} className="flex items-center gap-2">
-                  <span className="flex-1 tabular">+{n.phone}{n.label ? ` · ${n.label}` : ""}{n.primary ? " · primary" : ""}</span>
+                  <span className="flex-1 tabular">+{n.phone}{n.label ? ` · ${n.label}` : ""}{n.primary ? " ★" : ""}</span>
                   {!n.primary && <Button size="sm" variant="tonal" onClick={() => setD(makePrimary(d as Comic, n.phone))}>Make primary</Button>}
                   <Button size="sm" variant="text" onClick={() => setD(removeNumber(d as Comic, n.phone))}>Remove</Button>
                 </li>
