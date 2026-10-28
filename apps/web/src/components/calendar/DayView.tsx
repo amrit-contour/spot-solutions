@@ -31,8 +31,8 @@ export function DayView({ date }: { date: string }) {
   const cal = useCal();
   const wd = weekdayOf(date);
   const asks = (cal.asksByWeek.get(mondayOf(date)) ?? []).filter((r) => ["asked", "maybe"].includes(laneOf(r)));
-  const wants = asks.filter((r) => r.intent.preferredDays.includes(wd));
-  const anyDay = asks.filter((r) => !r.intent.preferredDays.length);
+  const wants = asks.filter((r) => (r.intent?.preferredDays ?? []).includes(wd));
+  const anyDay = asks.filter((r) => !(r.intent?.preferredDays ?? []).length);
   const next = Array.from({ length: 7 }, (_, i) => addDays(date, i + 1));
 
   return (

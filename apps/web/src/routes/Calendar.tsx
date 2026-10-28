@@ -363,7 +363,7 @@ function RequestsCard({ title, by, loading }: { title: string; by: Record<Lane, 
 function NextWeekCard({ by, loading, viewing, onOpen, shows }: { by: Record<Lane, SpotRequest[]>; loading: boolean; viewing: boolean; onOpen: () => void; shows: Show[] }) {
   const navigate = useNavigate();
   const live = [...by.asked, ...by.maybe, ...by.held];
-  const dayCount = (wd: Weekday) => live.filter((r) => r.intent.preferredDays.includes(wd)).length;
+  const dayCount = (wd: Weekday) => live.filter((r) => (r.intent?.preferredDays ?? []).includes(wd)).length;
   const days = [...new Set(shows.map((s) => s.weekday))].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
   return (
     <SideCard title="Asking for next week" to="/requests" onNavigate={onOpen} action="See">
@@ -385,7 +385,7 @@ function NextWeekCard({ by, loading, viewing, onOpen, shows }: { by: Record<Lane
               <li key={r.id} className="flex h-10 items-center gap-2.5">
                 <ComicAvatar id={r.comicId} name={r.comicName} size={28} tone="secondary" />
                 <span className="min-w-0 flex-1 truncate type-body-m">{r.comicName}</span>
-                <span className="flex-none type-label-s text-on-surface-variant">{r.intent.preferredDays.length ? r.intent.preferredDays.map((d) => DAY_SHORT[d]).join(" ") : "Any day"}</span>
+                <span className="flex-none type-label-s text-on-surface-variant">{(r.intent?.preferredDays ?? []).length ? (r.intent?.preferredDays ?? []).map((d) => DAY_SHORT[d]).join(" ") : "Any day"}</span>
               </li>
             ))}
           </ul>

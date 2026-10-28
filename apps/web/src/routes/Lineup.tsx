@@ -336,7 +336,7 @@ export function LineupBoard() {
                         {(close) =>
                           activeShows.map((s) => {
                             const l = lineupByShow.get(s.id);
-                            const preferred = requestByComic.get(cid)?.intent.preferredDays.includes(s.weekday);
+                            const preferred = requestByComic.get(cid)?.intent?.preferredDays?.includes?.(s.weekday) ?? false;
                             return (
                               <MenuItem key={s.id} highlighted={preferred} hint={`${l?.slots.length ?? 0}/${s.slotCount}`} disabled={closed(s.id)} onClick={() => (close(), void addTo(cid, s))}>
                                 {s.name}

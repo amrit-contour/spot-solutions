@@ -293,9 +293,9 @@ export function demoSource(get: () => DemoData): ChatSource {
       const req = d.requests.find((r) => r.comicId === comicId);
       const msgs = all().get(comicId) ?? [];
       const theirs = [...msgs].reverse().find((m) => !m.fromMe);
-      const show = d.shows.find((s) => req && req.intent.preferredDays.includes(s.weekday)) ?? d.shows[0];
+      const show = d.shows.find((s) => req && (req.intent?.preferredDays ?? []).includes(s.weekday)) ?? d.shows[0];
       return {
-        summary: req ? `${req.comicName.split(/\s+/)[0]} asked for a spot${req.intent.preferredDays.length ? " on their preferred day" : ""}. Sample summary: the demo has no model.` : "Sample summary: the demo has no model.",
+        summary: req ? `${req.comicName.split(/\s+/)[0]} asked for a spot${ (req.intent?.preferredDays ?? []).length ? " on their preferred day" : ""}. Sample summary: the demo has no model.` : "Sample summary: the demo has no model.",
         suggestedReply: "Thanks! I'll check the lineup and confirm soon.",
         actions: theirs && show ? [{ kind: "place", showId: show.id, evidence: theirs.text.slice(0, 120), told: false }] : [],
         model: "demo/sample",

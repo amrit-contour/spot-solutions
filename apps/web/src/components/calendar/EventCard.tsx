@@ -130,8 +130,8 @@ export function EventCard({ show, date, today, week, lineup, loading, asks, comi
     const lane = laneOf(r);
     return (lane === "asked" || lane === "maybe") && !ids.includes(r.comicId);
   });
-  const wantsDay = waiting.filter((r) => r.intent.preferredDays.includes(show.weekday));
-  const anyDay = waiting.filter((r) => !r.intent.preferredDays.length);
+  const wantsDay = waiting.filter((r) => (r.intent?.preferredDays ?? []).includes(show.weekday));
+  const anyDay = waiting.filter((r) => !(r.intent?.preferredDays ?? []).length);
   const seeds = !lineup && !past && week >= currentWeek ? defaultLineupIds(show).map(name) : [];
 
   const statusChip = past && status === "confirmed" && lineup?.outcome === "happened" ? <StatusPill tone="success" icon={IconCheck} accent="text-primary">Happened</StatusPill>

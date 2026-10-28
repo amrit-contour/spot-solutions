@@ -319,7 +319,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
   const held = r.hold && !r.holdOverridden;
   const placedIn = lineups.find((l) => l.slots.some((s) => s.comicId === r.comicId));
   const placedShow = shows.find((s) => s.id === placedIn?.showId);
-  const preferred = new Set(r.intent.preferredDays);
+  const preferred = new Set(r.intent?.preferredDays ?? []);
   const sortedShows = [...shows].sort((a, b) => Number(preferred.has(b.weekday)) - Number(preferred.has(a.weekday)));
   const last = r.messages[r.messages.length - 1];
   const venueName = showVenue ? venues.find((v) => v.id === r.intent.venueId)?.name : undefined;
@@ -384,8 +384,8 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
             {r.hold && r.holdNote && r.holdNote !== HOLD_LABEL[r.hold] && (
               <span className="type-body-s text-on-surface-variant">{r.holdNote}</span>
             )}
-            {r.intent.preferredDays.length ? (
-              r.intent.preferredDays.map((d) => (
+            {(r.intent?.preferredDays ?? []).length ? (
+              (r.intent?.preferredDays ?? []).map((d) => (
                 <Chip key={d} tone="primary">
                   {DAY_SHORT[d]}
                 </Chip>

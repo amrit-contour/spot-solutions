@@ -171,7 +171,7 @@ export function DayActions({ date, wants, anyDay, evs }: { date: string; wants: 
                     <ComicAvatar id={r.comicId} name={r.comicName} size={32} tone="secondary" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate type-body-m">{r.comicName}</span>
-                      <span className="block type-label-s text-on-surface-variant">{r.intent.preferredDays.map((x) => DAY_SHORT[x]).join(" · ")}</span>
+                      <span className="block type-label-s text-on-surface-variant">{(r.intent?.preferredDays ?? []).map((x) => DAY_SHORT[x]).join(" · ")}</span>
                     </span>
                     {canPlace && <PlaceButton r={r} evs={evs} />}
                   </li>

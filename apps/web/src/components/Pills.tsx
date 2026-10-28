@@ -158,7 +158,7 @@ export function comicPills({ comic, request, show, lastWeek, states, days = true
   // Regulars of this show repeat anyway: no "Last week" for them.
   if (showsLastWeekMarker(comic, show, lastWeek)) out.push({ key: "last", label: "Last week", tone: "fact", icon: IconHistory, title: "Performed last week" });
   if (days && request) {
-    const d = request.intent.preferredDays;
+    const d = request.intent?.preferredDays ?? [];
     out.push({ key: "days", label: d.length ? d.map((x) => DAY_SHORT[x]).join(" · ") : "Any day", tone: "reading", icon: IconCalendar });
   }
   return out;

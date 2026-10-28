@@ -1222,7 +1222,7 @@ function ThreadContext({ comic, request: r, lineups, placedShow }: { comic: Retu
               {r ? (
                 <>
                   <Chip tone={open ? "primary" : "neutral"}>{STATUS_LABEL[r.status]}</Chip>
-                  {r.intent.preferredDays.length ? r.intent.preferredDays.map((d) => <Chip key={d}>{DAY_SHORT[d]}</Chip>) : open ? <Chip>Any day</Chip> : null}
+                  {(r.intent?.preferredDays ?? []).length ? (r.intent?.preferredDays ?? []).map((d) => <Chip key={d}>{DAY_SHORT[d]}</Chip>) : open ? <Chip>Any day</Chip> : null}
                 </>
               ) : (
                 <Chip>No request</Chip>
