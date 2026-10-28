@@ -101,6 +101,12 @@ export function useConnection(uid: string): Connection {
 
 /** The account button's dot and menu row: the same states ConnectionCard words out. Not responding and needs-a-scan are amber, server off is red. */
 export function connectionStatus(c: Connection): AccountStatus | undefined {
+  const st = connectionStatusNow(c);
+  // Cold open or resume, no live snapshot yet: same last-known tone, the ring shows the sync.
+  return st && { ...st, ...{ syncing: c.server.checking } };
+}
+
+function connectionStatusNow(c: Connection): AccountStatus | undefined {
   if (c.loading) return undefined;
   const to = "/settings";
   const linkLabel = "Connection";

@@ -29,8 +29,13 @@ function maskPhone(p?: string | null) {
   return d.length >= 8 ? `+${d.slice(0, d.length - 10 > 0 ? d.length - 10 : 2)} ••••• ${d.slice(-5)}` : "";
 }
 
-export function useConnection(): { tone: "ok" | "wait" | "error" | "idle"; label: string; detail?: string; short: string } {
+export function useConnection(): { tone: "ok" | "wait" | "error" | "idle"; label: string; detail?: string; short: string; syncing?: boolean } {
   const { session, server } = useApp();
+  // Cold open or resume, no live snapshot yet: the tone stays the last known one, the ring shows the sync.
+  return { ...connectionNow(session, server), syncing: server.checking };
+}
+
+function connectionNow(session: ReturnType<typeof useApp>["session"], server: ReturnType<typeof useApp>["server"]): { tone: "ok" | "wait" | "error" | "idle"; label: string; detail?: string; short: string } {
   if (isDemoUser()) return { tone: "wait" as const, label: "Demo mode", detail: "your own sandbox", short: "Demo" };
   // Same derivation as every other page (shared deriveServer/deriveLink). A phone that can't tell is neutral, never "Server offline".
   const link = deriveLink(session, server);
@@ -60,7 +65,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
       nav={nav}
       appName="Nothing BOT Curate"
       logo={<CuratingLogo className="size-11" />}
-      accountMenu={(align) => <AccountMenu align={align} status={{ tone: conn.tone, label: conn.label, detail: conn.detail, to: "/settings#whatsapp", linkLabel: "Settings" }} />}
+      accountMenu={(align) => <AccountMenu align={align} status={{ tone: conn.tone, label: conn.label, detail: conn.detail, to: "/settings#whatsapp", linkLabel: "Settings", ...{ syncing: conn.syncing } }} />}
       // No status tile in the desktop rail: the coloured ring on the account avatar already shows it.
       banner={isDemoUser() ? <DemoBanner /> : undefined}
     >
