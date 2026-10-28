@@ -1,9 +1,8 @@
 // A list of days with their shows: the Week view on phones, and "the next 7 days" in the Day view.
-import { useState } from "react";
 import { DAY_SHORT, formatTime } from "@spot/shared";
-import { fmtDayShort, weekdayOf } from "../../lib/calendarDates";
+import { HIDE_EMPTY_DAYS_PREF, fmtDayShort, weekdayOf } from "../../lib/calendarDates";
 import { useApp } from "../../lib/app";
-import { cx } from "@spot/ui";
+import { cx, usePref } from "@spot/ui";
 import { IconRoom } from "@spot/ui";
 import { EventPopover, NotToldMark, fillOf, pendingCount, toneOf, useCal } from "./shared";
 
@@ -34,14 +33,14 @@ function WeekStrip({ dates }: { dates: string[] }) {
 export function Agenda({ dates, label, week }: { dates: string[]; label: string; /** The Week view: adds the day strip and a toggle to drop empty days. */ week?: boolean }) {
   const cal = useCal();
   const { venues } = useApp();
-  const [hideEmpty, setHideEmpty] = useState(false);
+  const [hideEmpty, setHideEmpty] = usePref(HIDE_EMPTY_DAYS_PREF);
   const anyEmpty = week && dates.some((d) => !cal.eventsOn(d).length);
   return (
     <>
     {week && <WeekStrip dates={dates} />}
     {anyEmpty && (
       <div className="mb-1 flex justify-end">
-        <button type="button" aria-pressed={hideEmpty} onClick={() => setHideEmpty((v) => !v)} className="state-layer inline-flex min-h-10 items-center rounded-full px-3 type-label-l text-primary">
+        <button type="button" aria-pressed={hideEmpty} onClick={() => setHideEmpty(!hideEmpty)} className="state-layer inline-flex min-h-10 items-center rounded-full px-3 type-label-l text-primary">
           {hideEmpty ? "Show empty days" : "Hide empty days"}
         </button>
       </div>

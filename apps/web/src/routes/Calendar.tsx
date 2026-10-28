@@ -1,7 +1,7 @@
 // Landing page: the calendar. Day, Week and Month views of the shows, each opening the same card with every quick
 // action the Lineup page has, and a side column for Updates, requests and next week's asks.
 // The URL carries the view and date (/?view=month&date=2026-10-26) so any view can be linked; the last view is remembered.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { where } from "firebase/firestore";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -18,8 +18,8 @@ import {
   isISODate,
   mondayOf,
   monthKey,
-  readView,
-  saveView,
+  CAL_SIDE_PREF,
+  CAL_VIEW_PREF,
   stepDate,
   toMinutes,
   useMedia,
@@ -28,7 +28,7 @@ import {
   weekdayOf,
   type CalView,
 } from "../lib/calendarDates";
-import { PageHeader } from "@spot/ui";
+import { PageHeader, usePref } from "@spot/ui";
 import { Count } from "../components/updates/shared";
 import { Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { IconArrowLeft, IconArrowRight, IconCalendarMark, IconChat, IconInbox } from "@spot/ui";
@@ -74,7 +74,8 @@ function Calendar() {
   const wide = useMedia("(min-width: 1024px)");
 
   const viewParam = params.get("view");
-  const view: CalView = (CAL_VIEWS as string[]).includes(viewParam ?? "") ? (viewParam as CalView) : (readView() ?? "week");
+  const [savedView, saveView] = usePref(CAL_VIEW_PREF);
+  const view: CalView = (CAL_VIEWS as string[]).includes(viewParam ?? "") ? (viewParam as CalView) : savedView;
   const dateParam = params.get("date");
   const date = isISODate(dateParam) ? dateParam : mondayOf(today) === week ? today : week;
 
@@ -275,26 +276,9 @@ function Calendar() {
   );
 }
 
-const SIDE_KEY = "spot.calendar.sideCollapsed";
-/** Whether the side column is folded into its rail. Remembered; blocked storage just means it isn't. */
+/** Whether the side column is folded into its rail. Remembered with the account. */
 function useSide() {
-  const [side, set] = useState(() => {
-    try {
-      // Folded by default; only an explicit "show" is remembered as open.
-      return localStorage.getItem(SIDE_KEY) !== "0";
-    } catch {
-      return true;
-    }
-  });
-  const setSide = useCallback((v: boolean) => {
-    set(v);
-    try {
-      localStorage.setItem(SIDE_KEY, v ? "1" : "0");
-    } catch {
-      /* not remembered */
-    }
-  }, []);
-  return [side, setSide] as const;
+  return usePref(CAL_SIDE_PREF);
 }
 
 function Legend() {

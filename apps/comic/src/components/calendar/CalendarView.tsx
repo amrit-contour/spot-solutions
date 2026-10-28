@@ -1,27 +1,13 @@
 import { useMemo, useRef } from "react";
 import { isoAddDays, SPOT_SOURCE_LABEL, type CalendarSpot, type SpotSource } from "@spot/shared";
-import { IconArrowLeft, IconArrowRight, Segmented } from "@spot/ui";
+import { IconArrowLeft, IconArrowRight, Segmented, enumPref } from "@spot/ui";
 import { addMonths, dayLong, dayNum, monthGrid, monthName, shortTime, SOURCE_DOT, SOURCE_DOT_ON_FILL, SOURCE_ORDER, sourcesByDate, spotsByDate, weekDates, weekRange } from "./dates";
 import { SwipePager, type PagerHandle } from "./SwipePager";
 
 export type CalendarMode = "day" | "week" | "month";
 const WEEKDAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
-const MODE_KEY = "nbc.calendarMode";
-export const readMode = (): CalendarMode => {
-  try {
-    const m = localStorage.getItem(MODE_KEY);
-    return m === "month" || m === "day" ? m : "week";
-  } catch {
-    return "week";
-  }
-};
-const writeMode = (m: CalendarMode) => {
-  try {
-    localStorage.setItem(MODE_KEY, m);
-  } catch {
-    /* private window: the choice just isn't remembered */
-  }
-};
+/** The Home calendar's mode, remembered with the account (localStorage key kept for the instant first paint). */
+export const CALENDAR_MODE_PREF = enumPref<CalendarMode>("calendarMode", "nbc.calendarMode", ["day", "week", "month"], "week");
 
 function Dots({ sources, onFill }: { sources: SpotSource[]; onFill?: boolean }) {
   return (
@@ -111,10 +97,7 @@ export function CalendarView({ spots, today, selected, onSelect, mode, onMode }:
         <Segmented
           full
           value={mode}
-          onChange={(m) => {
-            writeMode(m);
-            onMode(m);
-          }}
+          onChange={onMode}
           options={[
             { value: "day", label: "Day" },
             { value: "week", label: "Week" },

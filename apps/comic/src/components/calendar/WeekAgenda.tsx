@@ -1,6 +1,8 @@
-import { useState } from "react";
 import { SPOT_SOURCE_LABEL, SPOT_STATE_LABEL, bySpotTime, formatTime, spotState, type CalendarSpot, type PlannedAsk } from "@spot/shared";
-import { Chip, IconPlus, IconSend, cx } from "@spot/ui";
+import { Chip, IconPlus, IconSend, boolPref, cx, usePref } from "@spot/ui";
+
+/** "Hide empty days" in the Week view, remembered with the account. */
+const HIDE_EMPTY_DAYS_PREF = boolPref("hideEmptyDays", "nbc.calendar.hideEmptyDays", false);
 import { Section } from "../ui";
 import { SOURCE_DOT, dayLong, weekDates } from "./dates";
 
@@ -13,7 +15,7 @@ const wd = (d: string) => WD[new Date(`${d}T00:00:00Z`).getUTCDay()]!;
  * Days with nothing on fold to one thin line (or go away with "Hide empty days"). Tapping a day's header opens it in Day view.
  */
 export function WeekAgenda({ date, today, spots, asks, onOpenDay, onAdd, onOpen }: { date: string; today: string; spots: CalendarSpot[]; asks: PlannedAsk[]; onOpenDay: (d: string) => void; onAdd: (d: string) => void; onOpen: (s: CalendarSpot) => void }) {
-  const [hideEmpty, setHideEmpty] = useState(false);
+  const [hideEmpty, setHideEmpty] = usePref(HIDE_EMPTY_DAYS_PREF);
   const days = weekDates(date).map((d) => ({
     d,
     spots: spots.filter((s) => s.date === d && s.status !== "cancelled").sort((a, b) => bySpotTime(a, b)),
@@ -27,7 +29,7 @@ export function WeekAgenda({ date, today, spots, asks, onOpenDay, onAdd, onOpen 
       label={`Spots, week of ${dayLong(weekDates(date)[0]!)}`}
       action={
         empty > 0 && total > 0 ? (
-          <button type="button" aria-pressed={hideEmpty} onClick={() => setHideEmpty((v) => !v)} className="state-layer pressable inline-flex min-h-11 items-center rounded-full px-3 type-label-l text-primary">
+          <button type="button" aria-pressed={hideEmpty} onClick={() => setHideEmpty(!hideEmpty)} className="state-layer pressable inline-flex min-h-11 items-center rounded-full px-3 type-label-l text-primary">
             {hideEmpty ? "Show empty days" : "Hide empty days"}
           </button>
         ) : undefined

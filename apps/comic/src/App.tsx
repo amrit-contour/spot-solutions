@@ -9,6 +9,7 @@ import { useConnection, connectionStatus } from "./lib/connection";
 import { isStandalone } from "./lib/install";
 import { useForegroundPush } from "./lib/push";
 import { RosterProvider, useFirestoreRoster } from "./lib/roster";
+import { ComicViewPrefs } from "./lib/viewPrefs";
 import { RouteSkeleton } from "./components/RouteSkeleton";
 
 // One chunk per page (see @spot/ui lazyRoute): the shell appears at once and a page's code downloads when it is first opened.
@@ -77,7 +78,7 @@ function SignedInShell({ user, children }: { user: User; children: ReactNode }) 
   const status = connectionStatus(c);
   return (
     <AppShell nav={NAV} appName="Nothing BOT Comedy" logo={<ComicLogo className="size-11" />} accountMenu={(align) => <AccountMenu user={user} align={align} status={status} onSignOut={() => void signOut(auth)} />}>
-      {children}
+      <ComicViewPrefs uid={user.uid}>{children}</ComicViewPrefs>
     </AppShell>
   );
 }

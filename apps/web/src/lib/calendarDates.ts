@@ -2,6 +2,7 @@
 // calculation runs in UTC, so a viewer's own timezone can never shift a day.
 import { useEffect, useState } from "react";
 import type { Weekday } from "@spot/shared";
+import { boolPref, enumPref } from "@spot/ui";
 
 export type CalView = "day" | "week" | "month";
 export const CAL_VIEWS: CalView[] = ["day", "week", "month"];
@@ -100,19 +101,9 @@ export function useMedia(query: string) {
   return on;
 }
 
-const KEY = "spot.calendar.view";
-export function readView(): CalView | null {
-  try {
-    const v = localStorage.getItem(KEY);
-    return v === "day" || v === "week" || v === "month" ? v : null;
-  } catch {
-    return null;
-  }
-}
-export function saveView(v: CalView) {
-  try {
-    localStorage.setItem(KEY, v);
-  } catch {
-    /* blocked storage: the view just isn't remembered */
-  }
-}
+/** Home's remembered choices, synced with the account (see @spot/ui viewPrefs); the localStorage keys are the ones this screen always used. */
+export const CAL_VIEW_PREF = enumPref<CalView>("calView", "spot.calendar.view", CAL_VIEWS, "week");
+/** Whether the side column is folded into its rail (folded by default; only an explicit "show" is remembered). */
+export const CAL_SIDE_PREF = boolPref("calSideCollapsed", "spot.calendar.sideCollapsed", true);
+/** "Hide empty days" in the phone Week view. */
+export const HIDE_EMPTY_DAYS_PREF = boolPref("hideEmptyDays", "spot.calendar.hideEmptyDays", false);

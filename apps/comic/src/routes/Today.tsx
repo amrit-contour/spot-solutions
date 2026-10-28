@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { askDayLabel, closesLabel, isoAddDays, openNow, spotState, suggestRegulars, upcomingGroups, type Ask, type CalendarSpot, type PlannedAsk } from "@spot/shared";
-import { Button, Chip, IconRoom, IconCalendarMark, IconChat, IconClock, IconRepeat, PageHeader, Spinner } from "@spot/ui";
+import { usePref, Button, Chip, IconRoom, IconCalendarMark, IconChat, IconClock, IconRepeat, PageHeader, Spinner } from "@spot/ui";
 import { CardButton, EmptyState, IconTile, Page, Section } from "../components/ui";
 import { useAsks, useAskPlan, useNowMs } from "../lib/asks";
 import { useRoster } from "../lib/roster";
 import { ago, dateTime } from "../lib/time";
 import { ConnectionBanner } from "../components/ConnectionCard";
-import { CalendarView, readMode, type CalendarMode } from "../components/calendar/CalendarView";
+import { CALENDAR_MODE_PREF, CalendarView } from "../components/calendar/CalendarView";
 import { DayPanel } from "../components/calendar/DayPanel";
 import { WeekAgenda } from "../components/calendar/WeekAgenda";
 import { addMonths } from "../components/calendar/dates";
@@ -73,7 +73,7 @@ export function Today({ uid }: { uid?: string }) {
   const open = useMemo(() => openNow(plan), [plan]);
   const next = useMemo(() => upcomingGroups(plan, today, 7)[0], [plan, today]);
   const [selected, setSelected] = useState(today);
-  const [mode, setMode] = useState<CalendarMode>(readMode);
+  const [mode, setMode] = usePref(CALENDAR_MODE_PREF);
   const [editing, setEditing] = useState<MySpotOrCal | null>(null);
   // The calendar reads a month either side of the one shown, so swiping is instant.
   const from = isoAddDays(`${addMonths(selected, -1).slice(0, 7)}-01`, -7);

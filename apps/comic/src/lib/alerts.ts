@@ -50,6 +50,8 @@ export function useClock(everyMs = 20_000) {
 }
 
 export interface ComicSettings {
+  /** View choices that follow the comic across devices (Home calendar mode, Hide empty days); see @spot/ui viewPrefs. */
+  prefs?: Record<string, string | boolean>;
   /** Closures and curator schedules read from groups are applied by themselves; off: they wait in Alerts for a tap. */
   autoApplyGroupUpdates?: boolean;
   /** Edits to the rules that decide which group messages push at once (only what differs from the defaults). */

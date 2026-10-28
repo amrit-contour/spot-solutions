@@ -99,6 +99,8 @@ export interface Settings {
   neverReadAllGroups?: boolean;
   /** Watch the show groups for "running late", "can't make it", "reached" from comics on the lineup (showWatch.ts). Missing counts as off. */
   showWatch?: ShowWatchSettings;
+  /** View choices that follow the account across devices (Home calendar view, Hide empty days, Requests sort and tab...). Written by the app, see @spot/ui viewPrefs. */
+  prefs?: Record<string, string | boolean>;
 }
 
 /** What the agent number may do for you. Linking it is the opt-in; these switch each part off again. */

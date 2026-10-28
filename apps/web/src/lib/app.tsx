@@ -1,5 +1,5 @@
 // App-wide state: the signed-in curator, their config, WhatsApp session and the week being curated.
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { toast } from "sonner";
@@ -27,7 +27,7 @@ import { useCollection, useDocument, useNow } from "./data";
 import { cloneDemo, needsDemoClone } from "./demo";
 import { useForegroundPush } from "./push";
 import { useNeverReadLinkSync } from "./neverRead";
-import { setBrand } from "@spot/ui";
+import { setBrand, ViewPrefsProvider } from "@spot/ui";
 
 interface UserDoc {
   settings?: Partial<Settings>;
@@ -170,6 +170,13 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
   const workerOnline = server.up;
   const serverRestarting = server.restarting;
 
+  const settingsWithoutPrefs = useMemo(() => {
+    const { prefs: _prefs, ...rest } = settings;
+    return rest;
+  }, [settings]);
+  const remotePrefs = useMemo<Record<string, unknown> | undefined>(() => (userDoc.loading ? undefined : { ...userDoc.data?.settings?.prefs }), [userDoc.loading, userDoc.data]);
+  const savePrefs = useCallback((patch: Record<string, unknown>) => setDoc(doc(db, "users", uid), { settings: { prefs: patch } }, { merge: true }), [uid]);
+
   const value = useMemo<AppState>(
     () => ({
       user,
@@ -188,10 +195,17 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
       week,
       setWeek,
       currentWeek,
-      saveSettings: (patch) => setDoc(doc(db, "users", uid), { settings: { ...settings, ...patch } }, { merge: true }),
+      // prefs are saved on their own (debounced, see ViewPrefsProvider): a stale copy here must never overwrite a newer choice.
+      saveSettings: (patch) => setDoc(doc(db, "users", uid), { settings: { ...settingsWithoutPrefs, ...patch } }, { merge: true }),
     }),
-    [user, uid, settings, session.data, workerOnline, server, phone, serverRestarting, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, currentWeek],
+    [user, uid, settings, settingsWithoutPrefs, session.data, workerOnline, server, phone, serverRestarting, sortedShows, venues.data, comics.data, comics.loading, comicsById, week, currentWeek],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      <ViewPrefsProvider remote={remotePrefs} save={savePrefs}>
+        {children}
+      </ViewPrefsProvider>
+    </Ctx.Provider>
+  );
 }

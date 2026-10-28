@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { formatDate, lineupActivity, type ActivityRow, type Lineup, type Show, type ShowState, type SpotOffer } from "@spot/shared";
 import { updateDoc } from "firebase/firestore";
-import { Button, Chip, Switch, cx, type Icon } from "@spot/ui";
+import { Button, Chip, Switch, boolPref, cx, usePref, type Icon } from "@spot/ui";
 import { IconArrowDown, IconCancel, IconCheck, IconChat, IconClock, IconGroup, IconHistory, IconLogout, IconMic, IconRepeat, IconSend, IconUserMinus, IconUserPlus, IconWarn } from "@spot/ui";
 import { useApp } from "../lib/app";
 import { ComicAvatar } from "../lib/photos";
@@ -174,13 +174,15 @@ export function RepeatNextToggle({ lineup }: { lineup: Lineup }) {
   );
 }
 
+/** Lineup activity folds shut by default; opening it is remembered with the account. */
+const ACTIVITY_OPEN_PREF = boolPref("lineupActivityOpen", "spot.lineup.activityOpen", false);
+
 export function ActivitySection({ lineup, show, offers, nameOf }: { lineup?: Lineup; show: Show; offers: SpotOffer[]; nameOf: (id: string) => string; over?: boolean }) {
   const { uid, settings } = useApp();
   const nowMs = Date.now();
   const now = zonedNow(settings.timezone, nowMs);
   const rows = lineupActivity({ lineup, show, offers, now, nameOf });
-  const key = `${lineup?.id ?? show.id}:activity`;
-  const [open, setOpen] = useRemembered(key, false); // collapsed for every show until opened; the choice is kept per lineup
+  const [open, setOpen] = usePref(ACTIVITY_OPEN_PREF); // collapsed until opened; the choice follows the account, for every lineup
   const panel = useId();
   const [busy, setBusy] = useState(false);
   if (!rows.length) return null;

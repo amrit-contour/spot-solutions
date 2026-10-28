@@ -12,6 +12,7 @@ import {
   cancellations,
   daysBetween,
   isClearedRequest,
+  isClosedRequest,
   requestsToClear,
   formatTime,
   lastSpot,
@@ -28,9 +29,10 @@ import { runCommand, timeAgo, useCollection, useNow, userDoc } from "../lib/data
 import { placeComic } from "../lib/lineup";
 import { setRequestsCleared } from "../lib/cleanup";
 import { useNeverRead } from "../lib/neverRead";
-import { PageHeader } from "@spot/ui";
+import { PageHeader, enumPref, usePref } from "@spot/ui";
 import { WaText } from "@spot/ui";
 import { WeekSwitcher } from "../components/WeekSwitcher";
+import { useMedia } from "../lib/calendarDates";
 import { Menu, MenuItem } from "@spot/ui";
 import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
@@ -42,7 +44,7 @@ import { UpdatesPanel } from "../components/UpdatesPanel";
 import { Count } from "../components/updates/shared";
 import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
-import { IconArrowDown, IconSort, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconShield, IconSkip, IconSparkle, IconStar } from "@spot/ui";
+import { IconArrowDown, IconSort, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconClose, IconShield, IconSkip, IconSparkle, IconStar } from "@spot/ui";
 
 import { laneOf, type Lane } from "../lib/lanes";
 const LANES: { id: Lane; label: string }[] = [
@@ -54,7 +56,6 @@ const LANES: { id: Lane; label: string }[] = [
 ];
 
 type SortKey = "fair" | "newest" | "oldest" | "confidence" | "name";
-const SORT_KEY = "spot.requests.sort";
 const SORTS: { id: SortKey; label: string; help: string }[] = [
   { id: "fair", label: "Fair order", help: "Didn't perform last week first, then first come" },
   { id: "newest", label: "Newest", help: "Latest message first" },
@@ -63,31 +64,20 @@ const SORTS: { id: SortKey; label: string; help: string }[] = [
   { id: "name", label: "Name", help: "A to Z" },
 ];
 
+// Remembered with the account: the sort order and the last tab.
+const SORT_PREF = enumPref<SortKey>("requestsSort", "spot.requests.sort", SORTS.map((x) => x.id), "fair");
+const LANE_PREF = enumPref<Lane>("requestsLane", "spot.requests.lane", LANES.map((x) => x.id), "asked");
+
 
 export function Requests() {
   const { uid, week, session, shows, comicsById } = useApp();
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
-  const [lane, setLane] = useState<Lane>("asked");
+  const [lane, setLane] = usePref(LANE_PREF);
   // Messages links here with ?q=name to land on that person's card.
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(() => params.get("q") ?? "");
-  const [sort, setSortState] = useState<SortKey>(() => {
-    try {
-      const v = localStorage.getItem(SORT_KEY) as SortKey | null;
-      return v && SORTS.some((x) => x.id === v) ? v : "fair";
-    } catch {
-      return "fair";
-    }
-  });
-  const setSort = (v: SortKey) => {
-    setSortState(v);
-    try {
-      localStorage.setItem(SORT_KEY, v);
-    } catch {
-      /* not remembered */
-    }
-  };
+  const [sort, setSort] = usePref(SORT_PREF);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearClosedOpen, setClearClosedOpen] = useState(false);
   const [showCleared, setShowCleared] = useState(false);
@@ -98,6 +88,7 @@ export function Requests() {
   const view: "requests" | "updates" = params.get("view") === "updates" ? "updates" : "requests";
   const setView = (v: "requests" | "updates") => setParams(v === "updates" ? { view: "updates" } : {}, { replace: true });
   const updates = useUpdates();
+  const phone = useMedia("(max-width: 639px)");
 
   const grouped = useMemo(() => {
     const g: Record<Lane, SpotRequest[]> = { asked: [], maybe: [], held: [], placed: [], closed: [] };
@@ -156,10 +147,13 @@ export function Requests() {
     <div className="w-full">
       <PageHeader
         title="Requests"
-        subtitle={requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
+        // Phones: the counts and the week move down under the tabs (one row), so the header is just the title and the menu.
+        subtitle={phone ? undefined : requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
         actions={
           <>
-            <WeekSwitcher />
+            <div className="max-sm:hidden">
+              <WeekSwitcher />
+            </div>
             <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="More" onClick={t} className="size-9" />}>
               {(close) => (
                 <>
@@ -218,6 +212,13 @@ export function Requests() {
       <ScanHistorySheet open={scanOpen} onClose={() => setScanOpen(false)} />
       <div className="px-4 pb-10 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className={cx("min-w-0", view === "updates" && "hidden lg:block")}>
+          {/* Phones, Requests tab only (this column is hidden on the Updates tab): the week and the counts share one row under the tabs. */}
+          <div className="mb-3 flex items-center justify-between gap-3 sm:hidden">
+            <WeekSwitcher />
+            <p className="min-w-0 truncate text-right type-label-l text-on-surface-variant tabular" aria-live="polite">
+              {grouped.asked.length} waiting · {grouped.placed.length} placed
+            </p>
+          </div>
           <div className="sticky top-[var(--page-header-h,0px)] z-20 -mx-4 mb-4 border-b border-outline-variant bg-surface px-4 pt-2 sm:mx-0 sm:px-0">
             <div className="flex flex-col gap-2 2xl:flex-row-reverse 2xl:items-center">
               <div className="flex items-center gap-2 2xl:flex-none">
@@ -341,6 +342,18 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
     if (!(await placeComic(uid, week, show, r.comicId, lineups))) return;
     toast.success(`${r.comicName.split(" ")[0]} → ${show.name}`);
   };
+  /** The x on a Closed card: hide just this one, like "Clear closed" (nothing is deleted), with an undo. */
+  const clearOne = async () => {
+    try {
+      await setRequestsCleared(uid, [r.id], Date.now());
+    } catch (e) {
+      toast.error((e as Error).message);
+      return;
+    }
+    toast.success(`Cleared ${r.comicName.split(" ")[0]}'s closed request`, {
+      action: { label: "Undo", onClick: () => void setRequestsCleared(uid, [r.id], null).catch((e) => toast.error((e as Error).message)) },
+    });
+  };
   const nr = useNeverRead();
   /** A dismissed request from someone who isn't a comic: put them on Never read and delete what we kept of them. */
   const neverReadAgain = async () => {
@@ -456,7 +469,8 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
         </Link>
         </div>
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
-        {held ? (
+        {/* Closed wins over Held: a dismissed request can still carry a hold, and its Dismiss x would then do nothing. */}
+        {held && !isClosedRequest(r) ? (
           <>
             <IconButton icon={IconSkip} label="Dismiss" onClick={() => setStatus("dismissed")} />
             <Button variant="tonal" onClick={() => void updateDoc(userDoc(uid, "requests", r.id), { holdOverridden: true, updatedAt: Date.now() })}>
@@ -465,6 +479,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
           </>
         ) : r.status === "rejected" ? (
           <>
+            <IconButton icon={IconClose} label="Clear from Closed" onClick={() => void clearOne()} />
             <Chip icon={IconChatCheck}>Regret sent</Chip>
             <Button size="sm" variant="tonal" onClick={() => void reopen()}>
               Reopen
@@ -472,6 +487,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
           </>
         ) : r.status === "dismissed" ? (
           <>
+            <IconButton icon={IconClose} label="Clear from Closed" onClick={() => void clearOne()} />
             {!comic && (
               <Button size="sm" variant="text" onClick={() => void neverReadAgain()}>
                 Not a comic: never read again
