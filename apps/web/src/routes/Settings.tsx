@@ -21,7 +21,6 @@ import {
   messageRich,
   OFFER_POLL_OPTIONS,
   micDelayHours,
-  rateAfterMinutes,
   snippetRich,
   storeMessage,
   pollProblem,
@@ -493,14 +492,9 @@ function AfterShowSection() {
               <SettingRow label="Ask after the start" info="How long after the show's start time it asks if the mic happened. Two hours by default.">
                 <Stepper value={micDelayHours(m)} onChange={(v) => saveSettings({ micCheck: { ...m, afterHours: v } })} min={0} max={24} suffix={micDelayHours(m) === 1 ? "hour" : "hours"} />
               </SettingRow>
-              <SettingRow label="Ask how each comic did" info="After a yes, the agent lists the lineup and you rate each comic 1 to 5 (reply like “1 4, 2 5, 3 3”). Ratings are kept with each comic's spot history. You can also rate in the app.">
+              <SettingRow label="Ask how each comic did" info="Right after you answer yes, the agent sends a poll for each comic to tap (5 Killed it to 1 Bombed, Late, No-show), then one for the show overall. Ratings are kept with each comic's spot history. You can also rate in the app.">
                 <Switch checked={m.rate !== false} onChange={(v) => saveSettings({ micCheck: { ...m, rate: v } })} label="Ask how each comic did" />
               </SettingRow>
-              {m.rate !== false && (
-                <SettingRow label="Then ask how everyone did" info="Once the show is marked as happened, the polls for each comic go out this many minutes after the mic check question (so 2 hours + 5 minutes after the start by default). If you say yes later than that, they go out right away.">
-                  <Stepper value={rateAfterMinutes(m)} onChange={(v) => saveSettings({ micCheck: { ...m, rateAfterMin: v } })} min={0} max={120} suffix={rateAfterMinutes(m) === 1 ? "minute after" : "minutes after"} />
-                </SettingRow>
-              )}
               <SettingRow label="Also ask on WhatsApp" info="In your “Message yourself” chat, or from the agent number when it's linked (see Agent number). Reply yes or no there.">
                 <Switch checked={m.whatsapp} onChange={(v) => saveSettings({ micCheck: { ...m, whatsapp: v } })} label="Ask on WhatsApp" />
               </SettingRow>
