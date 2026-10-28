@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findDuplicateComics, linksFromMembers, maskPhoneDigits, memberKeySet, mergeComics, personGroups, pickerRows, pickKeep, remapLineup, remapShow } from "./comicMerge.ts";
+import { dismissedPairs, duplicateSuggestions, findDuplicateComics, findSamePersonByName, linksFromMembers, maskPhoneDigits, memberKeySet, mergeComics, pairIds, pairKey, pairKeysAgainst, pairKeysFromSetKeys, pairKeysWithin, personGroups, splitPairKeys, pickerRows, pickKeep, remapLineup, remapShow, similarNames } from "./comicMerge.ts";
 import type { Comic, GroupMember, Lineup, Show } from "./types.ts";
 
 const comic = (o: Partial<Comic> & { id: string }): Comic => ({ name: "Aman", phone: "", tier: "open", ...o });
@@ -137,5 +137,85 @@ describe("picker rows", () => {
     expect(maskPhoneDigits("")).toBe("");
     expect(maskPhoneDigits("12345")).toBe("");
     expect(maskPhoneDigits("6591234567")).toBe("+65 ••••• 4567");
+  });
+});
+
+describe("not the same person", () => {
+  const aman = (n: number, name = "Aman Verma") => comic({ id: `91980000000${n}@c.us`, phone: `91980000000${n}`, name, nameSource: "contact" });
+  const [a, b, c, d] = [1, 2, 3, 4].map((n) => aman(n));
+  const ids = (s: { keep: Comic; others: Comic[] }) => [s.keep.id, ...s.others.map((o) => o.id)].sort();
+
+  it("pair keys are order-free; a whole suggestion is every pair; the old per-device keys convert", () => {
+    expect(pairKey("b", "a")).toBe(pairKey("a", "b"));
+    expect(pairIds(pairKey("y@lid", "x@c.us"))).toEqual(["x@c.us", "y@lid"]);
+    expect(pairKeysWithin(["a", "b", "c"]).sort()).toEqual(["a|b", "a|c", "b|c"]);
+    expect(pairKeysAgainst("c", ["a", "b", "c"])).toEqual(["a|c", "b|c"]);
+    expect(pairKeysFromSetKeys(["b|a", "a|b|c", 7, null]).sort()).toEqual(["a|b", "a|c", "b|c"]);
+    expect(pairKeysFromSetKeys("nope")).toEqual([]);
+  });
+
+  it("four people with one name are one suggestion until someone is taken out", () => {
+    expect(findSamePersonByName([a, b, c, d]).map(ids)).toEqual([[a.id, b.id, c.id, d.id]]);
+  });
+
+  it("Not this person on one member drops them and leaves the rest a suggestion", () => {
+    const no = new Set(pairKeysAgainst(c.id, [a.id, b.id, d.id]));
+    expect(findSamePersonByName([a, b, c, d], [], new Set(), no).map(ids)).toEqual([[a.id, b.id, d.id]]);
+  });
+
+  it("two members taken out of the same group come back as their own pair", () => {
+    // c and d set aside from {a,b,c,d}: each is recorded against the ones that stay, never against each other.
+    const no = new Set(splitPairKeys([a.id, b.id, c.id, d.id], [c.id, d.id]));
+    expect([...no].sort()).toEqual([pairKey(a.id, c.id), pairKey(a.id, d.id), pairKey(b.id, c.id), pairKey(b.id, d.id)].sort());
+    expect(findSamePersonByName([a, b, c, d], [], new Set(), no).map(ids).sort()).toEqual([[a.id, b.id], [c.id, d.id]]);
+  });
+
+  it("Not same person on a whole suggestion hides it for good", () => {
+    expect(findSamePersonByName([a, b], [], new Set(), new Set(pairKeysWithin([a.id, b.id])))).toEqual([]);
+    // a third Aman still pairs up with either of them
+    expect(findSamePersonByName([a, b, c], [], new Set(), new Set(pairKeysWithin([a.id, b.id]))).map(ids)).toEqual([[a.id, c.id]]);
+  });
+
+  it("a dismissed pair is never a safe merge either", () => {
+    const x = comic({ id: "919800000009@c.us", phone: "919800000009" });
+    const y = comic({ id: "other@c.us", phone: "919800000009" });
+    expect(findDuplicateComics([x, y])).toHaveLength(1);
+    expect(findDuplicateComics([x, y], [], new Set(), new Set([pairKey(x.id, y.id)]))).toEqual([]);
+  });
+
+  it("duplicateSuggestions lists the safe sets, then the name matches; dismissedPairs only lists pairs that still exist", () => {
+    const lid = comic({ id: "55500001@lid", chatId: "55500001@lid", name: "Asha" });
+    const ph = comic({ id: "919800000005@c.us", phone: "919800000005", name: "Asha" });
+    const m: GroupMember[] = [{ id: ph.id, name: "Asha", isAdmin: false, alt: [lid.id] }];
+    expect(duplicateSuggestions([lid, ph, a, b], m).map((s) => s.why)).toEqual(["whatsapp", "name"]);
+    expect(dismissedPairs([a, b], [pairKey(a.id, b.id), pairKey(a.id, "gone@c.us")]).map((p) => p.key)).toEqual([pairKey(a.id, b.id)]);
+  });
+
+  it("similar names: equal, whole-word start or end, one-letter typo of a long name; not substrings", () => {
+    expect(similarNames("Aman", "aman verma")).toBe(true);
+    expect(similarNames("Priyanka", "Priyanca")).toBe(true);
+    expect(similarNames("Amanda", "Aman")).toBe(false);
+    expect(similarNames("Ravi", "Ravi")).toBe(true);
+  });
+});
+
+describe("mergeComics keeps the best of both", () => {
+  it("best name (manual > contact > whatsapp > number), one photo, unions numbers, aliases, pinned/hidden tags, earliest comedySince", () => {
+    const keep = comic({ id: "919800000001@c.us", phone: "919800000001", name: "919800000001", nameSource: "number", photoUrl: "https://x/k.jpg", photoAt: 1, aliases: ["111@lid"], tagsPinned: ["Clean"], tagsHidden: ["Hack"], comedySince: "2023-05-01" });
+    const contact = comic({ id: "919800000002@c.us", phone: "919800000002", name: "Asha K", nameSource: "contact", photoUrl: "https://x/o.jpg", photoAt: 2, tagsPinned: ["Hack"], comedySince: "2021-01-01" });
+    const manual = comic({ id: "222@lid", chatId: "222@lid", name: "Asha Kapoor", nameSource: "manual", tagsHidden: ["Killer"], comedySince: "2022-01-01" });
+    const m = mergeComics(keep, [contact, manual]);
+    expect(m).toMatchObject({ id: keep.id, name: "Asha Kapoor", nameSource: "manual", photoUrl: "https://x/k.jpg", photoAt: 1, phone: "919800000001", comedySince: "2021-01-01" });
+    expect(m.numbers?.map((n) => [n.phone, Boolean(n.primary)])).toEqual([["919800000001", true], ["919800000002", false]]);
+    expect(m.chatId).toBe("222@lid"); // the only delivery id carries over
+    expect(new Set(m.aliases)).toEqual(new Set(["111@lid", "919800000002@c.us"]));
+    expect(m.tagsPinned?.sort()).toEqual(["Clean", "Hack"]);
+    expect(m.tagsHidden).toEqual(["Killer"]); // pinned on one doc beats hidden on the other
+    expect(Object.values(m)).not.toContain(undefined);
+  });
+  it("a contact name beats WhatsApp's, and WhatsApp's beats a bare number", () => {
+    expect(mergeComics(comic({ id: "k", name: "A", nameSource: "whatsapp" }), [comic({ id: "o", name: "B", nameSource: "contact" })]).name).toBe("B");
+    expect(mergeComics(comic({ id: "k", name: "919800000001", nameSource: "number" }), [comic({ id: "o", name: "B", nameSource: "whatsapp" })]).name).toBe("B");
+    expect(mergeComics(comic({ id: "k", name: "A", nameSource: "manual" }), [comic({ id: "o", name: "B", nameSource: "contact" })]).name).toBe("A");
   });
 });

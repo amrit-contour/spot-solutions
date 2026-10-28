@@ -94,9 +94,87 @@ export interface DuplicateSet<T extends Identity> {
   why: "number" | "whatsapp" | "name";
 }
 
-/** Comics that are the same person under more than one doc. The doc to keep is the one WhatsApp reaches. */
-export function findDuplicateComics<T extends Identity & { name: string; history?: unknown[] }>(comics: readonly T[], links: readonly IdLink[] = [], members: Set<string> = new Set()): DuplicateSet<T>[] {
+// ---- "Not the same person" ----
+// The curator's answer to a suggestion, kept as pairs of comic ids (users/{uid}.settings.dupDismissed) so it syncs across
+// devices and the worker's automatic merge respects it. A pair is never suggested or merged again, whatever links them.
+
+/** Two comic ids, sorted and joined: one key per pair whichever way round it is asked. */
+export const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** The two ids of a pair key. */
+export const pairIds = (key: string): [string, string] => {
+  const [a = "", b = ""] = key.split("|");
+  return [a, b];
+};
+
+/** "Not this person": the pair keys between one member and each of the others. */
+export const pairKeysAgainst = (one: string, others: readonly string[]) => [...new Set(others.filter((o) => o && o !== one).map((o) => pairKey(one, o)))];
+
+/** "Not this person" on some members of a suggestion: each of them against each member that stays (never against each other). */
+export function splitPairKeys(memberIds: readonly string[], asideIds: readonly string[]): string[] {
+  const aside = new Set(asideIds);
+  const stay = memberIds.filter((id) => !aside.has(id));
+  return [...new Set([...aside].flatMap((id) => pairKeysAgainst(id, stay)))];
+}
+
+/** "Not same person" on a whole suggestion: every pair inside it. */
+export function pairKeysWithin(ids: readonly string[]): string[] {
+  const u = [...new Set(ids.filter(Boolean))];
+  return u.flatMap((a, i) => u.slice(i + 1).map((b) => pairKey(a, b)));
+}
+
+/** The old per-device format (each dismissed suggestion as all its ids joined with "|") as pair keys. Junk is skipped. */
+export function pairKeysFromSetKeys(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((k): k is string => typeof k === "string").flatMap((k) => pairKeysWithin(k.split("|"))))];
+}
+
+/** Dismissed pairs where both comics still exist (the Restore list), with the two docs. */
+export function dismissedPairs<T extends { id: string }>(comics: readonly T[], dismissed: Iterable<string>): { key: string; a: T; b: T }[] {
+  const byId = new Map(comics.map((c) => [c.id, c]));
+  return [...new Set(dismissed)].flatMap((key) => {
+    const [x, y] = pairIds(key);
+    const a = byId.get(x);
+    const b = byId.get(y);
+    return a && b ? [{ key, a, b }] : [];
+  });
+}
+
+/**
+ * Groups of units (each unit one or more docs) that belong together, never putting a dismissed pair in the same group.
+ * Greedy and stable: a unit joins the first group it is linked to and has no dismissal with; if it links two such groups
+ * that don't clash, they become one. So taking someone out of a group leaves the rest together, and two people taken out
+ * of the same group who match each other come back as their own group.
+ */
+function clusterApart<T extends { id: string }>(units: readonly T[][], linked: (a: number, b: number) => boolean, dismissed: ReadonlySet<string>): T[][][] {
+  const clash = (a: T[], b: T[]) => dismissed.size > 0 && a.some((x) => b.some((y) => dismissed.has(pairKey(x.id, y.id))));
+  const groups: number[][] = [];
+  units.forEach((u, i) => {
+    const fits = groups.filter((g) => g.some((j) => linked(i, j)) && !g.some((j) => clash(u, units[j])));
+    if (!fits.length) return void groups.push([i]);
+    const [first, ...rest] = fits;
+    first.push(i);
+    for (const g of rest) {
+      if (g.some((j) => first.some((k) => clash(units[j], units[k])))) continue;
+      first.push(...g);
+      groups.splice(groups.indexOf(g), 1);
+    }
+  });
+  return groups.map((g) => g.sort((a, b) => a - b).map((i) => units[i] as T[]));
+}
+
+/** One person's docs, split where the curator said two of them are not the same person. */
+const splitDismissed = <T extends { id: string }>(group: T[], dismissed: ReadonlySet<string>): T[][] =>
+  dismissed.size && group.length > 1 ? clusterApart(group.map((c) => [c]), () => true, dismissed).map((g) => g.flat()) : [group];
+
+/**
+ * Comics that are the same person under more than one doc (the same number, or a phone id and the @lid of the same WhatsApp
+ * account). The doc to keep is the one WhatsApp reaches. These are the safe cases the worker merges by itself; a pair the
+ * curator dismissed is never put together.
+ */
+export function findDuplicateComics<T extends Identity & { name: string; history?: unknown[] }>(comics: readonly T[], links: readonly IdLink[] = [], members: Set<string> = new Set(), dismissed: ReadonlySet<string> = new Set()): DuplicateSet<T>[] {
   return personGroups(comics, links)
+    .flatMap((g) => splitDismissed(g, dismissed))
     .filter((g) => g.length > 1)
     .map((g) => {
       const keep = pickKeep(g, members);
@@ -120,40 +198,43 @@ const editDistance = (a: string, b: string): number => {
   return d[a.length][b.length];
 };
 
-/** Same or similar name: equal, one the whole-word start of the other ("Aman" / "Aman Verma"), or a one-letter typo of a longer name. */
-export function similarNames(a: string, b: string): boolean {
-  const x = nameKey(a);
-  const y = nameKey(b);
+/** similarNames on names already put through nameKey. */
+function similarKeys(x: string, y: string): boolean {
   if (!x || !y) return false;
   if (x === y) return true;
   const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  if (short.length >= 4 && (long === short || long.startsWith(`${short} `) || long.endsWith(` ${short}`))) return true;
-  return short.length >= 6 && editDistance(x, y) <= 1;
+  if (short.length >= 4 && (long.startsWith(`${short} `) || long.endsWith(` ${short}`))) return true;
+  return short.length >= 6 && long.length - short.length <= 1 && editDistance(x, y) <= 1;
 }
+
+/** Same or similar name: equal, one the whole-word start of the other ("Aman" / "Aman Verma"), or a one-letter typo of a longer name. */
+export const similarNames = (a: string, b: string): boolean => similarKeys(nameKey(a), nameKey(b));
 
 /**
  * Different people-docs with the same or similar name but different numbers: a suggestion, never merged automatically.
- * Docs that are already the same account (same number, phone id and @lid) are not here, `findDuplicateComics` has them.
+ * Docs that are already the same account (same number, phone id and @lid) are not split here, `findDuplicateComics` has them.
+ * Pairs the curator dismissed ("Not same person", "Not this person") are kept apart; the rest of a group stays a suggestion.
  */
-export function findSamePersonByName<T extends Identity & { name: string; nameSource?: Comic["nameSource"]; history?: unknown[] }>(comics: readonly T[], links: readonly IdLink[] = [], members: Set<string> = new Set()): DuplicateSet<T>[] {
-  const groups = personGroups(comics, links);
-  const parent = groups.map((_, i) => i);
-  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-  const names = groups.map((g) => g.filter(comparable).map((c) => c.name));
-  for (let i = 0; i < groups.length; i++) {
-    for (let j = i + 1; j < groups.length; j++) {
-      if (names[i].some((a) => names[j].some((b) => similarNames(a, b)))) parent[find(i)] = find(j);
-    }
-  }
-  const sets = new Map<number, T[]>();
-  groups.forEach((g, i) => sets.set(find(i), [...(sets.get(find(i)) ?? []), ...g]));
-  return [...sets.values()]
-    .filter((docs) => personGroups(docs, links).length > 1)
-    .map((docs) => {
+export function findSamePersonByName<T extends Identity & { name: string; nameSource?: Comic["nameSource"]; history?: unknown[] }>(comics: readonly T[], links: readonly IdLink[] = [], members: Set<string> = new Set(), dismissed: ReadonlySet<string> = new Set()): DuplicateSet<T>[] {
+  const units = personGroups(comics, links).flatMap((g) => splitDismissed(g, dismissed));
+  const keys = units.map((u) => [...new Set(u.filter(comparable).map((c) => nameKey(c.name)))]);
+  const linked = (i: number, j: number) => keys[i].some((a) => keys[j].some((b) => similarKeys(a, b)));
+  return clusterApart(units, linked, dismissed)
+    .filter((g) => g.length > 1)
+    .map((g) => {
+      const docs = g.flat();
       const keep = pickKeep(docs, members);
       return { keep, others: docs.filter((c) => c !== keep), why: "name" as const };
     })
     .sort((a, b) => a.keep.name.localeCompare(b.keep.name));
+}
+
+/** Everything the Possible duplicates card lists: the safe sets first, then the same-name suggestions. */
+export function duplicateSuggestions<T extends Identity & { name: string; nameSource?: Comic["nameSource"]; history?: unknown[] }>(comics: readonly T[], members: readonly GroupMember[] = [], dismissed: Iterable<string> = []): DuplicateSet<T>[] {
+  const links = linksFromMembers(members);
+  const keys = memberKeySet(members);
+  const no = new Set(dismissed);
+  return [...findDuplicateComics(comics, links, keys, no), ...findSamePersonByName(comics, links, keys, no)];
 }
 
 const NAME_RANK = { number: 0, whatsapp: 1, contact: 2, manual: 3 } as const;
@@ -177,6 +258,7 @@ export function mergeComics(keep: Comic, others: readonly Comic[]): Comic {
     if (o.history?.length) out.history = mergeHistory(out.history, o.history);
     if (o.comedySince && (!out.comedySince || o.comedySince < out.comedySince)) out.comedySince = o.comedySince;
     if (o.tagsPinned?.length) out.tagsPinned = [...new Set([...(out.tagsPinned ?? []), ...o.tagsPinned])];
+    if (o.tagsHidden?.length) out.tagsHidden = [...new Set([...(out.tagsHidden ?? []), ...o.tagsHidden])];
     if (!out.onboarding && o.onboarding) out.onboarding = o.onboarding;
     if (o.profile) out.profile = { ...o.profile, ...out.profile };
     // "none" means their picture is hidden: a real one found under the other id beats it.
@@ -185,6 +267,11 @@ export function mergeComics(keep: Comic, others: readonly Comic[]): Comic {
       out.photoAt = o.photoAt;
     }
     for (const x of [o.id, o.chatId, ...(o.aliases ?? [])]) if (x && !seen(x)) ids.add(x);
+  }
+  // A tag pinned on either doc stays shown, even if the other had hidden it.
+  if (out.tagsHidden?.length && out.tagsPinned?.length) {
+    const hidden = out.tagsHidden.filter((t) => !out.tagsPinned!.includes(t));
+    out.tagsHidden = hidden.length ? hidden : undefined;
   }
   // Every other id WhatsApp has known them by stays on the doc, so a message from the old one still finds this person.
   const aliases = [...ids].filter((x) => x !== out.id && x !== out.chatId);

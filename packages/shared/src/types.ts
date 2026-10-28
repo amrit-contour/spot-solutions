@@ -128,6 +128,8 @@ export interface Settings {
   prefs?: Record<string, string | boolean>;
   /** Thresholds for the experience tags (New/Beginner/Senior/Killer). Missing fields fall back to the defaults. */
   experienceThresholds?: ExperienceThresholds;
+  /** Possible duplicates the curator said are different people: pairs of comic ids (comicMerge.ts pairKey). Never suggested or merged automatically again. */
+  dupDismissed?: string[];
 }
 
 /** What the agent number may do for you. Linking it is the opt-in; these switch each part off again. */
