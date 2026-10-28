@@ -9,6 +9,6 @@ export const laneOf = (r: SpotRequest): Lane =>
       ? "placed"
       : r.hold && !r.holdOverridden
         ? "held"
-        : r.intent.confidence >= INTENT_THRESHOLD
+        : (r.intent?.confidence ?? 0) >= INTENT_THRESHOLD
           ? "asked"
           : "maybe";
