@@ -22,6 +22,7 @@ import {
   type ComicAction,
   type Intent,
   type Lineup,
+  type Show,
   type Comic,
   type InboundMessage,
   type SpotRequest,

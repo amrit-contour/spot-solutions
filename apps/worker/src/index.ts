@@ -3,6 +3,7 @@
 import "./envCompat.ts";
 import "./logbuf.ts";
 import { col, db, sessionRef } from "./firebase.ts";
+import { migrateExperience } from "./migrateExperience.ts";
 import { runCommand } from "./commands.ts";
 import { markAdhocTold } from "./replies.ts";
 import { startAccess } from "./access.ts";
@@ -101,6 +102,7 @@ async function main() {
       watchCommands(uid);
       const policy: AiPolicy = data.settings?.ai?.policy === "local_only" ? "local_only" : DEFAULT_AI_POLICY;
       known.set(uid, { policy, enabled: Boolean(data.waEnabled), agent: Boolean(data.waEnabled && data.agentEnabled) });
+      void migrateExperience(uid).catch((e) => console.warn("[migrate]", uid, e.message));
       if (data.waEnabled && fleet.holds(uid) && !sessions.running(uid)) void sessions.start(uid);
       // The agent number rides on the same lease: it starts here too, once the account's own WhatsApp is on its way.
       if (data.waEnabled && data.agentEnabled && fleet.holds(uid) && !agentSessions.running(uid)) startAgentSoon(uid);
