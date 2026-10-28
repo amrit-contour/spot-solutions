@@ -1,7 +1,7 @@
 // Merge duplicate comic docs (the same person stored under a phone id and an @lid) into the one WhatsApp reaches.
 // The plan lives in @spot/shared (mergeComics, remapLineup, remapShow); this applies it with the Admin SDK, since offers can't be
 // written from the app. Nothing is sent to anyone.
-import { mergeComics, remapLineup, remapShow, requestIdFor, type Comic, type Lineup, type Show, type SpotRequest } from "@spot/shared";
+import { findDuplicateComics, linksFromMembers, memberKeySet, mergeComics, remapLineup, remapShow, requestIdFor, type Comic, type Lineup, type Show, type SpotRequest } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 
 type Write = (b: FirebaseFirestore.WriteBatch) => void;
@@ -67,4 +67,41 @@ export async function mergeComicDocs(uid: string, { keepId, dropIds }: Record<st
   for (const o of others) writes.push((b) => b.delete(col(uid, "comics").doc(o.id)));
   await commit(writes);
   return { merged: others.length, moved };
+}
+
+// ---- Automatic merge of the safe cases ----
+// The same phone number, or a phone id and the @lid of the same WhatsApp account, are one person by definition: merged without asking.
+// Nothing is sent to anyone. (Two different numbers with the same name are only a suggestion in the app: "Same person".)
+const running = new Set<string>();
+const timers = new Map<string, NodeJS.Timeout>();
+
+export async function autoMergeDuplicates(uid: string): Promise<number> {
+  if (running.has(uid)) return 0;
+  running.add(uid);
+  let merged = 0;
+  try {
+    const comics = (await col(uid, "comics").get()).docs.map((d) => ({ ...(d.data() as Comic), id: d.id }));
+    const members = (await col(uid, "shows").get()).docs.flatMap((d) => (d.data() as Show).groupMembers?.members ?? []);
+    for (const set of findDuplicateComics(comics, linksFromMembers(members), memberKeySet(members))) {
+      const r = await mergeComicDocs(uid, { keepId: set.keep.id, dropIds: set.others.map((o) => o.id) });
+      merged += r.merged;
+    }
+    if (merged) console.log(`[merge] ${uid}: merged ${merged} duplicate contact${merged === 1 ? "" : "s"} (same number or same WhatsApp account)`);
+  } catch (e) {
+    console.warn("[merge] automatic merge failed", (e as Error).message);
+  } finally {
+    running.delete(uid);
+  }
+  return merged;
+}
+
+/** Look for duplicates a little after a roster change (a new contact, a member refresh), once per burst. */
+export function scheduleAutoMerge(uid: string, delayMs = 4000) {
+  clearTimeout(timers.get(uid));
+  const t = setTimeout(() => {
+    timers.delete(uid);
+    void autoMergeDuplicates(uid);
+  }, delayMs);
+  t.unref();
+  timers.set(uid, t);
 }

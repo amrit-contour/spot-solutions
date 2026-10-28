@@ -2,7 +2,7 @@
 // queue asks WhatsApp for their pictures, one every couple of seconds (a little randomly), and keeps the answer:
 // on the comic doc for comics, in users/{uid}/waPhotos/{jid} for groups and Comedy's curators. The scheduler also puts the stale
 // ones back in the queue now and then (maybePhotoSweep), so photos stay current without anyone asking.
-import { PHOTO_BATCH_MAX, PHOTO_INTERVAL_MS, PHOTO_REFRESH_MS, PHOTO_SWEEP_EVERY_MS, PHOTO_SWEEP_MAX, WA_PHOTOS, isWaJid, type Comic } from "@spot/shared";
+import { PHOTO_BATCH_MAX, PHOTO_INTERVAL_MS, PHOTO_REFRESH_MS, PHOTO_SWEEP_EVERY_MS, PHOTO_SWEEP_MAX, WA_PHOTOS, comicIdForPhone, isWaJid, numbersOf, type Comic } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
 import { isNeverRead } from "./neverRead.ts";
@@ -27,7 +27,13 @@ function queueFor(uid: string) {
       blocked: (c, kind) => isNeverRead(uid, sessions.get(uid), c.id, c.chatId, kind === "comic" && c.phone ? `${c.phone}@c.us` : null),
       fetchUrl: async (c) => {
         const client = sessions.require(uid);
-        return (await client.getProfilePicUrl(c.chatId ?? c.id)) || null;
+        // The primary number's chat first; a person with no picture there may have one on another of their numbers.
+        const tries = [c.chatId ?? c.id, ...numbersOf(c).map((n) => comicIdForPhone(n.phone))];
+        for (const id of [...new Set(tries)]) {
+          const url = await client.getProfilePicUrl(id).catch(() => null);
+          if (url) return url;
+        }
+        return null;
       },
       save: async (id, patch, kind) => {
         await col(uid, collOf(kind)).doc(id).set(patch, { merge: true });

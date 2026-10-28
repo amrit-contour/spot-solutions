@@ -10,6 +10,7 @@
 import type WAWebJS from "whatsapp-web.js";
 import {
   LIVE_SCHEMA,
+  comicIdsOf,
   buildLivePrompt,
   cancelDecision,
   etaFromText,
@@ -93,7 +94,7 @@ async function senderOnLineup(uid: string, client: WAWebJS.Client, msg: WAWebJS.
   const snaps = await db.getAll(...lineup.slots.map((s) => col(uid, "comics").doc(s.comicId)));
   for (const s of snaps) {
     const c = s.data() as Comic | undefined;
-    if (c && (ids.has(c.chatId ?? ""))) return { comicId: c.id ?? s.id, comic: c };
+    if (c && comicIdsOf(c).some((x) => ids.has(x))) return { comicId: c.id ?? s.id, comic: c };
   }
   return null;
 }

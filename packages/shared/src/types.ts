@@ -336,6 +336,13 @@ export interface GroupMembersCache {
   inviteCode?: string;
 }
 
+export interface ComicNumber {
+  /** Digits with country code (919800000001). */
+  phone: string;
+  label?: string;
+  primary?: boolean;
+}
+
 export interface Comic {
   id: string; // stable id: phone-based (919876543210@c.us) when known, else the @lid
   chatId?: string; // the JID WhatsApp actually delivers to (often @lid on current WhatsApp)
@@ -344,7 +351,10 @@ export interface Comic {
   name: string;
   /** Where `name` came from. Only "manual" names are left alone when WhatsApp data changes. */
   nameSource?: "contact" | "whatsapp" | "number" | "manual";
+  /** The primary number (digits). With several numbers it follows the primary entry of `numbers`. */
   phone: string;
+  /** Every number of this person when there is more than one. Exactly one is primary; `aliases` holds the WhatsApp ids of all of them. */
+  numbers?: ComicNumber[];
   tier: Tier;
   notes?: string;
   lastPerformedWeek?: string | null; // weekOf key

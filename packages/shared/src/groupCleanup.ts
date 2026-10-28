@@ -270,7 +270,7 @@ export function planCleanup(input: {
   /** Comic ids that stay: regulars, co-hosts, POCs, next week's lineup. */
   stay: string[];
   /** The roster, so a stayer's phone and chat id count too. */
-  comics: Pick<Comic, "id" | "chatId" | "phone">[];
+  comics: (Pick<Comic, "id" | "chatId" | "phone"> & Partial<Pick<Comic, "aliases" | "numbers">>)[];
   /** The curator's own ids (@c.us and @lid). */
   self: string[];
 }): CleanupPlan {

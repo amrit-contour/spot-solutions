@@ -3,7 +3,7 @@
 // Pure: group membership comes from the cached member list (Show.groupMembers), never from WhatsApp.
 import { dateInWeek, DAY_NAMES, formatDate } from "./week.ts";
 import { isRegularOf } from "./showRegulars.ts";
-import { comicIdForPhone } from "./people.ts";
+import { comicIdsOf } from "./comicNumbers.ts";
 import type { Comic, GroupMembersCache, HoldReason, Lineup, Show, Weekday } from "./types.ts";
 
 /** A cached member list older than this is treated as unknown (nothing here ever refreshes it). */
@@ -33,11 +33,10 @@ export type MembershipDecision =
 export const HOLD_IN_GROUP_REASON = "In the group, not on the lineup";
 export const HOLD_ON_LINEUP_REASON = "On the lineup, not in the group";
 
-const keysOfComic = (c: Pick<Comic, "id" | "chatId" | "phone" | "aliases">) =>
-  new Set([c.id, c.chatId, ...(c.aliases ?? []), c.phone ? comicIdForPhone(c.phone.replace(/\D/g, "")) : undefined].filter((x): x is string => Boolean(x)));
+const keysOfComic = (c: Pick<Comic, "id" | "chatId" | "phone" | "aliases" | "numbers">) => new Set(comicIdsOf(c));
 
 /** The cache's verdict for this comic: true/false, or null (with why) when the list can't be trusted. */
-export function groupVerdict(comic: Pick<Comic, "id" | "chatId" | "phone" | "aliases">, show: Pick<Show, "groupId" | "groupMembers">, now: number): { inGroup: boolean | null | "none"; why?: "missing" | "stale" } {
+export function groupVerdict(comic: Pick<Comic, "id" | "chatId" | "phone" | "aliases" | "numbers">, show: Pick<Show, "groupId" | "groupMembers">, now: number): { inGroup: boolean | null | "none"; why?: "missing" | "stale" } {
   if (!show.groupId) return { inGroup: "none" };
   const c: GroupMembersCache | null | undefined = show.groupMembers;
   if (!c || c.groupId !== show.groupId) return { inGroup: null, why: "missing" };
@@ -59,7 +58,7 @@ export function targetShows(shows: Show[], intent: { preferredDays?: Weekday[]; 
 }
 
 /** Per-show flags for this week. A cancelled or canned lineup doesn't count as being on it. */
-export function checkShows(input: { comic: Pick<Comic, "id" | "chatId" | "phone" | "aliases" | "tier" | "regularOf">; shows: Show[]; lineups: Pick<Lineup, "showId" | "status" | "slots">[]; week: string; now: number }): ShowCheck[] {
+export function checkShows(input: { comic: Pick<Comic, "id" | "chatId" | "phone" | "aliases" | "numbers" | "tier" | "regularOf">; shows: Show[]; lineups: Pick<Lineup, "showId" | "status" | "slots">[]; week: string; now: number }): ShowCheck[] {
   const { comic, week, now } = input;
   const mine = keysOfComic(comic);
   return input.shows.map((s) => {

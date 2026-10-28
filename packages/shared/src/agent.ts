@@ -353,6 +353,8 @@ export interface PersonRef {
   id: string;
   name: string;
   phone: string;
+  /** The person's other numbers (digits), so a typed number finds them too. */
+  phones?: string[];
 }
 
 /** Everyone whose name fits `query`, best fit first (at most `limit`). Exact beats first-name beats part-of-name. */
@@ -361,7 +363,7 @@ export function matchPeople<P extends PersonRef>(query: string, people: P[], lim
   if (!q) return [];
   const qd = digits(query);
   if (qd.length >= 6) {
-    const byPhone = people.filter((p) => digits(p.phone).endsWith(qd) || digits(p.id.split("@")[0]).endsWith(qd));
+    const byPhone = people.filter((p) => [p.phone, ...(p.phones ?? [])].some((x) => digits(x).endsWith(qd)) || digits(p.id.split("@")[0]).endsWith(qd));
     if (byPhone.length) return byPhone.slice(0, limit);
   }
   const qt = q.split(" ");

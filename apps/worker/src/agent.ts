@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import type WAWebJS from "whatsapp-web.js";
 import {
-  ACTION_INTENTS, DAY_NAMES, HELP_TEXT, lineupId, offerPayload, pastShowReason, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
+  ACTION_INTENTS, numbersOf, DAY_NAMES, HELP_TEXT, lineupId, offerPayload, pastShowReason, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
   formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, rolloverDayFor, senderIsCurator, showDay,
   stepPending, strictNo, pollForPending, DISMISS_REACTIONS, conflictText, judgeLateVote, mirrorKey, type ChangeAsk, type PollRecord, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, parseNoNote, type SpotReview, performed, isRating, type YesterdayShow, digestActionPoll, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
 } from "@spot/shared";
@@ -370,7 +370,7 @@ async function roster(uid: string, w: World): Promise<(PersonRef & { comic?: Com
   const comics = (await col(uid, "comics").get()).docs.map((d) => d.data() as Comic);
   const have = new Set(comics.map((c) => c.id));
   const asks = w.requests.filter((r) => !have.has(r.comicId)).map((r) => ({ id: r.comicId, name: r.comicName, phone: r.contact?.phone ?? r.comicId.split("@")[0] }));
-  return [...comics.map((c) => ({ id: c.id, name: c.name, phone: c.phone, comic: c, banned: c.list === "banned" })), ...asks];
+  return [...comics.map((c) => ({ id: c.id, name: c.name, phone: c.phone, phones: numbersOf(c).map((n) => n.phone), comic: c, banned: c.list === "banned" })), ...asks];
 }
 
 // ---------------------------------------------------------------- questions

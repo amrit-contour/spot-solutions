@@ -3,6 +3,7 @@ import type WAWebJS from "whatsapp-web.js";
 import { TTL_DAYS, comicIdForPhone, normalizePhone, shouldUpdateName, type Comic, type GroupMember, type GroupMembersResult, type Show, type WaContact } from "@spot/shared";
 import { col, db, expireAt } from "./firebase.ts";
 import { sessions } from "./sessions.ts";
+import { scheduleAutoMerge } from "./mergeComics.ts";
 
 const BATCH = 450;
 const CONCURRENCY = 8;
@@ -154,6 +155,7 @@ export async function pullGroupMembers(uid: string, { groupId }: Record<string, 
     await batch.commit();
   });
 
+  if (added || updated) scheduleAutoMerge(uid);
   const idOf = (x: (typeof unique)[number]) => x.cur?.id ?? x.m.id;
   return { total: unique.length, added, updated, memberIds: unique.map(idOf), adminIds: unique.filter((x) => x.m.isAdmin).map(idOf) };
 }

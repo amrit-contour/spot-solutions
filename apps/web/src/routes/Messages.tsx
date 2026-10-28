@@ -9,6 +9,9 @@ import { updateDoc, where } from "firebase/firestore";
 import { toast } from "sonner";
 import {
   DAY_NAMES,
+  comicIdsOf,
+  matchesComic,
+  numbersOf,
   DAY_SHORT,
   GROUP_POST_KEYS,
   dateInWeek,
@@ -575,7 +578,7 @@ function ThreadView({ source, comic, request, lineups, onBack, onChanged }: { so
 function NeverReadButton({ comic, onDone }: { comic: ComicOf; onDone: () => void }) {
   const nr = useNeverRead();
   const [open, setOpen] = useState(false);
-  const ids = [comic.id, comic.chatId].filter((x): x is string => Boolean(x));
+  const ids = comicIdsOf(comic);
   return (
     <>
       <IconButton icon={IconEye} label={`Never read ${comic.name}`} onClick={() => setOpen(true)} />
@@ -840,7 +843,7 @@ function Conversation({
   // Tapping a tag opens that person's chat when they're in Comics.
   const openMention = (m: { id?: string; token: string; name: string }) => {
     const digits = (m.id ?? m.token).split("@")[0].replace(/\D/g, "");
-    const c = comics.find((x) => x.id === m.id || x.chatId === m.id || (digits && ((x.phone ?? "").replace(/\D/g, "") === digits || x.id.split("@")[0] === digits)));
+    const c = comics.find((x) => matchesComic(x, m.id) || (digits && numbersOf(x).some((n) => n.phone.replace(/\D/g, "") === digits || x.id.split("@")[0] === digits)));
     if (c) setParams({ c: c.id });
     else toast(`${m.name} isn't in your Comics`);
   };

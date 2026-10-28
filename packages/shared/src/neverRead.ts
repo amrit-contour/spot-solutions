@@ -1,6 +1,8 @@
 // "Never read": people and groups whose messages are skipped before anything else happens. Never read, never sent to the AI,
 // never stored. The worker checks this first in every inbound path (live messages, catch-up, scans, voice learning, group watch).
 // Entry ids are normalised: a person is `<digits>@c.us` (or `<n>@lid` when WhatsApp only gave a lid), a group is `<id>@g.us`.
+import { comicIdsOf } from "./comicNumbers.ts";
+import type { Comic } from "./types.ts";
 
 export interface NeverReadEntry {
   /** `<phone digits with country code>@c.us`, `<n>@lid` or `<id>@g.us`. */
@@ -197,9 +199,9 @@ export function searchNeverRead(list: NeverReadEntry[], q: string): NeverReadEnt
 }
 
 /** A comic on the roster whose chat id or phone is on the list (to warn before adding them). */
-export function comicsOnNeverRead<C extends { id: string; chatId?: string; phone?: string; name: string }>(comics: C[], ids: string[]): C[] {
+export function comicsOnNeverRead<C extends { id: string; chatId?: string; phone?: string; name: string; aliases?: string[]; numbers?: Comic["numbers"] }>(comics: C[], ids: string[]): C[] {
   const m = compileNeverRead(ids.map((id) => ({ id, kind: "person" as const, addedAt: 0 })));
-  return comics.filter((c) => matchesNeverRead(m, [c.id, c.chatId, c.phone]));
+  return comics.filter((c) => matchesNeverRead(m, [...comicIdsOf({ id: c.id, chatId: c.chatId, phone: c.phone ?? "", aliases: c.aliases, numbers: c.numbers }), c.phone]));
 }
 
 /** The Never read list, grouped for the card: people first, then groups (each keeps its newest-first order). */

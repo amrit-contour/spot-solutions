@@ -28,6 +28,7 @@ import {
   cooldownWeeks,
   cooldownWords,
   recentSpot,
+  matchesComic,
 } from "@spot/shared";
 import { col, db } from "./firebase.ts";
 import { classify } from "./gemma.ts";
@@ -43,6 +44,7 @@ import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
 import { notice } from "./commands.ts";
 import { dropNeverRead, isNeverRead } from "./neverRead.ts";
 import { knownComicId } from "./knownComic.ts";
+import { scheduleAutoMerge } from "./mergeComics.ts";
 import { afterMembershipHold, checkMembership } from "./membership.ts";
 
 const MAX_CONTEXT = 12;
@@ -234,16 +236,20 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   };
 
   const comicRef = col(uid, "comics").doc(p.contact.id);
+  let created = false;
   await db.runTransaction(async (tx) => {
+    created = false;
     const comic = await tx.get(comicRef);
     const cur = comic.data() as Comic | undefined;
     // Only clear spot asks (and people already on the roster) belong in Comics; a Maybe joins when you place it.
     if (!cur && request.intent.isSpotRequest && request.intent.confidence >= INTENT_THRESHOLD) {
       const c: Comic = { id: p.contact.id, chatId: p.contact.chatId, name: p.contact.name, nameSource: p.contact.nameSource, phone: p.contact.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
       tx.set(comicRef, c);
+      created = true;
     } else if (cur) {
       const patch: Partial<Comic> = {};
-      if (cur.chatId !== p.contact.chatId) patch.chatId = p.contact.chatId;
+      // A person with several numbers keeps messages going to the primary's chat, even when this one came from another of their numbers.
+      if (cur.chatId !== p.contact.chatId && !(cur.numbers?.length && matchesComic(cur, p.contact.chatId))) patch.chatId = p.contact.chatId;
       // Keep auto names fresh (e.g. you saved them in your phone since), never override a hand-edited one.
       const rank = { number: 0, whatsapp: 1, contact: 2, manual: 3 } as const;
       const curRank = rank[cur.nameSource ?? "whatsapp"];
@@ -255,6 +261,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     }
     tx.set(reqRef, request);
   });
+  if (created) scheduleAutoMerge(uid); // a new contact may be an existing person under another id
   if (member.hold) await afterMembershipHold({ uid, client, p, week, outcome: member, known });
 
   // Every guard must pass before anything is sent on the curator's behalf.

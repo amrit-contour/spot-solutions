@@ -211,7 +211,7 @@ export async function clearGroup(uid: string, client: WAWebJS.Client, show: Show
   const self = [`${info.wid.user}@c.us`, info.wid._serialized, info.lid?._serialized ?? ""].filter(Boolean);
 
   const members = await readCleanupMembers(client, show.groupId!);
-  const plan = planCleanup({ members, stay, comics: [...comics.entries()].map(([id, c]) => ({ id, chatId: c.chatId, phone: c.phone })), self });
+  const plan = planCleanup({ members, stay, comics: [...comics.entries()].map(([id, c]) => ({ id, chatId: c.chatId, phone: c.phone, aliases: c.aliases, numbers: c.numbers })), self });
   for (const m of plan.unknown) console.log(`[cleanup] ${uid} ${show.name}: skipped: unknown id ${m.ids.join(",")}`);
   const port: GroupPort = {
     read: () => readCleanupMembers(client, show.groupId!),

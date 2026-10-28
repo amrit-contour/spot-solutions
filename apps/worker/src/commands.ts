@@ -8,6 +8,7 @@ import {
   cancelledPatch,
   comicChatKeys,
   comicIdForPhone,
+  matchesComic,
   diffGroup,
   inGroup,
   liveInvites,
@@ -696,9 +697,9 @@ const CHAT_RESULT_COMMANDS = new Set<Command["type"]>(["list_threads", "get_thre
 
 /** The confirmation as the curator set it up: the text (in their voice), then the venue pin if that's on. */
 /** Is this comic the curator's own WhatsApp? */
-export function isSelf(client: WAWebJS.Client, c: Pick<Comic, "id" | "chatId" | "phone">) {
+export function isSelf(client: WAWebJS.Client, c: Pick<Comic, "id" | "chatId" | "phone"> & Partial<Pick<Comic, "aliases" | "numbers">>) {
   const me = client.info?.wid?.user;
-  return Boolean(me && (c.id === `${me}@c.us` || c.chatId === `${me}@c.us` || c.phone === me));
+  return Boolean(me && (matchesComic(c, `${me}@c.us`) || c.phone === me));
 }
 
 export async function sendConfirmation(uid: string, client: WAWebJS.Client, show: Show, comic: Comic, week: string, minutes?: number | null) {

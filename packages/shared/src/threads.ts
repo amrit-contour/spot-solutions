@@ -1,7 +1,7 @@
 // Messages page: pure rules for turning WhatsApp chats and messages into what the app shows. No I/O, so the worker
 // (which reads WhatsApp live) and the demo (which fakes it from demo data) share them, and they are tested without WhatsApp.
 // Nothing here is ever stored: a chat list or a thread only exists in a short-lived command result.
-import { comicIdForPhone } from "./people.ts";
+import { comicIdsOf } from "./comicNumbers.ts";
 import type { Comic } from "./types.ts";
 import { toPlain } from "./waFormat.ts";
 
@@ -222,9 +222,8 @@ export function snippetOf(m: WaMessageLike | null | undefined, names?: Map<strin
 }
 
 /** Every id WhatsApp might use for this comic. Current WhatsApp mixes phone ids and @lid, so match on all we know. */
-export function comicChatKeys(c: Pick<Comic, "id" | "chatId" | "phone"> & { aliases?: string[] }): string[] {
-  const phone = (c.phone ?? "").replace(/\D/g, "");
-  return [...new Set([c.id, c.chatId, ...(c.aliases ?? []), phone ? comicIdForPhone(phone) : undefined].filter((x): x is string => Boolean(x)))];
+export function comicChatKeys(c: Pick<Comic, "id" | "chatId" | "phone"> & { aliases?: string[]; numbers?: Comic["numbers"] }): string[] {
+  return comicIdsOf(c);
 }
 
 /**

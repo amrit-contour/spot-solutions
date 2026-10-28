@@ -3,7 +3,7 @@
 // read in the curator's own replies, plus who is in which group, into a suggestion. No I/O.
 import { INTENT_THRESHOLD } from "./defaults.ts";
 import { effectiveMinutes, sentSnapshot } from "./lineupUpdates.ts";
-import { comicIdForPhone } from "./people.ts";
+import { comicIdsOf } from "./comicNumbers.ts";
 import type { Comic, GroupMember, Lineup, SentMap, Show, Slot, SpotRequest } from "./types.ts";
 
 export type ReconcileDecisionKind = "gave_spot" | "declined" | "unclear";
@@ -43,8 +43,8 @@ export interface ReconcileSuggestion extends ReconcileCore {
 }
 
 /** Is this comic one of the group's members? Members carry a phone-based id, or the raw @lid when the number is unknown. */
-export function isGroupMember(comic: Pick<Comic, "id" | "chatId" | "phone"> | { id: string; chatId?: string; phone?: string }, members: GroupMember[]): boolean {
-  const ids = new Set([comic.id, comic.chatId, comic.phone ? comicIdForPhone(comic.phone.replace(/\D/g, "")) : undefined].filter((x): x is string => Boolean(x)));
+export function isGroupMember(comic: Pick<Comic, "id"> & Partial<Pick<Comic, "chatId" | "phone" | "aliases" | "numbers">>, members: GroupMember[]): boolean {
+  const ids = new Set(comicIdsOf(comic));
   return members.some((m) => ids.has(m.id));
 }
 

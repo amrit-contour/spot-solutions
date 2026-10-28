@@ -1,5 +1,5 @@
 import { writeBatch } from "firebase/firestore";
-import { shouldUpdateName, type Comic, type ImportPerson } from "@spot/shared";
+import { comicIdsOf, numbersOf, shouldUpdateName, type Comic, type ImportPerson } from "@spot/shared";
 import { userDoc } from "./data";
 import { db } from "@spot/ui/firebase";
 
@@ -10,8 +10,9 @@ export interface PersonToImport extends ImportPerson {
 
 /** Find a roster entry by comic id or phone (a comic known only by @lid has no phone-based id). */
 export function rosterLookup(comics: Comic[]) {
-  const byId = new Map(comics.map((c) => [c.id, c]));
-  const byPhone = new Map(comics.filter((c) => c.phone).map((c) => [c.phone, c]));
+  const byId = new Map(comics.flatMap((c) => comicIdsOf(c).map((id) => [id, c] as const)));
+  for (const c of comics) byId.set(c.id, c);
+  const byPhone = new Map(comics.flatMap((c) => numbersOf(c).map((n) => [n.phone, c] as const)));
   return (p: { id: string; phone: string }) => byId.get(p.id) ?? byPhone.get(p.phone);
 }
 
