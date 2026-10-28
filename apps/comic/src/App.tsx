@@ -100,6 +100,10 @@ export default function App() {
       <UpdatePrompt />
       <Toaster
         position="bottom-center"
+        // iOS Reachability (swipe down at the bottom edge shrinks the screen) can't be turned off by a web app, so toasts sit above
+        // the bottom bar, clear of that edge, and are dismissed sideways rather than by swiping down.
+        swipeDirections={["left", "right"]}
+        mobileOffset={{ bottom: "calc(var(--nav-h, 64px) + 12px)" }}
         toastOptions={{ style: { background: "var(--md-sys-color-inverse-surface)", color: "var(--md-sys-color-inverse-on-surface)", border: "none", borderRadius: 8, fontFamily: "var(--font-sans)" } }}
       />
       {user === undefined ? (
