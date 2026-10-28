@@ -33,6 +33,7 @@ export function DuplicateComics() {
     if (!target) return;
     const r = await runCommand<{ merged: number }>(uid, "merge_comics", { keepId: target.keep.id, dropIds: target.others.map((o) => o.id) }, 120_000);
     toast.success(`Merged into ${result}${r.merged > 1 ? ` (${r.merged} duplicates)` : ""}`);
+    if (sets.length <= 1) setOpen(false); // the last one: nothing left to review
   };
   return (
     <>

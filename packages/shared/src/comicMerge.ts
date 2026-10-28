@@ -1,7 +1,7 @@
 // One person, several comic docs: WhatsApp hands the same contact over as a phone id (91…@c.us) or an @lid, so a roster can end up
 // holding them twice. This finds those, picks the doc WhatsApp can actually deliver to, and merges the others into it.
 // Pure logic: the worker applies the plan (apps/worker/src/mergeComics.ts), the Show editor's people picker uses the same identity rules.
-import type { Comic, GroupMember, Lineup, Show, SpotHistoryEntry, Tier } from "./types.ts";
+import type { Comic, GroupMember, Lineup, Show, Slot, SpotHistoryEntry, Tier } from "./types.ts";
 
 /** What identifies a comic across its ids: the phone, the id WhatsApp delivers to, the other ids it has been seen under. */
 export type Identity = Pick<Comic, "id" | "chatId" | "phone"> & { aliases?: string[] };
@@ -117,7 +117,7 @@ export function mergeComics(keep: Comic, others: readonly Comic[]): Comic {
     if (NAME_RANK[o.nameSource ?? "whatsapp"] > NAME_RANK[out.nameSource ?? "whatsapp"]) out = { ...out, name: o.name, nameSource: o.nameSource };
     if (!out.phone && o.phone) out.phone = o.phone;
     if (!out.chatId && o.chatId) out.chatId = o.chatId;
-    if (o.notes && o.notes !== out.notes) out.notes = out.notes ? `${out.notes}\n${o.notes}` : o.notes;
+    if (o.notes && !(out.notes ?? "").split("\n").includes(o.notes)) out.notes = out.notes ? `${out.notes}\n${o.notes}` : o.notes;
     if (TIER_RANK[o.tier] > TIER_RANK[out.tier]) out.tier = o.tier;
     if (!out.list && o.list) out.list = o.list;
     if ((o.lastPerformedWeek ?? "") > (out.lastPerformedWeek ?? "")) out.lastPerformedWeek = o.lastPerformedWeek;
@@ -125,7 +125,8 @@ export function mergeComics(keep: Comic, others: readonly Comic[]): Comic {
     if (o.history?.length) out.history = mergeHistory(out.history, o.history);
     if (!out.onboarding && o.onboarding) out.onboarding = o.onboarding;
     if (o.profile) out.profile = { ...o.profile, ...out.profile };
-    if (!out.photoUrl && o.photoUrl) {
+    // "none" means their picture is hidden: a real one found under the other id beats it.
+    if ((!out.photoUrl || (out.photoUrl === "none" && o.photoUrl !== "none")) && o.photoUrl) {
       out.photoUrl = o.photoUrl;
       out.photoAt = o.photoAt;
     }
@@ -139,11 +140,17 @@ export function mergeComics(keep: Comic, others: readonly Comic[]): Comic {
 }
 
 function mergeHistory(a: SpotHistoryEntry[] | undefined, b: SpotHistoryEntry[]): SpotHistoryEntry[] {
+  // The same show on both docs is one entry: the kept doc's values stand, and what only the other recorded (rating, note, attendance, tags) is added.
   const byKey = new Map<string, SpotHistoryEntry>();
-  for (const h of [...b, ...(a ?? [])]) byKey.set(`${h.date}|${h.showId}`, h);
+  const defined = (h: SpotHistoryEntry) => Object.fromEntries(Object.entries(h).filter(([, v]) => v !== undefined && v !== null)) as unknown as SpotHistoryEntry;
+  for (const h of [...b, ...(a ?? [])]) {
+    const key = `${h.date}|${h.showId}`;
+    byKey.set(key, byKey.has(key) ? { ...byKey.get(key)!, ...defined(h) } : h);
+  }
   return [...byKey.values()].sort((x, y) => y.date.localeCompare(x.date)).slice(0, 30);
 }
 
+const SLOT_FILL = ["minutes", "adhoc", "rating", "note", "attendance", "tags", "live"] as const;
 const swapId = (id: string, from: ReadonlySet<string>, to: string) => (from.has(id) ? to : id);
 const swapList = (xs: string[], from: ReadonlySet<string>, to: string) => [...new Set(xs.map((x) => swapId(x, from, to)))];
 
@@ -163,7 +170,19 @@ export function remapLineup(l: Lineup, from: ReadonlySet<string>, to: string): P
   if (l.slots.some((s) => from.has(s.comicId))) {
     const seen = new Set<string>();
     // Someone on the lineup under both docs is one slot (the first).
-    patch.slots = l.slots.map((s) => ({ ...s, comicId: swapId(s.comicId, from, to) })).filter((s) => !seen.has(s.comicId) && seen.add(s.comicId));
+    // The first slot stays, and fills in the set length, rating, note, attendance, tags and live pill only the other one had.
+    const slots: Slot[] = [];
+    for (const s of l.slots) {
+      const slot = { ...s, comicId: swapId(s.comicId, from, to) };
+      if (!seen.has(slot.comicId)) {
+        seen.add(slot.comicId);
+        slots.push(slot);
+        continue;
+      }
+      const first = slots.find((x) => x.comicId === slot.comicId)!;
+      for (const k of SLOT_FILL) if (first[k] == null && slot[k] != null) (first as unknown as Record<string, unknown>)[k] = slot[k];
+    }
+    patch.slots = slots;
   }
   const rekey = <V>(m: Record<string, V> | null | undefined): Record<string, V> | null => {
     if (!m || !Object.keys(m).some((k) => from.has(k))) return null;
@@ -179,6 +198,10 @@ export function remapLineup(l: Lineup, from: ReadonlySet<string>, to: string): P
   const invites = rekey(l.groupInvites);
   if (invites) patch.groupInvites = invites;
   if (l.groupLeaving?.some((x) => from.has(x))) patch.groupLeaving = swapList(l.groupLeaving, from, to);
+  const gs = l.groupSync;
+  if (gs && ([gs.toAdd, gs.toRemove, gs.kept, gs.lapsed ?? []].some((xs) => xs.some((x) => from.has(x))) || [gs.invited, gs.results].some((m) => m && Object.keys(m).some((k) => from.has(k))))) {
+    patch.groupSync = { ...gs, toAdd: swapList(gs.toAdd, from, to), toRemove: swapList(gs.toRemove, from, to), kept: swapList(gs.kept, from, to), ...(gs.lapsed ? { lapsed: swapList(gs.lapsed, from, to) } : {}), ...(gs.invited ? { invited: rekey(gs.invited) ?? gs.invited } : {}), ...(gs.results ? { results: rekey(gs.results) ?? gs.results } : {}) };
+  }
   if (l.dropped?.some((d) => from.has(d.comicId))) patch.dropped = l.dropped.map((d) => ({ ...d, comicId: swapId(d.comicId, from, to) }));
   return Object.keys(patch).length ? patch : null;
 }

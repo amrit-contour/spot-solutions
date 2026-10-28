@@ -26,18 +26,27 @@ export async function mergeComicDocs(uid: string, { keepId, dropIds }: Record<st
   if (!others.length) return { merged: 0, moved };
   const from = new Set(others.map((o) => o.id));
   const writes: Write[] = [];
+  // The doc that survives, with the best name: requests, offers and actions carry its name.
+  const merged = mergeComics(keep, others);
 
   // Requests are named `${week}_${comicId}`: they move to the kept comic. If both already asked that week, the newer one wins.
+  // Several dropped docs can ask the same week, so the winner per week is tracked across all of them, not just against what is stored.
+  const best = new Map<string, number>();
+  const setFor = new Map<string, Write>();
   for (const id of from) {
     for (const d of (await col(uid, "requests").where("comicId", "==", id).get()).docs) {
       const r = d.data() as SpotRequest;
       const target = col(uid, "requests").doc(requestIdFor(r.weekOf, keep.id));
-      const clash = (await target.get()).data() as SpotRequest | undefined;
+      if (!best.has(target.id)) best.set(target.id, ((await target.get()).data() as SpotRequest | undefined)?.updatedAt ?? -1);
       moved.requests++;
-      if (!clash || (clash.updatedAt ?? 0) < (r.updatedAt ?? 0)) writes.push((b) => b.set(target, { ...r, id: target.id, comicId: keep.id, comicName: keep.name }));
+      if ((best.get(target.id) as number) < (r.updatedAt ?? 0)) {
+        best.set(target.id, r.updatedAt ?? 0);
+        setFor.set(target.id, (b) => b.set(target, { ...r, id: target.id, comicId: keep.id, comicName: merged.name }));
+      }
       writes.push((b) => b.delete(d.ref));
     }
   }
+  writes.push(...setFor.values());
   for (const d of (await col(uid, "lineups").get()).docs) {
     const patch = remapLineup(d.data() as Lineup, from, keep.id);
     if (patch) (moved.lineups++, writes.push((b) => b.update(d.ref, patch as Record<string, unknown>)));
@@ -50,11 +59,11 @@ export async function mergeComicDocs(uid: string, { keepId, dropIds }: Record<st
     for (const id of from) {
       for (const d of (await col(uid, name).where("comicId", "==", id).get()).docs) {
         moved[name]++;
-        writes.push((b) => b.update(d.ref, { comicId: keep.id, comicName: keep.name }));
+        writes.push((b) => b.update(d.ref, { comicId: keep.id, comicName: merged.name }));
       }
     }
   }
-  writes.push((b) => b.set(col(uid, "comics").doc(keep.id), mergeComics(keep, others)));
+  writes.push((b) => b.set(col(uid, "comics").doc(keep.id), merged));
   for (const o of others) writes.push((b) => b.delete(col(uid, "comics").doc(o.id)));
   await commit(writes);
   return { merged: others.length, moved };

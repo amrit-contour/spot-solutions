@@ -98,10 +98,29 @@ describe("remaps", () => {
     expect(p.dropped).toEqual([{ comicId: "new", at: 3 }]);
     expect(remapLineup({ ...l, slots: [{ comicId: "z" }], sent: null, groupInvites: null, groupLeaving: null, dropped: [] }, from, "new")).toBeNull();
   });
+  it("one slot when both ids were on the lineup, filling what the first lacked", () => {
+    const l = { slots: [{ comicId: "new", minutes: 5 }, { comicId: "old", minutes: 9, rating: 3, tags: ["Hack"], attendance: "late" }], groupSync: { status: "pending", toAdd: ["old"], toRemove: [], kept: ["new", "old"], invited: { old: 1 } } } as unknown as Lineup;
+    const p = remapLineup(l, from, "new")!;
+    expect(p.slots).toEqual([{ comicId: "new", minutes: 5, rating: 3, tags: ["Hack"], attendance: "late" }]);
+    expect(p.groupSync).toMatchObject({ toAdd: ["new"], kept: ["new"], invited: { new: 1 } });
+  });
   it("shows: regulars, co-hosts, POCs", () => {
     const s = { regulars: ["old", "x"], protected: ["x"], pocs: ["old", "new"] } as unknown as Show;
     expect(remapShow(s, from, "new")).toEqual({ regulars: ["new", "x"], pocs: ["new"] });
     expect(remapShow({ ...s, regulars: [], pocs: [] }, from, "new")).toBeNull();
+  });
+});
+
+describe("mergeComics details", () => {
+  it("a shared history entry keeps one copy with the rating, note, attendance and tags from either doc", () => {
+    const h = (o: object) => ({ date: "2026-01-05", showId: "a", showName: "A", status: "confirmed" as const, ...o });
+    const out = mergeComics(comic({ id: "k", history: [h({ rating: 4 })] }), [comic({ id: "o", history: [h({ rating: 2, note: "n", tags: ["Killed"], attendance: "late" })] })]);
+    expect(out.history).toEqual([h({ rating: 4, note: "n", tags: ["Killed"], attendance: "late" })]);
+  });
+  it("does not repeat a note, and a real photo beats a hidden one", () => {
+    const out = mergeComics(comic({ id: "k", notes: "a\nb", photoUrl: "none" }), [comic({ id: "o", notes: "b", photoUrl: "https://x/p.jpg", photoAt: 7 })]);
+    expect(out.notes).toBe("a\nb");
+    expect(out).toMatchObject({ photoUrl: "https://x/p.jpg", photoAt: 7 });
   });
 });
 
