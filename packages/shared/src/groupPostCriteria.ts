@@ -41,6 +41,21 @@ export const SHOW_STATUS_OPTIONS: { value: ShowStatusCriterion; label: string; s
 export const hasCriteria = (c: PostCriteria | null | undefined): c is PostCriteria =>
   Boolean(c && (c.show || c.minComics || c.full || c.repeats !== undefined));
 
+/** "Only send when…" is on for a post when it carries any criterion. Posts with none (the old "Any show that's on" and nothing else) are off. */
+export const criteriaOn = (post: { criteria?: PostCriteria | null }) => hasCriteria(post.criteria);
+
+/** What switching "Only send when…" on starts from: the ready-made template's own criteria, else "the lineup is confirmed". */
+export function seedCriteria(template: GroupPost["template"], previous?: PostCriteria | null): PostCriteria {
+  if (hasCriteria(previous)) return previous;
+  return { ...(TEMPLATE_CRITERIA[template] ?? { show: "confirmed" as ShowStatusCriterion}) };
+}
+
+/** The post's criteria after the switch is flipped: off drops them all (the default rule applies), on seeds some. */
+export const toggleCriteria = (post: Pick<GroupPost, "template" | "criteria">, on: boolean, remembered?: PostCriteria | null): PostCriteria | null => (on ? seedCriteria(post.template, remembered ?? post.criteria) : null);
+
+/** The one muted line shown when "Only send when…" is off. */
+export const DEFAULT_RULE_LINE = "Skipped if the show is called off or didn't happen.";
+
 /** Drops empty values so a post carries only what is set (Firestore doesn't take undefined). */
 export function cleanCriteria(c: PostCriteria | null | undefined): PostCriteria | null {
   if (!c) return null;

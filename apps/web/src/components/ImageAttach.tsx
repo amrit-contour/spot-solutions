@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { formatBytes, parseImagePath, type ImageScope, type MessageImage } from "@spot/shared";
-import { Button, IconClose, Spinner, cx } from "@spot/ui";
+import { FieldIconButton, IconClose, Spinner } from "@spot/ui";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { deleteImage, prepareImage, uploadImage } from "../lib/pictures";
@@ -144,28 +144,13 @@ function useSavedThumb(path: string | undefined, skip: boolean) {
 }
 
 /**
- * The picture on a message in an editor. `scope`: "outbox" for a message that is sent once (a reply, an offer; the server deletes the
- * file after sending), "attachments" for one that is saved and sent again (a template, a scheduled group post; it stays until you
- * remove it). A replaced or removed picture that was saved earlier is not deleted here (the saved message still points at it until
- * you save): `onDropped` tells the editor, which deletes it once the change is saved.
+ * The picture on a message in an editor, as two pieces for the field's own layout: `button` (an image icon for the toolbar) and
+ * `thumb` (a small removable thumbnail for above the toolbar, or null with no picture). `scope`: "outbox" for a message that is sent
+ * once (a reply, an offer; the server deletes the file after sending), "attachments" for one that is saved and sent again (a template,
+ * a scheduled group post; it stays until you remove it). A replaced or removed picture that was saved earlier is not deleted here
+ * (the saved message still points at it until you save): the editor deletes it once the change is saved.
  */
-export function ImageField({
-  value,
-  onChange,
-  scope,
-  disabled,
-  label = "Add a photo",
-  hint,
-  className,
-}: {
-  value: MessageImage | undefined;
-  onChange: (image: MessageImage | undefined) => void;
-  scope: ImageScope;
-  disabled?: boolean;
-  label?: string;
-  hint?: string;
-  className?: string;
-}) {
+export function useMessageImage({ value, onChange, scope, disabled }: { value: MessageImage | undefined; onChange: (image: MessageImage | undefined) => void; scope: ImageScope; disabled?: boolean }): { button: ReactNode; thumb: ReactNode } {
   const att = useImageAttachment(scope, { keepOnUnmount: true });
   const mine = att.attachment && value?.path === att.attachment.path ? att.attachment : null;
   const saved = useSavedThumb(value?.path, Boolean(mine));
@@ -183,39 +168,30 @@ export function ImageField({
     if (mine) att.remove();
     onChange(undefined);
   };
+  const has = Boolean(value) || att.busy;
 
-  return (
-    <div className={cx("flex flex-col gap-2", className)}>
-      {value || att.busy ? (
-        <div className="flex items-center gap-3 rounded-lg bg-surface-container p-2">
-          <span className="grid size-16 flex-none place-items-center overflow-hidden rounded-md bg-on-surface/5">
-            {thumb ? <img src={thumb} alt="Attached photo" className="size-full object-cover" /> : <Spinner className="size-5" />}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate type-label-l">{att.status === "preparing" ? "Preparing photo…" : att.status === "uploading" ? "Uploading…" : "Photo"}</span>
-            <span className="block type-body-s text-on-surface-variant">{mine ? `${formatBytes(mine.bytes)} · the text above goes as its caption` : "The text above goes as its caption"}</span>
-          </span>
-          <PickImage onPick={(f) => void att.pick(f)}>
-            {(open) => (
-              <Button type="button" size="sm" variant="text" onClick={open} disabled={disabled || att.busy}>
-                Change
-              </Button>
-            )}
-          </PickImage>
-          <button type="button" onClick={clear} disabled={disabled} aria-label="Remove the photo" className="state-layer grid size-10 flex-none place-items-center rounded-full text-on-surface-variant">
-            <IconClose className="icon size-5" />
+  return {
+    button: (
+      <PickImage onPick={(f) => void att.pick(f)}>
+        {(open) => (
+          <FieldIconButton label={value ? "Change the photo" : "Add a photo"} active={Boolean(value)} disabled={disabled || att.busy} onClick={open}>
+            <IconImageGlyph className="icon size-5" />
+          </FieldIconButton>
+        )}
+      </PickImage>
+    ),
+    thumb: has ? (
+      <div className="flex items-center gap-2.5 py-1">
+        <span className="relative grid size-14 flex-none place-items-center overflow-hidden rounded-md bg-on-surface/5">
+          {thumb ? <img src={thumb} alt="Attached photo" className="size-full object-cover" /> : <Spinner className="size-5" />}
+          <button type="button" onClick={clear} disabled={disabled} aria-label="Remove the photo" className="absolute right-0.5 top-0.5 grid size-5 place-items-center rounded-full bg-scrim/60 text-white">
+            <IconClose className="icon size-3.5" />
           </button>
-        </div>
-      ) : (
-        <PickImage onPick={(f) => void att.pick(f)}>
-          {(open) => (
-            <Button type="button" size="sm" variant="outlined" icon={IconImageGlyph} onClick={open} disabled={disabled} className="self-start">
-              {label}
-            </Button>
-          )}
-        </PickImage>
-      )}
-      {hint && !value && <p className="type-body-s text-on-surface-variant">{hint}</p>}
-    </div>
-  );
+        </span>
+        <span className="min-w-0 flex-1 type-body-s text-on-surface-variant">
+          {att.status === "preparing" ? "Preparing photo…" : att.status === "uploading" ? "Uploading…" : mine ? `Photo, ${formatBytes(mine.bytes)}. The text goes as its caption.` : "Photo. The text goes as its caption."}
+        </span>
+      </div>
+    ) : null,
+  };
 }

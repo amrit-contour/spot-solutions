@@ -2,7 +2,7 @@
 // scheduler on the curator's own server. When the mic didn't happen, or the show is set to ask, it asks first: in the app
 // (an Updates card) and, with the agent number linked, on WhatsApp ("yes" clears, "no" keeps them for next week).
 import type WAWebJS from "whatsapp-web.js";
-import { RETRY_WINDOW_MS, addDays, canClearNow, cleanupNotice, cleanupStep, confirmPending, groupPostVars, localNow, messageRich, nextRetryAt, normalizeMessage, planCleanup, renderRich, shiftWeek, type CleanupMember, type Lineup, type LineupCleanup, type Show } from "@spot/shared";
+import { RETRY_WINDOW_MS, addDays, canClearNow, cleanupAlreadyStarted, cleanupNotice, cleanupStep, confirmPending, groupPostVars, localNow, messageRich, nextRetryAt, normalizeMessage, planCleanup, renderRich, shiftWeek, type CleanupMember, type Lineup, type LineupCleanup, type Show } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { loadComics, notice } from "./commands.ts";
 import { removalPass, toPending, type GroupPort } from "./cleanupPass.ts";
@@ -85,13 +85,25 @@ export async function ask(uid: string, show: Show, lineup: Lineup & { id: string
 }
 
 /**
- * "After sending: remove this week's comics" on a scheduled post. Never silent: with the show's cleanup on automatic it clears the
+ * The show's cleanup, started by the post it is set to follow (Shows > clear the group > "After the thank-you post goes out"). Never silent: with the show's cleanup on automatic it clears the
  * group (no second thank-you, the post was one); otherwise, or when WhatsApp isn't steady, it asks the curator first (the Updates
  * card and the agent number's yes/no), the same review as the day-after cleanup. Once a cleanup exists for the show, nothing more.
  */
 export async function startRemoval(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }, what: string) {
+  // Same lock as the timed pass, so the two triggers (the chosen post and the set time) can't both start one.
+  const key = `${uid}|${lineup.id}`;
+  if (running.has(key)) return;
+  running.add(key);
+  try {
+    await removalAfterPost(uid, client, show, lineup, what);
+  } finally {
+    running.delete(key);
+  }
+}
+
+async function removalAfterPost(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }, what: string) {
   const fresh = ((await col(uid, "lineups").doc(lineup.id).get()).data() as Lineup | undefined) ?? lineup;
-  if (fresh.cleanup || fresh.backfilled || !show.groupId) return;
+  if (cleanupAlreadyStarted(fresh) || !show.groupId) return;
   const auto = show.cleanup?.enabled && show.cleanup.mode === "auto" && canClearNow({ healthy: sessions.healthy(uid), stableMs: sessions.stableMs(uid) });
   try {
     if (auto) await clearGroup(uid, client, show, { ...fresh, id: lineup.id }, { noThanks: true });

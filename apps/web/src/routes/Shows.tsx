@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { GroupPostsEditor } from "../components/GroupPosts";
+import { GroupPostsEditor, postLabel } from "../components/GroupPosts";
 import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { PlacePicker } from "@spot/ui";
-import { DAY_SHORT, DEFAULT_CLEANUP, formatTime, groupModeOf, type GroupInfo, type GroupMember, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
+import { DAY_SHORT, DEFAULT_CLEANUP, cleanupTriggerPost, formatTime, migrateCleanupTrigger, whenLabel, groupModeOf, type GroupInfo, type GroupMember, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
@@ -141,7 +141,8 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
   const [lastValue, setLastValue] = useState<Partial<Show> | null>(null);
   if (value !== lastValue) {
     setLastValue(value);
-    if (value) setDraft(value);
+    // The old per-post "remove this week's comics" switch moves into this show's clean-up setting (saved with the show).
+    if (value) setDraft(migrateCleanupTrigger(value) ? { ...value, ...migrateCleanupTrigger(value)! } : value);
     setMemberIds(null);
   }
   const set = <K extends keyof Show>(k: K, v: Show[K]) => setDraft((d) => ({ ...d, [k]: v }));
@@ -194,6 +195,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
     }
   };
   const cleanup = draft.cleanup ?? DEFAULT_CLEANUP;
+  const triggerPost = cleanupTriggerPost({ cleanup: draft.cleanup, groupPosts: draft.groupPosts });
   // One person can be two comic docs (phone id and @lid): a tap adds the one WhatsApp reaches, and removes every doc of them.
   const toggleIn = (k: "regulars" | "protected" | "pocs", ids: string[], rep: string) => {
     const cur = new Set(draft[k] ?? []);
@@ -349,10 +351,10 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                     </Link>
                   )}
                 </div>
-                <GroupPostsEditor show={{ id: draft.id, name: draft.name ?? "", weekday: draft.weekday ?? 1, startTime: draft.startTime ?? "20:00", venueId: draft.venueId ?? "", groupPostsSent: value?.groupPostsSent, groupPostStatus: value?.groupPostStatus, pocs: draft.pocs }} posts={draft.groupPosts ?? []} onChange={(v) => set("groupPosts", v)} />
+                <GroupPostsEditor show={{ id: draft.id, name: draft.name ?? "", weekday: draft.weekday ?? 1, startTime: draft.startTime ?? "20:00", venueId: draft.venueId ?? "", groupPostsSent: value?.groupPostsSent, groupPostStatus: value?.groupPostStatus, pocs: draft.pocs, cleanup: draft.cleanup }} posts={draft.groupPosts ?? []} onChange={(v) => setDraft((d) => ({ ...d, groupPosts: v, ...(d.cleanup?.afterPostId && !v.some((p) => p.id === d.cleanup!.afterPostId) ? { cleanup: { ...d.cleanup, afterPostId: null } } : {}) }))} />
               </div>
               <ShowPeoplePicker label="POCs (run the mic; always stay; tagged with {{pocs}})" icon={IconUserCheck} selected={draft.pocs ?? []} onToggle={(ids, id) => toggleIn("pocs", ids, id)} comics={comics} members={groupMembers} roles={roles} />
-              <div className="flex flex-col gap-3 rounded-lg bg-surface-container p-4">
+              <div id="show-cleanup" className="flex flex-col gap-3 rounded-lg bg-surface-container p-4 transition-shadow">
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
                     <div className="type-title-s">Clear the group after the show</div>
@@ -362,7 +364,15 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                 </div>
                 {cleanup.enabled && (
                   <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
-                    <Field label="When">
+                    <Field label="When" hint={triggerPost ? "Right after that post is sent. It runs once, whichever comes first." : "The day after the show, at the time below."}>
+                      <Select
+                        label="When the group is cleared"
+                        value={triggerPost?.id ?? ""}
+                        onChange={(v) => set("cleanup", { ...cleanup, afterPostId: v || null })}
+                        options={[{ value: "", label: "The day after, at a set time" }, ...(draft.groupPosts ?? []).filter((p) => p.enabled).map((p) => ({ value: p.id, label: p.template === "groupThanks" ? "After the thank-you post goes out" : `After the ${postLabel(p.template).toLowerCase()} goes out (${whenLabel(p.daysBefore).toLowerCase()}, ${formatTime(p.time)})` }))]}
+                      />
+                    </Field>
+                    <Field label={triggerPost ? "If the mic didn't happen, ask at" : "Time"} hint={triggerPost ? "The day after. A show that didn't happen never waits on the post." : undefined}>
                       <TimePicker value={cleanup.time} onChange={(v) => set("cleanup", { ...cleanup, time: v })} label="Cleanup time" />
                     </Field>
                     <Field label="If the mic happened" hint={cleanup.mode === "auto" ? "Clears it on its own. If the mic didn't happen, you're asked first." : "You're asked every time, in Updates and on your agent number."}>

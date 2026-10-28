@@ -1,6 +1,6 @@
 // Edit one outgoing message: text with formatting, a poll, or a venue pin. Used by Settings → Messages,
 // saved replies, the reply boxes and the offer sheet.
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   POLL_MAX_OPTIONS,
   POLL_OPTION_MAX,
@@ -17,7 +17,7 @@ import {
 } from "@spot/shared";
 import { Bubble, Button, Segmented, Switch, TextInput, cx } from "../ui";
 import { IconAdd, IconClose, IconMap } from "../icons";
-import { RichField } from "./RichField";
+import { PreviewToggle, RichField, VariableMenu, variableToken, type Variable } from "./RichField";
 import { PinCard, PollCard } from "./WaText";
 import { TemplateBubble } from "./TemplatePreview";
 
@@ -37,11 +37,6 @@ export function withKind(m: RichMessage, kind: MessageKind): RichMessage {
   return { ...m, kind };
 }
 
-export interface Variable {
-  key: string;
-  label: string;
-}
-
 export function MessageComposer({
   value,
   onChange,
@@ -53,7 +48,8 @@ export function MessageComposer({
   canPin = true,
   offer,
   compact,
-  preview = true,
+  templates,
+  photo,
   idPrefix = "msg",
 }: {
   value: RichMessage;
@@ -71,8 +67,10 @@ export function MessageComposer({
   offer?: boolean;
   /** Reply boxes: no kind switcher or variable chips; the kind comes from the template that was picked. */
   compact?: boolean;
-  /** Show the chat preview beside the editor (stacked on phones). Off in reply boxes. */
-  preview?: boolean;
+  /** The page's "Templates" button, placed in the field's toolbar. */
+  templates?: ReactNode;
+  /** A photo for text messages: its icon button goes in the toolbar, its thumbnail above it inside the field. */
+  photo?: { button: ReactNode; thumb: ReactNode };
   idPrefix?: string;
 }) {
   const fields = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
@@ -87,7 +85,7 @@ export function MessageComposer({
 
   const setField = (id: string, v: string) => (id === "body" ? onChange({ ...value, body: v }) : id === "q" ? setPoll({ question: v }) : setOption(Number(id.slice(1)), v));
   const insertToken = (key: string) => {
-    const token = key === "minutes" ? "{{#minutes}}⏱ {{minutes}} min{{/minutes}}" : `{{${key}}}`;
+    const token = variableToken(key);
     const id = fields.current[last.current] ? last.current : "body";
     const el = fields.current[id];
     const cur = id === "body" ? value.body : id === "q" ? poll.question : (poll.options[Number(id.slice(1))] ?? "");
@@ -105,7 +103,11 @@ export function MessageComposer({
 
   const editor = (
     <div className="flex min-w-0 flex-col gap-3">
-      {showKinds && <Segmented value={value.kind} onChange={(k) => onChange(withKind(value, k))} options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} size="sm" />}
+      {showKinds && (
+        <div>
+          <Segmented value={value.kind} onChange={(k) => (setPreviewing(false), onChange(withKind(value, k)))} options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} size="sm" compact />
+        </div>
+      )}
 
       {value.kind === "text" && (
         <>
@@ -113,12 +115,27 @@ export function MessageComposer({
             value={value.body}
             onChange={(body) => onChange({ ...value, body })}
             rows={compact ? 3 : 5}
-            mono={!compact}
             id={`${idPrefix}-body`}
             ariaLabel="Message text"
+            previewing={previewing}
             previewVars={vars}
             knownVars={variables?.map((v) => v.key)}
             onPreviewChange={setPreviewing}
+            variables={compact ? undefined : variables}
+            toolbarExtra={
+              <>
+                {photo?.button}
+                {templates}
+              </>
+            }
+            above={photo?.thumb}
+            previewExtra={
+              value.attachLocation && (
+                <Bubble outgoing meta="9:41 PM">
+                  <PinCard name={String(vars.venue ?? "The venue")} detail="Map pin" />
+                </Bubble>
+              )
+            }
             onFocus={() => (last.current = "body")}
             fieldRef={(el) => (fields.current.body = el)}
           />
@@ -132,7 +149,7 @@ export function MessageComposer({
         </>
       )}
 
-      {value.kind === "poll" && (
+      {value.kind === "poll" && !previewing && (
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <label htmlFor={`${idPrefix}-q`} className="type-label-l text-on-surface-variant">Question</label>
@@ -210,48 +227,50 @@ export function MessageComposer({
         </div>
       )}
 
-      {value.kind === "location" && (
-        <p className="flex items-start gap-2 rounded-md bg-surface-container p-3 type-body-m text-on-surface-variant">
-          <IconMap className="icon mt-0.5 size-5 flex-none" />
-          <span>Sends the show's venue as a map pin. A venue without a pin sends nothing, so add one under Shows → Venues.</span>
-        </p>
+      {value.kind === "poll" && previewing && (
+        <div aria-live="polite" className="rounded-xl bg-surface-container p-3">
+          <Bubble outgoing meta="9:41 PM">
+            <PollCard poll={renderRich(value, vars).poll ?? poll} />
+          </Bubble>
+        </div>
       )}
 
-      {!compact && variables && value.kind !== "location" && (
-        <div className="flex flex-wrap gap-1.5">
-          {variables.map((v) => (
-            <button key={v.key} type="button" disabled={previewing} onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()} onClick={() => insertToken(v.key)} className="state-layer pressable touch-manipulation h-7 rounded-sm bg-surface-high px-2.5 font-mono text-xs text-on-surface-variant disabled:opacity-40" title={`Insert ${v.label}`}>
-              {`{{${v.key}}}`}
-            </button>
-          ))}
+      {value.kind === "location" &&
+        (previewing ? (
+          <div aria-live="polite" className="rounded-xl bg-surface-container p-3">
+            <Bubble outgoing meta="9:41 PM">
+              <PinCard name={String(vars.venue ?? "The venue")} detail="Map pin" />
+            </Bubble>
+          </div>
+        ) : (
+          <p className="flex items-start gap-2 rounded-md bg-surface-container p-3 type-body-m text-on-surface-variant">
+            <IconMap className="icon mt-0.5 size-5 flex-none" />
+            <span>Sends the show's venue as a map pin. A venue without a pin sends nothing, so add one under Shows → Venues.</span>
+          </p>
+        ))}
+
+      {value.kind !== "text" && (
+        <div className="-mt-1 flex items-center gap-0.5">
+          {!compact && variables && value.kind === "poll" && !previewing && <VariableMenu variables={variables} onPick={insertToken} />}
+          {templates}
+          <span className="flex-1" />
+          <PreviewToggle previewing={previewing} onClick={() => setPreviewing(!previewing)} />
         </div>
       )}
     </div>
   );
 
-  if (!preview) return editor;
-  return (
-    <div className="grid items-start gap-5 lg:grid-cols-2">
-      {editor}
-      <MessagePreview value={value} vars={vars} known={variables?.map((v) => v.key)} textFromLg />
-    </div>
-  );
+  return editor;
 }
 
 /** What the comic will see: the text with WhatsApp formatting, the poll, and the pin, as separate bubbles. */
-export function MessagePreview({ value, vars, className, known, textFromLg }: { value: RichMessage; vars: TemplateVars; className?: string; known?: readonly string[]; /** Beside the editor on phones the field has its own eye/pen preview: show the text bubble only from lg up, and the panel below lg only when it has a pin or poll. */ textFromLg?: boolean }) {
+export function MessagePreview({ value, vars, className, known }: { value: RichMessage; vars: TemplateVars; className?: string; known?: readonly string[] }) {
   const r = renderRich(value, vars);
   const venue = String(vars.venue ?? "The venue");
-  const hideBelowLg = textFromLg && r.kind === "text" && !r.attachLocation;
   return (
-    <div className={cx("flex-col rounded-lg bg-surface-container p-4", hideBelowLg ? "hidden lg:flex" : "flex", className)}>
-      <span className="mb-3 type-label-m text-on-surface-variant">Preview</span>
+    <div className={cx("flex min-w-0 flex-col", className)}>
       <div className="flex flex-col gap-1.5">
-        {r.kind === "text" && (
-          <div className={cx(textFromLg && "hidden lg:block")}>
-            <TemplateBubble text={value.body} vars={vars} known={known} />
-          </div>
-        )}
+        {r.kind === "text" && <TemplateBubble text={value.body} vars={vars} known={known} />}
         {r.kind === "poll" && r.poll && (
           <Bubble outgoing meta="9:41 PM">
             <PollCard poll={r.poll} />

@@ -49,11 +49,8 @@ export function OnboardCard({ a }: { a: ComicAction }) {
             <Bubble><WaText text={a.message} /></Bubble>
           </div>
           <div className="mt-3">
-            <div className="-mt-1.5 mb-0.5 flex items-center justify-between gap-2">
-              <label htmlFor={`face-${a.id}-body`} className="type-label-m text-on-surface-variant">Ask who they are</label>
-              <SnippetMenu name={a.comicName} onPick={setMsg} kinds={["text", "poll"]} />
-            </div>
-            <MessageComposer value={msg} onChange={setMsg} kinds={["text", "poll"]} compact preview={false} idPrefix={`face-${a.id}`} />
+            <label htmlFor={`face-${a.id}-body`} className="mb-1 block type-label-m text-on-surface-variant">Ask who they are</label>
+            <MessageComposer value={msg} onChange={setMsg} kinds={["text", "poll"]} compact idPrefix={`face-${a.id}`} templates={<SnippetMenu toolbar name={a.comicName} onPick={setMsg} kinds={["text", "poll"]} />} />
           </div>
         </div>
       </div>

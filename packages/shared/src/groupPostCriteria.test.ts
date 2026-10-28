@@ -183,3 +183,26 @@ describe("skip reasons are recorded and shown", () => {
     expect(postStatusToShow({ ...st, state: "sent" }, "2026-10-26")).toBeNull();
   });
 });
+
+describe("Only send when… opt-in", () => {
+  it("a post with no criteria is off; any criterion turns it on", async () => {
+    const { criteriaOn } = await import("./groupPostCriteria.ts");
+    expect(criteriaOn({})).toBe(false);
+    expect(criteriaOn({ criteria: null })).toBe(false);
+    expect(criteriaOn({ criteria: {} })).toBe(false); // the old default ("Any show that's on") with nothing else
+    expect(criteriaOn({ criteria: { waitHours: 3 } })).toBe(false);
+    expect(criteriaOn({ criteria: { show: "happened" } })).toBe(true);
+    expect(criteriaOn({ criteria: { minComics: 3 } })).toBe(true);
+  });
+  it("switching on seeds something real (ready-made criteria, else confirmed), off clears everything", async () => {
+    const { toggleCriteria } = await import("./groupPostCriteria.ts");
+    expect(toggleCriteria({ template: "groupThanks" }, true)).toEqual({ show: "happened" });
+    expect(toggleCriteria({ template: "groupReminder" }, true)).toEqual({ show: "confirmed" });
+    expect(toggleCriteria({ template: "custom", criteria: { minComics: 4 } }, false)).toBeNull();
+    expect(toggleCriteria({ template: "custom" }, true, { minComics: 4 })).toEqual({ minComics: 4 });
+  });
+  it("ready-made posts start with the switch on", async () => {
+    const { criteriaOn } = await import("./groupPostCriteria.ts");
+    for (const t of ["groupThanks", "groupDidntHappen", "groupCancelled", "groupRepeat", "groupSignups", "groupLatecomers"] as const) expect(criteriaOn(newGroupPost(t, { startTime: "20:00" }))).toBe(true);
+  });
+});

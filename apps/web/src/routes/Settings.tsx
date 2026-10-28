@@ -52,7 +52,7 @@ import { NeverReadCard } from "../components/NeverReadCard";
 import { ShowWatchCard } from "../components/ShowWatchCard";
 import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "@spot/ui";
-import { ImageField } from "../components/ImageAttach";
+import { useMessageImage } from "../components/ImageAttach";
 import { AppVersionRow, Bubble, Button, Collapsible, Field, Info, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
 import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose, IconWarn, IconRefresh, IconArrowRight } from "@spot/ui";
 
@@ -143,6 +143,7 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled, keys, ki
   useEffect(() => setDraft(value), [stamp]); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = JSON.stringify(draft) !== stamp;
   const problem = draft.kind === "poll" ? pollProblem(draft.poll) : null;
+  const photo = useMessageImage({ scope: "attachments", value: draft.image, onChange: (image) => setDraft((d) => ({ ...d, image })), disabled });
 
   return (
     <div className={cx("flex flex-col gap-3", disabled && "pointer-events-none opacity-50")}>
@@ -155,8 +156,8 @@ function TemplateEditor({ value, onSave, fallback, extraVars, disabled, keys, ki
         variables={keys ? ALL_VARIABLES.filter((v) => keys.includes(v.key)) : TEMPLATE_VARIABLES}
         extraVars={extraVars}
         idPrefix={`tpl-${stamp.length}`}
+        photo={images ? photo : undefined}
       />
-      {images && draft.kind === "text" && <ImageField scope="attachments" value={draft.image} onChange={(image) => setDraft((d) => ({ ...d, image }))} disabled={disabled} hint="Sent with this message every time. The text above goes as its caption." />}
       <div className="flex items-center gap-2">
         <Button size="sm" variant="text" className="-ml-3" onClick={() => setDraft(fallback)} disabled={JSON.stringify(draft) === JSON.stringify(fallback)}>
           Reset to default

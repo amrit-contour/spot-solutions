@@ -9,7 +9,7 @@ import { dismissAction } from "../../lib/updates";
 import { Bubble, Button, Chip } from "@spot/ui";
 import { WaText } from "@spot/ui";
 import { MessageComposer } from "@spot/ui";
-import { ImageField } from "../ImageAttach";
+import { useMessageImage } from "../ImageAttach";
 import { SnippetMenu } from "../SnippetMenu";
 import { IconArrowRight, IconCancel, IconChat, IconChatCheck, IconClock, IconMap, IconMic, IconSkip } from "@spot/ui";
 import { UpdateItem } from "./shared";
@@ -36,6 +36,7 @@ function cancelEffect(a: ComicAction, lineups: Lineup[], shows: Show[]) {
 export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] }) {
   const { uid, shows, venues } = useApp();
   const [msg, setMsg] = useState<RichMessage>({ kind: a.rich?.kind ?? "text", body: a.draft, poll: a.rich?.poll, attachLocation: a.rich?.attachLocation, image: a.rich?.image });
+  const photo = useMessageImage({ scope: "outbox", value: msg.image, onChange: (image) => setMsg((m) => ({ ...m, image })) });
   // The venue a pin would point at: the one named on the draft, else the show this comic is on.
   const venueId = a.rich?.venueId ?? shows.find((s) => s.id === lineups.find((l) => l.id === a.lineupId)?.showId)?.venueId ?? null;
   const pinned = hasPin(venues.find((v) => v.id === venueId));
@@ -74,12 +75,8 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
             <Bubble><WaText text={a.message} /></Bubble>
           </div>
           <div className="mt-3">
-            <div className="-mt-1.5 mb-0.5 flex items-center justify-between gap-2">
-              <label htmlFor={`reply-${a.id}-body`} className="type-label-m text-on-surface-variant">Your reply</label>
-              <SnippetMenu name={a.comicName} onPick={setMsg} />
-            </div>
-            <MessageComposer value={msg} onChange={setMsg} compact preview={false} canPin={pinned} idPrefix={`reply-${a.id}`} />
-            {msg.kind === "text" && <ImageField scope="outbox" value={msg.image} onChange={(image) => setMsg((m) => ({ ...m, image }))} className="mt-2" />}
+            <label htmlFor={`reply-${a.id}-body`} className="mb-1 block type-label-m text-on-surface-variant">Your reply</label>
+            <MessageComposer value={msg} onChange={setMsg} compact canPin={pinned} idPrefix={`reply-${a.id}`} photo={photo} templates={<SnippetMenu toolbar name={a.comicName} onPick={setMsg} />} />
             {msg.kind === "location" && !pinned && <p className="mt-1.5 type-body-s text-error">This venue has no map pin yet, so nothing would be sent. Add one under Shows → Venues.</p>}
           </div>
           {cancel && (

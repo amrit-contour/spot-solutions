@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { greetName, messageRich, messageType, renderRich, snippetRich, type MessageKey, type MessageKind, type RichMessage, type TemplateVars } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { Menu, MenuItem } from "@spot/ui";
-import { Button } from "@spot/ui";
+import { Button, FieldIconButton } from "@spot/ui";
 import { IconTemplate } from "@spot/ui";
 import { messageSummary } from "@spot/ui";
 
@@ -19,7 +19,7 @@ const BUILTIN_LABEL: Record<Builtin, string> = { ack: "Got your request", confir
  * `kinds` limits the list to what this box can send (an offer can't send a bare pin, for one).
  * `messages` and `builtins` add templates from Settings; `name` is left out for groups (no {{name}} there).
  */
-export function SnippetMenu({ name, vars, onPick, kinds, messages = [], builtins = [], trigger }: { name?: string; vars?: TemplateVars; onPick: (m: RichMessage) => void; kinds?: MessageKind[]; messages?: MessageKey[]; builtins?: Builtin[]; /** Replaces the "Templates" button (the chat composer opens this from its + sheet). */ trigger?: (toggle: () => void, open: boolean) => ReactNode }) {
+export function SnippetMenu({ name, vars, onPick, kinds, messages = [], builtins = [], trigger, toolbar }: { name?: string; vars?: TemplateVars; onPick: (m: RichMessage) => void; kinds?: MessageKind[]; messages?: MessageKey[]; builtins?: Builtin[]; /** Replaces the "Templates" button (the chat composer opens this from its + sheet). */ trigger?: (toggle: () => void, open: boolean) => ReactNode; /** An icon button for a message field's toolbar. */ toolbar?: boolean }) {
   const { settings } = useApp();
   const fill = { ...vars, ...(name !== undefined && { name: greetName(name) }) };
   const fits = (m: RichMessage) => !kinds || kinds.includes(m.kind);
@@ -34,9 +34,13 @@ export function SnippetMenu({ name, vars, onPick, kinds, messages = [], builtins
   };
   return (
     <Menu
-      align="right"
+      align={toolbar ? "left" : "right"}
       trigger={(toggle, open) =>
-        trigger ? trigger(toggle, open) : (
+        trigger ? trigger(toggle, open) : toolbar ? (
+          <FieldIconButton label="Templates" active={open} aria-expanded={open} aria-haspopup="menu" onClick={toggle}>
+            <IconTemplate className="icon size-5" />
+          </FieldIconButton>
+        ) : (
         <Button size="sm" variant="text" icon={IconTemplate} onClick={toggle} aria-expanded={open} aria-haspopup="menu">
           Templates
         </Button>

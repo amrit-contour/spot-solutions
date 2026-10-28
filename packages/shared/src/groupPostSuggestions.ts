@@ -79,9 +79,16 @@ function templatized(msg: RichMessage, names: { show?: string | null; venue?: st
   return { msg: out, swapped };
 }
 
-const squash = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+/** Text compared loosely: any case, no punctuation, symbols or emoji, one space between words. "Thanks all! See you. 🫡" equals "thanks all see you". */
+export const squash = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/\{\{\s*(\w+)\s*\}\}/g, " $1v ") // keep a variable's name as a word so {{show}} still differs from nothing
+    .replace(/[\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0f]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-/** What makes two posts "the same": the day offset and the (name-neutral) text. The time of day is not part of it. */
+/** What makes two posts "the same": the day offset and the (name-neutral) text compared loosely. */
 export function postKey(settings: Pick<Settings, "messages">, post: GroupPost, names: { show?: string | null; venue?: string | null }): string {
   const { msg } = templatized(groupPostMessage(settings, post), names);
   const text = msg.kind === "poll" ? [msg.poll?.question, ...(msg.poll?.options ?? [])].join("|") : msg.kind === "location" ? "location" : msg.body;

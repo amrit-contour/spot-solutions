@@ -11,8 +11,8 @@ import { runCommand, useCollection } from "../lib/data";
 import { ComicAvatar } from "../lib/photos";
 import { RecentRow, SearchField, SearchHint } from "./PeopleSearch";
 import { Button, Sheet, Stepper, Switch, cx } from "@spot/ui";
-import { MessageComposer, MessagePreview } from "@spot/ui";
-import { ImageField } from "./ImageAttach";
+import { MessageComposer } from "@spot/ui";
+import { useMessageImage } from "./ImageAttach";
 import { IconSend, IconUserPlus } from "@spot/ui";
 
 // Remembered per curator, in this browser: whether the sheet opens on "Already agreed".
@@ -69,6 +69,7 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
   const fill = Math.max(1, Math.min(slots, open_, picks.length || 1));
   const vars = { show: show.name, venue: venues.find((v) => v.id === show.venueId)?.name, day: DAY_NAMES[show.weekday], date: formatDate(dateInWeek(week, show.weekday)), time: formatTime(show.startTime) };
   const [msg, setMsg] = useState<RichMessage>({ kind: "text", body: "" });
+  const photo = useMessageImage({ scope: "outbox", value: msg.image, onChange: (image) => setMsg((m) => ({ ...m, image })) });
   // The curator's offer message, filled in for this comic. A poll unless they switched it to text.
   // With several comics the {{name}} stays in, and each gets their own name when it's sent.
   const defaultMsg = (name: string | null): RichMessage => {
@@ -229,13 +230,18 @@ export function OfferSheet({ open, onClose, show, exclude, onDirectAdded }: { op
         )}
         {!direct && picks.length > 0 && (
           <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="type-label-l text-on-surface-variant">{comic ? `Message to ${greetName(comic.name)}` : `Message to ${picks.length} comics ({{name}} is filled for each)`}</span>
-              <SnippetMenu name={comic?.name ?? "{{name}}"} vars={vars} onPick={(m) => setMsg(fixed(m))} kinds={["text", "poll"]} />
-            </div>
-            <MessageComposer value={msg} onChange={(m) => setMsg(fixed(m))} kinds={["text", "poll"]} offer compact={false} preview={false} idPrefix="offer" />
-            {msg.kind === "text" && <ImageField scope="outbox" value={msg.image} onChange={(image) => setMsg((m) => fixed({ ...m, image }))} />}
-            <MessagePreview value={msg} vars={{ ...vars, name: greetName(comic?.name ?? comics.find((c) => c.id === picks[0])?.name ?? "") }} className="mt-2" />
+            <span className="type-label-l text-on-surface-variant">{comic ? `Message to ${greetName(comic.name)}` : `Message to ${picks.length} comics ({{name}} is filled for each)`}</span>
+            <MessageComposer
+              value={msg}
+              onChange={(m) => setMsg(fixed(m))}
+              kinds={["text", "poll"]}
+              offer
+              compact={false}
+              idPrefix="offer"
+              extraVars={{ ...vars, name: greetName(comic?.name ?? comics.find((c) => c.id === picks[0])?.name ?? "") }}
+              photo={photo}
+              templates={<SnippetMenu toolbar name={comic?.name ?? "{{name}}"} vars={vars} onPick={(m) => setMsg(fixed(m))} kinds={["text", "poll"]} />}
+            />
           </div>
         )}
       </div>

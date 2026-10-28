@@ -12,10 +12,10 @@ const preview = read("TemplatePreview.tsx");
 it("the toggle is an eye/pen icon button with a label, tooltip, touch-manipulation and pointerdown preventDefault", () => {
   const btn = field.slice(field.indexOf("data-preview-toggle") - 700, field.indexOf("data-preview-toggle") + 400);
   expect(btn).toMatch(/onPointerDown=\{\(e\) => e\.preventDefault\(\)\}/);
-  expect(btn).toMatch(/aria-label=\{showPreview \? "Edit message" : "Preview message"\}/);
+  expect(btn).toMatch(/aria-label=\{previewing \? "Edit message" : "Preview message"\}/);
   expect(btn).toMatch(/title=/);
   expect(btn).toMatch(/touch-manipulation/);
-  expect(btn).toMatch(/bottom-1\.5 right-5/);
+  expect(field).toMatch(/PreviewToggle[^>]*className="absolute bottom-2 right-2"/);
   expect(field).toMatch(/IconPen/);
   expect(field).toMatch(/IconEye/);
 });
@@ -25,15 +25,19 @@ it("switching keeps the text and caret: the textarea is hidden, not unmounted", 
   expect(field).toMatch(/setSelectionRange\(caret\.current\[0\], caret\.current\[1\]\)/);
 });
 
-it("the composer's side preview and the in-field preview share one renderer, and chips park while previewing", () => {
+it("there is no side preview panel: the in-field preview (text, poll, pin) is the only one, and the field uses the normal font at 16px", () => {
   expect(field).toMatch(/TemplateBubble/);
-  expect(composer).toMatch(/TemplateBubble/);
-  expect(composer).toMatch(/hidden lg:flex/);
-  expect(composer).toMatch(/disabled=\{previewing\}/);
+  expect(composer).not.toMatch(/lg:grid-cols-2/);
+  expect(composer).not.toMatch(/lg:flex/);
+  expect(composer).toMatch(/PreviewToggle/);
+  expect(field).not.toMatch(/font-mono text-sm/);
+  expect(field).toMatch(/text-base leading-6/);
   expect(preview).toMatch(/links: true/);
   expect(preview).toMatch(/Not a known variable/);
 });
 
 it("keeps the iOS behaviours from the field refactor", () => {
-  expect(composer).toMatch(/onPointerDown=\{\(e\) => e\.preventDefault\(\)\}[^>]*onMouseDown/);
+  expect(field).toMatch(/onPointerDown=\{\(e\) => e\.preventDefault\(\)\}[^>]*onMouseDown/);
+  expect(field).toMatch(/onPointerDown=\{\(e\) => e\.preventDefault\(\)\}\s+onMouseDown=\{\(e\) => e\.preventDefault\(\)\}\s+onClick=\{\(\) => \(onPick/);
+  expect(field).toMatch(/touch-manipulation/);
 });

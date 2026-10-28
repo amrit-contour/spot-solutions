@@ -1,7 +1,7 @@
 // After-show group cleanup: the day after a mic, thank the group and clear it for next week's comics. POCs, regulars,
 // co-hosts, admins, you, and anyone already on next week's lineup stay. If the mic didn't happen (or the curator wants to
 // decide each time), it asks first: the same comics may be repeating next week. Pure rules; the worker runs them.
-import { addDays } from "./groupPosts.ts";
+import { addDays, type GroupPost } from "./groupPosts.ts";
 import type { MessageOverride } from "./messages.ts";
 import { comicChatKeys } from "./threads.ts";
 import type { Comic, Lineup, Show } from "./types.ts";
@@ -14,6 +14,12 @@ export interface GroupCleanup {
   time: string;
   /** The message sent before clearing. Missing: the "After the show" template in Settings → Messages. Empty string: none. */
   message?: MessageOverride | null;
+  /**
+   * Run the cleanup right after this scheduled post goes out (the thank-you, say) instead of at `time` the day after. Missing: the
+   * old per-post "After sending: remove this week's comics" switch still counts (see cleanupTriggerPost). null: at `time`.
+   * If the post is gone or paused the cleanup falls back to `time`.
+   */
+  afterPostId?: string | null;
 }
 
 export const DEFAULT_CLEANUP: GroupCleanup = { enabled: false, mode: "auto", time: "11:00" };
@@ -55,11 +61,46 @@ export const CLEANUP_WINDOW_DAYS = 3;
 export type CleanupStep = "run" | "ask" | "skip" | "retry";
 
 /**
+ * The post that starts this show's cleanup when it goes out, or null (the cleanup runs at its set time). One source of truth: the
+ * show's cleanup setting. `after.removeComics` on a post is the old way of saying the same thing; it only counts while the show
+ * hasn't chosen (afterPostId missing), so it can never add a second trigger.
+ */
+export function cleanupTriggerPost(show: { cleanup?: GroupCleanup | null; groupPosts?: GroupPost[] | null }): GroupPost | null {
+  const posts = show.groupPosts ?? [];
+  const id = show.cleanup?.afterPostId;
+  if (id) return show.cleanup?.enabled ? (posts.find((p) => p.id === id && p.enabled) ?? null) : null;
+  if (id === null) return null;
+  return posts.find((p) => p.enabled && p.after?.removeComics) ?? null;
+}
+
+/** A lineup's cleanup happens at most once: anything that already started one (asked, running, done, kept, skipped) blocks the next trigger. */
+export const cleanupAlreadyStarted = (lineup: { cleanup?: unknown; backfilled?: boolean }) => Boolean(lineup.cleanup) || Boolean(lineup.backfilled);
+
+/**
+ * Moves the old per-post "remove this week's comics" switch into the show's cleanup setting: the show's cleanup now starts after
+ * that post. Returns null when there is nothing to move. A show with cleanup off keeps asking first (what the old switch did), so
+ * the cleanup is turned on in "ask" mode for it.
+ */
+export function migrateCleanupTrigger<T extends { cleanup?: GroupCleanup | null; groupPosts?: GroupPost[] | null }>(show: T): { cleanup: GroupCleanup; groupPosts: GroupPost[] } | null {
+  const posts = show.groupPosts ?? [];
+  if (!posts.some((p) => p.after?.removeComics)) return null;
+  const cur = show.cleanup ?? DEFAULT_CLEANUP;
+  const first = posts.find((p) => p.enabled && p.after?.removeComics) ?? posts.find((p) => p.after?.removeComics)!;
+  const cleanup: GroupCleanup = cur.afterPostId === undefined ? { ...cur, enabled: true, mode: cur.enabled ? cur.mode : "ask", afterPostId: first.id } : { ...cur };
+  const groupPosts = posts.map((p) => {
+    if (!p.after?.removeComics) return p;
+    const { removeComics: _drop, ...rest } = p.after;
+    return { ...p, after: Object.keys(rest).length ? rest : null };
+  });
+  return { cleanup, groupPosts };
+}
+
+/**
  * What to do now for this lineup, or null for nothing yet. `micCheckOn`: without mic checks there's never an answer, so a
  * confirmed show counts as having happened.
  */
 export function cleanupStep(
-  show: Pick<Show, "groupId" | "cleanup" | "active">,
+  show: Pick<Show, "groupId" | "cleanup" | "active" | "groupPosts">,
   lineup: Pick<Lineup, "date" | "status" | "outcome" | "cleanup"> & { backfilled?: boolean },
   now: { date: string; time: string },
   micCheckOn: boolean,
@@ -78,6 +119,7 @@ export function cleanupStep(
   if (off) return "ask";
   const happened = lineup.outcome === "happened" || (!micCheckOn && lineup.status === "confirmed");
   if (!happened) return null; // waiting for the mic check answer
+  if (cleanupTriggerPost(show)) return null; // the chosen post starts it when it goes out (a show that didn't happen still asks, above)
   return c.mode === "auto" ? "run" : "ask";
 }
 

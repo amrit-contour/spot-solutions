@@ -2,7 +2,7 @@
 // so there's no cloud scheduler to pay for. Each post goes out at most once per show date: the marker is written before
 // sending, so a crash mid-send can't post twice into a group of fifty people.
 import type WAWebJS from "whatsapp-web.js";
-import { POST_LABEL, addDays, duePosts, evaluatePost, groupPostMessage, groupPostVars, localNow, minutesOverdue, needsLineup, renderRich, usesVar, whenLabel, type GroupPost, type GroupPostStatus, type Lineup, type Show } from "@spot/shared";
+import { POST_LABEL, addDays, cleanupTriggerPost, duePosts, evaluatePost, groupPostMessage, groupPostVars, localNow, minutesOverdue, needsLineup, renderRich, usesVar, whenLabel, type GroupPost, type GroupPostStatus, type Lineup, type Show } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { loadComics, notice } from "./commands.ts";
 import { sendRich } from "./sendRich.ts";
@@ -89,6 +89,6 @@ async function sendOne(uid: string, client: WAWebJS.Client, show: Show, post: Gr
   const voiced = post.voice && rendered.kind === "text" && rendered.body.trim() ? { ...rendered, body: await inVoice(uid, "reply", rendered.body, { ...vars, name: "everyone" } as unknown as Record<string, string>) } : rendered;
   await sendRich(client, show.groupId!, voiced, {}, venue, { prerendered: true, mentions: tags.mentions, uid, imageRequired: true });
   if (lineup) await logActivity(uid, lineupIdFor(show, showDate), { kind: "post", tone: "done", text: `Posted the ${POST_LABEL[post.template]} in the group`, ref: post.id });
-  if (post.after?.removeComics && lineup) await startRemoval(uid, client, show, { ...lineup, id: lineupId }, label);
+  if (lineup && cleanupTriggerPost(show)?.id === post.id) await startRemoval(uid, client, show, { ...lineup, id: lineupId }, label);
   console.log(`[group-post] ${uid} ${show.name}: ${POST_LABEL[post.template]} for ${showDate} sent`);
 }

@@ -85,3 +85,24 @@ describe("planCopyAll", () => {
     expect(r.skipped).toBe(1);
   });
 });
+
+describe("loose matching and coverage", () => {
+  it("Monday's thank-you is not suggested on Tuesday when the two differ only in punctuation", () => {
+    const mon = post({ id: "mt", template: "groupCleanup", message: "Thank you all for doing spots! See you around. \u{1FAE1}", daysBefore: -1, time: "11:00" });
+    const tue = post({ id: "tt", template: "groupCleanup", message: "Thank you all for doing spots. See you around. \u{1FAE1}", daysBefore: -1, time: "11:00" });
+    expect(postKey(settings, mon, {})).toBe(postKey(settings, tue, {}));
+    expect(suggestPosts(settings, target, [tue], [monday([mon])], id)).toEqual([]);
+  });
+  it("names are templatized before comparing", () => {
+    const mon = post({ message: "Thanks from Monday Mic!!" });
+    const tue = post({ message: "thanks from {{show}}" });
+    expect(suggestPosts(settings, target, [tue], [monday([mon])], id)).toEqual([]);
+  });
+  it("offers every enabled post from every other show, template-based ones that differ only by timing included", () => {
+    const mine = [post({ id: "r1", template: "groupReminder", message: undefined, daysBefore: 1, time: "18:00" })];
+    const a = monday([post({ id: "a1", template: "groupReminder", message: undefined, daysBefore: 2, time: "12:00" }), post({ id: "a2", template: "groupLineup", message: undefined, daysBefore: 0, time: "17:00" })]);
+    const b: PostSource = { id: "w", name: "Wednesday Wit", posts: [post({ id: "b1", template: "groupVenue", message: undefined, daysBefore: 0, time: "18:00" }), post({ id: "b2", template: "groupReminder", message: undefined, daysBefore: 3, time: "18:00" })] };
+    const s = suggestPosts(settings, target, mine, [a, b], id);
+    expect(s.map((x) => `${x.post.template}@${x.post.daysBefore}`).sort()).toEqual(["groupLineup@0", "groupReminder@2", "groupReminder@3", "groupVenue@0"]);
+  });
+});

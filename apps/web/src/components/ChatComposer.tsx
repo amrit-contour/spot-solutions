@@ -268,7 +268,7 @@ export function ChatComposer({
           {(close) =>
             sheet === "poll" ? (
               <div className="flex flex-col gap-3">
-                <MessageComposer value={{ kind: "poll", body: "", poll: pollDraft }} onChange={(m) => setPollDraft(m.poll ?? pollDraft)} kinds={["poll"]} preview={false} attach={false} idPrefix={`${idPrefix}-poll`} />
+                <MessageComposer value={{ kind: "poll", body: "", poll: pollDraft }} onChange={(m) => setPollDraft(m.poll ?? pollDraft)} kinds={["poll"]} attach={false} idPrefix={`${idPrefix}-poll`} />
                 <div className="flex items-center gap-2">
                   <Button variant="text" onClick={() => openSheet("menu")}>Back</Button>
                   <span className="flex-1" />
