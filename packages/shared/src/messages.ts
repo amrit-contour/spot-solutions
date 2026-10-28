@@ -18,6 +18,9 @@ export type MessageKey =
   | "lastSpot"
   | "heldWindow"
   | "heldLastWeek"
+  | "alreadyOn"
+  | "heldInGroup"
+  | "heldOnLineup"
   | "groupWelcome"
   | "groupLineup"
   | "groupVenue"
@@ -166,6 +169,30 @@ export const MESSAGE_TYPES: readonly MessageType[] = [
     default: "Hey {{name}}, you were up {{lastWhen}}, so I'm giving others a turn this time. Ask me again {{askAgain}}!",
     vars: ["lastWhen", "askAgain", "lastShow", "lastDate"],
     sample: { lastWhen: "last week", askAgain: "next week", lastShow: "Monday Mic", lastDate: "20 Oct" },
+  },
+  {
+    key: "alreadyOn",
+    group: "replies",
+    label: "Already on the lineup",
+    when: "They ask for a spot but are already on that show's lineup and in its group. Sent automatically, no request is created.",
+    default: "You're already on {{show}}, {{day}} {{date}} 👍",
+    vars: SHOW_VARS,
+  },
+  {
+    key: "heldInGroup",
+    group: "held",
+    label: "In the group, not on the lineup",
+    when: "They ask for a spot, are in the show's group but not on this week's lineup (a regular, or a repeating lineup). Drafted for you, never sent on its own.",
+    default: "Hey {{name}}, check the group for this week's lineup for {{show}}. If the lineup's repeating, you're in 🙌",
+    vars: SHOW_VARS,
+  },
+  {
+    key: "heldOnLineup",
+    group: "held",
+    label: "On the lineup, not in the group",
+    when: "They ask for a spot, are on the lineup but not in the show's WhatsApp group. Drafted for you, never sent on its own.",
+    default: "Hey {{name}}, you're on {{show}}, {{day}} {{date}}! I'll add you to the group.",
+    vars: SHOW_VARS,
   },
   {
     key: "groupWelcome",

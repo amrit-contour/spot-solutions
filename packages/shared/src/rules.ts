@@ -25,13 +25,14 @@ export function inWindow(at: Date, w: RuleSettings["window"], timeZone: string) 
 }
 
 /** First rule that holds a request back, in priority order. */
-export function holdFor(opts: { comic?: Comic | null; week: string; at: Date; rules: RuleSettings; timeZone: string }): HoldReason | null {
-  const { comic, week, at, rules, timeZone } = opts;
+/** `regular`: a regular of the show the ask is about; they repeat anyway, so the performed-recently hold never applies. */
+export function holdFor(opts: { comic?: Comic | null; week: string; at: Date; rules: RuleSettings; timeZone: string; regular?: boolean }): HoldReason | null {
+  const { comic, week, at, rules, timeZone, regular } = opts;
   if (comic?.list === "banned") return "banned";
   if (comic?.list === "ignored") return "ignored";
   if (comic?.list === "host") return "host";
   if (!inWindow(at, rules.window, timeZone)) return "midweek";
-  if (rules.skipLastWeek && recentSpot(comic, week, cooldownWeeks(rules))) return "last_week";
+  if (rules.skipLastWeek && !regular && recentSpot(comic, week, cooldownWeeks(rules))) return "last_week";
   return null;
 }
 
@@ -41,6 +42,9 @@ export const HOLD_LABEL: Record<HoldReason, string> = {
   banned: "Banned",
   ignored: "Ignored",
   host: "Host / POC",
+  in_group_not_lineup: "In the group, not on the lineup",
+  lineup_not_group: "On the lineup, not in the group",
+  membership_unknown: "Group list unknown",
 };
 
 /** Most recent show they actually did (confirmed, on or before today). */

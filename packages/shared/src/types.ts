@@ -181,7 +181,7 @@ export interface RuleSettings {
 }
 
 /** Why a request was held back instead of landing in Asked. */
-export type HoldReason = "midweek" | "last_week" | "banned" | "ignored" | "host";
+export type HoldReason = "midweek" | "last_week" | "banned" | "ignored" | "host" | "in_group_not_lineup" | "lineup_not_group" | "membership_unknown";
 
 export type ComicList = "banned" | "ignored" | "host";
 
@@ -220,6 +220,8 @@ export interface ComicAction {
   lineupId?: string | null;
   status: "pending" | "sent" | "dismissed";
   createdAt: number;
+  /** Why it is held, shown on the card (membership holds: "In the group, not on the lineup"). */
+  reason?: string;
   /** When the curator ignored it in the app (cleared again by Undo). */
   dismissedAt?: number;
   /** follow_up: what the curator's own WhatsApp reply to a waiting request seems to say. */
@@ -394,6 +396,8 @@ export interface SpotRequest {
   /** Set by "Clear closed": a closed request hidden from the list (kept for history, cooldowns and stats). Only counts while the request is closed. */
   clearedAt?: number | null;
   hold?: HoldReason | null;
+  /** The detail behind a membership hold ("In the group, not on the lineup", or that the group list is unknown). */
+  holdNote?: string | null;
   /** Settled by a recorded past spot (backfill); set so removing that spot can reopen it. */
   backfilledAt?: number;
   /** Curator chose to let a held request through. */

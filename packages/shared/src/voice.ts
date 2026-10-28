@@ -122,6 +122,9 @@ const KIND_GOAL: Record<VoiceKind, string> = {
   showInfo: "Share where and when the shows are, keeping the list exactly as given.",
   lastSpot: "Tell them when their last spot was, exactly as given.",
   heldWindow: "Tell them requests for the week aren't open yet and when they open.",
+  alreadyOn: "Tell them they are already on the lineup for the show below, exactly as given.",
+  heldInGroup: "Tell them to check the show's group for this week's lineup, and that if it is repeating they are already in.",
+  heldOnLineup: "Tell them they are on the lineup below and that you will add them to the group.",
   heldLastWeek: "Tell them they performed recently (say when, as given) so you're giving others a turn, and when they can ask again.",
 };
 

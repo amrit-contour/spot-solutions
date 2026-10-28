@@ -381,6 +381,9 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
                 {HOLD_LABEL[r.hold]}
               </Chip>
             )}
+            {r.hold && r.holdNote && r.holdNote !== HOLD_LABEL[r.hold] && (
+              <span className="type-body-s text-on-surface-variant">{r.holdNote}</span>
+            )}
             {r.intent.preferredDays.length ? (
               r.intent.preferredDays.map((d) => (
                 <Chip key={d} tone="primary">

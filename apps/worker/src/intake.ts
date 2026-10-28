@@ -43,6 +43,7 @@ import { handleOfferReply, handleOnboardingReply } from "./replies.ts";
 import { notice } from "./commands.ts";
 import { dropNeverRead, isNeverRead } from "./neverRead.ts";
 import { knownComicId } from "./knownComic.ts";
+import { afterMembershipHold, checkMembership } from "./membership.ts";
 
 const MAX_CONTEXT = 12;
 
@@ -205,8 +206,11 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   const now = Date.now();
   const locked = existing && ["confirmed", "dismissed", "assigned", "rejected"].includes(existing.status);
   const newest = Math.max(...p.messages.map((m) => m.at));
+  // Already on the lineup and in the group: confirmed (no request). In one but not the other, or unknown: held for the curator.
+  const member = await checkMembership({ uid, client, p, intent, known, existing, locked: Boolean(locked), week });
+  if (member.done) return;
   // V1 rules: banned/ignored/host lists, the weekly request window, and last week's performers.
-  const hold = existing?.holdOverridden || locked ? (existing?.hold ?? null) : holdFor({ comic: known, week, at: new Date(newest), rules: settings.rules, timeZone: settings.timezone });
+  const hold = existing?.holdOverridden || locked ? (existing?.hold ?? null) : (member.hold ?? holdFor({ comic: known, week, at: new Date(newest), rules: settings.rules, timeZone: settings.timezone, regular: member.regular }));
   const request: SpotRequest = {
     id: reqRef.id,
     comicId: p.contact.id,
@@ -218,6 +222,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     status: locked ? existing.status : (existing?.status ?? "new"),
     ackedAt: existing?.ackedAt ?? null,
     hold,
+    ...(member.hold && { holdNote: member.holdNote }),
     holdOverridden: existing?.holdOverridden ?? false,
     heldRepliedAt: existing?.heldRepliedAt ?? null,
     contact: { chatId: p.contact.chatId, phone: p.contact.phone, nameSource: p.contact.nameSource },
@@ -250,6 +255,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     }
     tx.set(reqRef, request);
   });
+  if (member.hold) await afterMembershipHold({ uid, client, p, week, outcome: member, known });
 
   // Every guard must pass before anything is sent on the curator's behalf.
   const okToAck =

@@ -68,7 +68,7 @@ export function ReplyCard({ a, lineups }: { a: ComicAction; lineups: Lineup[] })
           </div>
           <div className="mt-1.5">
             <Chip tone={cancel ? "error" : "primary"} icon={kind.icon}>
-              {kind.label}
+              {a.reason ?? kind.label}
             </Chip>
           </div>
           <div className="mt-3">
