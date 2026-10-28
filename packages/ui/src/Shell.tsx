@@ -291,8 +291,8 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
           rather than turning "Requests" into "Re…". */}
       <div className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 max-sm:pr-[3.25rem]">
         <h1
-          // No scale on the title: a scaled text layer renders blurry on iPhone. The title keeps its size; the subtitle collapses.
-          className="min-w-0 max-w-full flex-auto truncate type-headline-m sm:type-display-s"
+          // Title stays its natural width so the week selector sits beside it instead of floating far to the right.
+          className="min-w-0 max-w-full flex-none truncate type-headline-m sm:type-display-s"
         >
           {title}
         </h1>
