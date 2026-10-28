@@ -1,5 +1,6 @@
 import { cooldownWeeks, recentSpot } from "./adhoc.ts";
-import type { Comic, HoldReason, RuleSettings, Show, SpotHistoryEntry, Weekday } from "./types.ts";
+import type { Comic, HoldReason, RuleSettings, Settings, Show, SpotHistoryEntry, Weekday } from "./types.ts";
+import { comicIdsOf } from "./comicNumbers.ts";
 import { DAY_NAMES, formatTime } from "./week.ts";
 
 const toMin = (day: Weekday, hhmm: string) => {
@@ -26,12 +27,28 @@ export function inWindow(at: Date, w: RuleSettings["window"], timeZone: string) 
 
 /** First rule that holds a request back, in priority order. */
 /** `regular`: a regular of the show the ask is about; they repeat anyway, so the performed-recently hold never applies. */
-export function holdFor(opts: { comic?: Comic | null; week: string; at: Date; rules: RuleSettings; timeZone: string; regular?: boolean }): HoldReason | null {
-  const { comic, week, at, rules, timeZone, regular } = opts;
+export const HOST_LABEL = "Host / POC";
+export function isHostComic(comic: Comic | null | undefined, shows: readonly Show[] | undefined): boolean {
+  if (!comic || !shows?.length) return false;
+  const ids = new Set(comicIdsOf(comic));
+  return shows.some((s) => (s.active) && ([...(s.pocs ?? []), ...(s.protected ?? [])].some((x) => ids.has(x))));
+}
+export function hostShowOf(comic: Comic | null | undefined, shows: readonly Show[] | undefined): Show | null {
+  if (!comic || !shows?.length) return null;
+  const ids = new Set(comicIdsOf(comic));
+  return shows.find((s) => s.active && ([...(s.pocs ?? []), ...(s.protected ?? [])].some((x) => ids.has(x)))) ?? null;
+}
+export function holdFor(opts: { comic?: Comic | null; week: string; at: Date; rules: RuleSettings; timeZone: string; regular?: boolean; show?: Show | null; shows?: readonly Show[] }): HoldReason | null {
+  const { comic, week, at, rules, timeZone, regular, show, shows } = opts;
   if (comic?.list === "banned") return "banned";
   if (comic?.list === "ignored") return "ignored";
-  if (comic?.list === "host") return "host";
-  if (!inWindow(at, rules.window, timeZone)) return "midweek";
+  if (comic?.list === "host" || isHostComic(comic, shows)) return "host";
+  const settings = { rules, timezone: timeZone } as Settings;
+  let open = false;
+  if (show) open = showWindowOpen(show, at, settings, timeZone);
+  else if (shows?.length) open = shows.filter((s) => s.active).some((s) => showWindowOpen(s, at, settings, timeZone));
+  else open = inWindow(at, rules.window, timeZone);
+  if (!open) return "midweek";
   if (rules.skipLastWeek && !regular && recentSpot(comic, week, cooldownWeeks(rules))) return "last_week";
   return null;
 }
@@ -95,4 +112,110 @@ export function movesOffOtherShows(rules: Pick<RuleSettings, "onePerWeek">, show
  */
 export function defaultLineupIds(show: Pick<Show, "pocs" | "regulars" | "protected"> | undefined, adminIds: readonly string[] = []): string[] {
   return [...new Set([...(show?.pocs ?? []), ...(show?.regulars ?? []), ...(show?.protected ?? []), ...adminIds])];
+}
+
+/** Is this show on for the given YYYY-MM-DD occurrence? */
+export function isShowOn(show: Pick<Show, "active" | "weekday" | "activeDates" | "pausedDates">, date: string): boolean {
+  if (show.pausedDates?.includes(date)) return false;
+  if (show.activeDates?.includes(date)) return true;
+  const d = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return Boolean(show.active);
+  if (d.getUTCDay() !== show.weekday) return false;
+  return Boolean(show.active);
+}
+
+function hhmmOfMinute(min: number): string {
+  const m = ((min % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
+function timeZoneOffsetMs(date: Date, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+  const parts = Object.fromEntries(dtf.formatToParts(date).map((x) => [x.type, x.value]));
+  const asUtc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
+  return asUtc - date.getTime();
+}
+
+function zonedToUtc(y: number, m: number, d: number, hhmm: string, timeZone: string): Date {
+  const [h, min] = hhmm.split(":").map(Number);
+  const utcGuess = Date.UTC(y, m - 1, d, h, min, 0);
+  const offset = timeZoneOffsetMs(new Date(utcGuess), timeZone);
+  return new Date(utcGuess - offset);
+}
+
+function zonedPartsYMD(at: Date, timeZone: string) {
+  const f = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" });
+  const p = Object.fromEntries(f.formatToParts(at).map((x) => [x.type, x.value]));
+  return { y: Number(p.year), m: Number(p.month), d: Number(p.day), wd: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday) };
+}
+
+function addDaysYMD(y: number, m: number, d: number, days: number) {
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() };
+}
+
+function nextWallOccurrence(openDay: number, openTime: string, at: Date, timeZone: string): Date {
+  const { y, m, d, wd } = zonedPartsYMD(at, timeZone);
+  let daysAhead = (openDay - wd + 7) % 7;
+  let cand = addDaysYMD(y, m, d, daysAhead);
+  let candidate = zonedToUtc(cand.y, cand.m, cand.d, openTime, timeZone);
+  if (candidate.getTime() < at.getTime()) {
+    cand = addDaysYMD(cand.y, cand.m, cand.d, 7);
+    candidate = zonedToUtc(cand.y, cand.m, cand.d, openTime, timeZone);
+  }
+  return candidate;
+}
+
+function beforeWindow(show: Show, rw: Extract<Show["requestWindow"], { mode: "before" }>) {
+  const startMin = toMin(show.weekday, show.startTime);
+  const closeMin = ((startMin - rw.closesHoursBefore * 60) % (7 * 1440) + (7 * 1440)) % (7 * 1440);
+  const openDay = ((show.weekday - rw.opensDaysBefore) % 7 + 7) % 7;
+  const closeDay = Math.floor(closeMin / 1440);
+  const closeTime = hhmmOfMinute(closeMin);
+  return { enabled: true, startDay: openDay as Weekday, startTime: rw.opensAt, endDay: closeDay as Weekday, endTime: closeTime };
+}
+
+function showWindowResolved(show: Show, settings: Settings): { mode: string } & Partial<RuleSettings["window"]> {
+  const rw = show.requestWindow ?? { mode: "default" };
+  if (rw.mode === "default") return settings.rules.window;
+  if (rw.mode === "weekly") return { enabled: true, startDay: rw.startDay, startTime: rw.startTime, endDay: rw.endDay, endTime: rw.endTime };
+  if (rw.mode === "always") return { enabled: false, startDay: 0 as Weekday, startTime: "00:00", endDay: 6 as Weekday, endTime: "23:59" };
+  const w = beforeWindow(show, rw as any);
+  return w;
+}
+
+export function showWindowOpen(show: Show, at: Date, settings: Settings, tz: string): boolean {
+  const rw = show.requestWindow ?? { mode: "default" };
+  if (rw.mode === "always") return true;
+  let w: RuleSettings["window"];
+  if (rw.mode === "default") w = settings.rules.window;
+  else if (rw.mode === "weekly") w = { enabled: true, startDay: rw.startDay, startTime: rw.startTime, endDay: rw.endDay, endTime: rw.endTime };
+  else w = beforeWindow(show, rw as any) as RuleSettings["window"];
+  return inWindow(at, w, tz);
+}
+
+export function nextWindowOpens(show: Show, at: Date, settings: Settings, tz: string): Date {
+  const rw = show.requestWindow ?? { mode: "default" };
+  if (rw.mode === "always") return new Date(at.getTime());
+  let openDay: number;
+  let openTime: string;
+  let enabled = true;
+  if (rw.mode === "default") {
+    const w = settings.rules.window;
+    if (!w.enabled) return new Date(at.getTime());
+    openDay = w.startDay;
+    openTime = w.startTime;
+  } else if (rw.mode === "weekly") {
+    openDay = rw.startDay;
+    openTime = rw.startTime;
+  } else if (rw.mode === "before") {
+    openDay = ((show.weekday - rw.opensDaysBefore) % 7 + 7) % 7;
+    openTime = rw.opensAt;
+  } else {
+    return new Date(at.getTime());
+  }
+  if (!enabled) return new Date(at.getTime());
+  return nextWallOccurrence(openDay, openTime, at, tz);
 }

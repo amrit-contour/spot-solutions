@@ -1,10 +1,11 @@
 // One person, several comic docs: WhatsApp hands the same contact over as a phone id (91…@c.us) or an @lid, so a roster can end up
 // holding them twice. This finds those, picks the doc WhatsApp can actually deliver to, and merges the others into it.
 // Pure logic: the worker applies the plan (apps/worker/src/mergeComics.ts), the Show editor's people picker uses the same identity rules.
-import type { Comic, GroupMember, Lineup, Show, Slot, SpotHistoryEntry, Tier } from "./types.ts";
+import { numbersOf, unionNumbers, withNumbers } from "./comicNumbers.ts";
+import type { Comic, ComicNumber, GroupMember, Lineup, Show, Slot, SpotHistoryEntry, Tier } from "./types.ts";
 
 /** What identifies a comic across its ids: the phone, the id WhatsApp delivers to, the other ids it has been seen under. */
-export type Identity = Pick<Comic, "id" | "chatId" | "phone"> & { aliases?: string[] };
+export type Identity = Pick<Comic, "id" | "chatId" | "phone"> & { aliases?: string[]; numbers?: ComicNumber[] };
 
 /** An @lid and the phone it belongs to, as WhatsApp reported them (group member lists carry both). */
 export interface IdLink {
@@ -45,7 +46,8 @@ export function memberKeySet(members: readonly GroupMember[]): Set<string> {
 /** The keys of one comic, in the same space as memberKeySet. */
 export function identityKeys(c: Identity): string[] {
   const phone = phoneDigitsOf(c);
-  return [...(phone ? [`p${phone}`] : []), ...lidDigitsOf(c).map((l) => `l${l}`), ...(!phone && !lidDigitsOf(c).length ? [`x${c.id}`] : [])];
+  const phones = [...new Set([phone, ...numbersOf({ phone: c.phone, numbers: c.numbers }).map((n) => n.phone.replace(/\D/g, ""))].filter(Boolean))];
+  return [...phones.map((p) => `p${p}`), ...lidDigitsOf(c).map((l) => `l${l}`), ...(!phones.length && !lidDigitsOf(c).length ? [`x${c.id}`] : [])];
 }
 
 /** Is this comic one of these group members, by phone or @lid? */
@@ -89,7 +91,7 @@ export interface DuplicateSet<T extends Identity> {
   keep: T;
   others: T[];
   /** Why they look like one person. */
-  why: "number" | "whatsapp";
+  why: "number" | "whatsapp" | "name";
 }
 
 /** Comics that are the same person under more than one doc. The doc to keep is the one WhatsApp reaches. */
@@ -100,6 +102,56 @@ export function findDuplicateComics<T extends Identity & { name: string; history
       const keep = pickKeep(g, members);
       const phones = new Set(g.map((c) => phoneDigitsOf(c)).filter(Boolean));
       return { keep, others: g.filter((c) => c !== keep), why: (phones.size === 1 && g.every((c) => phoneDigitsOf(c)) ? "number" : "whatsapp") as "number" | "whatsapp" };
+    })
+    .sort((a, b) => a.keep.name.localeCompare(b.keep.name));
+}
+
+// ---- Same name, different number ----
+
+const nameKey = (n: string) => n.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+
+/** A name worth comparing: a real one, not a bare number or a single short word. */
+const comparable = (c: { name: string; nameSource?: Comic["nameSource"] }) => c.nameSource !== "number" && !/^\+?[\d\s-]+$/.test(c.name.trim()) && nameKey(c.name).length >= 3;
+
+const editDistance = (a: string, b: string): number => {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array<number>(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+};
+
+/** Same or similar name: equal, one the whole-word start of the other ("Aman" / "Aman Verma"), or a one-letter typo of a longer name. */
+export function similarNames(a: string, b: string): boolean {
+  const x = nameKey(a);
+  const y = nameKey(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (short.length >= 4 && (long === short || long.startsWith(`${short} `) || long.endsWith(` ${short}`))) return true;
+  return short.length >= 6 && editDistance(x, y) <= 1;
+}
+
+/**
+ * Different people-docs with the same or similar name but different numbers: a suggestion, never merged automatically.
+ * Docs that are already the same account (same number, phone id and @lid) are not here, `findDuplicateComics` has them.
+ */
+export function findSamePersonByName<T extends Identity & { name: string; nameSource?: Comic["nameSource"]; history?: unknown[] }>(comics: readonly T[], links: readonly IdLink[] = [], members: Set<string> = new Set()): DuplicateSet<T>[] {
+  const groups = personGroups(comics, links);
+  const parent = groups.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const names = groups.map((g) => g.filter(comparable).map((c) => c.name));
+  for (let i = 0; i < groups.length; i++) {
+    for (let j = i + 1; j < groups.length; j++) {
+      if (names[i].some((a) => names[j].some((b) => similarNames(a, b)))) parent[find(i)] = find(j);
+    }
+  }
+  const sets = new Map<number, T[]>();
+  groups.forEach((g, i) => sets.set(find(i), [...(sets.get(find(i)) ?? []), ...g]));
+  return [...sets.values()]
+    .filter((docs) => personGroups(docs, links).length > 1)
+    .map((docs) => {
+      const keep = pickKeep(docs, members);
+      return { keep, others: docs.filter((c) => c !== keep), why: "name" as const };
     })
     .sort((a, b) => a.keep.name.localeCompare(b.keep.name));
 }
@@ -118,11 +170,13 @@ export function mergeComics(keep: Comic, others: readonly Comic[]): Comic {
     if (!out.phone && o.phone) out.phone = o.phone;
     if (!out.chatId && o.chatId) out.chatId = o.chatId;
     if (o.notes && !(out.notes ?? "").split("\n").includes(o.notes)) out.notes = out.notes ? `${out.notes}\n${o.notes}` : o.notes;
-    if (TIER_RANK[o.tier] > TIER_RANK[out.tier]) out.tier = o.tier;
+    if (o.tier && (!out.tier || TIER_RANK[o.tier] > TIER_RANK[out.tier])) out.tier = o.tier;
     if (!out.list && o.list) out.list = o.list;
     if ((o.lastPerformedWeek ?? "") > (out.lastPerformedWeek ?? "")) out.lastPerformedWeek = o.lastPerformedWeek;
     if (o.regularOf?.length) out.regularOf = [...new Set([...(out.regularOf ?? []), ...o.regularOf])];
     if (o.history?.length) out.history = mergeHistory(out.history, o.history);
+    if (o.comedySince && (!out.comedySince || o.comedySince < out.comedySince)) out.comedySince = o.comedySince;
+    if (o.tagsPinned?.length) out.tagsPinned = [...new Set([...(out.tagsPinned ?? []), ...o.tagsPinned])];
     if (!out.onboarding && o.onboarding) out.onboarding = o.onboarding;
     if (o.profile) out.profile = { ...o.profile, ...out.profile };
     // "none" means their picture is hidden: a real one found under the other id beats it.
@@ -135,6 +189,9 @@ export function mergeComics(keep: Comic, others: readonly Comic[]): Comic {
   // Every other id WhatsApp has known them by stays on the doc, so a message from the old one still finds this person.
   const aliases = [...ids].filter((x) => x !== out.id && x !== out.chatId);
   if (aliases.length) out.aliases = aliases;
+  // Two different numbers for one person: both stay on the contact, the kept doc's number is the primary.
+  const numbers = unionNumbers(out, [keep, ...others]);
+  if (numbers.length > 1) out = withNumbers(out, numbers.map((n, i) => ({ ...n, primary: i === 0 })));
   // Firestore refuses undefined.
   return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined)) as unknown as Comic;
 }

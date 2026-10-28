@@ -212,7 +212,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
   const member = await checkMembership({ uid, client, p, intent, known, existing, locked: Boolean(locked), week });
   if (member.done) return;
   // V1 rules: banned/ignored/host lists, the weekly request window, and last week's performers.
-  const hold = existing?.holdOverridden || locked ? (existing?.hold ?? null) : (member.hold ?? holdFor({ comic: known, week, at: new Date(newest), rules: settings.rules, timeZone: settings.timezone, regular: member.regular }));
+  const hold = existing?.holdOverridden || locked ? (existing?.hold ?? null) : (member.hold ?? holdFor({ comic: known, week, at: new Date(newest), rules: settings.rules, timeZone: settings.timezone, regular: member.regular, shows: (await col(uid,"shows").get()).docs.map((d)=>d.data() as Show) }));
   const request: SpotRequest = {
     id: reqRef.id,
     comicId: p.contact.id,

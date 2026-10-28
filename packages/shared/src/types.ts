@@ -6,7 +6,32 @@ import type { ActivityEntry } from "./lineupActivity.ts";
 import type { ShowWatchSettings, SlotLive } from "./showWatch.ts";
 
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday
-export type Tier = "open" | "regular" | "featured";
+export type Tier = "open" | "regular"| "featured";
+
+export interface ExperienceThresholds {
+  /** New if fewer than this many spots, or under newbieMonths months. */
+  newSpotsMax?: number;
+  newbieMonths?: number;
+  /** Beginner if under beginnerYears years doing comedy. */
+  beginnerYears?: number;
+  /** Senior if at least seniorYears years. */
+  seniorYears?: number;
+  /** Killer if average rating >= killerMinRating over at least killerMinRated rated shows. */
+  killerMinRating?: number;
+  killerMinRated?: number;
+}
+
+export interface ExperienceResult {
+  years: number;
+  months: number;
+  spots: number;
+  rated: number;
+  averageRating: number | null;
+  trend: "up" | "steady" | "down" | null;
+  inactiveSince: string | null;
+  /** The derived tags, in display order. */
+  tags: string[];
+}
 
 export type SessionStatus = "idle" | "starting" | "qr" | "authenticated" | "ready" | "disconnected" | "error";
 
@@ -101,6 +126,8 @@ export interface Settings {
   showWatch?: ShowWatchSettings;
   /** View choices that follow the account across devices (Home calendar view, Hide empty days, Requests sort and tab...). Written by the app, see @spot/ui viewPrefs. */
   prefs?: Record<string, string | boolean>;
+  /** Thresholds for the experience tags (New/Beginner/Senior/Killer). Missing fields fall back to the defaults. */
+  experienceThresholds?: ExperienceThresholds;
 }
 
 /** What the agent number may do for you. Linking it is the opt-in; these switch each part off again. */
@@ -281,6 +308,12 @@ export interface Venue {
   aliases?: string[];
 }
 
+export type ShowRequestWindow =
+  | { mode: "default" }
+  | { mode: "before"; opensDaysBefore: number; opensAt: "HH:MM" | string; closesHoursBefore: number }
+  | { mode: "weekly"; startDay: Weekday; startTime: string; endDay: Weekday; endTime: string }
+  | { mode: "always" };
+
 export interface Show {
   id: string;
   name: string;
@@ -291,6 +324,12 @@ export interface Show {
   includeSlotTime: boolean;
   defaultMinutes?: number;
   active: boolean;
+  /** Occurrences taken on even though the show is otherwise inactive (YYYY-MM-DD). */
+  activeDates?: string[];
+  /** Occurrences of an active show that are skipped (YYYY-MM-DD). */
+  pausedDates?: string[];
+  /** Per-show request window. Missing means default (global). */
+  requestWindow?: ShowRequestWindow;
   groupId?: string | null;
   regulars: string[]; // comic ids that stay in the group
   protected: string[]; // never removed (co-hosts etc.)
@@ -355,7 +394,7 @@ export interface Comic {
   phone: string;
   /** Every number of this person when there is more than one. Exactly one is primary; `aliases` holds the WhatsApp ids of all of them. */
   numbers?: ComicNumber[];
-  tier: Tier;
+  tier?: Tier;
   notes?: string;
   lastPerformedWeek?: string | null; // weekOf key
   regularOf?: string[]; // show ids
@@ -367,6 +406,12 @@ export interface Comic {
   photoUrl?: string | null;
   /** When photoUrl was last fetched (ms). */
   photoAt?: number | null;
+  /** YYYY or YYYY-MM: when they started doing comedy. */
+  comedySince?: string | null;
+  /** Manually pinned experience tags. */
+  tagsPinned?: string[];
+  /** Experience tags hidden by the curator. */
+  tagsHidden?: string[];
 }
 
 export type IntentKind = "spot_request" | "cancel_spot" | "status_query" | "last_spot_query" | "show_info" | "other";

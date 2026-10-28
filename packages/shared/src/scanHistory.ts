@@ -3,7 +3,7 @@ import { MAYBE_THRESHOLD } from "./defaults.ts";
 import { holdFor } from "./rules.ts";
 import { weekOf } from "./week.ts";
 import { holdReasonFor, type MembershipDecision } from "./membership.ts";
-import type { Comic, HoldReason, InboundMessage, Intent, RuleSettings, SpotRequest, Weekday } from "./types.ts";
+import type { Comic, HoldReason, InboundMessage, Intent, RuleSettings, Show, SpotRequest, Weekday } from "./types.ts";
 
 export const SCAN_DAYS_MIN = 1;
 export const SCAN_DAYS_MAX = 21;
@@ -86,10 +86,10 @@ export function planScanMerge(opts: { existing?: SpotRequest; burst: InboundMess
  * Held or not, judged at the time the burst was sent, so an old request outside the window is held with that
  * reason instead of being dropped. A request the curator already let through keeps its hold as is.
  */
-export function scanHold(opts: { existing?: Pick<SpotRequest, "hold" | "holdOverridden">; comic?: Comic | null; week: string; burst: { at: number }[]; rules: RuleSettings; timeZone: string; membership?: MembershipDecision | null }): HoldReason | null {
+export function scanHold(opts: { existing?: Pick<SpotRequest, "hold" | "holdOverridden">; comic?: Comic | null; week: string; burst: { at: number }[]; rules: RuleSettings; timeZone: string; membership?: MembershipDecision | null; shows?: readonly Show[] }): HoldReason | null {
   if (opts.existing) return opts.existing.hold ?? null;
   // The same membership decision as live intake: lineup/group mismatches hold, regulars skip the performed-recently hold.
   const byMembership = holdReasonFor(opts.membership);
   if (byMembership) return byMembership;
-  return holdFor({ comic: opts.comic, week: opts.week, at: new Date(Math.max(...opts.burst.map((m) => m.at))), rules: opts.rules, timeZone: opts.timeZone, regular: opts.membership?.kind === "normal" && opts.membership.regular });
+  return holdFor({ comic: opts.comic, week: opts.week, at: new Date(Math.max(...opts.burst.map((m) => m.at))), rules: opts.rules, timeZone: opts.timeZone, regular: opts.membership?.kind === "normal" && opts.membership.regular, shows: opts.shows });
 }
