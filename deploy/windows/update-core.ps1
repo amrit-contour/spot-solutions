@@ -442,6 +442,9 @@ try {
   $env:NBS_DATA_DIR = $DataDir; $env:NBS_ENV_FILE = "$AppDir\apps\worker\.env"
   & "$NodeDir\node.exe" "$AppDir\apps\worker\console\doctor-run.mjs" --repair
   if ($LASTEXITCODE -ne 0) { throw "Something this version needs couldn't be set up (see the console log). Check the internet connection and try again." }
+  # Windows Update can reset sleep, lid and restart settings: put the chosen ones (data\power.json) back. Never fails the update.
+  Set-Progress "running" "Re-applying stay-on settings"
+  & "$NodeDir\node.exe" "$AppDir\apps\worker\console\power-run.mjs" --apply
   Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
   Update-Launcher
   Set-Progress "running" "Refreshing shortcuts and icons"

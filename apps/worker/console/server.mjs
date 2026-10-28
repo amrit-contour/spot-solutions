@@ -26,6 +26,7 @@ import { createMachine, readMemory } from "./doctor-run.mjs";
 import { runDoctor, summarize } from "./doctor.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 import { contextFor } from "./move.mjs";
+import { createMachinePower } from "./power-run.mjs";
 import { resolveModelsDir, ollamaEnv, winRestartOllamaScript, createOllamaGuard } from "./ollamaenv.mjs";
 
 const exec = promisify(execFile);
@@ -154,6 +155,14 @@ const workerCtl = createWorkerControl({
   modelsDir,
   run: runCmd, active: (svc) => isActive(svc === "ollama" ? "ollama" : "nothing-bot-server-worker"), readEnv, writeEnv, dry: DRY,
 });
+// Stay on (power.mjs): sleep, lid, Wi-Fi, Windows Update restarts. The keep-awake fallback runs while this console does; settings Windows Update
+// (or anything) reverts are put back every 30 minutes, once the owner has applied them.
+const { power, keepAwake } = createMachinePower({ env: process.env, dry: DRY, withKeepAwake: true, log: console.warn });
+if (!DRY) {
+  keepAwake.start();
+  setTimeout(() => { power.reassert().catch(() => {}); }, 60_000).unref();
+  setInterval(() => { power.reassert().catch(() => {}); }, 30 * 60_000).unref();
+}
 // Doctor (doctor.mjs): the same checks the installer and updater run, here for the "Check and repair" button.
 let doctorBusy = null;
 async function doctorRun(opts) {
@@ -288,6 +297,8 @@ async function status() {
     // "running" | "stopping" | "stopped" | "starting" | "down" (should be running and isn't); stopped means the owner pressed Stop.
     workerControl: await workerCtl.view(),
     autostart: await autostart(),
+    // { text: "Sleep: off · Lid: ignored · Last restart: 03:32 (Windows Update)", ok, needs, lastRestart } from the last read (null at first); the full rows are GET /api/power.
+    power: power.summary(),
     localModel: !noLocalModel(),
     ollama: o,
     config: {
@@ -575,6 +586,18 @@ createServer(async (req, res) => {
       } catch (e) {
         return json(res, 409, { error: e.message });
       }
+    }
+
+    // Stay on: GET reads every row; POST {action: "fix", id} | {action: "all"} | {action: "options", battery?, activeHours?: {start, end}}.
+    if (url.pathname === "/api/power" && req.method === "GET") return json(res, 200, await power.view());
+    if (url.pathname === "/api/power" && req.method === "POST") {
+      const b = await body(req);
+      try {
+        if (b.action === "fix") return json(res, 200, await power.fix(String(b.id)));
+        if (b.action === "all") return json(res, 200, await power.applyAll());
+        if (b.action === "options") return json(res, 200, { view: await power.setOptions(b), results: [] });
+      } catch (e) { return json(res, e.status ?? 500, { error: e.message }); }
+      return json(res, 400, { error: "Unknown action" });
     }
 
     // The doctor: GET checks everything (nothing is changed); POST {id?} repairs one check, or all of them, then reports. One run at a time.

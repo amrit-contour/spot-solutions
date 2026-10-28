@@ -81,6 +81,22 @@
 
   /* ---- server bar: the Mac app's header for every other browser (state, services, Stop/Start server) ---- */
   /* Server control: what's running, and one switch for all of it. A section under the header, not a pinned bar. */
+  /* Stay on (power): a compact block right under the server bar. */
+  .pwr { margin: 0 0 16px; padding: 14px 20px; background: var(--s-low); border-radius: 20px; }
+  .pwr .ph { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .pwr .ph h2 { font-size: 15px; margin: 0; }
+  .pwr .ph .grow { flex: 1 1 200px; min-width: 0; }
+  .pwr .pr { display: flex; align-items: center; gap: 10px; padding: 6px 0; min-width: 0; }
+  .pwr .pr + .pr { border-top: 1px solid color-mix(in srgb, var(--outline-v) 40%, transparent); }
+  .pwr .pr .st { flex: none; width: 20px; height: 20px; display: inline-flex; }
+  .pwr .pr .st svg { width: 20px; height: 20px; }
+  .pwr .pr .st.ok { color: var(--ok); } .pwr .pr .st.bad { color: var(--error); }
+  .pwr .pr .t { flex: 1 1 auto; min-width: 0; font-size: 13px; }
+  .pwr .pr .t b { font-weight: 600; } .pwr .pr .t span { color: var(--on-surface-v); }
+  .pwr .popts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 8px; font-size: 13px; }
+  .pwr .popts .chk { margin: 0; font-size: 13px; }
+  .pwr .popts select { font: inherit; padding: 2px 6px; }
+  .pwr .pwarn { margin-top: 6px; font-size: 12px; color: var(--on-surface-v); }
   .ctl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 20px; align-items: center; margin: 0 0 16px; padding: 18px 20px; background: var(--s-low); border-radius: 20px; }
   .ctl .head { display: flex; align-items: center; gap: 10px; min-width: 0; }
   .ctl .head .dot { width: 12px; height: 12px; flex: none; }
@@ -689,6 +705,36 @@ function serverBar(s, { ws, ms, allUp, wStopped, mOff }) {
     <div class="note">${esc(note)}${auto}</div>
     <div class="svcs">${svcs}</div></section>`;
 }
+// Stay on: keep the machine awake (GET /api/power, POST /api/power). Lives under the server bar, not in a section.
+let pw = { data: null, busy: null, err: null, note: null };
+const hourOpts = (v) => Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === v ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("");
+function powerBlock() {
+  const d = pw.data;
+  if (!d) return pw.err ? `<section class="pwr" aria-label="Stay on"><div class="small err-text" role="alert">${esc(pw.err)}</div></section>` : "";
+  const bad = d.items.filter((i) => !i.ok && i.fixable);
+  const busy = pw.busy;
+  const rows = d.items.map((i) => `<div class="pr"><span class="st ${i.ok ? "ok" : "bad"}" role="img" aria-label="${i.ok ? "OK" : "Needs fixing"}">${i.ok ? ICN.check : ICN.warn}</span><div class="t"><b>${esc(i.title)}</b> <span>${esc(i.detail)}</span></div>${!i.ok && i.fixable ? `<button type="button" class="tonal sm" data-pw-fix="${esc(i.id)}" ${busy ? "disabled" : ""}>${busy === i.id ? "Fixing…" : "Fix"}</button>` : ""}</div>`).join("");
+  const o = d.options;
+  const opts = o.canBattery ? `<div class="popts"><label class="chk"><input type="checkbox" data-pw-battery ${o.battery ? "checked" : ""} ${busy ? "disabled" : ""}> Also keep awake on battery</label>${o.canActiveHours ? `<span>No Windows Update restarts <select data-pw-start aria-label="Active hours start">${hourOpts(o.activeHours.start)}</select> to <select data-pw-end aria-label="Active hours end">${hourOpts(o.activeHours.end)}</select></span>` : ""}</div>${o.battery ? `<div class="pwarn">On battery: the machine won't sleep, so an unplugged laptop runs flat. Keep it plugged in.</div>` : ""}` : "";
+  const lr = d.lastRestart ? `<div class="pwarn">${esc(d.lastRestart.text)}${d.pendingRestart ? ". A restart is waiting for updates." : ""}</div>` : "";
+  return `<section class="pwr" aria-label="Stay on"><div class="ph"><h2>Stay on</h2><span class="muted small grow" role="status">${esc(d.summary.text)}</span>${bad.length ? `<button type="button" class="sm" data-pw-all ${busy ? "disabled" : ""}>${busy === "all" ? "Applying…" : "Apply all"}</button>` : `<span class="muted small">All set</span>`}</div>${rows}${opts}${lr}${pw.note ? `<div class="pwarn" role="status">${esc(pw.note)}</div>` : ""}${pw.err ? `<div class="small err-text" role="alert">${esc(pw.err)}</div>` : ""}</section>`;
+}
+async function loadPower() {
+  try { pw.data = await api("/api/power"); pw.err = null; } catch (e) { if (e.status !== 401 && e.status !== 404) pw.err = `Couldn't read the power settings: ${e.message}`; }
+  if (state && !pw.busy && !holdRender()) render();
+}
+async function powerAct(body, busy) {
+  if (pw.busy) return;
+  pw.busy = busy; pw.err = null; pw.note = null; render();
+  try {
+    const r = await api("/api/power", body);
+    pw.data = r.view ?? r;
+    const failed = (r.results || []).filter((x) => !x.ok);
+    if (failed.length) pw.err = failed.map((x) => `${x.id}: ${x.error || "failed"}`).join("; ");
+    else if (r.results?.length) pw.note = r.results.some((x) => x.dry) ? "Test console: nothing was changed." : "Done.";
+  } catch (e) { pw.err = e.message; }
+  pw.busy = null; render();
+}
 // ---------- Health: check and repair ----------
 // The banner shows when the doctor says the browser is missing; before the first check, when the worker log says so.
 function browserMissing(s) {
@@ -1264,6 +1310,7 @@ function render() {
       <button type="button" role="menuitem" data-cust-toggle>${custMode ? "Done customizing" : "Customize page"}</button></div>` : ""}</span>
   </header>
   ${serverBar(s, { ws, ms, allUp, wStopped, mOff })}
+  ${powerBlock()}
   ${alerts(s)}
   ${custBar}
   <div id="secs">${visibleIds().map((id) => blocks[id]).join("")}</div>
@@ -1577,6 +1624,10 @@ async function run(label, fn) {
 function wire() {
   const s = state;
   wireHealth();
+  document.querySelectorAll("[data-pw-fix]").forEach((b) => b.onclick = () => powerAct({ action: "fix", id: b.dataset.pwFix }, b.dataset.pwFix));
+  document.querySelectorAll("[data-pw-all]").forEach((b) => b.onclick = () => powerAct({ action: "all" }, "all"));
+  document.querySelectorAll("[data-pw-battery]").forEach((c) => c.onchange = () => powerAct({ action: "options", battery: c.checked }, "opts"));
+  document.querySelectorAll("[data-pw-start],[data-pw-end]").forEach((c) => c.onchange = () => powerAct({ action: "options", activeHours: { start: Number($("[data-pw-start]").value), end: Number($("[data-pw-end]").value) } }, "opts"));
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.onclick = () => {
     theme = b.dataset.themeSet; applyTheme();
     try { localStorage.setItem("nbs-console-theme", theme); } catch {}
@@ -1856,6 +1907,8 @@ setInterval(() => { const cd = $("#cd"); if (cd && conn?.expiresAt) cd.textConte
 refresh();
 pollLive();
 loadDoctor();
+loadPower();
+setInterval(loadPower, 60_000);
 </script>
 </body>
 </html>

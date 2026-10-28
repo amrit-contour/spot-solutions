@@ -527,6 +527,10 @@ powercfg /change hibernate-timeout-ac 0
 powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0  # lid closed on power: do nothing
 powercfg /setactive SCHEME_CURRENT
 Ok "Sleep off while plugged in, lid close ignored"
+# The same settings plus disk/USB/Wi-Fi power saving and Windows Update's restart hours, as chosen in the console (Stay on; data\power.json).
+$env:NBS_DATA_DIR = $DataDir; $env:NBS_ENV_FILE = $EnvFile
+& $Node "$AppDir\apps\worker\console\power-run.mjs" --apply
+Ok "Stay-on settings applied (the console's Stay on section shows them)"
 
 Step "Checking everything"
 # The doctor (apps\worker\console\doctor.mjs): finds, reuses or downloads what this server needs, and says what it did.

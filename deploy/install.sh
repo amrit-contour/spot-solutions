@@ -225,7 +225,7 @@ EOF
 
 # The console may restart the worker and Ollama, and start the five tasks above: nothing else.
 cat > /etc/sudoers.d/nothing-bot-server-console <<EOF
-${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl disable --now nothing-bot-server-worker, /usr/bin/systemctl enable --now nothing-bot-server-worker, /usr/bin/systemctl kill --signal=SIGKILL nothing-bot-server-worker, /usr/bin/systemctl disable --now ollama, /usr/bin/systemctl enable --now ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service
+${SVC_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nothing-bot-server-worker, /usr/bin/systemctl restart ollama, /usr/bin/systemctl disable --now nothing-bot-server-worker, /usr/bin/systemctl enable --now nothing-bot-server-worker, /usr/bin/systemctl kill --signal=SIGKILL nothing-bot-server-worker, /usr/bin/systemctl disable --now ollama, /usr/bin/systemctl enable --now ollama, /usr/bin/systemctl start --no-block nothing-bot-server-task@update.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-on.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@local-off.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-data.service, /usr/bin/systemctl start --no-block nothing-bot-server-task@move-cleanup.service, /usr/local/sbin/nbs-power lid, /usr/local/sbin/nbs-power sleep, /usr/local/sbin/nbs-power wifi, /usr/local/sbin/nbs-power autoreboot
 EOF
 chmod 440 /etc/sudoers.d/nothing-bot-server-console
 visudo -cf /etc/sudoers.d/nothing-bot-server-console >/dev/null
@@ -296,9 +296,31 @@ elif [[ -f "${DATA_DIR}/service-account.json" ]]; then systemctl restart nothing
 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then ufw allow ${PORT}/tcp >/dev/null && ok "Opened port ${PORT} in ufw"; fi
 
 step "Keep running with the lid closed"
-sed -i 's/^#\?HandleLidSwitch=.*/HandleLidSwitch=ignore/; s/^#\?HandleLidSwitchExternalPower=.*/HandleLidSwitchExternalPower=ignore/' /etc/systemd/logind.conf
-systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null 2>&1 || true
-ok "Sleep disabled, lid close ignored (takes effect after reboot)"
+# The root helper the console's Stay on section calls (sudoers below lists each action): lid ignored, sleep targets masked,
+# Wi-Fi power saving off, no automatic restart after unattended upgrades.
+cat > /usr/local/sbin/nbs-power <<'HELPER'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  lid)
+    mkdir -p /etc/systemd/logind.conf.d
+    printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nHandleLidSwitchDocked=ignore\n' > /etc/systemd/logind.conf.d/50-nbs-keep-awake.conf
+    systemctl kill -s HUP systemd-logind 2>/dev/null || true ;;
+  sleep)
+    systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target ;;
+  wifi)
+    mkdir -p /etc/NetworkManager/conf.d
+    printf '[connection]\nwifi.powersave = 2\n' > /etc/NetworkManager/conf.d/99-nbs-wifi-powersave.conf
+    nmcli general reload conf 2>/dev/null || true ;;
+  autoreboot)
+    printf 'Unattended-Upgrade::Automatic-Reboot "false";\n' > /etc/apt/apt.conf.d/99nbs-no-auto-reboot ;;
+  all) "$0" lid; "$0" sleep; [[ -d /etc/NetworkManager ]] && "$0" wifi; "$0" autoreboot; true ;;
+  *) echo "usage: nbs-power lid|sleep|wifi|autoreboot|all" >&2; exit 2 ;;
+esac
+HELPER
+chmod 755 /usr/local/sbin/nbs-power
+/usr/local/sbin/nbs-power all >/dev/null 2>&1 || true
+ok "Sleep disabled, lid close ignored, Wi-Fi power saving off, no automatic restart after updates"
 
 for _ in $(seq 1 10); do [[ -f "${DATA_DIR}/console-token" ]] && break; sleep 1; done
 step "Checking everything"
