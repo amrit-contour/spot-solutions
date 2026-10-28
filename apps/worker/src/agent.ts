@@ -8,11 +8,11 @@ import type WAWebJS from "whatsapp-web.js";
 import {
   ACTION_INTENTS, DAY_NAMES, HELP_TEXT, lineupId, offerPayload, pastShowReason, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
   formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, rolloverDayFor, senderIsCurator, showDay,
-  stepPending, strictNo, pollForPending, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
+  stepPending, strictNo, pollForPending, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, type SpotReview, performed, isRating, type YesterdayShow, digestActionPoll, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
 } from "@spot/shared";
 import { col, userRef } from "./firebase.ts";
 import { agentSessions } from "./agentSession.ts";
-import { curatorPhone, agentOn, flushNotify, queueNotify, queuedCount, readMemory, readSettings, sendQuestion, sendToCurator, writeMemory, type AgentMemory } from "./agentOutbox.ts";
+import { curatorPhone, agentOn, flushNotify, queueNotify, queuedCount, readMemory, readSettings, sendCommandPoll, sendQuestion, sendToCurator, writeMemory, type AgentMemory } from "./agentOutbox.ts";
 import { applyVote, closeMicPolls } from "./agentPolls.ts";
 import { AiPolicyError } from "./aiRouting.ts";
 import { generateJson } from "./llm.ts";
@@ -20,7 +20,7 @@ import { loadComics, runHandler } from "./commands.ts";
 import { removeFromLineup, placeOnLineup, ensureComic, ensureLineup } from "./lineupOps.ts";
 import { adminEmail, membersWaitingText, planMemberChange, runMemberChange } from "./agentAdmin.ts";
 import { recordOutcome, settleRound } from "./replies.ts";
-import { answerRatings, askRatings } from "./ratings.ts";
+import { answerRatings, askRatings, reviewComics, reviewLineup } from "./ratings.ts";
 import { clearGroup, keepGroup } from "./groupCleanup.ts";
 import { sessions } from "./sessions.ts";
 import { sendQueued } from "./sendQueue.ts";
@@ -81,6 +81,10 @@ const voteDeps = (uid: string) => ({
   writeMemory: (p: Record<string, unknown>) => writeMemory(uid, p),
   say: (t: string) => say(uid, t),
   now: () => Date.now(),
+  // A tap on a rating poll saves straight to the lineup slot / show (any time inside the poll's window; a changed vote replaces the old one).
+  review: (lineupId: string, comicId: string, review: SpotReview) => reviewComics(uid, lineupId, { [comicId]: review }),
+  overall: (lineupId: string, rating: number) => reviewLineup(uid, lineupId, { rating }),
+  nameOf: async (comicId: string) => (await loadComics(uid, [comicId])).get(comicId)?.name ?? "them",
   answer: async (kind: string, text: string) => {
     if (kind === "mic") {
       const A = (await readSettings(uid)).agent!;
@@ -502,8 +506,7 @@ async function maybeDigest(uid: string, mem: AgentMemory, settings: Settings) {
   const local = localNow(new Date(), settings.timezone);
   if (!digestDue({ now: local, digestTime: A.digestTime, lastDigestOn: mem.lastDigestOn })) return;
   const w = await world(uid);
-  const calWeek = weekOf(new Date(), settings.timezone, 1); // calendar weeks, for "today" and "tomorrow"
-  const tomorrow = new Date(Date.parse(`${local.date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  const calWeek = weekOf(new Date(), settings.timezone, 1); // calendar weeks, for "today
   const lineupFor = async (date: string, show: Show) => {
     const wk = date === local.date ? calWeek : weekOf(new Date(Date.parse(`${date}T12:00:00Z`)), "UTC", 1);
     const l = (await col(uid, "lineups").doc(`${wk}_${show.id}`).get()).data() as Lineup | undefined;
@@ -512,18 +515,40 @@ async function maybeDigest(uid: string, mem: AgentMemory, settings: Settings) {
     return { ...d, comicIds: (d.comicIds ?? []).map((id) => names.get(id)?.chatId ?? id) };
   };
   const todayShows = await Promise.all(w.shows.filter((s) => s.weekday === weekdayOf(local.date)).map((s) => lineupFor(local.date, s)));
-  const tomorrowShows = await Promise.all(w.shows.filter((s) => s.weekday === weekdayOf(tomorrow)).map((s) => lineupFor(tomorrow, s)));
   const placed = new Set(w.lineups.filter((l) => l.status !== "cancelled" && l.status !== "canned").flatMap((l) => l.slots.map((s) => s.comicId)));
   const waiting = waitingRequests(w.requests, placed).map((r) => ({ name: r.comicName, id: idOf(w, r.comicId), days: requestDays(r) }));
-  const unconfirmed = w.shows.map((s) => dayOfShow(w, s)).filter((d: ShowDay) => d.date > tomorrow && (d.status === "draft" || d.status === "none"));
+  const unconfirmed = w.shows.map((s) => dayOfShow(w, s)).filter((d: ShowDay) => d.date > local.date && (d.status === "draft" || d.status === "none"));
+  // Yesterday's recap: lineups dated yesterday for the curator's shows (recorded past shows excluded).
+  const yesterday = new Date(Date.parse(`${local.date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  const yLineups = (await col(uid, "lineups").where("date", "==", yesterday).get()).docs.map((d) => d.data() as Lineup).filter((l) => !l.backfilled && w.shows.some((s) => s.id === l.showId));
+  const yesterdayShows: YesterdayShow[] = yLineups.map((l) => ({
+    showName: w.shows.find((s) => s.id === l.showId)!.name,
+    status: l.status,
+    outcome: l.outcome ?? null,
+    comics: l.slots.length,
+    unrated: l.slots.filter((s) => performed(s.attendance) && !isRating(s.rating)).length,
+    noShows: l.slots.filter((s) => s.attendance === "no_show").length,
+  }));
+  // "3 asks waiting": offers still open for today's lineups.
+  const todayLineupIds = new Set(todayShows.map((s) => `${calWeek}_${s.showId}`));
+  const offers = (await col(uid, "offers").where("status", "==", "pending").get()).docs.map((d) => d.data() as { lineupId: string; showId: string });
+  const asksWaiting: Record<string, number> = {};
+  for (const o of offers) if (todayLineupIds.has(o.lineupId)) asksWaiting[o.showId] = (asksWaiting[o.showId] ?? 0) + 1;
   const [actions, notices, mics] = await Promise.all([
     col(uid, "actions").where("status", "==", "pending").get(),
     col(uid, "notices").where("read", "==", false).get(),
     col(uid, "lineups").where("micCheckSentOn", "!=", null).get(),
   ]);
   const updates = actions.docs.filter((d) => !d.data().dismissedAt).length + notices.docs.filter((d) => !d.data().dismissedAt).length + mics.docs.filter((d) => !(d.data() as Lineup).outcome).length;
-  const rich = composeDigestRich({ today: local.date, todayShows, tomorrowShows, waiting, updates, unconfirmed });
-  if (rich && !(await sendToCurator(uid, rich.text, { unprompted: true, mentions: { ids: rich.mentions, plain: rich.plain } }))) return; // couldn't send: try again next tick
+  const input = { today: local.date, yesterday: yesterdayShows, todayShows, asksWaiting, waiting, updates, unconfirmed };
+  const rich = composeDigestRich(input);
+  // No show yesterday and none today: no message at all (it is still marked done for the day).
+  if (rich) {
+    if (!(await sendToCurator(uid, rich.text, { unprompted: true }))) return; // couldn't send: try again next tick
+    // Where an action is natural, a tap instead of typing: "Confirm Monday's lineup?" Yes / Later.
+    const poll = digestActionPoll(input);
+    if (poll) await sendCommandPoll(uid, poll).catch((e) => console.warn(`[agent] ${uid} digest poll failed:`, (e as Error).message));
+  }
   await writeMemory(uid, { lastDigestOn: local.date });
 }
 

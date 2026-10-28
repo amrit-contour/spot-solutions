@@ -13,6 +13,13 @@ import {
   formatRatingAsk,
   formatReviewAsk,
   localNow,
+  formatDate,
+  richReply,
+  overallPollSpec,
+  ratingAskGate,
+  ratingHeader,
+  ratingPollSpec,
+  slotsToRate,
   mergeReview,
   parseRatings,
   parseShowReview,
@@ -25,7 +32,7 @@ import {
   type Lineup,
 } from "@spot/shared";
 import { col } from "./firebase.ts";
-import { agentOn, readMemory, sendToCurator, writeMemory } from "./agentOutbox.ts";
+import { agentOn, readMemory, readSettings, rememberRatingPolls, sendRatingPoll, sendToCurator, writeMemory } from "./agentOutbox.ts";
 import { loadComics } from "./commands.ts";
 import { watchUser } from "./userData.ts";
 
@@ -58,41 +65,114 @@ export async function reviewLineup(uid: string, lineupId: string, patch: { ratin
   return true;
 }
 
-/** Ask for ratings for the newest happened show that hasn't been asked about. Once per show; only when the agent is linked. */
+/**
+ * Ask for ratings for the newest happened show that hasn't been asked about. Once per show (ratingAskedOn); only when the agent is linked.
+ * Never in the middle of the night (it waits for 09:30), and one show at a time with a gap between shows, so a restart that finds
+ * several shows due asks about them one after another, never in a burst. Each comic is a tap-to-answer poll; the typed answer still works.
+ */
 export async function askRatings(uid: string): Promise<void> {
   if (asking.has(uid) || !(await agentOn(uid, "notify"))) return;
   const { settings, shows } = watchUser(uid);
   if (settings.micCheck.rate === false || !settings.micCheck.enabled) return;
   asking.add(uid);
   try {
-    const today = localNow(new Date(), settings.timezone).date;
+    const local = localNow(new Date(), settings.timezone);
+    const today = local.date;
+    const mem = await readMemory(uid);
+    if (ratingAskGate({ time: local.time, nowMs: Date.now(), lastAskAt: mem.lastRatingAskAt }) !== "go") return;
     const snap = await col(uid, "lineups").where("outcome", "==", "happened").get();
     const mine = (d: { data: () => unknown }) => shows.some((sh) => sh.id === (d.data() as Lineup).showId);
     const newest = (a: { data: () => unknown }, b: { data: () => unknown }) => (b.data() as Lineup).date.localeCompare((a.data() as Lineup).date);
-    const due = snap.docs.filter((d) => ratingAskDue(d.data() as Lineup, today) && mine(d)).sort(newest)[0];
+    let due: (typeof snap.docs)[number] | undefined;
+    let rows: ReturnType<typeof slotsToRate> = [];
+    let names = new Map<string, Comic>();
+    for (const d of snap.docs.filter((x) => ratingAskDue(x.data() as Lineup, today) && mine(x)).sort(newest)) {
+      const l = d.data() as Lineup;
+      const got = await loadComics(uid, l.slots.map((s) => s.comicId));
+      const r = slotsToRate(l, got).map((x) => ({ ...x, id: got.get(x.comicId)?.chatId ?? (x.comicId.includes("@") ? x.comicId : undefined) }));
+      // Nobody left to rate: nothing to ask, and it must not hold up the next show.
+      if (!r.length) continue;
+      due = d;
+      rows = r;
+      names = got;
+      break;
+    }
     if (!due) {
       // Every comic already rated (in the app, say): the overall question can still be asked, once.
       const reviewDue = snap.docs.filter((d) => reviewAskDue(d.data() as Lineup, today) && mine(d)).sort(newest)[0];
       if (!reviewDue) return;
       const rl = reviewDue.data() as Lineup;
+      const showName = shows.find((s) => s.id === rl.showId)!.name;
       await reviewDue.ref.update({ reviewAskedOn: today });
-      const sentReview = await sendToCurator(uid, formatReviewAsk(shows.find((s) => s.id === rl.showId)!.name), { unprompted: true }).catch(() => false);
-      if (sentReview) await writeMemory(uid, { reviewAsk: { lineupId: reviewDue.id, at: Date.now() } });
-      else await reviewDue.ref.update({ reviewAskedOn: null });
+      await writeMemory(uid, { lastRatingAskAt: Date.now() });
+      const sentReview = await askOverall(uid, reviewDue.id, showName, (await readSettings(uid)).agent?.agentPolls !== false);
+      if (!sentReview) await reviewDue.ref.update({ reviewAskedOn: null });
       return;
     }
     const l = due.data() as Lineup;
     const show = shows.find((s) => s.id === l.showId)!;
-    const names = await loadComics(uid, l.slots.map((s) => s.comicId));
-    const text = formatRatingAsk({ showName: show.name, date: l.date, rows: l.slots.map((s) => ({ name: names.get(s.comicId)?.name ?? "A comic", rating: s.rating })) });
+    const usePolls = (await readSettings(uid)).agent?.agentPolls !== false;
     await due.ref.update({ ratingAskedOn: today });
+    await writeMemory(uid, { lastRatingAskAt: Date.now() });
+    let sent: boolean | null = false;
+    if (usePolls) sent = await sendRatingPolls(uid, due.id, l, show.name, rows, today);
+    if (!usePolls || sent === null) {
+      const text = formatRatingAsk({ showName: show.name, date: l.date, rows: l.slots.map((s) => ({ name: names.get(s.comicId)?.name ?? "A comic", rating: s.rating })) });
+      sent = await sendToCurator(uid, text, { unprompted: true }).catch(() => false);
+      if (sent) await writeMemory(uid, { ratingAsk: { lineupId: due.id, at: Date.now() } });
+    }
     // A send that didn't go out (rate limit, WhatsApp down) is asked again on a later tick.
-    const sent = await sendToCurator(uid, text, { unprompted: true }).catch(() => false);
-    if (sent) await writeMemory(uid, { ratingAsk: { lineupId: due.id, at: Date.now() } });
-    else await due.ref.update({ ratingAskedOn: null });
+    if (!sent) await due.ref.update({ ratingAskedOn: null });
   } finally {
     asking.delete(uid);
   }
+}
+
+/**
+ * The header, then one poll per comic, then the overall poll. Polls go out through the send queue, a few seconds apart with jitter.
+ * Each poll is remembered the moment it is sent, so a tap that comes in while later ones are still going out is not lost.
+ * true: sent; false: the header never went out; null: the first poll failed (the caller asks in text instead).
+ */
+async function sendRatingPolls(uid: string, lineupId: string, l: Lineup, showName: string, rows: { n: number; comicId: string; name: string; id?: string }[], today: string): Promise<boolean | null> {
+  // The comics are @mentioned where they have a WhatsApp id (a poll title can't carry a mention); plain names otherwise, and the send falls back to plain names by itself if mentions fail.
+  const rich = richReply(rows.map((r) => ({ name: r.name, id: r.id })), (labels) => ratingHeader({ showName, dateLabel: formatDate(l.date), rows: rows.map((r, i) => ({ n: r.n, label: labels[i]! })) }));
+  if (!(await sendToCurator(uid, rich.text, { unprompted: true, mentions: { ids: rich.mentions, plain: rich.plain } }).catch(() => false))) return false;
+  await writeMemory(uid, { ratingAsk: { lineupId, at: Date.now() } });
+  let first = true;
+  for (const r of rows) {
+    const id = await sendRatingPoll(uid, ratingPollSpec(r.name), true).catch((e) => {
+      console.warn(`[ratings] ${uid} poll for ${r.name} failed:`, (e as Error).message);
+      return null;
+    });
+    if (!id) {
+      if (first) return null;
+      continue; // typed answers still reach this one ("2 4")
+    }
+    first = false;
+    await rememberRatingPolls(uid, [{ id, lineupId, comicId: r.comicId, at: Date.now() }]);
+  }
+  const fresh = (await col(uid, "lineups").doc(lineupId).get()).data() as Lineup | undefined;
+  if (fresh && !fresh.reviewAskedOn && !fresh.review) {
+    await col(uid, "lineups").doc(lineupId).update({ reviewAskedOn: today });
+    if (!(await askOverall(uid, lineupId, showName, true, false))) await col(uid, "lineups").doc(lineupId).update({ reviewAskedOn: null });
+  }
+  return true;
+}
+
+/** "How was the show overall?" as a poll (or as the old text when polls are off or fail). `withText`: say what it is about first (a lone overall question). */
+async function askOverall(uid: string, lineupId: string, showName: string, usePolls: boolean, withText = true): Promise<boolean> {
+  if (usePolls) {
+    if (withText) await sendToCurator(uid, `🎤 One more: how was *${showName}* overall?`, { unprompted: true }).catch(() => false);
+    const id = await sendRatingPoll(uid, overallPollSpec(showName)).catch(() => null);
+    if (id) {
+      await rememberRatingPolls(uid, [{ id, lineupId, comicId: null, at: Date.now() }]);
+      await writeMemory(uid, { reviewAsk: { lineupId, at: Date.now() } });
+      return true;
+    }
+  }
+  if (!(await sendToCurator(uid, formatReviewAsk(showName), { unprompted: true }).catch(() => false))) return false;
+  await writeMemory(uid, { reviewAsk: { lineupId, at: Date.now() } });
+  return true;
 }
 
 /**
@@ -111,12 +191,12 @@ async function answerComicRatings(uid: string, text: string, wait: { lineupId: s
   const ref = col(uid, "lineups").doc(wait.lineupId);
   const l = (await ref.get()).data() as Lineup | undefined;
   if (!l) return void (await writeMemory(uid, { ratingAsk: null })), null;
+  const names = await loadComics(uid, l.slots.map((s) => s.comicId));
   const left = unrated(l.slots);
   // "2 no show, 3 late" (and "1 4, 2 no show": the rest is read as number-and-rating pairs only, never "one each in order").
   const att = parseAttendanceMarks(text, l.slots.length);
   const parsed = att ? (att.rest ? parseRatings(att.rest, l.slots.length, []) : { ratings: {}, skip: false }) : parseRatings(text, l.slots.length, left.map((x) => x.n));
   if (!parsed) return null;
-  const names = await loadComics(uid, l.slots.map((s) => s.comicId));
   const nameAt = (n: number) => names.get(l.slots[n - 1]!.comicId)?.name ?? "A comic";
   if (parsed.skip) {
     await ref.update({ ratingsSkipped: true });

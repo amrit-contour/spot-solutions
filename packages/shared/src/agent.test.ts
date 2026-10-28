@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AGENT_CONFIRM_TTL_MS, agentVaultId, askText, choosePending, composeDigest, composeNotifyBatch, confirmPending, describePlan, digestDue, formatLineup, formatWaiting, intentPrompt, matchPeople,
+  AGENT_CONFIRM_TTL_MS, agentVaultId, askText, choosePending, composeDigest, digestActionPoll, composeNotifyBatch, confirmPending, describePlan, digestDue, formatLineup, formatWaiting, intentPrompt, matchPeople,
   maskPhone, micAnswer, planAction, type PlanWorld, normalizeRawIntent, parseClock, parseIntentByRules, rateCheck, resolveShow, senderIsCurator, splitVaultId, stepPending, strictNo, strictYes, type ActionPlan, type ShowDay,
 } from "./agent.ts";
 
@@ -275,19 +275,41 @@ describe("notice batches", () => {
 });
 
 describe("the morning digest", () => {
-  const input = { today: "2026-10-26", todayShows: [day()], tomorrowShows: [day({ showName: "Tuesday Mic", weekday: 2, date: "2026-10-27", status: "draft", names: ["Priya"] })], waiting: [{ name: "Zed" }, { name: "Yan" }], updates: 3, unconfirmed: [day({ showName: "Tuesday Mic", weekday: 2, status: "draft" })] };
-  it("covers today, waiting, what needs you and tomorrow", () => {
+  const yest = { showName: "Tuesday Mic", status: "confirmed" as const, outcome: "happened" as const, comics: 8, unrated: 2, noShows: 1 };
+  const input = { today: "2026-10-28", yesterday: [yest], todayShows: [day({ showName: "Wednesday Mic", weekday: 3, date: "2026-10-28", time: "20:00", names: ["A", "B", "C", "D", "E", "F"], slotCount: 8 })], asksWaiting: { mon: 3 }, waiting: [], updates: 0, unconfirmed: [day({ showName: "Monday Mic", weekday: 1, date: "2026-11-02", status: "draft", names: ["A"] })] };
+  it("combines yesterday's recap with today's plan and what needs you", () => {
     const out = composeDigest(input)!;
-    expect(out).toContain("*Today: Monday Mic* · 8:30 PM (confirmed, 2 of 6)");
-    expect(out).toContain("1. Asha");
-    expect(out).toContain("*Waiting this week (2):* Zed, Yan");
-    expect(out).toContain("3 items in Updates");
-    expect(out).toContain("Tuesday Mic (Tue) isn't confirmed");
-    expect(out).toContain("*Tomorrow: Tuesday Mic*");
+    expect(out).toContain("*Yesterday*\n• *Tuesday Mic* happened · 8 comics · 2 unrated · 1 no-show");
+    expect(out).toContain("*Today*\n• *Wednesday Mic* 8:00 PM · lineup confirmed 6/8 · 3 asks waiting");
+    expect(out).toContain("*Needs you*\n• Monday Mic (Mon 2 Nov) isn't confirmed");
   });
-  it("says nothing when there is nothing to say", () => {
-    expect(composeDigest({ today: "2026-10-26", todayShows: [], tomorrowShows: [], waiting: [], updates: 0, unconfirmed: [] })).toBeNull();
-    expect(composeDigest({ today: "2026-10-26", todayShows: [day({ status: "cancelled" })], tomorrowShows: [], waiting: [], updates: 0, unconfirmed: [] })).toBeNull();
+  it("sends only when a show was on yesterday or is on today", () => {
+    expect(composeDigest({ today: "2026-10-28", yesterday: [], todayShows: [], waiting: [{ name: "Zed" }], updates: 3, unconfirmed: [day({ status: "draft", date: "2026-11-02" })] })).toBeNull();
+    expect(composeDigest({ ...input, yesterday: [], todayShows: [] })).toBeNull();
+    expect(composeDigest({ ...input, yesterday: [{ ...yest, status: "cancelled" }], todayShows: [day({ status: "cancelled" })] })).toBeNull();
+    expect(composeDigest({ ...input, yesterday: [{ ...yest, outcome: "canned" }], todayShows: [] })).toBeNull();
+    expect(composeDigest({ ...input, yesterday: [], todayShows: [day({ date: "2026-10-28" })] })).toContain("*Today*");
+    expect(composeDigest({ ...input, todayShows: [] })).not.toContain("*Today*");
+  });
+  it("keeps it short: no per-comic lists, nothing zero, needs-you deduped", () => {
+    const out = composeDigest({ ...input, yesterday: [{ ...yest, unrated: 0, noShows: 0 }], asksWaiting: {}, updates: 2, waiting: [{ name: "Zed" }, { name: "Yan" }], unconfirmed: [day({ showName: "Monday Mic", date: "2026-11-02", status: "draft" }), day({ showName: "Monday Mic", date: "2026-11-02", status: "draft" })] })!;
+    expect(out).toContain("happened · 8 comics · all rated");
+    expect(out).not.toContain("no-show");
+    expect(out).not.toContain("ask");
+    expect(out).toContain("2 spot requests waiting");
+    expect(out).toContain("2 items in Updates");
+    expect(out.match(/Monday Mic/g)).toHaveLength(1);
+    expect(out).not.toContain("1. ");
+  });
+  it("a show not yet marked and an empty today still read plainly", () => {
+    const out = composeDigest({ today: "2026-10-28", yesterday: [{ ...yest, outcome: null, unrated: 8, noShows: 0 }], todayShows: [day({ status: "none", names: [], date: "2026-10-28" })], updates: 0, unconfirmed: [] })!;
+    expect(out).toContain("not marked yet · 8 comics");
+    expect(out).toContain("no lineup yet");
+  });
+  it("offers a tap instead of typing: confirm the next unconfirmed show that has people in it", () => {
+    expect(digestActionPoll(input)).toEqual({ question: "Confirm Monday's lineup (Monday Mic)?", options: ["Yes, confirm", "Later"], answers: ["confirm Monday", ""] });
+    expect(digestActionPoll({ today: "2026-10-28", unconfirmed: [day({ status: "none", names: [], date: "2026-11-02" })] })).toBeNull();
+    expect(digestActionPoll({ today: "2026-10-28", unconfirmed: [] })).toBeNull();
   });
   it("is due once a day, from the chosen time", () => {
     expect(digestDue({ now: { date: "2026-10-26", time: "09:59" }, digestTime: "10:00" })).toBe(false);

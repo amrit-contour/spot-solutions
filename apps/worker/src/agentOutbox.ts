@@ -1,7 +1,7 @@
 // Everything the agent number sends goes through here: one place that checks it is linked, switched on, has the curator's number,
 // stays inside the rate limits, and uses the send queue (typing, jitter). It only ever addresses the curator's own number.
 import WAWebJS from "whatsapp-web.js";
-import { logPoll, pollForPending, yesNoPoll, resolvePlaceholders, type AgentPollSpec, type AskKind, type PollRecord, AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyRich, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type SideAsk, type Settings } from "@spot/shared";
+import { addRatingPolls, logPoll, pollForPending, yesNoPoll, resolvePlaceholders, type AgentPollSpec, type AskKind, type PollRecord, type RatingPollRef, AGENT_BATCH_MAX_MS, AGENT_BATCH_QUIET_MS, AGENT_REPLIES_PER_HOUR, AGENT_UNPROMPTED_PER_HOUR, composeNotifyRich, rateCheck, type AgentSettings, type NotifyItem, type ActionPlan, type PendingAction, type SideAsk, type Settings } from "@spot/shared";
 import { sessionRef, userRef } from "./firebase.ts";
 import { agentRef, agentSessions } from "./agentSession.ts";
 import { deliverableId, sendContent, sendQueued } from "./sendQueue.ts";
@@ -18,6 +18,10 @@ export interface AgentMemory {
   ratingAsk?: { lineupId: string; at: number } | null;
   /** The lineup the agent last asked "how was the show overall?" for, and when. */
   reviewAsk?: { lineupId: string; at: number } | null;
+  /** Rating polls (per comic and per show) and what each one rates: a vote on any of them, any time inside 3 days, saves (agentPolls.ts). */
+  ratingPolls?: RatingPollRef[];
+  /** When rating questions last went out about a show (epoch ms): the next show waits a while, so a restart never bursts. */
+  lastRatingAskAt?: number | null;
   lastDigestOn?: string | null;
   /** How far the new-request, follow-up and notice scans have got (epoch ms). Moves only after a successful send. */
   cursor?: { requests?: number; actions?: number; notices?: number };
@@ -53,10 +57,12 @@ export async function agentOn(uid: string, part?: keyof Pick<AgentSettings, "not
 }
 
 const sentAt = new Map<string, number[]>();
+/** The rating polls of a show (one per comic) have their own cap, so rating a big lineup doesn't use up the notices' allowance. */
+const RATING_POLLS_PER_HOUR = 40;
 /** One reservation per send, so concurrent callers can't both slip under the cap. */
-function reserve(uid: string, unprompted: boolean) {
-  const key = `${uid}:${unprompted ? "u" : "r"}`;
-  const r = rateCheck(sentAt.get(key) ?? [], Date.now(), unprompted ? AGENT_UNPROMPTED_PER_HOUR : AGENT_REPLIES_PER_HOUR);
+function reserve(uid: string, unprompted: boolean, bucket: "rating" | null = null) {
+  const key = `${uid}:${bucket ? "p" : unprompted ? "u" : "r"}`;
+  const r = rateCheck(sentAt.get(key) ?? [], Date.now(), bucket ? RATING_POLLS_PER_HOUR : unprompted ? AGENT_UNPROMPTED_PER_HOUR : AGENT_REPLIES_PER_HOUR);
   if (!r.ok) {
     sentAt.set(key, r.sent);
     return false;
@@ -119,14 +125,33 @@ export async function sendQuestion(uid: string, text: string, o: { poll: AgentPo
 }
 
 /** The poll message id, or null when it can't go out here (the caller then sends text). Throws when WhatsApp refuses it. */
-async function sendPoll(uid: string, spec: AgentPollSpec, unprompted: boolean): Promise<string | null> {
+async function sendPoll(uid: string, spec: Pick<AgentPollSpec, "question" | "options">, unprompted: boolean, bucket: "rating" | null = null, multi = false): Promise<string | null> {
   const client = agentSessions.get(uid);
   if (!client) return null;
   if (!(await readSettings(uid)).agent?.enabled) return null;
   const phone = await curatorPhone(uid);
-  if (!phone || !reserve(uid, unprompted)) return null;
-  const m = await sendContent(client, `${phone}@c.us`, new WAWebJS.Poll(spec.question, spec.options, { allowMultipleAnswers: false, messageSecret: undefined }), spec.question.length);
+  if (!phone || !reserve(uid, unprompted, bucket)) return null;
+  const m = await sendContent(client, `${phone}@c.us`, new WAWebJS.Poll(spec.question, spec.options, { allowMultipleAnswers: multi, messageSecret: undefined }), spec.question.length);
   return (m as { id?: { _serialized?: string } } | undefined)?.id?._serialized ?? null;
+}
+
+/** One single-select rating poll (per comic, or the show overall). The poll's message id, or null when it can't go out (the caller falls back to text). */
+export const sendRatingPoll = (uid: string, spec: { question: string; options: string[] }, multi = false): Promise<string | null> => sendPoll(uid, spec, true, "rating", multi);
+
+/** Remember what these polls rate. Replaces the list (expired ones dropped), so it never grows. */
+export async function rememberRatingPolls(uid: string, added: RatingPollRef[]): Promise<void> {
+  const mem = await readMemory(uid);
+  await writeMemory(uid, { ratingPolls: addRatingPolls(mem.ratingPolls, added, Date.now()) });
+}
+
+/** Send a command poll (the morning message's "Confirm Monday's lineup?"): a tap runs `answers[i]` as if typed. Remembered so a vote finds it. */
+export async function sendCommandPoll(uid: string, poll: AgentPollSpec): Promise<boolean> {
+  if ((await readSettings(uid)).agent?.agentPolls === false) return false;
+  const id = await sendPoll(uid, poll, true).catch(() => null);
+  if (!id) return false;
+  const mem = await readMemory(uid);
+  await writeMemory(uid, { polls: logPoll(mem.polls, { id, kind: "command", options: poll.options, answers: poll.answers, at: Date.now() }) });
+  return true;
 }
 
 // ---- batching: several things that happen close together become one message ----

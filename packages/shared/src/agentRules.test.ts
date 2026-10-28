@@ -89,11 +89,4 @@ describe("notices: no repeats, one line per reason", () => {
     expect(r.plain).toBe("2 new spot requests: Rohan, Priya.");
     expect(r.mentions).toEqual(["91@c.us"]);
   });
-  it("the digest names people the same way", () => {
-    const d = composeDigest({ today: "2026-10-26", todayShows: [{ showId: "s", showName: "Banter", weekday: 1, date: "2026-10-26", time: "20:00", slotCount: 5, status: "confirmed", names: ["Rohan Sharma", "Rohan Kapoor"] }], tomorrowShows: [], waiting: [{ name: "Priya Nair Comic BLR" }], updates: 0, unconfirmed: [] })!;
-    expect(d).toContain("1. Rohan S.");
-    expect(d).toContain("2. Rohan K.");
-    expect(d).toContain("Priya");
-    expect(d).not.toContain("Nair");
-  });
 });

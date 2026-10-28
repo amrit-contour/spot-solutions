@@ -785,44 +785,80 @@ export function composeNotifyRich(raw: NotifyItem[]): RichReply | null {
 /** The plain-text form of composeNotifyRich. */
 export const composeNotifyBatch = (items: NotifyItem[]): string | null => composeNotifyRich(items)?.plain ?? null;
 
+/** Yesterday's show for the morning recap (one lineup that was on the calendar yesterday). */
+export interface YesterdayShow {
+  showName: string;
+  status: Lineup["status"] | "none";
+  outcome?: "happened" | "canned" | null;
+  /** Comics on the lineup. */
+  comics: number;
+  /** Comics who performed and have no rating yet. */
+  unrated: number;
+  noShows: number;
+}
+
 export interface DigestInput {
   /** YYYY-MM-DD in the curator's timezone. */
   today: string;
+  /** Lineups that were on yesterday (recorded past shows excluded by the caller). */
+  yesterday?: YesterdayShow[];
   todayShows: ShowDay[];
-  tomorrowShows: ShowDay[];
-  waiting: WaitingPerson[];
+  /** Open offers ("asks") by show id, for the Today line. */
+  asksWaiting?: Record<string, number>;
+  /** People who asked for a spot and aren't placed. */
+  waiting?: WaitingPerson[];
   /** Things in the app's Updates tab. */
   updates: number;
-  /** Shows later this week that aren't confirmed. */
+  /** Shows after today that aren't confirmed. */
   unconfirmed: ShowDay[];
 }
 
-/** The morning message with people mentioned where they have a WhatsApp id; null when there's nothing to say (the agent then stays quiet). */
+const PLURAL = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const happenedShow = (y: YesterdayShow) => y.status !== "cancelled" && y.status !== "canned" && y.outcome !== "canned";
+
+function yesterdayLine(y: YesterdayShow): string {
+  const state = y.outcome === "happened" ? "happened" : "not marked yet";
+  const bits = [state, PLURAL(y.comics, "comic")];
+  if (y.outcome === "happened" && y.comics) bits.push(y.unrated ? `${y.unrated} unrated` : "all rated");
+  if (y.noShows) bits.push(PLURAL(y.noShows, "no-show"));
+  return `• *${y.showName}* ${bits.join(" · ")}`;
+}
+
+function todayLine(s: ShowDay, asks: number): string {
+  const lineup = s.status === "none" ? "no lineup yet" : `lineup ${s.status === "confirmed" ? "confirmed" : "not confirmed"} ${s.names.length}/${s.slotCount}`;
+  return `• *${s.showName}* ${formatTime(s.time)} · ${lineup}${asks ? ` · ${PLURAL(asks, "ask")} waiting` : ""}`;
+}
+
+/**
+ * The morning message: yesterday's recap, today's plan, then what needs you (deduped, specific). Null, so nothing is sent, unless a
+ * show was on yesterday or one is on today. People are not listed (the app has the lineups), so nothing is mentioned.
+ */
 export function composeDigestRich(d: DigestInput): RichReply | null {
+  const yesterday = (d.yesterday ?? []).filter(happenedShow);
   const today = d.todayShows.filter((s) => s.status !== "cancelled" && s.status !== "canned");
-  const waiting = d.waiting.slice(0, 6);
-  const people = [...today.flatMap((s) => s.names.map((n, i) => ({ name: n, id: s.comicIds?.[i] }))), ...waiting.map((w) => ({ name: w.name, id: w.id }))];
-  const r = richReply(people, (labels) => {
-    let k = 0;
+  if (!yesterday.length && !today.length) return null;
+  const text = (() => {
     const parts: string[] = [];
-    for (const s of today) {
-      const names = s.names.map(() => labels[k++]!);
-      const list = names.length ? names.map((n, i) => `${i + 1}. ${n}`).join("\n") : "Nobody placed yet.";
-      parts.push(`*Today: ${s.showName}* · ${formatTime(s.time)} (${STATUS_WORD[s.status]}, ${s.names.length} of ${s.slotCount})\n${list}`);
-    }
-    const wl = waiting.map(() => labels[k++]!);
-    if (d.waiting.length) parts.push(`*Waiting this week (${d.waiting.length}):* ${wl.join(", ")}${d.waiting.length > 6 ? `, +${d.waiting.length - 6} more` : ""}`);
-    const needs: string[] = [];
-    if (d.updates) needs.push(`${d.updates} ${d.updates === 1 ? "item" : "items"} in Updates`);
-    for (const s of d.unconfirmed.slice(0, 3)) needs.push(`${s.showName} (${DAY_SHORT[s.weekday]}) isn't confirmed`);
-    if (needs.length) parts.push(`*Needs you:* ${needs.join("; ")}`);
-    for (const s of d.tomorrowShows) {
-      if (s.status === "cancelled" || s.status === "canned") continue;
-      parts.push(`*Tomorrow: ${s.showName}* · ${formatTime(s.time)} (${STATUS_WORD[s.status]}, ${s.names.length} of ${s.slotCount})`);
-    }
-    return parts.length ? `Good morning. Here's your day.\n\n${parts.join("\n\n")}` : "";
-  });
-  return r.text ? r : null;
+    if (yesterday.length) parts.push(`*Yesterday*\n${yesterday.map(yesterdayLine).join("\n")}`);
+    if (today.length) parts.push(`*Today*\n${today.map((s) => todayLine(s, d.asksWaiting?.[s.showId] ?? 0)).join("\n")}`);
+    const needs = new Map<string, string>();
+    const open = d.unconfirmed.filter((s) => s.date > d.today && (s.status === "draft" || s.status === "none"));
+    for (const s of open.slice(0, 3)) needs.set(`u|${s.showId}|${s.date}`, `${s.showName} (${DAY_SHORT[s.weekday]} ${formatDate(s.date)}) isn't confirmed`);
+    if (open.length > 3) needs.set("u|more", `+${open.length - 3} more shows not confirmed`);
+    const waiting = d.waiting?.length ?? 0;
+    if (waiting) needs.set("w", `${PLURAL(waiting, "spot request")} waiting`);
+    if (d.updates) needs.set("n", `${PLURAL(d.updates, "item")} in Updates`);
+    if (needs.size) parts.push(`*Needs you*\n${[...needs.values()].map((n) => `• ${n}`).join("\n")}`);
+    return `Good morning. Here's your day.\n\n${parts.join("\n\n")}`;
+  })();
+  return { text, plain: text, mentions: [] };
+}
+
+/** A tappable follow-up for the digest where an action is natural: confirm the first unconfirmed show that has people placed. Null otherwise. */
+export function digestActionPoll(d: Pick<DigestInput, "today" | "unconfirmed">): { question: string; options: string[]; answers: string[] } | null {
+  const s = d.unconfirmed.find((x) => x.date > d.today && x.status === "draft" && x.names.length > 0);
+  if (!s) return null;
+  return { question: `Confirm ${DAY_NAMES[s.weekday]}'s lineup (${s.showName})?`, options: ["Yes, confirm", "Later"], answers: [`confirm ${DAY_NAMES[s.weekday]}`, ""] };
 }
 
 /** The plain-text form of composeDigestRich. */

@@ -10,7 +10,7 @@ export interface AgentPollSpec {
 }
 
 /** Which kind of question a poll belongs to: decides what a vote on it means and whether it is still open. */
-export type AskKind = "pending" | "comic" | "side" | "mic";
+export type AskKind = "pending" | "comic" | "side" | "mic" | "command";
 
 /** What the agent remembers about a poll it sent (users/{uid}/session/agent `polls`, newest last, capped). */
 export interface PollRecord {
@@ -19,7 +19,7 @@ export interface PollRecord {
   options: string[];
   answers: string[];
   at: number;
-  /** Mic checks aren't kept as a pending question; set once one is answered. */
+  /** Mic checks and command polls aren't kept as a pending question; set once one is answered. */
   closed?: boolean;
   /** "That question already closed" was said for this poll already. */
   noted?: boolean;

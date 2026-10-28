@@ -63,7 +63,7 @@ let U = "u0";
 const setup = (state: typeof agent) => {
   agent = state;
   U = `u${++n}`;
-  store.set(`${U}/user`, { settings: { agent: { enabled: true, notify: true } } });
+  store.set(`${U}/user`, { settings: { agent: { enabled: true, notify: true, agentPolls: false } } });
   store.set(`${U}/session/state`, { phone: "919800000001" });
   for (const [id, name] of [["a@c.us", "Asha Rao"], ["b@c.us", "Bo"], ["c@c.us", "Chitra"]]) store.set(`${U}/comics/${id}`, { id, name, history: [{ date: "2026-10-26", showId: "mon", showName: "Monday Mic", status: "confirmed" }] });
 };
