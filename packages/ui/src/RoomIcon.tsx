@@ -10,7 +10,7 @@ import type { SVGProps } from "react";
 export function IconRoom(props: SVGProps<SVGSVGElement>) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="1.2em" height="1.2em" viewBox="0 0 24 24" fill="currentColor" {...props}>
-      <path d="M2 2H5L21 22H3.4Z" opacity=".5" />
+      <path d="M2 2H4.6L21.6 22H6.6Z" opacity=".5" />
       <rect x="10.6" y="4.2" width="6.4" height="10.4" rx="3.2" />
       <rect x="12.9" y="13.6" width="1.8" height="7.2" />
       <rect x="8.3" y="19.6" width="11" height="2.4" rx="1.2" />
