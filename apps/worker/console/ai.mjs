@@ -332,5 +332,12 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     await restartWorker();
   }
 
-  return { view, reconcileDefault, undoSwitch, localModels, deleteModel, unloadModel, listModels, test, startPull, setKey, setDefaults, pullState: () => pull };
+  async function setOllamaKey(raw) {
+    const key = typeof raw === "string" ? raw.trim() : raw;
+    if (key === "" || key === null) { writeEnv({ OLLAMA_API_KEY: "" }); try { await restartWorker(); } catch {} return; }
+    writeEnv({ OLLAMA_API_KEY: String(key) });
+    try { await restartWorker(); } catch {}
+  }
+
+  return { view, reconcileDefault, undoSwitch, localModels, deleteModel, unloadModel, listModels, test, startPull, setKey, setDefaults, setOllamaKey, pullState: () => pull };
 }
