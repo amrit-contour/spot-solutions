@@ -46,6 +46,8 @@ interface Hooks {
   onMessage?: (uid: string, client: WAWebJS.Client, msg: WAWebJS.Message) => void;
   /** Set by agent.ts: a tap on one of the agent's polls. */
   onVote?: (uid: string, client: WAWebJS.Client, vote: WAWebJS.PollVote) => void;
+  /** Set by agent.ts: an emoji reaction on one of the agent's messages (a ✅ from the curator dismisses the notices it forwarded). */
+  onReaction?: (uid: string, client: WAWebJS.Client, reaction: WAWebJS.Reaction) => void;
 }
 
 class AgentSessionManager {
@@ -161,6 +163,7 @@ class AgentSessionManager {
     });
     client.on("message", (msg) => this.hooks.onMessage?.(uid, client, msg));
     client.on("vote_update", (vote) => this.hooks.onVote?.(uid, client, vote));
+    client.on("message_reaction", (r) => this.hooks.onReaction?.(uid, client, r));
     client.on("disconnected", async (reason) => {
       if (this.clients.get(uid) !== client) return;
       console.warn(`[agent] ${uid} disconnected: ${reason}`);

@@ -307,7 +307,7 @@ describe("the morning digest", () => {
     expect(out).toContain("no lineup yet");
   });
   it("offers a tap instead of typing: confirm the next unconfirmed show that has people in it", () => {
-    expect(digestActionPoll(input)).toEqual({ question: "Confirm Monday's lineup (Monday Mic)?", options: ["Yes, confirm", "Later"], answers: ["confirm Monday", ""] });
+    expect(digestActionPoll(input)).toEqual({ question: "Confirm Monday's lineup (Monday Mic)?", options: ["Yes, confirm", "Later"], answers: ["confirm Monday", ""], showId: "mon" });
     expect(digestActionPoll({ today: "2026-10-28", unconfirmed: [day({ status: "none", names: [], date: "2026-11-02" })] })).toBeNull();
     expect(digestActionPoll({ today: "2026-10-28", unconfirmed: [] })).toBeNull();
   });

@@ -294,7 +294,22 @@ export async function recordOutcome(uid: string, lineupId: string, outcome: "hap
   const ref = col(uid, "lineups").doc(lineupId);
   const lineup = (await ref.get()).data() as Lineup | undefined;
   if (!lineup) return;
-  if (outcome === "happened") return void (await ref.update({ outcome, outcomeAt: Date.now() }));
+  if (outcome === "happened") {
+    // Switching a "didn't happen" back (a late vote the curator confirmed): the show stands again and the comics' nights count as booked.
+    if (lineup.status === "canned") {
+      await ref.update({ outcome, outcomeAt: Date.now(), status: "confirmed" });
+      const { shows } = watchUser(uid);
+      const show = shows.find((s) => s.id === lineup.showId);
+      const date = show ? dateInWeek(lineup.weekOf, show.weekday) : lineup.date;
+      for (const s of lineup.slots) {
+        const cref = col(uid, "comics").doc(s.comicId);
+        const c = (await cref.get()).data() as Comic | undefined;
+        if (c?.history?.some((h) => h.date === date && h.showId === lineup.showId && h.status === "canned")) await cref.set({ history: withHistory(c.history, { date, showId: lineup.showId, showName: show?.name ?? "Show", status: "confirmed" }) }, { merge: true });
+      }
+      return;
+    }
+    return void (await ref.update({ outcome, outcomeAt: Date.now() }));
+  }
   const { shows } = watchUser(uid);
   const show = shows.find((s) => s.id === lineup.showId);
   const date = show ? dateInWeek(lineup.weekOf, show.weekday) : lineup.date;
@@ -324,7 +339,7 @@ export async function sendMicChecks(uid: string, client: WAWebJS.Client | undefi
     if (l.micCheckSentOn || !micCheckDue(l, show, now, hours)) continue;
     await d.ref.update({ micCheckSentOn: now.date });
     // With the agent number linked (and its notices on), it asks you there and reads your yes/no; no "Message yourself" chat.
-    if (await sendMicCheck(uid, `🎤 Did *${show?.name ?? "the show"}* on ${formatDate(l.date)} happen? Reply *yes* or *no* here.`)) continue;
+    if (await sendMicCheck(uid, `🎤 Did *${show?.name ?? "the show"}* on ${formatDate(l.date)} happen? Reply *yes* or *no* here.`, { lineupId: d.id, label: `${show?.name ?? "Show"} ${formatDate(l.date)}` })) continue;
     if (!settings.micCheck.whatsapp) continue;
     const self = client?.info?.wid?._serialized;
     if (!client || !self) continue;

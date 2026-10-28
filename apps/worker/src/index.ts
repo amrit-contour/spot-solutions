@@ -9,7 +9,7 @@ import { startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
 import { checkBrowserAtStart } from "./browserHeal.ts";
 import { agentSessions } from "./agentSession.ts";
-import { onAgentMessage, onAgentVote } from "./agent.ts";
+import { onAgentMessage, onAgentReaction, onAgentVote } from "./agent.ts";
 import { fleet } from "./fleet.ts";
 import { DEFAULT_AI_POLICY, restartMarker, type AiPolicy } from "@spot/shared";
 import { hasServerGeminiKey, ollamaState, unwatchKeys, watchKeys, OLLAMA_URL } from "./llm.ts";
@@ -128,6 +128,7 @@ async function main() {
   };
   agentSessions.hooks.onMessage = onAgentMessage;
   agentSessions.hooks.onVote = onAgentVote;
+  agentSessions.hooks.onReaction = onAgentReaction;
   fleet.start({
     retryPending: rescanCommands,
     onAcquire: (uid) => {

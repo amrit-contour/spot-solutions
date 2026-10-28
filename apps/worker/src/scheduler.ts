@@ -7,6 +7,7 @@ import { logActivity } from "./activity.ts";
 import { sessions } from "./sessions.ts";
 import { agentSessions } from "./agentSession.ts";
 import { agentTick } from "./agent.ts";
+import { mirrorTick } from "./agentMirrorTick.ts";
 import { fleet } from "./fleet.ts";
 import { watchUser } from "./userData.ts";
 import { expireOffers, sendMicChecks } from "./replies.ts";
@@ -22,6 +23,7 @@ import { maybePhotoSweep } from "./profilePics.ts";
 import { maybeSweepMedia } from "./media.ts";
 
 const TICK_MS = 2 * 60_000;
+const MIRROR_TICK_MS = 30_000;
 const running = new Set<string>();
 
 async function tick(uid: string) {
@@ -81,4 +83,8 @@ export function startScheduler(uids: () => Iterable<string>) {
       void maybePhotoSweep(uid).catch((e) => console.error("[pics-sweep]", e.message));
     }
   }, TICK_MS).unref();
+  // Questions the curator answered in the app get a ✅ and one quoted reply on WhatsApp within about a minute (agentMirrorTick.ts).
+  setInterval(() => {
+    for (const uid of uids()) if (agentSessions.get(uid)) void mirrorTick(uid).catch((e) => console.error("[agent-mirror]", e));
+  }, MIRROR_TICK_MS).unref();
 }

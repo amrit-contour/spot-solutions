@@ -81,7 +81,7 @@ export async function ask(uid: string, show: Show, lineup: Lineup & { id: string
   // The card above is the question. On the agent number too, as a yes/no it can act on (only when linked and on; a failed send
   // leaves the card standing). Never over something else it's waiting on.
   const pending = { ...confirmPending({ type: "cleanup", showId: show.id, lineupId: lineup.id }, question, Date.now()), expiresAt: Date.now() + ASK_TTL_MS };
-  await askCurator(uid, `🧹 ${question}\nReply *yes* to clear it (POCs, regulars, co-hosts and admins stay), or *no* to keep everyone.`, pending);
+  await askCurator(uid, `🧹 ${question}\nReply *yes* to clear it (POCs, regulars, co-hosts and admins stay), or *no* to keep everyone.`, pending, `${show.name} ${lineup.date}`);
 }
 
 /**

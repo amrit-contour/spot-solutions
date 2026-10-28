@@ -8,12 +8,13 @@ import type WAWebJS from "whatsapp-web.js";
 import {
   ACTION_INTENTS, DAY_NAMES, HELP_TEXT, lineupId, offerPayload, pastShowReason, INTENT_SCHEMA, INTENT_THRESHOLD, QUESTION_INTENTS, agentHelpText, askText, dateInWeek, formatMicStatus, richReply, type RichReply, composeDigestRich, digestDue, formatAsked, formatLastPerformed, formatLineup,
   formatPendingConfirm, formatWaiting, intentPrompt, lastSpot, localNow, matchPeople, micAnswer, normalizeRawIntent, parseIntentByRules, personLabel, planAction, requestDays, resolveShow, rolloverDayFor, senderIsCurator, showDay,
-  stepPending, strictNo, pollForPending, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, parseNoNote, type SpotReview, performed, isRating, type YesterdayShow, digestActionPoll, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
+  stepPending, strictNo, pollForPending, DISMISS_REACTIONS, conflictText, judgeLateVote, mirrorKey, type ChangeAsk, type PollRecord, SIDE_POLL, SIDE_QUESTION, type SideAsk, type PendingAction, strictYes, waitingRequests, weekOf, type ActionPlan, type AgentIntent, type AgentScope, type AgentSettings, type Comic, type Lineup, type PersonRef, type Settings, parseNoNote, type SpotReview, performed, isRating, type YesterdayShow, digestActionPoll, type Show, type ShowDay, type SpotRequest, type Venue, type Weekday,
 } from "@spot/shared";
 import { col, userRef } from "./firebase.ts";
 import { agentSessions } from "./agentSession.ts";
 import { curatorPhone, agentOn, flushNotify, queueNotify, queuedCount, readMemory, readSettings, sendCommandPoll, sendQuestion, sendToCurator, writeMemory, type AgentMemory } from "./agentOutbox.ts";
-import { applyVote, closeMicPolls } from "./agentPolls.ts";
+import { applyChange, applyVote, closeMicPolls } from "./agentPolls.ts";
+import { claimOnWhatsApp, dismissForwarded, mirrorOfPending, mutateAsks } from "./agentMirror.ts";
 import { AiPolicyError } from "./aiRouting.ts";
 import { generateJson } from "./llm.ts";
 import { loadComics, runHandler } from "./commands.ts";
@@ -89,15 +90,48 @@ const voteDeps = (uid: string) => ({
   why: (lineupId: string, reasons: string[]) => setWhy(uid, lineupId, reasons),
   repeat: (lineupId: string, choice: "repeat" | "no" | "later") => answerRepeat(uid, lineupId, choice),
   nameOf: async (comicId: string) => (await loadComics(uid, [comicId])).get(comicId)?.name ?? "them",
-  answer: async (kind: string, text: string) => {
+  claim: (pollId: string) => claimOnWhatsApp(uid, (a) => a.msgId === pollId),
+  answer: async (kind: string, text: string, rec?: PollRecord) => {
     if (kind === "mic") {
       const A = (await readSettings(uid)).agent!;
-      await curateMic(uid, text, A);
+      await curateMic(uid, text, A, rec?.lineupId);
       return;
     }
     await converse(uid, text);
   },
 });
+
+const changeDeps = (uid: string) => ({
+  readMemory: () => readMemory(uid),
+  writeMemory: (p: Record<string, unknown>) => writeMemory(uid, p),
+  say: (t: string) => say(uid, t),
+  now: () => Date.now(),
+  setOutcome: (lineupId: string, outcome: "happened" | "canned") => recordOutcome(uid, lineupId, outcome),
+  setRepeat: (lineupId: string, choice: "repeat" | "no") => answerRepeat(uid, lineupId, choice),
+  reclose: (key: string, result: string, what: string) => mutateAsks(uid, (list, now) => list.map((a) => (a.key === key ? { ...a, closed: { by: "whatsapp" as const, at: now, result, what, verb: "Done" as const }, reacted: true, replied: true } : a))),
+});
+
+/**
+ * Hooked to the agent session's "message_reaction" event. A ✅ (or 👍) from the curator on a message that forwarded notices dismisses
+ * those notices in the app's Updates, the WhatsApp half of the mirror. Only notices: follow-ups and requests are decisions, not news.
+ */
+export function onAgentReaction(uid: string, client: WAWebJS.Client, reaction: WAWebJS.Reaction) {
+  const run = (chains.get(uid) ?? Promise.resolve()).catch(() => undefined).then(() => handleReaction(uid, client, reaction));
+  const tail = run.catch((e) => console.error(`[agent] ${uid} handling a reaction failed:`, (e as Error).message));
+  chains.set(uid, tail);
+  void tail.then(() => chains.get(uid) === tail && chains.delete(uid));
+}
+
+async function handleReaction(uid: string, client: WAWebJS.Client, r: WAWebJS.Reaction) {
+  if (!DISMISS_REACTIONS.has(r.reaction)) return;
+  const msgId = r.msgId?._serialized;
+  if (!msgId) return;
+  let resolved: string | null = null;
+  if (r.senderId?.endsWith("@lid")) resolved = (await client.getContactLidAndPhone([r.senderId]).catch(() => []))[0]?.pn ?? null;
+  if (!senderIsCurator({ from: r.senderId ?? "", resolvedPhone: resolved, curatorPhone: await curatorPhone(uid) })) return;
+  if (!(await readSettings(uid)).agent?.enabled) return;
+  await dismissForwarded(uid, msgId);
+}
 
 /** Optional (off by default): one polite line, once per sender. Nothing about their message is read or kept; only a hash of who it was. */
 async function politeNote(uid: string, client: WAWebJS.Client, from: string) {
@@ -119,7 +153,7 @@ const say = (uid: string, text: string) => sendToCurator(uid, text).catch((e) =>
 /** Ask the question that was just stored as pending: a poll when the account uses them (else the text), remembering the poll's id on it. */
 async function askPending(uid: string, p: PendingAction) {
   try {
-    const id = await sendQuestion(uid, askText(p), { poll: pollForPending(p), kind: "pending" });
+    const id = await sendQuestion(uid, askText(p), { poll: pollForPending(p), kind: "pending", mirror: mirrorOfPending(p) });
     if (id) await writeMemory(uid, { pending: { ...p, pollId: id } });
   } catch (e) {
     console.warn(`[agent] ${uid} reply failed:`, (e as Error).message);
@@ -137,6 +171,7 @@ async function askSide(uid: string, a: SideAsk) {
 }
 
 async function converse(uid: string, text: string) {
+  if (await applyChange(changeDeps(uid), text)) return;
   const A = (await readSettings(uid)).agent!;
   const scope = await scopeFor(uid);
   await dispatch(scope, text, {
@@ -155,12 +190,20 @@ async function converse(uid: string, text: string) {
   });
 }
 
+/** The questions an executed plan answers on the app mirror: its own confirmation, and the Updates question about the same thing. */
+const claimPlan = (uid: string, p: ActionPlan) =>
+  claimOnWhatsApp(uid, (a) => (p.type === "outcome" ? a.lineupId === p.lineupId && (a.kind === "mic" || a.kind === "plan") : p.type === "confirm" ? a.lineupId === p.lineupId && a.kind === "confirm" : p.type === "cleanup" ? a.key === mirrorKey.cleanup(p.lineupId) : p.type === "adhoc_pick" ? a.key === mirrorKey.adhoc(p.roundId) : false));
+
 /** Curate: something is waiting for a yes, a number or a no. True when this message answered it (or was a late answer to it). */
 async function curatePending(uid: string, text: string, A: AgentSettings): Promise<boolean> {
   const mem = await readMemory(uid);
   const step = stepPending(mem.pending, text, Date.now());
   if (step.type === "none") return false;
   await writeMemory(uid, { pending: step.type === "chosen" ? step.pending : null });
+  // Answered here: close its mirror first, so the state change that follows is never echoed back as "done in the app".
+  const pk = mem.pending ? mirrorOfPending(mem.pending)?.key : undefined;
+  if (pk && (step.type === "execute" || step.type === "cancel")) await claimOnWhatsApp(uid, (a) => a.key === pk);
+  if (step.type === "execute") await claimPlan(uid, step.plan);
   if (step.type === "execute") {
     if (!A.actions) await say(uid, "Actions are switched off in Settings, so I did nothing.");
     else await runPlan(uid, step.plan);
@@ -189,19 +232,40 @@ async function curatePending(uid: string, text: string, A: AgentSettings): Promi
   return false;
 }
 
-/** Curate: a plain yes/no answers the latest open mic check. */
-async function curateMic(uid: string, text: string, A: AgentSettings): Promise<boolean> {
+/** Curate: a plain yes/no answers the latest open mic check, or the one a tapped poll is about (`lineupId`). */
+async function curateMic(uid: string, text: string, A: AgentSettings, lineupId?: string): Promise<boolean> {
   if (!A.notify) return false;
   // "1 4, 2 5": ratings for the lineup the agent just asked about (only when it is waiting for them).
   const rated = await answerRatings(uid, text);
-  if (rated) return void (await say(uid, rated)), true;
+  if (rated) {
+    const wait = (await readMemory(uid)).ratingAsk;
+    if (wait) await claimOnWhatsApp(uid, (a) => a.lineupId === wait.lineupId && (a.kind === "rate" || a.kind === "overall"));
+    return void (await say(uid, rated)), true;
+  }
   // "note: rain" / "repeat" after a "didn't happen" question.
   const noReply = await answerNoText(uid, text, parseNoNote);
-  if (noReply) return void (await say(uid, noReply)), true;
+  if (noReply) {
+    const wait = (await readMemory(uid)).noAsk;
+    if (wait) await claimOnWhatsApp(uid, (a) => a.lineupId === wait.lineupId && a.kind === "repeat");
+    return void (await say(uid, noReply)), true;
+  }
   const yn = micAnswer(text);
   if (yn === null) return false;
-  const done = await answerMicCheck(uid, yn);
-  if (done) await closeMicPolls({ readMemory: () => readMemory(uid), writeMemory: (p) => writeMemory(uid, p) });
+  const open = await openMicCheck(uid, lineupId);
+  if (open?.l.outcome) {
+    // The app (or an earlier answer) already settled this show: the same answer is fine, a different one asks first.
+    const asked = (await readMemory(uid)).asks?.find((a) => a.key === mirrorKey.mic(open.id));
+    const was: NonNullable<Lineup["outcome"]> = open.l.outcome;
+    const ask = { kind: "mic" as const, closed: { by: "app" as const, at: Date.now(), result: was, what: was === "happened" ? "marked happened" : "marked didn't happen" }, ...(asked ?? {}) };
+    if (judgeLateVote(ask, yn ? "happened" : "canned") === "conflict") {
+      await writeMemory(uid, { changeAsk: { key: mirrorKey.mic(open.id), kind: "mic", lineupId: open.id, to: yn ? "happened" : "canned", at: Date.now() } satisfies ChangeAsk });
+      await say(uid, conflictText(ask));
+    }
+    return true;
+  }
+  if (open) await claimOnWhatsApp(uid, (a) => a.lineupId === open.id && (a.kind === "mic" || a.kind === "plan"));
+  const done = await answerMicCheck(uid, yn, open);
+  if (done) await closeMicPolls({ readMemory: () => readMemory(uid), writeMemory: (p) => writeMemory(uid, p) }, open?.id);
   await say(uid, done ?? "Nothing is waiting on a yes or no right now.");
   // It happened: ask how each comic did, right away (the scheduler also does this for a yes given in the app).
   if (done && !yn) await askDidntHappen(uid, { immediate: true }).catch((e) => console.warn(`[agent] ${uid} follow-up questions failed:`, (e as Error).message));
@@ -244,13 +308,22 @@ async function modelIntent(uid: string, settings: Settings, text: string): Promi
   }
 }
 
-/** yes/no to the most recent mic check that is still open (same rule as the old "Message yourself" reply). */
-async function answerMicCheck(uid: string, happened: boolean): Promise<string | null> {
+/** The mic check a yes/no is about: the one named (a tapped poll), else the most recent one with no answer yet. A named one is returned even when already answered. */
+async function openMicCheck(uid: string, lineupId?: string): Promise<{ id: string; l: Lineup } | null> {
+  if (lineupId) {
+    const l = (await col(uid, "lineups").doc(lineupId).get()).data() as Lineup | undefined;
+    if (l) return { id: lineupId, l };
+  }
   const snap = await col(uid, "lineups").where("micCheckSentOn", "!=", null).get();
   const open = snap.docs.filter((d) => !(d.data() as Lineup).outcome).sort((a, b) => ((b.data() as Lineup).date ?? "").localeCompare((a.data() as Lineup).date ?? ""))[0];
+  return open ? { id: open.id, l: open.data() as Lineup } : null;
+}
+
+/** Record yes/no on that mic check (same rule as the old "Message yourself" reply). */
+async function answerMicCheck(uid: string, happened: boolean, open: { id: string; l: Lineup } | null): Promise<string | null> {
   if (!open) return null;
-  const l = open.data() as Lineup;
-  await recordOutcome(uid, open.id, happened ? "happened" : "canned");
+  const { id, l } = open;
+  await recordOutcome(uid, id, happened ? "happened" : "canned");
   const show = (await world(uid)).shows.find((s) => s.id === l.showId);
   return `Noted: ${show?.name ?? "the show"} on ${l.date} ${happened ? "happened" : "didn't happen"}.`;
 }
@@ -491,19 +564,19 @@ async function scan(uid: string, mem: AgentMemory, settings: Settings) {
     next.requests = Math.max(next.requests, r.createdAt);
     if (r.intent.isSpotRequest && r.intent.confidence >= INTENT_THRESHOLD && (!r.hold || r.holdOverridden)) queueNotify(uid, { kind: "request", text: r.comicName, id: r.comicId.includes("@") ? r.comicId : undefined }, { requests: next.requests });
   }
-  const actions = (await col(uid, "actions").where("status", "==", "pending").get()).docs.map((d) => d.data() as { kind: string; createdAt: number; comicName: string; comicId?: string; followUp?: { action: string; showName: string | null }; dismissedAt?: number });
+  const actions = (await col(uid, "actions").where("status", "==", "pending").get()).docs.map((d) => ({ id: d.id, ...(d.data() as { kind: string; createdAt: number; comicName: string; comicId?: string; followUp?: { action: string; showName: string | null }; dismissedAt?: number }) }));
   for (const a of actions.filter((x) => x.kind === "follow_up" && x.createdAt > from.actions && !x.dismissedAt).sort((a, b) => a.createdAt - b.createdAt)) {
     next.actions = Math.max(next.actions, a.createdAt);
-    queueNotify(uid, { kind: "followup", text: a.comicName, id: a.comicId?.includes("@") ? a.comicId : undefined, detail: `(${a.followUp?.action === "place" ? `on ${a.followUp.showName ?? "a show"}` : "said no"})` }, { actions: next.actions });
+    queueNotify(uid, { kind: "followup", text: a.comicName, id: a.comicId?.includes("@") ? a.comicId : undefined, detail: `(${a.followUp?.action === "place" ? `on ${a.followUp.showName ?? "a show"}` : "said no"})`, ref: { c: "actions", id: a.id } }, { actions: next.actions });
   }
-  const notices = (await col(uid, "notices").where("createdAt", ">", from.notices).get()).docs.map((d) => d.data() as { level: string; kind?: string; text: string; agentText?: string; createdAt: number; dismissedAt?: number; quiet?: boolean; link?: string });
+  const notices = (await col(uid, "notices").where("createdAt", ">", from.notices).get()).docs.map((d) => ({ id: d.id, ...(d.data() as { level: string; kind?: string; text: string; agentText?: string; createdAt: number; dismissedAt?: number; quiet?: boolean; link?: string }) }));
   for (const n of notices.sort((a, b) => a.createdAt - b.createdAt)) {
     next.notices = Math.max(next.notices, n.createdAt);
     if (n.dismissedAt || n.quiet) continue; // quiet: in-progress retries, shown in the app's Updates only
     const withLink = (t: string) => (n.link ? `${t}\nDetails: ${APP_BASE}${n.link}` : t);
-    if (n.level === "warn") queueNotify(uid, { kind: "warn", text: withLink(n.text) }, { notices: next.notices });
-    else if (n.kind === "offer" || n.kind === "lineup" || n.kind === "server") queueNotify(uid, { kind: "notice", text: n.text }, { notices: next.notices });
-    else if (n.kind === "access" && (await adminEmail(uid))) queueNotify(uid, { kind: "notice", text: n.agentText ?? n.text }, { notices: next.notices });
+    if (n.level === "warn") queueNotify(uid, { kind: "warn", text: withLink(n.text), ref: { c: "notices", id: n.id } }, { notices: next.notices });
+    else if (n.kind === "offer" || n.kind === "lineup" || n.kind === "server") queueNotify(uid, { kind: "notice", text: n.text, ref: { c: "notices", id: n.id } }, { notices: next.notices });
+    else if (n.kind === "access" && (await adminEmail(uid))) queueNotify(uid, { kind: "notice", text: n.agentText ?? n.text, ref: { c: "notices", id: n.id } }, { notices: next.notices });
   }
   // Nothing new to say: still move the cursors forward, so the same scan never repeats.
   scanned.set(uid, next);
@@ -556,7 +629,9 @@ async function maybeDigest(uid: string, mem: AgentMemory, settings: Settings) {
     if (!(await sendToCurator(uid, rich.text, { unprompted: true }))) return; // couldn't send: try again next tick
     // Where an action is natural, a tap instead of typing: "Confirm Monday's lineup?" Yes / Later.
     const poll = digestActionPoll(input);
-    if (poll) await sendCommandPoll(uid, poll).catch((e) => console.warn(`[agent] ${uid} digest poll failed:`, (e as Error).message));
+    const confirmId = poll?.showId ? `${w.week}_${poll.showId}` : null;
+    const confirming = confirmId ? { key: mirrorKey.confirm(confirmId), kind: "confirm" as const, lineupId: confirmId, label: w.shows.find((x) => x.id === poll!.showId)?.name } : null;
+    if (poll) await sendCommandPoll(uid, poll, confirming).catch((e) => console.warn(`[agent] ${uid} digest poll failed:`, (e as Error).message));
   }
   // A show answered "Not decided" on repeating next week is asked once more.
   await askRepeatAgain(uid, local.date).catch((e) => console.warn(`[agent] ${uid} repeat question failed:`, (e as Error).message));

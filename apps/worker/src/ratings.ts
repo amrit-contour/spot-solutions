@@ -161,7 +161,7 @@ async function sendRatingPolls(uid: string, lineupId: string, l: Lineup, showNam
       continue; // typed answers still reach this one ("2 4")
     }
     first = false;
-    await rememberRatingPolls(uid, [{ id, lineupId, comicId: r.comicId, at: Date.now() }]);
+    await rememberRatingPolls(uid, [{ id, lineupId, comicId: r.comicId, at: Date.now(), label: r.name }]);
   }
   const fresh = (await col(uid, "lineups").doc(lineupId).get()).data() as Lineup | undefined;
   if (fresh && !fresh.reviewAskedOn && !fresh.review) {
@@ -177,7 +177,7 @@ async function askOverall(uid: string, lineupId: string, showName: string, usePo
     if (withText) await sendToCurator(uid, `🎤 One more: how was *${showName}* overall?`, { unprompted: true }).catch(() => false);
     const id = await sendRatingPoll(uid, overallPollSpec(showName)).catch(() => null);
     if (id) {
-      await rememberRatingPolls(uid, [{ id, lineupId, comicId: null, at: Date.now() }]);
+      await rememberRatingPolls(uid, [{ id, lineupId, comicId: null, at: Date.now(), label: `${showName} overall` }]);
       await writeMemory(uid, { reviewAsk: { lineupId, at: Date.now() } });
       return true;
     }

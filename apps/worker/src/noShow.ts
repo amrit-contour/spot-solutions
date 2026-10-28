@@ -84,7 +84,7 @@ async function sendPolls(uid: string, lineupId: string, l: Lineup, show: Show, a
   if (why) await rememberRatingPolls(uid, [{ id: why, kind: "why", lineupId, comicId: null, at: Date.now() }]);
   if (askRepeat) {
     const rep = await sendRatingPoll(uid, repeatPollSpec()).catch(() => null);
-    if (rep) await rememberRatingPolls(uid, [{ id: rep, kind: "repeat", lineupId, comicId: null, at: Date.now() }]);
+    if (rep) await rememberRatingPolls(uid, [{ id: rep, kind: "repeat", lineupId, comicId: null, at: Date.now(), label: `${show.name} repeat` }]);
   }
   return true;
 }
@@ -117,7 +117,7 @@ export async function answerRepeat(uid: string, lineupId: string, choice: "repea
     // Keeping everyone in the group is the same answer as the day-after cleanup's "keep everyone?" for a show that didn't happen.
     const show = watchUser(uid).shows.find((s) => s.id === l.showId);
     if (show?.cleanup?.enabled && show.groupId && !l.cleanup) await ref.update({ cleanup: { status: "kept", at: Date.now() } });
-    await resolvedInApp(uid, (p) => p.type === "cleanup" && p.lineupId === lineupId, "Got it, that answers the group question too: everyone stays.").catch(() => false);
+    await resolvedInApp(uid, (p) => p.type === "cleanup" && p.lineupId === lineupId, "Got it, that answers the group question too: everyone stays.", "whatsapp").catch(() => false);
     return n ? `Next week's lineup starts with the same ${n} ${n === 1 ? "comic" : "comics"} (repeat of ${formatDate(l.date)}).` : "Okay, repeating. Next week's lineup already has people, so I left it.";
   }
   if (choice === "no") {
@@ -159,7 +159,7 @@ export async function askRepeatAgain(uid: string, today: string): Promise<boolea
   const day = DAY_NAMES[new Date(`${hit.l.date}T00:00:00Z`).getUTCDay()];
   const id = await sendRatingPoll(uid, { ...repeatPollSpec(), question: `Repeat ${day}'s lineup (${shows.find((s) => s.id === hit.l.showId)!.name})?` }).catch(() => null);
   if (!id) return false;
-  await rememberRatingPolls(uid, [{ id, kind: "repeat", lineupId: hit.id, comicId: null, at: Date.now() }]);
+  await rememberRatingPolls(uid, [{ id, kind: "repeat", lineupId: hit.id, comicId: null, at: Date.now(), label: `${day} repeat` }]);
   await writeMemory(uid, { noAsk: { lineupId: hit.id, at: Date.now(), repeat: true } });
   return true;
 }

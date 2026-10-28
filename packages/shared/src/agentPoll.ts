@@ -23,6 +23,8 @@ export interface PollRecord {
   closed?: boolean;
   /** "That question already closed" was said for this poll already. */
   noted?: boolean;
+  /** The lineup a mic check or command poll is about, so a tap answers THAT show (and a late tap is judged against the app's answer). */
+  lineupId?: string;
 }
 export const POLL_LOG_MAX = 20;
 /** A mic check poll stays answerable this long (the question itself stays in the app's Updates). */

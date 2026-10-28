@@ -710,6 +710,8 @@ export interface NotifyItem {
   id?: string;
   /** For "followup": what happened, e.g. "(on Monday Mic)". */
   detail?: string;
+  /** The Updates notice or follow-up this line came from, so answering it in the app can be mirrored on the message (agentMirror.ts). */
+  ref?: { c: "notices" | "actions"; id: string };
 }
 
 const normLine = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -855,10 +857,10 @@ export function composeDigestRich(d: DigestInput): RichReply | null {
 }
 
 /** A tappable follow-up for the digest where an action is natural: confirm the first unconfirmed show that has people placed. Null otherwise. */
-export function digestActionPoll(d: Pick<DigestInput, "today" | "unconfirmed">): { question: string; options: string[]; answers: string[] } | null {
+export function digestActionPoll(d: Pick<DigestInput, "today" | "unconfirmed">): { question: string; options: string[]; answers: string[]; showId?: string } | null {
   const s = d.unconfirmed.find((x) => x.date > d.today && x.status === "draft" && x.names.length > 0);
   if (!s) return null;
-  return { question: `Confirm ${DAY_NAMES[s.weekday]}'s lineup (${s.showName})?`, options: ["Yes, confirm", "Later"], answers: [`confirm ${DAY_NAMES[s.weekday]}`, ""] };
+  return { question: `Confirm ${DAY_NAMES[s.weekday]}'s lineup (${s.showName})?`, options: ["Yes, confirm", "Later"], answers: [`confirm ${DAY_NAMES[s.weekday]}`, ""], showId: s.showId };
 }
 
 /** The plain-text form of composeDigestRich. */
