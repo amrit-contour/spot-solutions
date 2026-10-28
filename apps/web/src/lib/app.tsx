@@ -7,7 +7,6 @@ import {
   DEFAULT_AI_POLICY,
   DEFAULT_SETTINGS,
   aiFromLegacy,
-  rolloverDayFor,
   weekOf,
   deriveLink,
   deriveServer,
@@ -156,7 +155,7 @@ export function AppProvider({ user, children }: { user: User; children: ReactNod
     if (brandReady) setBrand(brand, { animate: true });
   }, [brand, brandReady]);
 
-  const currentWeek = weekOf(new Date(now), settings.timezone, rolloverDayFor(shows.data));
+  const currentWeek = weekOf(new Date(now), settings.timezone, 0);
   const [week, setWeek] = useState(currentWeek);
 
   const sortedShows = useMemo(
