@@ -64,8 +64,8 @@ export function AgentCard() {
 
   return (
     <section id="agent" className="overflow-hidden rounded-xl bg-surface-low p-4 sm:p-6">
-      <div className={cx("grid items-center gap-6", showQr && "md:grid-cols-[1fr_auto] md:gap-8")}>
-        <div>
+      <div className={cx("grid grid-cols-[minmax(0,1fr)] items-center gap-6", showQr && "md:grid-cols-[minmax(0,1fr)_auto] md:gap-8")}>
+        <div className="min-w-0">
           <LinkCardHeader
             icon={IconChatCheck}
             title="Agent number"
@@ -78,7 +78,8 @@ export function AgentCard() {
             primary={
               view === "ready" && (
                 <Button variant="tonal" size="sm" icon={IconSend} onClick={() => run("test", "test_agent", "Hello sent. Check your WhatsApp.")} loading={busy === "test"}>
-                  Send me a hello
+                  <span className="sm:hidden">Say hello</span>
+                  <span className="max-sm:hidden">Send me a hello</span>
                 </Button>
               )
             }
@@ -103,11 +104,11 @@ export function AgentCard() {
             <motion.div key={view} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
               {view === "ready" && (
                 <>
-                  <p className="mt-3 truncate type-body-l text-on-surface-variant">
+                  <p className="mt-3 min-w-0 truncate type-body-l text-on-surface-variant">
                     Talking to you as <span className="text-on-surface tabular">+{agent?.phone}</span>
                     {agent?.pushName ? ` (${agent.pushName})` : ""}
                   </p>
-                  <p className="mt-1 type-body-l text-on-surface-variant">
+                  <p className="mt-1 break-words type-body-l text-on-surface-variant">
                     Save it in your contacts, then message it from <span className="text-on-surface tabular">+{session?.phone}</span>. Try “Monday lineup?”.
                   </p>
                 </>

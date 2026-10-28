@@ -50,8 +50,8 @@ export function ConnectCard({ compact }: { compact?: boolean }) {
 
   return (
     <section id="whatsapp" className={cx("overflow-hidden rounded-xl bg-surface-low", compact ? "p-5 sm:p-8" : "p-4 sm:p-6")}>
-      <div className={cx("grid items-center gap-6", showQr && "md:grid-cols-[1fr_auto] md:gap-8")}>
-        <div>
+      <div className={cx("grid grid-cols-[minmax(0,1fr)] items-center gap-6", showQr && "md:grid-cols-[minmax(0,1fr)_auto] md:gap-8")}>
+        <div className="min-w-0">
           <LinkCardHeader
             icon={compact ? undefined : IconPhone}
             title={view === "ready" || (view === "unknown" && status === "ready") ? "WhatsApp is linked" : "Link your WhatsApp"}
