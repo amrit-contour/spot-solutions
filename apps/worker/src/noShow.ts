@@ -1,9 +1,11 @@
 // "Did it happen?" answered NO: the agent asks two follow-ups, as polls. "What happened at <show>?" (multi-select; the reasons plus
 // any typed note go on the lineup and into the show review's notes) and "Repeat this lineup next week?" (Repeat / Don't repeat /
 // Not decided). The scheduler picks it up for a no given in the app too. Repeat also answers the day-after cleanup's "keep everyone?"
-// (the same question for a show that didn't happen), so the curator is asked once. Not decided is asked again in the morning message.
+// (the same question for a show that didn't happen), so the curator is asked once. With the show's "decide by repeat next week"
+// rule the repeat answer IS the clean-up decision (repeat keeps everyone, don't repeat clears), and a cleanup that has nothing
+// answered yet asks through this same poll (askRepeatFor), never a second question. Not decided is asked again in the morning message.
 import {
-  RATING_ASK_DAYS, WHY_PRESETS, addDays, cleanReasonOptions, composeNoNotes, isCatchUp, localNow, micCheckDueAt, micDelayHours, ratingAskGate, repeatPollSpec, reviewWithNoNotes, whyPollSpec, formatDate, DAY_NAMES,
+  RATING_ASK_DAYS, WHY_PRESETS, addDays, cleanReasonOptions, offRuleFor, composeNoNotes, isCatchUp, localNow, micCheckDueAt, micDelayHours, ratingAskGate, repeatPollSpec, reviewWithNoNotes, whyPollSpec, formatDate, DAY_NAMES,
   type Lineup, type Show,
 } from "@spot/shared";
 import { col } from "./firebase.ts";
@@ -114,9 +116,11 @@ export async function answerRepeat(uid: string, lineupId: string, choice: "repea
   if (!l) return null;
   if (choice === "repeat") {
     const n = await repeatLineup(uid, lineupId);
-    // Keeping everyone in the group is the same answer as the day-after cleanup's "keep everyone?" for a show that didn't happen.
+    // Keeping everyone in the group is the same answer as the day-after cleanup's question for a show that didn't happen (or was
+    // called off) when its rule is "decide by repeat" or "ask". "Clear anyway" and "keep everyone" don't depend on it.
     const show = watchUser(uid).shows.find((s) => s.id === l.showId);
-    if (show?.cleanup?.enabled && show.groupId && !l.cleanup) await ref.update({ cleanup: { status: "kept", at: Date.now() } });
+    const rule = show ? offRuleFor(show, l) : null;
+    if (show?.cleanup?.enabled && show.groupId && (rule === "repeat" || rule === "ask") && (!l.cleanup || l.cleanup.status === "asked")) await ref.update({ cleanup: { status: "kept", at: Date.now() } });
     await resolvedInApp(uid, (p) => p.type === "cleanup" && p.lineupId === lineupId, "Got it, that answers the group question too: everyone stays.", "whatsapp").catch(() => false);
     return n ? `Next week's lineup starts with the same ${n} ${n === 1 ? "comic" : "comics"} (repeat of ${formatDate(l.date)}).` : "Okay, repeating. Next week's lineup already has people, so I left it.";
   }
@@ -145,22 +149,52 @@ export async function answerNoText(uid: string, text: string, parseNote: (t: str
   return (await answerRepeat(uid, wait.lineupId, choice)) ?? (choice === "no" ? "Okay, not repeating." : "Okay, I'll ask again in the morning.");
 }
 
-/** Morning message: a lineup answered "Not decided" is asked once more. One poll; skipped for a show whose group cleanup asks the same thing ("keep everyone?"). */
+/** The repeat question as a poll (or as text when polls are off or fail). True when it went out. */
+async function sendRepeatQuestion(uid: string, lineupId: string, l: Pick<Lineup, "date">, show: Pick<Show, "name">): Promise<boolean> {
+  const day = DAY_NAMES[new Date(`${l.date}T00:00:00Z`).getUTCDay()];
+  if ((await readSettings(uid)).agent?.agentPolls !== false) {
+    const id = await sendRatingPoll(uid, { ...repeatPollSpec(), question: `Repeat ${day}'s lineup (${show.name})?` }).catch(() => null);
+    if (id) {
+      await rememberRatingPolls(uid, [{ id, kind: "repeat", lineupId, comicId: null, at: Date.now(), label: `${day} repeat` }]);
+      await writeMemory(uid, { noAsk: { lineupId, at: Date.now(), repeat: true } });
+      return true;
+    }
+  }
+  const sent = await sendToCurator(uid, `Repeat ${day}'s lineup (${show.name}) next week? Reply *repeat*, *don't repeat* or *not decided*.`, { unprompted: true }).catch(() => false);
+  if (sent) await writeMemory(uid, { noAsk: { lineupId, at: Date.now(), repeat: true } });
+  return sent;
+}
+
+/**
+ * The group cleanup (rule: decide by repeat next week) has nothing to go on: ask the repeat question. If it already went out (the
+ * "didn't happen" follow-up, answered "Not decided" or not yet answered) nothing new is sent: that poll IS the question, and a
+ * morning reminder repeats it. Returns true when a new question was sent.
+ */
+export async function askRepeatFor(uid: string, show: Show, lineupId: string, l: Pick<Lineup, "date" | "repeatNext" | "noAskedOn">): Promise<boolean> {
+  if (l.repeatNext != null || l.noAskedOn || !(await agentOn(uid, "notify"))) return false;
+  const sent = await sendRepeatQuestion(uid, lineupId, l, show);
+  // Marked as asked so the morning message repeats it once if it is still "not decided", and the "didn't happen" follow-up doesn't ask again.
+  if (sent) await col(uid, "lineups").doc(lineupId).update({ noAskedOn: localNow(new Date(), watchUser(uid).settings.timezone).date });
+  return sent;
+}
+
+/** Morning message: a lineup answered "Not decided" is asked once more. One poll; skipped for a show whose group cleanup asks "Clear the group?" instead (its rule is "ask"). */
 export async function askRepeatAgain(uid: string, today: string): Promise<boolean> {
   if (!(await agentOn(uid, "notify")) || (await readSettings(uid)).agent?.agentPolls === false) return false;
   const { shows } = watchUser(uid);
   const oldest = addDays(today, -RATING_ASK_DAYS);
   const snap = await col(uid, "lineups").where("outcome", "==", "canned").get();
-  const hit = snap.docs
+  const snapOff = await col(uid, "lineups").where("status", "==", "cancelled").get();
+  const clearAsks = (showId: string, l: Lineup) => {
+    const s = shows.find((x) => x.id === showId);
+    return Boolean(s?.cleanup?.enabled && s.groupId && offRuleFor(s, l) === "ask");
+  };
+  const hit = [...snap.docs, ...snapOff.docs.filter((d) => !snap.docs.some((x) => x.id === d.id))]
     .map((d) => ({ id: d.id, l: d.data() as Lineup }))
-    .filter(({ l }) => l.noAskedOn && l.noAskedOn < today && l.repeatNext == null && !l.cleanup && l.date >= oldest && shows.some((s) => s.id === l.showId && !(s.cleanup?.enabled && s.groupId)))
+    .filter(({ l }) => l.noAskedOn && l.noAskedOn < today && l.repeatNext == null && (!l.cleanup || (l.cleanup.status === "asked" && l.cleanup.reason === "repeat")) && l.date >= oldest && shows.some((s) => s.id === l.showId) && !clearAsks(l.showId, l))
     .sort((a, b) => b.l.date.localeCompare(a.l.date))[0];
   if (!hit) return false;
-  const day = DAY_NAMES[new Date(`${hit.l.date}T00:00:00Z`).getUTCDay()];
-  const id = await sendRatingPoll(uid, { ...repeatPollSpec(), question: `Repeat ${day}'s lineup (${shows.find((s) => s.id === hit.l.showId)!.name})?` }).catch(() => null);
-  if (!id) return false;
-  await rememberRatingPolls(uid, [{ id, kind: "repeat", lineupId: hit.id, comicId: null, at: Date.now(), label: `${day} repeat` }]);
-  await writeMemory(uid, { noAsk: { lineupId: hit.id, at: Date.now(), repeat: true } });
+  if (!(await sendRepeatQuestion(uid, hit.id, hit.l, shows.find((s) => s.id === hit.l.showId)!))) return false;
   return true;
 }
 

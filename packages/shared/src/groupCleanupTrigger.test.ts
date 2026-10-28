@@ -3,7 +3,7 @@ import { cleanupAlreadyStarted, cleanupStep, cleanupTriggerPost, migrateCleanupT
 import type { GroupPost } from "./groupPosts.ts";
 
 const post = (p: Partial<GroupPost>): GroupPost => ({ id: "p1", template: "groupThanks", daysBefore: -1, time: "10:00", enabled: true, ...p });
-const cleanup = (c: Partial<GroupCleanup> = {}): GroupCleanup => ({ enabled: true, mode: "auto", time: "11:00", ...c });
+const cleanup = (c: Partial<GroupCleanup> = {}): GroupCleanup => ({ enabled: true, time: "11:00", ...c });
 const lineup = (p = {}) => ({ date: "2026-10-26", status: "confirmed" as const, outcome: "happened" as const, ...p });
 const now = { date: "2026-10-27", time: "12:00" };
 
@@ -28,12 +28,13 @@ describe("cleanupTriggerPost: one source of truth", () => {
 describe("migrateCleanupTrigger", () => {
   it("moves the switch into the show's setting and strips it from the post", () => {
     const m = migrateCleanupTrigger({ cleanup: cleanup({ mode: "auto" }), groupPosts: [post({ after: { removeComics: true } }), post({ id: "p2" })] })!;
-    expect(m.cleanup).toMatchObject({ enabled: true, mode: "auto", afterPostId: "p1" });
+    expect(m.cleanup).toMatchObject({ enabled: true, onHappened: "clear", onDidnt: "repeat", afterPostId: "p1" });
+    expect(m.cleanup).not.toHaveProperty("mode");
     expect(m.groupPosts[0].after).toBeNull();
   });
-  it("cleanup that was off turns on in ask mode (what the old switch did)", () => {
+  it("cleanup that was off turns on asking every time (what the old switch did)", () => {
     const m = migrateCleanupTrigger({ groupPosts: [post({ after: { removeComics: true } })] })!;
-    expect(m.cleanup).toMatchObject({ enabled: true, mode: "ask", afterPostId: "p1" });
+    expect(m.cleanup).toMatchObject({ enabled: true, onHappened: "ask", onDidnt: "ask", onCalledOff: "ask", afterPostId: "p1" });
   });
   it("nothing to move: null; and a show that already chose keeps its choice", () => {
     expect(migrateCleanupTrigger({ groupPosts: [post({})] })).toBeNull();
@@ -49,8 +50,8 @@ describe("the cleanup runs at most once per lineup", () => {
     expect(cleanupStep(show({ afterPostId: "p1" }), lineup(), now, true)).toBeNull();
     expect(cleanupStep(show({ afterPostId: null }), lineup(), now, true)).toBe("run");
   });
-  it("a show that didn't happen still asks at the set time", () => {
-    expect(cleanupStep(show({ afterPostId: "p1" }), lineup({ status: "canned", outcome: "canned" }), now, true)).toBe("ask");
+  it("a show that didn't happen still decides at the set time (default rule: by repeat next week)", () => {
+    expect(cleanupStep(show({ afterPostId: "p1" }), lineup({ status: "canned", outcome: "canned" }), now, true)).toBe("askRepeat");
   });
   it("once any trigger has started one, neither trigger starts another", () => {
     for (const status of ["asked", "partial", "done", "kept", "skipped"] as const) {

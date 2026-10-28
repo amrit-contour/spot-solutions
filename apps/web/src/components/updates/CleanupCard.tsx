@@ -1,5 +1,5 @@
-// The day-after cleanup asks before clearing a show's group: when the mic didn't happen (the same comics may repeat next
-// week), or when the show is set to ask every time.
+// The cleanup asks before clearing a show's group when the show's rule says so: "Ask me", or "decide by repeat next week" with
+// no answer yet (then the question is the repeat one, and its answer settles the group too).
 import { useState } from "react";
 import { toast } from "sonner";
 import { formatDate, type Lineup, type Show } from "@spot/shared";
@@ -63,7 +63,8 @@ export function CleanupCard({ lineup: l, show }: { lineup: Lineup; show: Show })
 function AskCard({ lineup: l, show }: { lineup: Lineup; show: Show }) {
   const { uid } = useApp();
   const [busy, setBusy] = useState<"clear" | "keep" | null>(null);
-  const canned = l.cleanup?.reason === "canned";
+  const reason = l.cleanup?.reason;
+  const off = l.status === "cancelled" ? "was called off" : "didn't happen";
   const answer = async (keep: boolean) => {
     setBusy(keep ? "keep" : "clear");
     try {
@@ -81,9 +82,13 @@ function AskCard({ lineup: l, show }: { lineup: Lineup; show: Show }) {
         <IconGroup className="icon mt-0.5 size-6 flex-none text-primary" />
         <div className="min-w-0 flex-1">
           <p className="type-body-l">
-            {canned ? (
+            {reason === "repeat" ? (
               <>
-                <span className="type-title-s">{show.name}</span> on {formatDate(l.date)} didn't happen. Clear the group, or are the same comics repeating next week?
+                <span className="type-title-s">{show.name}</span> on {formatDate(l.date)} {off}. Are the same comics repeating next week?
+              </>
+            ) : reason === "canned" ? (
+              <>
+                <span className="type-title-s">{show.name}</span> on {formatDate(l.date)} {off}. Clear the group?
               </>
             ) : (
               <>
@@ -91,15 +96,17 @@ function AskCard({ lineup: l, show }: { lineup: Lineup; show: Show }) {
               </>
             )}
           </p>
-          <p className="mt-1 type-body-s text-on-surface-variant">POCs, regulars, co-hosts and admins stay. Your after-show message goes first.</p>
+          <p className="mt-1 type-body-s text-on-surface-variant">
+            {reason === "repeat" ? "Not repeating clears the group. " : ""}POCs, regulars, co-hosts and admins stay. Your after-show message goes first.
+          </p>
         </div>
       </div>
       <div className="mt-3 flex items-center justify-end gap-2 px-3 pb-3">
         <Button variant="text" loading={busy === "keep"} disabled={Boolean(busy)} onClick={() => void answer(true)}>
-          {canned ? "They're repeating" : "Keep everyone"}
+          {reason === "repeat" ? "They're repeating" : "Keep everyone"}
         </Button>
         <Button loading={busy === "clear"} disabled={Boolean(busy)} onClick={() => void answer(false)} data-primary>
-          Clear the group
+          {reason === "repeat" ? "Not repeating, clear it" : "Clear the group"}
         </Button>
       </div>
     </UpdateItem>

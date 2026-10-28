@@ -649,6 +649,8 @@ const handlers: Record<Command["type"], Handler> = {
     }
     const show = watchUser(uid).shows.find((s) => s.id === lineup.showId);
     if (!show?.groupId) throw new Error("This show has no WhatsApp group linked.");
+    // "Clear" on a question that was really "repeat next week?" is the answer "don't repeat".
+    if (lineup.cleanup?.reason === "repeat" && lineup.repeatNext == null) await ref.update({ repeatNext: false });
     const r = await clearGroup(uid, sessions.require(uid), show, { ...lineup, id: String(lineupId) });
     await answered();
     return r;

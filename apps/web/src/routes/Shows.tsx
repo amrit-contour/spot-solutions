@@ -5,7 +5,7 @@ import { addDoc, deleteDoc, deleteField, setDoc } from "firebase/firestore";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { PlacePicker } from "@spot/ui";
-import { DAY_SHORT, DEFAULT_CLEANUP, cleanupTriggerPost, formatTime, migrateCleanupTrigger, whenLabel, groupModeOf, type GroupInfo, type GroupMember, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
+import { DAY_SHORT, DEFAULT_CLEANUP, DIDNT_RULE_OPTIONS, HAPPENED_RULE_OPTIONS, cleanupRules, cleanupSummary, cleanupTriggerPost, withCleanupRules, formatTime, migrateCleanupTrigger, whenLabel, groupModeOf, type GroupInfo, type GroupMember, type GroupMembersResult, type GroupMode, type Show, type Venue, type Weekday } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { runCommand, useCollection, userCol, userDoc } from "../lib/data";
@@ -195,6 +195,9 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
     }
   };
   const cleanup = draft.cleanup ?? DEFAULT_CLEANUP;
+  const rules = cleanupRules(cleanup);
+  // Any edit writes the three rules out and drops the old auto/ask mode, so an old setting is migrated the first time it is touched.
+  const setCleanup = (patch: Partial<typeof cleanup>) => set("cleanup", withCleanupRules(cleanup, patch));
   const triggerPost = cleanupTriggerPost({ cleanup: draft.cleanup, groupPosts: draft.groupPosts });
   // One person can be two comic docs (phone id and @lid): a tap adds the one WhatsApp reaches, and removes every doc of them.
   const toggleIn = (k: "regulars" | "protected" | "pocs", ids: string[], rep: string) => {
@@ -360,7 +363,7 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                     <div className="type-title-s">Clear the group after the show</div>
                     <div className="type-body-s text-on-surface-variant">The day after, your after-show message goes out and everyone leaves except POCs, regulars, co-hosts, admins and anyone already on next week's lineup.</div>
                   </div>
-                  <Switch checked={Boolean(cleanup.enabled)} onChange={(v) => set("cleanup", { ...cleanup, enabled: v })} label="Clear the group after the show" />
+                  <Switch checked={Boolean(cleanup.enabled)} onChange={(v) => setCleanup({ enabled: v })} label="Clear the group after the show" />
                 </div>
                 {cleanup.enabled && (
                   <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
@@ -368,24 +371,28 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
                       <Select
                         label="When the group is cleared"
                         value={triggerPost?.id ?? ""}
-                        onChange={(v) => set("cleanup", { ...cleanup, afterPostId: v || null })}
+                        onChange={(v) => setCleanup({ afterPostId: v || null })}
                         options={[{ value: "", label: "The day after, at a set time" }, ...(draft.groupPosts ?? []).filter((p) => p.enabled).map((p) => ({ value: p.id, label: p.template === "groupThanks" ? "After the thank-you post goes out" : `After the ${postLabel(p.template).toLowerCase()} goes out (${whenLabel(p.daysBefore).toLowerCase()}, ${formatTime(p.time)})` }))]}
                       />
                     </Field>
-                    <Field label={triggerPost ? "If the mic didn't happen, ask at" : "Time"} hint={triggerPost ? "The day after. A show that didn't happen never waits on the post." : undefined}>
-                      <TimePicker value={cleanup.time} onChange={(v) => set("cleanup", { ...cleanup, time: v })} label="Cleanup time" />
+                    <Field label={triggerPost ? "If it didn't happen, decide at" : "Time"} hint={triggerPost ? "The day after. A show that didn't happen never waits on the post." : undefined}>
+                      <TimePicker value={cleanup.time} onChange={(v) => setCleanup({ time: v })} label="Cleanup time" />
                     </Field>
-                    <Field label="If the mic happened" hint={cleanup.mode === "auto" ? "Clears it on its own. If the mic didn't happen, you're asked first." : "You're asked every time, in Updates and on your agent number."}>
-                      <Segmented
-                        size="sm"
-                        value={cleanup.mode}
-                        onChange={(v) => set("cleanup", { ...cleanup, mode: v })}
-                        options={[
-                          { value: "auto", label: "Clear it" },
-                          { value: "ask", label: "Ask me" },
-                        ]}
-                      />
-                    </Field>
+                    <div className="flex flex-col gap-3 sm:col-span-2">
+                      {(
+                        [
+                          { key: "onHappened", label: "Happened", value: rules.happened, options: HAPPENED_RULE_OPTIONS },
+                          { key: "onDidnt", label: "Didn't happen", value: rules.didnt, options: DIDNT_RULE_OPTIONS },
+                          { key: "onCalledOff", label: "Called off", value: rules.calledOff, options: DIDNT_RULE_OPTIONS },
+                        ] as const
+                      ).map((r) => (
+                        <div key={r.key} className="grid min-w-0 gap-1 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:items-center sm:gap-3">
+                          <span className="type-label-l text-on-surface-variant">{r.label}</span>
+                          <Select label={`If the show ${r.label.toLowerCase()}`} value={r.value} onChange={(v) => setCleanup({ [r.key]: v } as Partial<typeof cleanup>)} options={r.options} />
+                        </div>
+                      ))}
+                      <p className="type-body-s text-on-surface-variant">{cleanupSummary(rules)}</p>
+                    </div>
                   </div>
                 )}
               </div>

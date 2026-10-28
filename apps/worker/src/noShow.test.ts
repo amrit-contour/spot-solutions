@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanupStep } from "@spot/shared";
 
 // "Did it happen?" answered NO: the what-happened poll and the repeat-next-week poll, what their votes save, next week's lineup seeded
@@ -40,11 +40,12 @@ vi.mock("./llm.ts", () => ({
   },
 }));
 let cleanupOn = false;
+let cleanupCfg: Record<string, unknown> = { mode: "ask" };
 vi.mock("./userData.ts", () => ({
   settingsFromDoc: (d: unknown) => d,
   watchUser: () => ({
     settings: { timezone: "Asia/Kolkata", micCheck: { enabled: true, rate: true, afterHours: 2 } },
-    shows: [{ id: "tue", name: "Open Mic - Tuesday", weekday: 2, startTime: "20:00", groupId: cleanupOn ? "g@g.us" : undefined, cleanup: cleanupOn ? { enabled: true, mode: "ask", time: "10:00" } : undefined }],
+    shows: [{ id: "tue", name: "Open Mic - Tuesday", weekday: 2, startTime: "20:00", groupId: cleanupOn ? "g@g.us" : undefined, cleanup: cleanupOn ? { enabled: true, time: "10:00", ...cleanupCfg } : undefined }],
     venues: [],
   }),
 }));
@@ -238,5 +239,59 @@ describe("one question, not two, with the group cleanup", () => {
     await applyVote(deps(), "poll2", ["Not decided"]);
     out.length = 0;
     expect(await askRepeatAgain(U, "2026-10-28")).toBe(false);
+  });
+});
+
+describe("the repeat answer and the clean-up rules", () => {
+  const withRule = (cfg: Record<string, unknown>) => {
+    cleanupOn = true;
+    cleanupCfg = cfg;
+  };
+  const shw = () => ({ groupId: "g@g.us", cleanup: { enabled: true, time: "10:00", ...cleanupCfg } }) as never;
+  const now = { date: "2026-10-28", time: "10:30" };
+  afterEach(() => {
+    cleanupCfg = { mode: "ask" };
+  });
+
+  it("decide by repeat: 'Repeat' keeps everyone (kept, never asks)", async () => {
+    withRule({ onDidnt: "repeat" });
+    await askDidntHappen(U, { immediate: true });
+    expect(cleanupStep(shw(), L("2026-10-26_tue") as never, now, true)).toBe("askRepeat");
+    await applyVote(deps(), "poll2", ["Repeat"]);
+    expect(L("2026-10-26_tue").cleanup).toMatchObject({ status: "kept" });
+    expect(cleanupStep(shw(), L("2026-10-26_tue") as never, now, true)).toBeNull();
+  });
+  it("decide by repeat: 'Don't repeat' leaves the clear to the scheduler; the cleanup is not marked", async () => {
+    withRule({ onDidnt: "repeat" });
+    await askDidntHappen(U, { immediate: true });
+    await applyVote(deps(), "poll2", ["Don't repeat"]);
+    expect(L("2026-10-26_tue").repeatNext).toBe(false);
+    expect(L("2026-10-26_tue").cleanup).toBeUndefined();
+    expect(cleanupStep(shw(), L("2026-10-26_tue") as never, now, true)).toBe("run");
+  });
+  it("decide by repeat: the repeat poll was already sent, so the cleanup asks nothing more; 'Not decided' is re-asked in the morning", async () => {
+    withRule({ onDidnt: "repeat" });
+    await askDidntHappen(U, { immediate: true });
+    expect(polls()).toHaveLength(2); // why + repeat, the only questions
+    await applyVote(deps(), "poll2", ["Not decided"]);
+    out.length = 0;
+    expect(await askRepeatAgain(U, "2026-10-28")).toBe(true);
+    expect(polls().map((p) => p.text)).toEqual(["Repeat Tuesday's lineup (Open Mic - Tuesday)?"]);
+  });
+  it("a cleanup waiting on the repeat answer is settled by it", async () => {
+    withRule({ onDidnt: "repeat" });
+    await askDidntHappen(U, { immediate: true });
+    store.set(`${U}/lineups/2026-10-26_tue`, { ...L("2026-10-26_tue"), cleanup: { status: "asked", at: 1, reason: "repeat" } });
+    await applyVote(deps(), "poll2", ["Repeat"]);
+    expect(L("2026-10-26_tue").cleanup).toMatchObject({ status: "kept" });
+    expect(L("2026-10-26_tue").repeatNext).toBe(true);
+  });
+  it.each(["clear", "keep"])("'%s' doesn't depend on the repeat answer: the cleanup is left alone", async (rule) => {
+    withRule({ onDidnt: rule });
+    await askDidntHappen(U, { immediate: true });
+    await applyVote(deps(), "poll2", ["Repeat"]);
+    expect(L("2026-10-26_tue").repeatNext).toBe(true);
+    expect(L("2026-10-26_tue").cleanup).toBeUndefined();
+    expect(cleanupStep(shw(), L("2026-10-26_tue") as never, now, true)).toBe(rule === "clear" ? "run" : "keep");
   });
 });

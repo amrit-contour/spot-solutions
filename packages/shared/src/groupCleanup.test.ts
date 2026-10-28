@@ -12,17 +12,18 @@ describe("cleanupStep", () => {
     expect(cleanupStep(show, lineup, tue("10:59"), true)).toBeNull();
     expect(cleanupStep(show, lineup, tue("11:00"), true)).toBe("run");
   });
-  it("asks when the mic didn't happen, or when set to ask", () => {
-    expect(cleanupStep(show, { ...lineup, outcome: "canned", status: "canned" }, tue("12:00"), true)).toBe("ask");
+  it("a show that didn't happen (old auto setting) is decided by repeat next week; the old ask setting asks", () => {
+    expect(cleanupStep(show, { ...lineup, outcome: "canned", status: "canned" }, tue("12:00"), true)).toBe("askRepeat");
     expect(cleanupStep({ ...show, cleanup: { ...show.cleanup, mode: "ask" } }, lineup, tue("12:00"), true)).toBe("ask");
+    expect(cleanupStep({ ...show, cleanup: { ...show.cleanup, mode: "ask" } }, { ...lineup, outcome: "canned", status: "canned" }, tue("12:00"), true)).toBe("ask");
   });
   it("waits for the mic check answer, unless mic checks are off", () => {
     expect(cleanupStep(show, { ...lineup, outcome: null }, tue("12:00"), true)).toBeNull();
     expect(cleanupStep(show, { ...lineup, outcome: null }, tue("12:00"), false)).toBe("run");
   });
-  it("runs once, never for a called-off or unlinked show, and gives up after 3 days", () => {
+  it("runs once, never for an unlinked show, and gives up after 3 days", () => {
     expect(cleanupStep(show, { ...lineup, cleanup: { status: "done", at: 1 } }, tue("12:00"), true)).toBeNull();
-    expect(cleanupStep(show, { ...lineup, status: "cancelled" }, tue("12:00"), true)).toBeNull();
+    expect(cleanupStep(show, { ...lineup, status: "cancelled" }, tue("12:00"), true)).toBe("askRepeat"); // called off: the same rules apply
     expect(cleanupStep({ ...show, groupId: null }, lineup, tue("12:00"), true)).toBeNull();
     expect(cleanupStep({ ...show, cleanup: { ...show.cleanup, enabled: false } }, lineup, tue("12:00"), true)).toBeNull();
     expect(cleanupStep(show, lineup, { date: "2026-10-30", time: "12:00" }, true)).toBe("skip");

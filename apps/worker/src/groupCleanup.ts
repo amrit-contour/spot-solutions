@@ -1,8 +1,9 @@
 // The day after a show: thank the group and clear it for next week (groupCleanup.ts in shared has the rules). Runs from the
-// scheduler on the curator's own server. When the mic didn't happen, or the show is set to ask, it asks first: in the app
-// (an Updates card) and, with the agent number linked, on WhatsApp ("yes" clears, "no" keeps them for next week).
+// scheduler on the curator's own server. The show's three rules (mic happened / didn't happen / called off) say what to do: clear,
+// keep everyone, ask, or decide by "repeat next week". Asking happens in the app (an Updates card) and, with the agent number
+// linked, on WhatsApp: a Clear / Keep everyone poll, or (for the repeat rule) the repeat poll, so the curator is never asked twice.
 import type WAWebJS from "whatsapp-web.js";
-import { RETRY_WINDOW_MS, addDays, canClearNow, cleanupAlreadyStarted, cleanupNotice, cleanupStep, confirmPending, groupPostVars, localNow, messageRich, nextRetryAt, normalizeMessage, planCleanup, renderRich, shiftWeek, type CleanupMember, type Lineup, type LineupCleanup, type Show } from "@spot/shared";
+import { RETRY_WINDOW_MS, addDays, canClearNow, cleanupAlreadyStarted, cleanupDecision, cleanupNotice, cleanupOutcome, cleanupRules, cleanupStep, confirmPending, groupPostVars, localNow, messageRich, nextRetryAt, normalizeMessage, planCleanup, renderRich, shiftWeek, type CleanupMember, type Lineup, type LineupCleanup, type Show } from "@spot/shared";
 import { col } from "./firebase.ts";
 import { loadComics, notice } from "./commands.ts";
 import { removalPass, toPending, type GroupPort } from "./cleanupPass.ts";
@@ -12,6 +13,8 @@ import { deliverableId, enqueueTask } from "./sendQueue.ts";
 import { sendRich } from "./sendRich.ts";
 import { watchUser } from "./userData.ts";
 import { listGroupMembers } from "./people.ts";
+import { askRepeatFor } from "./noShow.ts";
+import { seedAfterKeep } from "./repeatNext.ts";
 
 const running = new Set<string>();
 /** The agent's question stays answerable this long (the curator may see it hours later). */
@@ -50,6 +53,8 @@ export async function runCleanups(uid: string, client: WAWebJS.Client | undefine
     try {
       if (step === "skip") await doc.ref.update({ cleanup: { status: "skipped", at: Date.now() } satisfies LineupCleanup });
       else if (step === "ask") await ask(uid, show, lineup);
+      else if (step === "askRepeat") await ask(uid, show, lineup, "repeat");
+      else if (step === "keep") await keepQuietly(uid, doc.id);
       else if (client) await clearGroup(uid, client, show, lineup, { retry: step === "retry" });
     } catch (e) {
       console.error(`[cleanup] ${uid} ${show.name}`, e);
@@ -71,23 +76,33 @@ export async function runCleanups(uid: string, client: WAWebJS.Client | undefine
   }
 }
 
-export async function ask(uid: string, show: Show, lineup: Lineup & { id: string }) {
-  const reason = lineup.outcome === "canned" || lineup.status === "canned" ? "canned" : "ask";
+/**
+ * Ask the curator about this lineup's group. "clear" (the default): the Updates card and a Clear / Keep everyone poll ("Clear the
+ * <show> group?") on the agent number. "repeat": the show's rule is "decide by repeat next week" and that isn't answered, so the
+ * question is the repeat poll (reused when it already went out; sent here when not). Its answer settles both: see cleanupStep.
+ */
+export async function ask(uid: string, show: Show, lineup: Lineup & { id: string }, via: "clear" | "repeat" = "clear") {
+  const outcome = cleanupOutcome(lineup, true);
+  const off = outcome === "didnt" || outcome === "calledOff";
+  const reason = via === "repeat" ? "repeat" : off ? "canned" : "ask";
   await col(uid, "lineups").doc(lineup.id).update({ cleanup: { status: "asked", at: Date.now(), reason } satisfies LineupCleanup });
-  const question =
-    reason === "canned"
-      ? `${show.name} on ${lineup.date} didn't happen. Should I still clear the group, or are the same comics repeating next week?`
-      : `${show.name} on ${lineup.date} is done. Clear the group for next week?`;
+  if (via === "repeat") {
+    await askRepeatFor(uid, show, lineup.id, lineup).catch((e) => console.warn(`[cleanup] ${uid} ${show.name}: couldn't ask about repeating (the card stays in Updates):`, (e as Error).message));
+    return;
+  }
+  const what = outcome === "calledOff" ? "was called off" : outcome === "didnt" ? "didn't happen" : "is done";
+  const detail = `${show.name} on ${lineup.date} ${what}. Clear the group for next week?`;
   // The card above is the question. On the agent number too, as a yes/no it can act on (only when linked and on; a failed send
-  // leaves the card standing). Never over something else it's waiting on.
-  const pending = { ...confirmPending({ type: "cleanup", showId: show.id, lineupId: lineup.id }, question, Date.now()), expiresAt: Date.now() + ASK_TTL_MS };
-  await askCurator(uid, `🧹 ${question}\nReply *yes* to clear it (POCs, regulars, co-hosts and admins stay), or *no* to keep everyone.`, pending, `${show.name} ${lineup.date}`);
+  // leaves the card standing). Never over something else it's waiting on. The poll asks "Clear the <show> group?".
+  const pending = { ...confirmPending({ type: "cleanup", showId: show.id, lineupId: lineup.id }, `Clear the ${show.name} group?`, Date.now()), expiresAt: Date.now() + ASK_TTL_MS };
+  await askCurator(uid, `🧹 ${detail}\nReply *yes* to clear it (POCs, regulars, co-hosts and admins stay), or *no* to keep everyone.`, pending, `${show.name} ${lineup.date}`);
 }
 
 /**
- * The show's cleanup, started by the post it is set to follow (Shows > clear the group > "After the thank-you post goes out"). Never silent: with the show's cleanup on automatic it clears the
- * group (no second thank-you, the post was one); otherwise, or when WhatsApp isn't steady, it asks the curator first (the Updates
- * card and the agent number's yes/no), the same review as the day-after cleanup. Once a cleanup exists for the show, nothing more.
+ * The show's cleanup, started by the post it is set to follow (Shows > clear the group > "After the thank-you post goes out"). The
+ * show's rules decide, the same as the day-after pass: clear it (no second thank-you, the post was one), keep everyone, or ask the
+ * curator first (the Updates card and the agent number). When WhatsApp isn't steady a clear becomes an ask. Once a cleanup exists
+ * for the show, nothing more.
  */
 export async function startRemoval(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }, what: string) {
   // Same lock as the timed pass, so the two triggers (the chosen post and the set time) can't both start one.
@@ -103,15 +118,26 @@ export async function startRemoval(uid: string, client: WAWebJS.Client, show: Sh
 
 async function removalAfterPost(uid: string, client: WAWebJS.Client, show: Show, lineup: Lineup & { id: string }, what: string) {
   const fresh = ((await col(uid, "lineups").doc(lineup.id).get()).data() as Lineup | undefined) ?? lineup;
-  if (cleanupAlreadyStarted(fresh) || !show.groupId) return;
-  const auto = show.cleanup?.enabled && show.cleanup.mode === "auto" && canClearNow({ healthy: sessions.healthy(uid), stableMs: sessions.stableMs(uid) });
+  if (cleanupAlreadyStarted(fresh) || !show.groupId || !show.cleanup?.enabled) return;
+  // The post went out, so the show happened (or there is no mic check to say otherwise).
+  const outcome = cleanupOutcome(fresh, watchUser(uid).settings.micCheck.enabled) ?? "happened";
+  const decision = cleanupDecision(cleanupRules(show.cleanup), outcome, fresh.repeatNext);
+  const withId = { ...fresh, id: lineup.id };
   try {
-    if (auto) await clearGroup(uid, client, show, { ...fresh, id: lineup.id }, { noThanks: true });
-    else await ask(uid, show, { ...fresh, id: lineup.id });
+    if (decision === "keep") await keepQuietly(uid, lineup.id);
+    else if (decision === "run" && canClearNow({ healthy: sessions.healthy(uid), stableMs: sessions.stableMs(uid) })) await clearGroup(uid, client, show, withId, { noThanks: true });
+    else if (decision === "askRepeat") await ask(uid, show, withId, "repeat");
+    else await ask(uid, show, withId);
   } catch (e) {
     console.error(`[group-post] ${uid} ${show.name}: removal after the ${what} failed`, e);
     await notice(uid, "warn", `${show.name}: the ${what} went out, but clearing this week's comics from the group didn't start (${(e as Error).message}). Do it from the show's group.`);
   }
+}
+
+/** The rules said keep everyone: nothing changes in the group, and it never asks. (A repeat already answered still brings next week's lineup along.) */
+export async function keepQuietly(uid: string, lineupId: string) {
+  await col(uid, "lineups").doc(lineupId).update({ cleanup: { status: "kept", at: Date.now() } satisfies LineupCleanup });
+  await seedAfterKeep(uid, lineupId).catch((e) => console.warn(`[cleanup] ${uid} seeding next week failed:`, (e as Error).message));
 }
 
 /**
@@ -121,7 +147,7 @@ async function removalAfterPost(uid: string, client: WAWebJS.Client, show: Show,
 export async function keepGroup(uid: string, lineupId: string) {
   const ref = col(uid, "lineups").doc(lineupId);
   const lineup = (await ref.get()).data() as Lineup | undefined;
-  const didntHappen = lineup?.cleanup?.reason === "canned" || lineup?.status === "canned" || lineup?.outcome === "canned";
+  const didntHappen = lineup?.cleanup?.reason === "canned" || lineup?.cleanup?.reason === "repeat" || lineup?.status === "canned" || lineup?.status === "cancelled" || lineup?.outcome === "canned";
   await ref.update({ cleanup: { status: "kept", at: Date.now() } satisfies LineupCleanup, ...(didntHappen ? { repeatNext: true } : {}) });
 }
 

@@ -34,27 +34,38 @@ vi.mock("./agentSession.ts", () => ({
   agentRef: (uid: string) => ref(`${uid}/session/agent`),
   agentSessions: { get: () => (agent === "off" ? null : { fake: true }) },
 }));
+const polls: { text: string; options: string[] }[] = [];
+let pollsOn = false;
 vi.mock("./sendQueue.ts", () => ({
   sendQueued: async (_c: unknown, to: string, text: string) => {
     if (to.includes("@c.us") && agent === "failing") throw new Error("agent send failed");
     sent.push(text);
   },
+  // A poll is one message too (its question), and is kept to check the options.
+  sendContent: async (_c: unknown, to: string, content: { pollName: string; pollOptions: { name: string }[] }) => {
+    if (!pollsOn || (to.includes("@c.us") && agent === "failing")) throw new Error("agent send failed");
+    sent.push(content.pollName);
+    polls.push({ text: content.pollName, options: content.pollOptions.map((o) => o.name) });
+    return { id: { _serialized: `poll${polls.length}` } };
+  },
 }));
+vi.mock("./llm.ts", () => ({ generateJson: vi.fn() }));
 const notices: string[] = [];
-vi.mock("./commands.ts", () => ({ notice: async (_u: string, _l: string, t: string) => void notices.push(t), sendConfirmation: vi.fn() }));
+vi.mock("./commands.ts", () => ({ notice: async (_u: string, _l: string, t: string) => void notices.push(t), sendConfirmation: vi.fn(), loadComics: async () => new Map() }));
+let showCfg: Record<string, unknown> = {};
 vi.mock("./userData.ts", () => ({
   settingsFromDoc: (d: unknown) => d,
-  watchUser: () => ({ settings: { timezone: "Asia/Kolkata", micCheck: { enabled: true, time: "09:00", whatsapp: false }, confirm: {} }, shows: [{ id: "mon", name: "Monday Mic", slotCount: 3, weekday: 1 }], venues: [] }),
+  watchUser: () => ({ settings: { timezone: "Asia/Kolkata", micCheck: { enabled: true, time: "09:00", whatsapp: false }, confirm: {} }, shows: [{ id: "mon", name: "Monday Mic", slotCount: 3, weekday: 1, ...showCfg }], venues: [] }),
 }));
 vi.mock("./gemma.ts", () => ({ extractProfile: vi.fn() }));
 vi.mock("./sendRich.ts", () => ({ sendRich: vi.fn() }));
 vi.mock("./greet.ts", () => ({ greetFor: async () => "Rohan" }));
 vi.mock("./voice.ts", () => ({ inVoice: vi.fn() }));
-vi.mock("./people.ts", () => ({ listGroupMembers: vi.fn() }));
+vi.mock("./people.ts", () => ({ listGroupMembers: vi.fn(async () => undefined) }));
 vi.mock("./reconcile.ts", () => ({}));
 vi.mock("./sessions.ts", () => ({ sessions: { healthy: () => true, stableMs: () => 1e9, noteWaError: () => undefined } }));
 
-const { ask, keepGroup } = await import("./groupCleanup.ts");
+const { ask, keepGroup, runCleanups } = await import("./groupCleanup.ts");
 const { sendMicChecks, handleOfferReply } = await import("./replies.ts");
 const { resolvedInApp, readMemory } = await import("./agentOutbox.ts");
 
@@ -73,6 +84,9 @@ const pending = async () => (await readMemory(U)).pending;
 beforeEach(() => {
   store.clear();
   sent.length = 0;
+  polls.length = 0;
+  pollsOn = false;
+  showCfg = {};
   notices.length = 0;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-27T12:00:00+05:30"));
@@ -216,5 +230,119 @@ describe("ad hoc round needing a pick", () => {
     expect(await resolvedInApp(U, (p) => p.type === "adhoc_pick" && p.roundId === "r1")).toBe(true);
     expect(await pending()).toBeNull();
     expect(sent[0]).toMatch(/Done in the app/);
+  });
+});
+
+
+describe("clean-up rules: asking, one question, once", () => {
+  beforeEach(() => {
+    pollsOn = true;
+  });
+  const put = (extra: Record<string, unknown> = {}) => {
+    store.set(`${U}/lineups/l1`, { id: "l1", weekOf: "2026-10-26", showId: "mon", date: "2026-10-26", status: "confirmed", outcome: "happened", slots: [], ...extra });
+    return { ...lineupDoc(), id: "l1" } as never;
+  };
+  const rules = (r: Record<string, unknown>) => (showCfg = { groupId: "g@g.us", startTime: "20:00", cleanup: { enabled: true, time: "11:00", ...r } });
+  const client = { info: { wid: { user: "1", _serialized: "1@c.us" } }, getChatById: async () => ({ participants: [] }), getContactLidAndPhone: async () => [] } as never;
+  const status = () => (lineupDoc().cleanup as { status: string; reason?: string } | undefined);
+
+  it("Ask me: the agent's poll is 'Clear the <show> group?' with Clear / Keep everyone, and the card state is written", async () => {
+    setup("on");
+    await ask(U, show, put());
+    expect(polls).toEqual([{ text: "Clear the Monday Mic group?", options: ["Clear", "Keep everyone"] }]);
+    expect(status()).toMatchObject({ status: "asked", reason: "ask" });
+    expect((await pending())?.stage).toBe("confirm");
+  });
+  it("Ask me for a show that didn't happen is the same poll, marked as such", async () => {
+    setup("on");
+    await ask(U, show, put({ status: "canned", outcome: "canned" }));
+    expect(polls[0]).toMatchObject({ text: "Clear the Monday Mic group?" });
+    expect(status()).toMatchObject({ status: "asked", reason: "canned" });
+  });
+  it("decide by repeat, undecided: the question is the repeat poll, asked once", async () => {
+    setup("on");
+    await ask(U, show, put({ status: "canned", outcome: "canned" }), "repeat");
+    expect(polls).toHaveLength(1);
+    expect(polls[0]!.text).toBe("Repeat Monday's lineup (Monday Mic)?");
+    expect(polls[0]!.options).toEqual(["Repeat", "Don't repeat", "Not decided"]);
+    expect(status()).toMatchObject({ status: "asked", reason: "repeat" });
+    expect(await pending()).toBeUndefined(); // no second (Clear / Keep) question
+    expect(lineupDoc().noAskedOn).toBe("2026-10-27");
+  });
+  it("decide by repeat when the repeat poll already went out: it is reused, nothing more is sent", async () => {
+    setup("on");
+    await ask(U, show, put({ status: "canned", outcome: "canned", noAskedOn: "2026-10-27" }), "repeat");
+    expect(polls).toHaveLength(0);
+    expect(status()).toMatchObject({ status: "asked", reason: "repeat" });
+  });
+  it("decide by repeat with the agent off: the card stands, nothing is sent", async () => {
+    setup("off");
+    await ask(U, show, put({ status: "canned", outcome: "canned" }), "repeat");
+    expect(sent).toHaveLength(0);
+    expect(status()).toMatchObject({ status: "asked", reason: "repeat" });
+  });
+
+  it("scheduler: happened + clear automatically clears (once)", async () => {
+    setup("on");
+    rules({ onHappened: "clear" });
+    put();
+    await runCleanups(U, client);
+    expect(status()).toMatchObject({ status: "done" });
+    expect(sent).toHaveLength(0); // clearing never asks
+  });
+  it("scheduler: happened + keep everyone keeps without asking", async () => {
+    setup("on");
+    rules({ onHappened: "keep" });
+    put();
+    await runCleanups(U, client);
+    expect(status()).toMatchObject({ status: "kept" });
+    expect(sent).toHaveLength(0);
+  });
+  it("scheduler: happened + ask me asks once, however often it runs", async () => {
+    setup("on");
+    rules({ onHappened: "ask" });
+    put();
+    await runCleanups(U, client);
+    await runCleanups(U, client);
+    expect(polls).toHaveLength(1);
+    expect(status()).toMatchObject({ status: "asked", reason: "ask" });
+  });
+  it("scheduler: didn't happen + repeat rule: undecided asks the repeat poll once; the answer then settles it", async () => {
+    setup("on");
+    rules({ onDidnt: "repeat" });
+    put({ status: "canned", outcome: "canned" });
+    await runCleanups(U, client);
+    await runCleanups(U, client);
+    expect(polls.map((p) => p.text)).toEqual(["Repeat Monday's lineup (Monday Mic)?"]);
+    expect(status()).toMatchObject({ status: "asked", reason: "repeat" });
+    // Still undecided: nothing happens.
+    await runCleanups(U, client);
+    expect(status()).toMatchObject({ status: "asked" });
+    // Don't repeat: clears.
+    store.set(`${U}/lineups/l1`, { ...lineupDoc(), repeatNext: false });
+    await runCleanups(U, client);
+    expect(status()).toMatchObject({ status: "done" });
+  });
+  it("scheduler: didn't happen + repeat rule: repeat keeps everyone; already answered never asks", async () => {
+    setup("on");
+    rules({ onDidnt: "repeat" });
+    put({ status: "canned", outcome: "canned", repeatNext: true });
+    await runCleanups(U, client);
+    expect(status()).toMatchObject({ status: "kept" });
+    expect(sent).toHaveLength(0);
+  });
+  it("scheduler: called off follows its own rule", async () => {
+    setup("on");
+    rules({ onCalledOff: "clear" });
+    put({ status: "cancelled", outcome: null });
+    await runCleanups(U, client);
+    expect(status()).toMatchObject({ status: "done" });
+  });
+  it("scheduler: an old show with mode 'ask' asks in every case", async () => {
+    setup("on");
+    rules({ mode: "ask" });
+    put();
+    await runCleanups(U, client);
+    expect(polls[0]).toMatchObject({ text: "Clear the Monday Mic group?" });
   });
 });

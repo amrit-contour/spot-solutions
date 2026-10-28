@@ -47,7 +47,7 @@ export function pollForPending(p: PendingLike): AgentPollSpec | null {
     const question = clean(p.summary);
     if (!question || question.length > POLL_QUESTION_MAX) return null;
     const t = p.plan?.type;
-    const [yes, no] = t === "cleanup" ? ["Yes, clear it", "No, keep everyone"] : t === "adhoc_pick" ? ["Yes, add them", "No, cancel"] : ["Yes, do it", "No, cancel"];
+    const [yes, no] = t === "cleanup" ? ["Clear", "Keep everyone"] : t === "adhoc_pick" ? ["Yes, add them", "No, cancel"] : ["Yes, do it", "No, cancel"];
     return { question, options: [yes, no], answers: ["yes", "no"] };
   }
   const options = p.choices.map((c) => clean(c.label));

@@ -8,8 +8,14 @@ import type { Comic, Lineup, Show } from "./types.ts";
 
 export interface GroupCleanup {
   enabled: boolean;
-  /** auto: clear it when the mic happened, ask when it didn't. ask: always ask first. */
-  mode: "auto" | "ask";
+  /** Old setting (auto: clear when the mic happened, ask when it didn't; ask: always ask). Read through cleanupRules; the editor drops it on the next save. */
+  mode?: "auto" | "ask";
+  /** If the mic happened. Missing: from `mode`, else "clear". */
+  onHappened?: HappenedRule;
+  /** If the mic didn't happen (it was meant to). Missing: from `mode`, else "repeat". */
+  onDidnt?: DidntRule;
+  /** If the show was called off in advance. Missing: from `mode`, else "repeat". */
+  onCalledOff?: DidntRule;
   /** Local time on the day after the show, "HH:MM". */
   time: string;
   /** The message sent before clearing. Missing: the "After the show" template in Settings → Messages. Empty string: none. */
@@ -22,7 +28,93 @@ export interface GroupCleanup {
   afterPostId?: string | null;
 }
 
-export const DEFAULT_CLEANUP: GroupCleanup = { enabled: false, mode: "auto", time: "11:00" };
+/** What to do with the group when the mic happened: clear it on its own, ask the curator, or keep everyone. */
+export type HappenedRule = "clear" | "ask" | "keep";
+/** When it didn't happen or was called off: also "repeat" = decide by the lineup's "repeat next week" (repeat keeps everyone, don't repeat clears, undecided asks). */
+export type DidntRule = "repeat" | "ask" | "keep" | "clear";
+export type CleanupOutcome = "happened" | "didnt" | "calledOff";
+export interface CleanupRules {
+  happened: HappenedRule;
+  didnt: DidntRule;
+  calledOff: DidntRule;
+}
+
+export const DEFAULT_CLEANUP: GroupCleanup = { enabled: false, time: "11:00", onHappened: "clear", onDidnt: "repeat", onCalledOff: "repeat" };
+
+/**
+ * The three rules a show's cleanup follows. The old auto/ask `mode` still reads: auto = clear when it happened and decide by
+ * repeat when it didn't; ask = ask in every case. A rule that is set always wins over `mode`.
+ */
+export function cleanupRules(c?: Pick<GroupCleanup, "mode" | "onHappened" | "onDidnt" | "onCalledOff"> | null): CleanupRules {
+  const ask = c?.mode === "ask";
+  return { happened: c?.onHappened ?? (ask ? "ask" : "clear"), didnt: c?.onDidnt ?? (ask ? "ask" : "repeat"), calledOff: c?.onCalledOff ?? (ask ? "ask" : "repeat") };
+}
+
+/** The cleanup setting with the three rules written out and the old `mode` gone (what the editor saves). */
+export function withCleanupRules(c: GroupCleanup | null | undefined, patch: Partial<GroupCleanup> = {}): GroupCleanup {
+  const base = c ?? DEFAULT_CLEANUP;
+  const r = cleanupRules(base);
+  const { mode: _old, ...rest } = base;
+  return { ...rest, onHappened: r.happened, onDidnt: r.didnt, onCalledOff: r.calledOff, ...patch };
+}
+
+/**
+ * How the lineup ended, for the cleanup: "calledOff" (cancelled in advance), "didnt" (meant to happen, didn't), "happened", or null
+ * while the mic check is unanswered. `micCheckOn`: without mic checks there's never an answer, so a confirmed show counts as happened.
+ */
+export function cleanupOutcome(lineup: Pick<Lineup, "status" | "outcome">, micCheckOn: boolean): CleanupOutcome | null {
+  if (lineup.status === "cancelled") return "calledOff";
+  if (lineup.outcome === "canned" || lineup.status === "canned") return "didnt";
+  if (lineup.outcome === "happened" || (!micCheckOn && lineup.status === "confirmed")) return "happened";
+  return null;
+}
+
+/** What the rules say to do: clear (run), keep everyone, ask the curator, or ask the repeat question (its answer decides). */
+export type CleanupDecision = "run" | "keep" | "ask" | "askRepeat";
+
+export function cleanupDecision(rules: CleanupRules, outcome: CleanupOutcome, repeatNext: boolean | null | undefined): CleanupDecision {
+  const rule = outcome === "happened" ? rules.happened : outcome === "didnt" ? rules.didnt : rules.calledOff;
+  switch (rule) {
+    case "clear":
+      return "run";
+    case "keep":
+      return "keep";
+    case "ask":
+      return "ask";
+    case "repeat":
+      return repeatNext === true ? "keep" : repeatNext === false ? "run" : "askRepeat";
+  }
+}
+
+/** The labels the show editor offers for each rule (value, words). */
+export const HAPPENED_RULE_OPTIONS: { value: HappenedRule; label: string }[] = [
+  { value: "clear", label: "Clear automatically" },
+  { value: "ask", label: "Ask me" },
+  { value: "keep", label: "Keep everyone" },
+];
+export const DIDNT_RULE_OPTIONS: { value: DidntRule; label: string }[] = [
+  { value: "repeat", label: "Decide by 'repeat next week'" },
+  { value: "ask", label: "Ask me" },
+  { value: "keep", label: "Keep everyone" },
+  { value: "clear", label: "Clear anyway" },
+];
+
+/** The three rules in plain words, for under the show editor's rows. */
+export function cleanupSummary(r: CleanupRules): string {
+  const happened = { clear: "clears the group", ask: "asks you first", keep: "keeps everyone" }[r.happened];
+  const off = (x: DidntRule) => ({ repeat: "follows 'repeat next week'", ask: "asks you first", keep: "keeps everyone", clear: "clears the group anyway" })[x];
+  const offText = r.didnt === r.calledOff ? `Didn't happen or called off: ${off(r.didnt)}.` : `Didn't happen: ${off(r.didnt)}. Called off: ${off(r.calledOff)}.`;
+  const tail = r.didnt === "repeat" || r.calledOff === "repeat" ? " Repeat keeps everyone, don't repeat clears, undecided asks you." : "";
+  return `Mic happened: ${happened}. ${offText}${tail}`;
+}
+
+/** The rule that applies to a show that didn't happen or was called off, for a lineup in that state (null: it happened or isn't known). */
+export function offRuleFor(show: { cleanup?: GroupCleanup | null }, lineup: Pick<Lineup, "status" | "outcome">): DidntRule | null {
+  const o = cleanupOutcome(lineup, true);
+  if (o !== "didnt" && o !== "calledOff") return null;
+  const r = cleanupRules(show.cleanup);
+  return o === "didnt" ? r.didnt : r.calledOff;
+}
 
 /** Someone the cleanup couldn't remove (yet), and why. */
 export interface CleanupPending {
@@ -42,8 +134,11 @@ export interface LineupCleanup {
   at: number;
   removed?: number;
   failed?: number;
-  /** Why it asked: the mic didn't happen, or the show is set to ask every time. */
-  reason?: "canned" | "ask";
+  /**
+   * Why it asked: the show didn't happen (or was called off) and the rule is "ask" ("canned"), the happened rule is "ask" ("ask"), or
+   * the rule is "decide by repeat next week" and that isn't answered yet ("repeat": the repeat answer settles it, see cleanupStep).
+   */
+  reason?: "canned" | "ask" | "repeat";
   pending?: CleanupPending[];
   /** Next automatic retry (epoch ms). Missing on a "partial" cleanup: gave up, or a retry is running. */
   retryAt?: number | null;
@@ -58,7 +153,8 @@ export interface LineupCleanup {
 /** Past this many days after the show, a cleanup that never ran is dropped (a server that was off for a week). */
 export const CLEANUP_WINDOW_DAYS = 3;
 
-export type CleanupStep = "run" | "ask" | "skip" | "retry";
+/** run: clear it. keep: keep everyone (no question). ask: ask "clear the group?". askRepeat: ask "repeat next week?" (the answer decides). */
+export type CleanupStep = "run" | "ask" | "askRepeat" | "keep" | "skip" | "retry";
 
 /**
  * The post that starts this show's cleanup when it goes out, or null (the cleanup runs at its set time). One source of truth: the
@@ -79,14 +175,15 @@ export const cleanupAlreadyStarted = (lineup: { cleanup?: unknown; backfilled?: 
 /**
  * Moves the old per-post "remove this week's comics" switch into the show's cleanup setting: the show's cleanup now starts after
  * that post. Returns null when there is nothing to move. A show with cleanup off keeps asking first (what the old switch did), so
- * the cleanup is turned on in "ask" mode for it.
+ * the cleanup is turned on asking in every case for it.
  */
 export function migrateCleanupTrigger<T extends { cleanup?: GroupCleanup | null; groupPosts?: GroupPost[] | null }>(show: T): { cleanup: GroupCleanup; groupPosts: GroupPost[] } | null {
   const posts = show.groupPosts ?? [];
   if (!posts.some((p) => p.after?.removeComics)) return null;
   const cur = show.cleanup ?? DEFAULT_CLEANUP;
   const first = posts.find((p) => p.enabled && p.after?.removeComics) ?? posts.find((p) => p.after?.removeComics)!;
-  const cleanup: GroupCleanup = cur.afterPostId === undefined ? { ...cur, enabled: true, mode: cur.enabled ? cur.mode : "ask", afterPostId: first.id } : { ...cur };
+  const ask = { onHappened: "ask", onDidnt: "ask", onCalledOff: "ask" } as const;
+  const cleanup: GroupCleanup = cur.afterPostId === undefined ? withCleanupRules(cur, { enabled: true, afterPostId: first.id, ...(cur.enabled ? {} : ask) }) : withCleanupRules(cur);
   const groupPosts = posts.map((p) => {
     if (!p.after?.removeComics) return p;
     const { removeComics: _drop, ...rest } = p.after;
@@ -96,12 +193,14 @@ export function migrateCleanupTrigger<T extends { cleanup?: GroupCleanup | null;
 }
 
 /**
- * What to do now for this lineup, or null for nothing yet. `micCheckOn`: without mic checks there's never an answer, so a
- * confirmed show counts as having happened.
+ * What to do now for this lineup, or null for nothing yet. The show's three rules (happened / didn't happen / called off) pick the
+ * answer, see cleanupDecision. `micCheckOn`: without mic checks there's never an answer, so a confirmed show counts as having happened.
+ * A cleanup waiting on the repeat answer ("asked", reason "repeat") settles itself once the lineup's repeatNext is set: repeat keeps
+ * everyone, don't repeat clears.
  */
 export function cleanupStep(
   show: Pick<Show, "groupId" | "cleanup" | "active" | "groupPosts">,
-  lineup: Pick<Lineup, "date" | "status" | "outcome" | "cleanup"> & { backfilled?: boolean },
+  lineup: Pick<Lineup, "date" | "status" | "outcome" | "cleanup"> & { backfilled?: boolean; repeatNext?: boolean | null },
   now: { date: string; time: string },
   micCheckOn: boolean,
   nowMs: number = Date.now(),
@@ -110,17 +209,20 @@ export function cleanupStep(
   if (lineup.backfilled) return null; // a past show recorded afterwards: the group was never ours to clear
   // A pass that left people behind: try again when it's time (retryAt is cleared while a retry runs, and when it gives up).
   if (lineup.cleanup?.status === "partial") return lineup.cleanup.retryAt && lineup.cleanup.retryAt <= nowMs ? "retry" : null;
+  // Asked "repeat next week?" and the answer has come (in the app or on WhatsApp): that is the clean-up's answer too.
+  if (lineup.cleanup?.status === "asked" && lineup.cleanup.reason === "repeat") {
+    if (!c?.enabled || !show.groupId) return null;
+    return lineup.repeatNext === true ? "keep" : lineup.repeatNext === false ? "run" : null;
+  }
   if (!c?.enabled || !show.groupId || !lineup.date || lineup.cleanup) return null;
-  if (lineup.status !== "confirmed" && lineup.status !== "canned") return null;
+  if (lineup.status !== "confirmed" && lineup.status !== "canned" && lineup.status !== "cancelled") return null;
   const day = addDays(lineup.date, 1);
   if (now.date < day || (now.date === day && now.time < c.time)) return null;
   if (now.date > addDays(lineup.date, CLEANUP_WINDOW_DAYS)) return "skip";
-  const off = lineup.outcome === "canned" || lineup.status === "canned";
-  if (off) return "ask";
-  const happened = lineup.outcome === "happened" || (!micCheckOn && lineup.status === "confirmed");
-  if (!happened) return null; // waiting for the mic check answer
-  if (cleanupTriggerPost(show)) return null; // the chosen post starts it when it goes out (a show that didn't happen still asks, above)
-  return c.mode === "auto" ? "run" : "ask";
+  const outcome = cleanupOutcome(lineup, micCheckOn);
+  if (!outcome) return null; // waiting for the mic check answer
+  if (outcome === "happened" && cleanupTriggerPost(show)) return null; // the chosen post starts it when it goes out (a show that didn't happen never waits on it)
+  return cleanupDecision(cleanupRules(c), outcome, lineup.repeatNext);
 }
 
 /** Retry delays after the first pass: 2 min, 10 min, then hourly, until `until`. */

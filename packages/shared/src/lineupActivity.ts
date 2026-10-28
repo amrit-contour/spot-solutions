@@ -95,7 +95,7 @@ export function lineupActivity({ lineup, show, offers = [], now, nameOf }: Activ
     const c = lineup.cleanup;
     if (c) {
       const left = c.pending ?? [];
-      if (c.status === "asked") dated.push({ key: "cleanup", at: c.at, icon: "cleanup", tone: "scheduled", text: c.reason === "canned" ? "Waiting for you: clear the group, even though the show didn't happen?" : "Waiting for you: clear the group for next week?" });
+      if (c.status === "asked") dated.push({ key: "cleanup", at: c.at, icon: "cleanup", tone: "scheduled", text: c.reason === "repeat" ? "Waiting for you: repeat next week? That decides whether the group is cleared" : c.reason === "canned" ? "Waiting for you: clear the group, even though the show didn't happen?" : "Waiting for you: clear the group for next week?" });
       else if (c.status === "done") dated.push({ key: "cleanup", at: c.at, icon: "cleanup", tone: "done", text: `Cleared the group: removed ${c.removed ?? 0}`, detail: c.skipped ? [`${plural(c.skipped, "member")} left alone because they couldn't be identified`] : undefined });
       else if (c.status === "partial") {
         const next = c.retryAt ? `Trying again ${new Date(c.retryAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Not retrying any more. Remove them by hand, or retry now";

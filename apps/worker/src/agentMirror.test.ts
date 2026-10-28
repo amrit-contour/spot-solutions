@@ -320,7 +320,7 @@ describe("a late vote after the app already answered", () => {
     patch(`${U}/lineups/L`, { cleanup: { status: "kept", at: Date.now() } });
     await mirrorTick(U);
     const said: string[] = [];
-    expect(await applyVote(deps(said), "poll1", ["Yes, clear it"])).toBe("conflict");
+    expect(await applyVote(deps(said), "poll1", ["Clear"])).toBe("conflict");
     expect(said).toEqual(["Already kept everyone in the app. Change it there if that's not what you meant."]);
     expect((await readMemory(U)).changeAsk ?? null).toBeNull();
   });
