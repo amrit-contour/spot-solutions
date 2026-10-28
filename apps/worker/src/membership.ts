@@ -53,7 +53,7 @@ export async function decideMembership(uid: string, intent: Intent, known: Comic
   const targets = targetShows(watchUser(uid).shows, intent);
   if (!targets.length) return null;
   const lineups = (await col(uid, "lineups").where("weekOf", "==", week).get()).docs.map((d) => d.data() as Lineup);
-  const comic = known ?? { id: contact.id, chatId: contact.chatId, name: contact.name, phone: contact.phone, tier: "open" as const, regularOf: [] as string[] };
+  const comic = known ?? { id: contact.id, chatId: contact.chatId, name: contact.name, phone: contact.phone, regularOf: [] as string[] };
   return membershipDecision(checkShows({ comic, shows: targets, lineups, week, now: Date.now() }));
 }
 

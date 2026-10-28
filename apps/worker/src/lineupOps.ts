@@ -13,8 +13,8 @@ export async function ensureComic(uid: string, week: string, person: { id: strin
   if ((await ref.get()).exists) return;
   const req = (await col(uid, "requests").doc(`${week}_${person.id}`).get()).data() as SpotRequest | undefined;
   const c: Comic = req
-    ? { id: person.id, chatId: req.contact?.chatId ?? person.id, name: req.comicName, nameSource: req.contact?.nameSource ?? "whatsapp", phone: req.contact?.phone ?? person.id.split("@")[0], tier: "open", lastPerformedWeek: null, regularOf: [] }
-    : { id: person.id, chatId: person.id, name: person.name, nameSource: "whatsapp", phone: person.phone ?? (person.id.endsWith("@c.us") ? person.id.split("@")[0] : ""), tier: "open", lastPerformedWeek: null, regularOf: [] };
+    ? { id: person.id, chatId: req.contact?.chatId ?? person.id, name: req.comicName, nameSource: req.contact?.nameSource ?? "whatsapp", phone: req.contact?.phone ?? person.id.split("@")[0], lastPerformedWeek: null, regularOf: [] }
+    : { id: person.id, chatId: person.id, name: person.name, nameSource: "whatsapp", phone: person.phone ?? (person.id.endsWith("@c.us") ? person.id.split("@")[0] : ""), lastPerformedWeek: null, regularOf: [] };
   await ref.set(c, { merge: true });
 }
 

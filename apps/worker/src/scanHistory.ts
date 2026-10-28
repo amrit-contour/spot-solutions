@@ -115,7 +115,7 @@ export async function scanHistory(uid: string, payload: Record<string, unknown>,
               }
               const hold = scanHold({ comic, week, burst, rules: settings.rules, timeZone: settings.timezone, membership });
               if (!comic) {
-                const c: Comic = { id: contact.id, chatId: contact.chatId, name: contact.name, nameSource: contact.nameSource, phone: contact.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
+                const c: Comic = { id: contact.id, chatId: contact.chatId, name: contact.name, nameSource: contact.nameSource, phone: contact.phone, lastPerformedWeek: null, regularOf: [] };
                 tx.set(comicRef, c);
               }
               const request: SpotRequest = {

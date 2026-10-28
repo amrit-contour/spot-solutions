@@ -2,8 +2,9 @@
 // - app facts: worked out from the curator's own data, never guessed (factTags below)
 // - Gemma's reading: a fixed set of labels the model may attach, validated in the worker (INTENT_TAGS)
 import { shiftWeek } from "./week.ts";
+import { experienceOf } from "./experience.ts";
 import { showsLastWeekMarker } from "./showRegulars.ts";
-import type { Comic, IntentTag, Show, Tier } from "./types.ts";
+import type { Comic, IntentTag, Show } from "./types.ts";
 
 export const INTENT_TAGS: readonly IntentTag[] = ["new_material", "flexible_days", "specific_time", "longer_set", "travelling", "bringing_audience", "first_time_here"];
 
@@ -41,7 +42,7 @@ export function pastSpotCount(history: Comic["history"], today: string) {
 }
 
 export interface FactInput {
-  comic?: Pick<Comic, "id" | "tier" | "history" | "lastPerformedWeek"> | null;
+  comic?: Pick<Comic, "id" | "history" | "lastPerformedWeek" | "comedySince" | "tagsPinned" | "tagsHidden"> | null;
   /** Shows that carry regulars / protected lists. */
   shows: (Pick<Show, "regulars" | "protected"> & { id?: string })[];
   week: string;
@@ -62,7 +63,7 @@ export function factTags(i: FactInput): FactTag[] {
   if (isNewToYou(i)) out.push({ id: "new_to_you", label: "New to you" });
   // Regulars repeat anyway: no marker for them.
   if (showsLastWeekMarker(c, i.shows, shiftWeek(i.week, -1))) out.push({ id: "performed_last_week", label: "Performed last week" });
-  if (c && (c.tier === "regular" || i.shows.some((s) => s.regulars?.includes(c.id)))) out.push({ id: "regular", label: "Regular" });
+  if (c && i.shows.some((s) => s.regulars?.includes(c.id) || (s.id !== undefined && (c as any).regularOf?.includes?.(s.id)))) out.push({ id: "regular", label: "Regular" });
   if (c && i.shows.some((s) => s.protected?.includes(c.id))) out.push({ id: "co_host", label: "Co-host" });
   const n = pastSpotCount(c?.history, i.today);
   if (n > 0) out.push({ id: "spots", label: `Spots: ${n}` });
@@ -74,7 +75,7 @@ export interface SenderFacts {
   savedName: string | null;
   pastSpots: number;
   lastSpotDate: string | null;
-  tier: Tier;
+  tags?: string[];
   performedLastWeek: boolean;
   priorRequests: number;
 }
@@ -88,7 +89,7 @@ export function senderFacts(i: { comic?: Comic | null; week: string; today: stri
     savedName: c && (c.nameSource === "contact" || c.nameSource === "manual") ? c.name : null,
     pastSpots: done.length,
     lastSpotDate: done[0]?.date ?? null,
-    tier: c?.tier ?? "open",
+    tags: (experienceOf ? (experienceOf(c ?? {}, new Date(i.today)).tags) : []) ,
     performedLastWeek: Boolean(c?.lastPerformedWeek && c.lastPerformedWeek === shiftWeek(i.week, -1)),
     priorRequests: i.priorRequests ?? 0,
   };

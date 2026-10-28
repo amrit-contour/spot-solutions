@@ -43,11 +43,11 @@ export async function ensureComic(uid: string, week: string, comicId: string, fa
     if (!fallback) return;
     // @lid members have no number WhatsApp will share; they're still messaged through that id.
     const phone = comicId.endsWith("@c.us") ? comicId.split("@")[0] : "";
-    const c: Comic = { id: comicId, chatId: comicId, name: fallback.name || (phone ? `+${phone}` : "Group member"), nameSource: "whatsapp", phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
+    const c: Comic = { id: comicId, chatId: comicId, name: fallback.name || (phone ? `+${phone}` : "Group member"), nameSource: "whatsapp", phone, lastPerformedWeek: null, regularOf: [] };
     await setDoc(ref, c, { merge: true });
     return;
   }
-  const c: Comic = { id: comicId, chatId: req.contact?.chatId ?? comicId, name: req.comicName, nameSource: req.contact?.nameSource ?? "whatsapp", phone: req.contact?.phone ?? comicId.split("@")[0], tier: "open", lastPerformedWeek: null, regularOf: [] };
+  const c: Comic = { id: comicId, chatId: req.contact?.chatId ?? comicId, name: req.comicName, nameSource: req.contact?.nameSource ?? "whatsapp", phone: req.contact?.phone ?? comicId.split("@")[0], lastPerformedWeek: null, regularOf: [] };
   await setDoc(ref, c, { merge: true });
 }
 

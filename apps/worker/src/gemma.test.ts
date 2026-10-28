@@ -23,7 +23,7 @@ const shows = [
   { name: "Open Mic - Monday", weekday: 1, startTime: "20:30", venueId: "v_bloom" },
   { name: "Open Mic - Tuesday", weekday: 2, startTime: "20:30", venueId: "v_bloom" },
 ] as Show[];
-const sender: SenderFacts = { onRoster: true, savedName: "Asha K", pastSpots: 4, lastSpotDate: "2026-09-29", tier: "regular", performedLastWeek: true, priorRequests: 6 };
+const sender: SenderFacts = { onRoster: true, savedName: "Asha K", pastSpots: 4, lastSpotDate: "2026-09-29", tags: [], performedLastWeek: true, priorRequests: 6 };
 
 describe("buildPrompt", () => {
   const p = buildPrompt(["bloom pe spot hai kya monday"], shows, venues, sender);
@@ -37,7 +37,7 @@ describe("buildPrompt", () => {
     expect(p).toContain("On the curator's roster: yes");
     expect(p).toContain("Saved name: Asha K");
     expect(p).toContain("Past spots here: 4, last on 2026-09-29");
-    expect(p).toContain("Tier: regular");
+    expect(p).toContain("Experience tags:");
     expect(p).toContain("Performed last week: yes");
     expect(p).toContain("Do not judge whether this person is new");
   });

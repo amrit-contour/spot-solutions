@@ -9,22 +9,22 @@ const show = (o: Partial<Show> = {}) => ({ id: "mon", regulars: [], ...o }) as S
 
 describe("isRegularOf", () => {
   it("is on the show's regulars list", () => expect(isRegularOf(comic(), show({ regulars: ["a@c.us"] }))).toBe(true));
-  it("is tier regular with that show in their shows", () => expect(isRegularOf(comic({ tier: "regular", regularOf: ["mon"] }), show())).toBe(true));
-  it("tier regular of another show is not a regular here", () => expect(isRegularOf(comic({ tier: "regular", regularOf: ["tue"] }), show())).toBe(false));
-  it("the show in their shows without tier regular does not count", () => expect(isRegularOf(comic({ regularOf: ["mon"] }), show())).toBe(false));
-  it("any show", () => expect(isRegularOfAny(comic({ tier: "regular", regularOf: ["tue"] }), [show(), show({ id: "tue" })])).toBe(true));
+  it("is regularOf with that show in their shows", () => expect(isRegularOf(comic({ regularOf: ["mon"] }), show({ id: "mon" }))).toBe(true));
+  it("regularOf of another show is not a regular here", () => expect(isRegularOf(comic({ regularOf: ["tue"] }), show({ id: "mon" }))).toBe(false));
+  it("the show in their shows without regularOf does not count", () => expect(isRegularOf(comic({ regularOf: [] }), show({ id: "mon" }))).toBe(false));
+  it("any show", () => expect(isRegularOfAny(comic({ regularOf: ["tue"] }), [show({ id: "mon" }), show({ id: "tue" })])).toBe(true));
 });
 
 describe("showsLastWeekMarker", () => {
   it("shows for someone who played last week and is not a regular", () => expect(showsLastWeekMarker(comic(), show(), LAST)).toBe(true));
   it("hidden for a regular of that show, either way of being one", () => {
     expect(showsLastWeekMarker(comic(), show({ regulars: ["a@c.us"] }), LAST)).toBe(false);
-    expect(showsLastWeekMarker(comic({ tier: "regular", regularOf: ["mon"] }), show(), LAST)).toBe(false);
+    expect(showsLastWeekMarker(comic({ regularOf: ["mon"] }), show({ id: "mon" }), LAST)).toBe(false);
   });
   it("kept for a regular of a different show", () => expect(showsLastWeekMarker(comic({ tier: "regular", regularOf: ["tue"] }), show(), LAST)).toBe(true));
   it("false when they did not play last week", () => expect(showsLastWeekMarker(comic({ lastPerformedWeek: "2026-10-12" }), show(), LAST)).toBe(false));
   it("a list of shows hides it when they are a regular of any", () => {
-    expect(showsLastWeekMarker(comic({ tier: "regular", regularOf: ["tue"] }), [show(), show({ id: "tue" })], LAST)).toBe(false);
+    expect(showsLastWeekMarker(comic({ regularOf: ["tue"] }), [show({ id: "mon" }), show({ id: "tue" })], LAST)).toBe(false);
     expect(showsLastWeekMarker(comic(), [show()], LAST)).toBe(true);
   });
 });

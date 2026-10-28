@@ -27,7 +27,7 @@ export async function importPeople(uid: string, people: PersonToImport[], find: 
     for (const p of people.slice(i, i + 450)) {
       const cur = find(p);
       if (!cur) {
-        const c: Comic = { id: p.id, name: p.name, nameSource: p.nameSource, phone: p.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
+        const c: Comic = { id: p.id, name: p.name, nameSource: p.nameSource, phone: p.phone, lastPerformedWeek: null, regularOf: [] };
         // Merge: if the roster was stale and this comic exists after all, its other fields (history, notes, list) survive.
         batch.set(userDoc(uid, "comics", p.id), c, { merge: true });
         added++;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { factTags, senderFacts } from "./requestTags.ts";
 import type { Comic } from "./types.ts";
 
-const comic = (o: Partial<Comic> = {}): Comic => ({ id: "c1", name: "Asha", phone: "1", tier: "open", ...o });
+const comic = (o: Partial<Comic> = {}): Comic => ({ id: "c1", name: "Asha", phone: "1", ...o });
 const base = { shows: [{ regulars: [] as string[], protected: [] as string[] }], week: "2026-10-26", today: "2026-10-27" };
 const ids = (i: Parameters<typeof factTags>[0]) => factTags(i).map((t) => t.id);
 
@@ -27,7 +27,7 @@ describe("factTags", () => {
     expect(ids({ ...base, comic: comic({ lastPerformedWeek: "2026-10-12" }) })).not.toContain("performed_last_week");
   });
   it("flags regulars by tier or by a show's regulars list", () => {
-    expect(ids({ ...base, comic: comic({ tier: "regular" }) })).toContain("regular");
+    expect(ids({ ...base, comic: comic({ regularOf: ["s1"] }), shows: [{ id: "s1", regulars: [], protected: [] }] })).toContain("regular");
     expect(ids({ ...base, comic: comic(), shows: [{ regulars: ["c1"], protected: [] }] })).toContain("regular");
     expect(ids({ ...base, comic: comic() })).not.toContain("regular");
   });
@@ -46,7 +46,7 @@ describe("factTags", () => {
     expect(ids({ ...base, comic: comic() })).not.toContain("spots");
   });
   it("is stable for the same input", () => {
-    const i = { ...base, comic: comic({ tier: "regular" }) };
+    const i = { ...base, comic: comic({ regularOf: ["s1"] }) };
     expect(factTags(i)).toEqual(factTags(i));
   });
 });
@@ -57,12 +57,12 @@ describe("senderFacts", () => {
       { date: "2026-10-20", showId: "s", showName: "Mic", status: "confirmed" as const },
       { date: "2026-10-06", showId: "s", showName: "Mic", status: "confirmed" as const },
     ];
-    const f = senderFacts({ comic: comic({ name: "Asha K", nameSource: "contact", tier: "regular", history: h, lastPerformedWeek: "2026-10-19" }), week: "2026-10-26", today: "2026-10-27", priorRequests: 3 });
-    expect(f).toEqual({ onRoster: true, savedName: "Asha K", pastSpots: 2, lastSpotDate: "2026-10-20", tier: "regular", performedLastWeek: true, priorRequests: 3 });
+    const f = senderFacts({ comic: comic({ name: "Asha K", nameSource: "contact", regularOf: ["s1"], history: h, lastPerformedWeek: "2026-10-19" }), week: "2026-10-26", today: "2026-10-27", priorRequests: 3 });
+    expect(f).toMatchObject({ onRoster: true, savedName: "Asha K", pastSpots: 2, lastSpotDate: "2026-10-20", performedLastWeek: true, priorRequests: 3 });
   });
   it("describes a stranger without guessing", () => {
     const f = senderFacts({ comic: undefined, week: "2026-10-26", today: "2026-10-27" });
-    expect(f).toMatchObject({ onRoster: false, savedName: null, pastSpots: 0, lastSpotDate: null, tier: "open", performedLastWeek: false });
+    expect(f).toMatchObject({ onRoster: false, savedName: null, pastSpots: 0, lastSpotDate: null, performedLastWeek: false });
   });
   it("does not treat a WhatsApp profile name as a saved name", () => {
     expect(senderFacts({ comic: comic({ nameSource: "whatsapp" }), week: "2026-10-26", today: "2026-10-27" }).savedName).toBeNull();

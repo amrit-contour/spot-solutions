@@ -2,13 +2,13 @@
 // Regulars repeat from last week anyway, so the marker (and any "send them to the back" ranking) is for everyone else.
 import type { Comic, Show } from "./types.ts";
 
-type ComicLike = Pick<Comic, "id" | "tier" | "regularOf">;
+type ComicLike = Pick<Comic, "id" | "regularOf">;
 type ShowLike = Pick<Show, "regulars"> & { id?: string };
 
 /** A regular of THIS show: on its regulars list, or tier regular with this show in their shows. */
 export function isRegularOf(comic: ComicLike | null | undefined, show: ShowLike | null | undefined): boolean {
   if (!comic || !show) return false;
-  return Boolean(show.regulars?.includes(comic.id) || (comic.tier === "regular" && (show.id !== undefined && comic.regularOf?.includes(show.id))));
+  return Boolean(show.regulars?.includes(comic.id) || (show.id !== undefined && comic.regularOf?.includes(show.id)));
 }
 
 /** A regular of any of these shows (for places that aren't about one show: Waiting, Requests, Comics). */

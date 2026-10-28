@@ -50,7 +50,7 @@ function senderSection(f: SenderFacts) {
     `- Saved name: ${f.savedName ?? "none"}`,
     `- Past spots here: ${f.pastSpots}${f.lastSpotDate ? `, last on ${f.lastSpotDate}` : ""}`,
     `- Earlier requests in other weeks: ${f.priorRequests}`,
-    `- Tier: ${f.tier}`,
+    `- Experience tags: ${((f.tags ?? []).join(", ")) || "none"}`,
     `- Performed last week: ${f.performedLastWeek ? "yes" : "no"}`,
   ];
   return lines.join("\n");

@@ -137,7 +137,7 @@ export async function pullGroupMembers(uid: string, { groupId }: Record<string, 
     const batch = db.batch();
     for (const { m, cur } of chunk) {
       if (!cur) {
-        const c: Comic = { id: m.id, chatId: m.chatId, name: m.name, nameSource: m.nameSource, phone: m.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
+        const c: Comic = { id: m.id, chatId: m.chatId, name: m.name, nameSource: m.nameSource, phone: m.phone, lastPerformedWeek: null, regularOf: [] };
         batch.set(col(uid, "comics").doc(m.id), c);
         added++;
         continue;

@@ -244,7 +244,7 @@ async function flush(uid: string, client: WAWebJS.Client, p: Pending) {
     const cur = comic.data() as Comic | undefined;
     // Only clear spot asks (and people already on the roster) belong in Comics; a Maybe joins when you place it.
     if (!cur && request.intent.isSpotRequest && request.intent.confidence >= INTENT_THRESHOLD) {
-      const c: Comic = { id: p.contact.id, chatId: p.contact.chatId, name: p.contact.name, nameSource: p.contact.nameSource, phone: p.contact.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
+      const c: Comic = { id: p.contact.id, chatId: p.contact.chatId, name: p.contact.name, nameSource: p.contact.nameSource, phone: p.contact.phone, lastPerformedWeek: null, regularOf: [] };
       tx.set(comicRef, c);
       created = true;
     } else if (cur) {
