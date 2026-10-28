@@ -3,7 +3,7 @@ import { ComicAvatar } from "../lib/photos";
 import { Link, useSearchParams } from "react-router-dom";
 import { deleteDoc, setDoc, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
-import { attendanceLabel, cancellations, formatDate, localNow, performed, ratingSummary, reliability, shiftWeek, showsLastWeekMarker, type Comic, type ComicList, type Show, type Tier } from "@spot/shared";
+import { attendanceLabel, addNumber, cancellations, formatDate, localNow, makePrimary, numbersOf, performed, ratingSummary, reliability, removeNumber, shiftWeek, showsLastWeekMarker, type Comic, type ComicList, type Show } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
@@ -25,18 +25,12 @@ import { IconChat, IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconS
 const PAGE = 50;
 const LIST_LABEL: Record<ComicList, string> = { host: "Host", ignored: "Ignored", banned: "Banned" };
 
-const TIERS: { value: Tier; label: string }[] = [
-  { value: "open", label: "Open" },
-  { value: "regular", label: "Regular" },
-  { value: "featured", label: "Featured" },
-];
-
 export function Comics() {
   const { uid, comics, currentWeek, shows, session } = useApp();
   const [importing, setImporting] = useState<"contacts" | "file" | "google" | null>(null);
   const waHint = isDemoUser() ? "Off in demo" : session?.status !== "ready" ? "Connect WhatsApp" : undefined;
   const [q, setQ] = useState("");
-  const [tier, setTier] = useState<Tier | "all">("all");
+  const tier = "all";
   const [editing, setEditing] = useState<Partial<Comic> | null>(null);
   const lastWeek = shiftWeek(currentWeek, -1);
   // Bulk select: tick several comics and remove them together.
@@ -55,7 +49,7 @@ export function Comics() {
   const editId = params.get("edit");
   const addName = params.get("add");
   useEffect(() => {
-    if (addName) setEditing({ tier: "open", name: addName });
+    if (addName) setEditing({ name: addName });
     else {
       const c = editId ? comics.find((x) => x.id === editId) : null;
       if (!c) return;
@@ -67,7 +61,7 @@ export function Comics() {
   const list = useMemo(
     () =>
       comics
-        .filter((c) => (tier === "all" || c.tier === tier) && (c.name.toLowerCase().includes(q.toLowerCase()) || c.phone.includes(q)))
+        .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()) || c.phone.includes(q))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [comics, q, tier],
   );
@@ -135,7 +129,7 @@ export function Comics() {
             )}
           </Menu>
           {!selecting && comics.length > 0 && <CompactButton size="md" variant="outlined" icon={IconCheck} label="Select" onClick={() => setSelecting(true)} />}
-          <CompactButton icon={IconUserPlus} label="Add comic" variant="filled" size="md" onClick={() => setEditing({ tier: "open" })} />
+          <CompactButton icon={IconUserPlus} label="Add comic" variant="filled" size="md" onClick={() => setEditing({})} />
         </>
       }
     />
@@ -148,7 +142,6 @@ export function Comics() {
             <IconSearch className="icon pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-on-surface-variant" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or number" className="h-12 w-full rounded-full bg-surface-high pr-4 pl-12 type-body-l outline-none placeholder:text-on-surface-variant focus:shadow-[inset_0_0_0_2px_var(--md-sys-color-primary)]" />
           </div>
-          <div className="w-full sm:w-auto"><Segmented size="sm" full value={tier} onChange={setTier} options={[{ value: "all", label: "All" }, ...TIERS]} /></div>
         </div>
         </StickyBar>
         {!list.length ? (
@@ -160,7 +153,7 @@ export function Comics() {
           {selecting && (
             <label className="state-layer mb-2 flex cursor-pointer items-center gap-4 rounded-xl bg-surface-container px-4 py-3 sm:px-5">
               <input type="checkbox" className="size-5 flex-none accent-[var(--md-sys-color-primary)]" checked={allOn} onChange={() => setSel(allOn ? new Set() : new Set(list.map((c) => c.id)))} />
-              <span className="type-title-s">Select all{q || tier !== "all" ? " in this view" : ""} ({list.length})</span>
+              <span className="type-title-s">Select all{q ? " in this view" : ""} ({list.length})</span>
             </label>
           )}
           <ul className="overflow-hidden rounded-xl bg-surface-low">
@@ -236,6 +229,7 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
   const today = localNow(new Date(), settings.timezone).date;
   const [pastOpen, setPastOpen] = useState(false);
   const [rating, setRating] = useState<string | null>(null);
+  const [addNum, setAddNum] = useState("");
   const [d, setD] = useState<Partial<Comic>>({});
   const [last, setLast] = useState<Partial<Comic> | null>(null);
   // Read live, so a past spot recorded from here shows straight away.
@@ -254,7 +248,7 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
     const id = d.id ?? `${full}@c.us`;
     const regularOf = d.regularOf ?? [];
     const nameSource = value?.name !== d.name || isNew ? "manual" : (d.nameSource ?? "manual");
-    await setDoc(userDoc(uid, "comics", id), { ...d, id, nameSource, phone: full, tier: d.tier ?? "open", regularOf, lastPerformedWeek: d.lastPerformedWeek ?? null });
+    await setDoc(userDoc(uid, "comics", id), { ...d, id, nameSource, phone: full, regularOf, lastPerformedWeek: d.lastPerformedWeek ?? null });
     // Keep each show's regulars list in sync with the comic's "regular of".
     await Promise.all(
       shows.map((s) => {
@@ -311,9 +305,26 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
         <Field label="WhatsApp number" hint={isNew ? "With country code, e.g. 9198xxxxxxxx" : "Linked to their WhatsApp; can't be changed"}>
           <TextInput value={isNew ? (d.phone ?? "") : d.phone ? `+${d.phone}` : "Hidden by WhatsApp (privacy)"} disabled={!isNew} inputMode="tel" onChange={(e) => setD({ ...d, phone: e.target.value })} />
         </Field>
-        <Field label="Experience">
-          <Segmented value={d.tier ?? "open"} onChange={(t) => setD({ ...d, tier: t })} options={TIERS} />
+        <Field label="Doing comedy since" hint="YYYY or YYYY-MM. Estimates years; updates as time passes.">
+          <TextInput value={d.comedySince ?? ""} onChange={(e) => setD({ ...d, comedySince: e.target.value })} placeholder="2019 or 2019-06" />
         </Field>
+        {d.id && (
+          <Field label="Numbers">
+            <ul className="flex flex-col gap-2">
+              {numbersOf(d as Comic).map((n) => (
+                <li key={n.phone} className="flex items-center gap-2">
+                  <span className="flex-1 tabular">+{n.phone}{n.label ? ` · ${n.label}` : ""}{n.primary ? " · primary" : ""}</span>
+                  {!n.primary && <Button size="sm" variant="tonal" onClick={() => setD(makePrimary(d as Comic, n.phone))}>Make primary</Button>}
+                  <Button size="sm" variant="text" onClick={() => setD(removeNumber(d as Comic, n.phone))}>Remove</Button>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 flex gap-2">
+              <TextInput placeholder="Add number" value={addNum} onChange={(e) => setAddNum(e.target.value)} />
+              <Button size="sm" variant="tonal" onClick={() => { const p = addNum.replace(/\D/g, ""); if (p.length >= 7) { setD(addNumber(d as Comic, p)); setAddNum(""); } else toast.error("Not a phone number"); }}>Add</Button>
+            </div>
+          </Field>
+        )}
         <Field label="List" hint="Requests from hosts, ignored or banned comics are held back automatically. You can still allow them one by one.">
           <Segmented
             value={d.list ?? "none"}
