@@ -56,3 +56,5 @@ export { default as IconPalette } from "~icons/solar/pallete-2-bold-duotone";
 export { default as IconSort } from "~icons/solar/sort-vertical-bold-duotone";
 export { default as IconBell } from "~icons/solar/bell-bold-duotone";
 export { default as IconPlus } from "~icons/solar/add-linear";
+export { default as IconPlay } from "~icons/solar/play-bold-duotone";
+export { default as IconPause } from "~icons/solar/pause-bold-duotone";

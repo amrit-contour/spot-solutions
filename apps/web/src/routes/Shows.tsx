@@ -13,7 +13,7 @@ import { GroupAvatar } from "../lib/photos";
 import { PageHeader } from "@spot/ui";
 import { ShowPeoplePicker } from "../components/ShowPeoplePicker";
 import { Button, Chip, Empty, Field, IconButton, SearchSelect, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
-import { IconAdd, IconRoom, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "@spot/ui";
+import { IconAdd, IconRoom, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn, IconPlay, IconPause } from "@spot/ui";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
@@ -107,12 +107,13 @@ export function Shows() {
                         </span>
                       </button>
                       <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
-                        <Switch checked={Boolean(s.active)} onChange={async (v) => {
-                          try {
-                            await import("firebase/firestore").then(({ setDoc }) => setDoc(userDoc(uid, "shows", s.id), { active: v }, { merge: true }));
-                            toast.success(v ? "Show activated" : "Show paused", { action: { label: "Undo", onClick: async () => { await import("firebase/firestore").then(({ setDoc }) => setDoc(userDoc(uid, "shows", s.id), { active: !v }, { merge: true })); } } });
-                          } catch (e) { toast.error((e as Error).message); }
-                        }} label="Active" />
+                        <button type="button" aria-label={s.active ? "Pause show" : "Activate show"} onClick={async (ev) => { ev.stopPropagation(); try {
+                          const next = !s.active;
+                          await import("firebase/firestore").then(({ setDoc }) => setDoc(userDoc(uid, "shows", s.id), { active: next }, { merge: true }));
+                          toast.success(next ? "Show activated" : "Show paused", { action: { label: "Undo", onClick: async () => { await import("firebase/firestore").then(({ setDoc }) => setDoc(userDoc(uid, "shows", s.id), { active: !next }, { merge: true })); } } });
+                        } catch (e) { toast.error((e as Error).message); } }} className={cx("state-layer grid size-9 place-items-center rounded-full", s.active ? "text-primary" : "text-error")}>
+                          {s.active ? <IconPlay className="icon size-5" /> : <IconPause className="icon size-5" />}
+                        </button>
                       </div>
                       {s.groupId && (
                         <Link to={`/messages?g=${encodeURIComponent(s.groupId)}`} aria-label={`Open the ${s.name} group chat`} title="Group chat" className="state-layer absolute top-3 right-14 grid size-10 place-items-center rounded-full text-primary">
@@ -290,6 +291,26 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
         <div className="rounded-lg bg-surface-container p-4">
           <div className="mb-2 type-title-s">Request window</div>
           <Segmented full compact value={(draft.requestWindow?.mode ?? "default")} onChange={(v) => set("requestWindow", v === "default" ? { mode: "default" } : v === "always" ? { mode: "always" } : v === "weekly" ? { mode: "weekly", startDay: 6 as Weekday, startTime: "10:00", endDay: 1 as Weekday, endTime: "17:00" } : { mode: "before", opensDaysBefore: 2, opensAt: "10:00", closesHoursBefore: 3 })} options={[{ value: "default", label: "Default" }, { value: "before", label: "Before show" }, { value: "weekly", label: "Weekly" }, { value: "always", label: "Always" }]} />
+          {(() => {
+            const rw = draft.requestWindow ?? { mode: "default" };
+            const setRW = (patch: Record<string, unknown>) => set("requestWindow", { ...rw, ...patch } as never);
+            if (rw.mode === "before") return (
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <Field label="Days before"><Stepper value={Number(rw.opensDaysBefore ?? 2)} onChange={(v) => setRW({ opensDaysBefore: v })} min={1} max={14} /></Field>
+                <Field label="Opens at"><TimePicker value={rw.opensAt ?? "10:00"} onChange={(v) => setRW({ opensAt: v })} label="Opens at" /></Field>
+                <Field label="Hours before"><Stepper value={Number(rw.closesHoursBefore ?? 3)} onChange={(v) => setRW({ closesHoursBefore: v })} min={1} max={24} /></Field>
+              </div>
+            );
+            if (rw.mode === "weekly") return (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <select className="rounded-lg border border-outline-variant bg-surface px-2 py-1.5 type-label-l" value={rw.startDay ?? 6} onChange={(e) => setRW({ startDay: Number(e.target.value) as Weekday })}>{DAY_NAMES.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
+                <TimePicker value={rw.startTime ?? "10:00"} onChange={(v) => setRW({ startTime: v })} label="Opens" />
+                <select className="rounded-lg border border-outline-variant bg-surface px-2 py-1.5 type-label-l" value={rw.endDay ?? 1} onChange={(e) => setRW({ endDay: Number(e.target.value) as Weekday })}>{DAY_NAMES.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
+                <TimePicker value={rw.endTime ?? "17:00"} onChange={(v) => setRW({ endTime: v })} label="Closes" />
+              </div>
+            );
+            return null;
+          })()}
           <p className="mt-2 type-body-s text-on-surface-variant">
             {(() => {
               const rw = draft.requestWindow ?? { mode: "default" };
