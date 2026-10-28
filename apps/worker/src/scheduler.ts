@@ -21,6 +21,7 @@ import { askRatings } from "./ratings.ts";
 import { askDidntHappen } from "./noShow.ts";
 import { maybePhotoSweep } from "./profilePics.ts";
 import { maybeSweepMedia } from "./media.ts";
+import { refreshGroups } from "./membershipRefresh.ts";
 
 const TICK_MS = 2 * 60_000;
 const MIRROR_TICK_MS = 30_000;
@@ -80,6 +81,7 @@ export function startScheduler(uids: () => Iterable<string>) {
       void maybeCheckFollowUps(uid, client).catch((e) => console.error("[follow-up]", e));
       void sendGroupPosts(uid, client).catch((e) => console.error("[group-post]", e));
       void maybeTickAsks(uid, client).catch((e) => console.error("[asks]", e));
+      void refreshGroups(uid).catch((e) => console.error("[members]", e.message));
       void maybePhotoSweep(uid).catch((e) => console.error("[pics-sweep]", e.message));
     }
   }, TICK_MS).unref();

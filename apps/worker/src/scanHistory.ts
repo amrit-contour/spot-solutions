@@ -5,6 +5,7 @@ import {
   burstGapMs,
   burstWeek,
   clampScanDays,
+  isLockedRequest,
   planScanMerge,
   rolloverDayFor,
   scanHold,
@@ -22,6 +23,7 @@ import { AiPolicyError } from "./aiRouting.ts";
 import { sessions } from "./sessions.ts";
 import { watchUser } from "./userData.ts";
 import { dropNeverRead } from "./neverRead.ts";
+import { decideMembership } from "./membership.ts";
 
 const MAX_CHATS = 300;
 const MESSAGES_PER_CHAT = 150;
@@ -96,6 +98,10 @@ export async function scanHistory(uid: string, payload: Record<string, unknown>,
             const intent = await classify(uid, burst.map((m) => m.body), activeShows, settings.ai, classifyContext(uid, known, week, prior));
             console.log(`[scan] ${contact.name}: spot=${intent.isSpotRequest} conf=${intent.confidence} (${intent.model})`);
 
+            // Same membership decision as live intake: already on the lineup and in the group needs no request.
+            const membership = isLockedRequest(before) ? null : await decideMembership(uid, intent, known, contact, week);
+            if (membership?.kind === "confirmed") continue;
+
             const result = await db.runTransaction(async (tx) => {
               const [reqSnap, comicSnap] = await Promise.all([tx.get(reqRef), tx.get(comicRef)]);
               const existing = reqSnap.data() as SpotRequest | undefined;
@@ -107,7 +113,7 @@ export async function scanHistory(uid: string, payload: Record<string, unknown>,
                 tx.update(reqRef, { messages: plan.messages, intent: plan.intent, updatedAt: now });
                 return { action: "update" as const, held: Boolean(existing?.hold && !existing.holdOverridden) };
               }
-              const hold = scanHold({ comic, week, burst, rules: settings.rules, timeZone: settings.timezone });
+              const hold = scanHold({ comic, week, burst, rules: settings.rules, timeZone: settings.timezone, membership });
               if (!comic) {
                 const c: Comic = { id: contact.id, chatId: contact.chatId, name: contact.name, nameSource: contact.nameSource, phone: contact.phone, tier: "open", lastPerformedWeek: null, regularOf: [] };
                 tx.set(comicRef, c);

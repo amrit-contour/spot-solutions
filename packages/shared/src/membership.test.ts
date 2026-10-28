@@ -97,3 +97,55 @@ describe("regular exemption from the performed-recently hold", () => {
     expect(holdFor({ ...opts, comic: { ...recent, list: "banned" }, regular: true })).toBe("banned");
   });
 });
+
+import { GROUP_REFRESH_MS, groupRefreshDue, holdReasonFor, jitterOf, minutesToShowStart } from "./membership.ts";
+import { scanHold } from "./scanHistory.ts";
+
+describe("groupRefreshDue", () => {
+  const h = 3600_000;
+  const c = (ageMs: number, groupId = "g1") => ({ groupId, at: NOW - ageMs });
+  const due = (cache: ReturnType<typeof c> | null, extra: { jitter?: number; minutesToStart?: number | null } = {}) => groupRefreshDue({ cache, groupId: "g1", now: NOW, ...extra });
+  it("no cache, or another group's: due", () => {
+    expect(due(null)).toBe(true);
+    expect(due(c(1000, "other"))).toBe(true);
+  });
+  it("fresh: not due; past 12h: due", () => {
+    expect(due(c(11 * h))).toBe(false);
+    expect(due(c(GROUP_REFRESH_MS))).toBe(true);
+  });
+  it("jitter delays the refresh by up to 25%", () => {
+    expect(due(c(13 * h), { jitter: 1 })).toBe(false);
+    expect(due(c(15 * h + 1), { jitter: 1 })).toBe(true);
+    expect(due(c(13 * h), { jitter: 0 })).toBe(true);
+  });
+  it("show day: within 3h of the start, a list from before that point is due; a newer one is not", () => {
+    expect(due(c(1 * h), { minutesToStart: 170 })).toBe(true);
+    expect(due(c(5 * 60_000), { minutesToStart: 170 })).toBe(false);
+    expect(due(c(1 * h), { minutesToStart: 200 })).toBe(false);
+    expect(due(c(1 * h), { minutesToStart: null })).toBe(false);
+  });
+  it("show day stops mattering long after the start", () => {
+    expect(due(c(5 * h), { minutesToStart: -120 })).toBe(false);
+  });
+  it("minutesToShowStart and jitterOf", () => {
+    expect(minutesToShowStart({ weekday: 1, startTime: "20:00" }, 1, "17:30")).toBe(150);
+    expect(minutesToShowStart({ weekday: 1, startTime: "20:00" }, 2, "17:30")).toBeNull();
+    expect(jitterOf("g1")).toBeGreaterThanOrEqual(0);
+    expect(jitterOf("g1")).toBeLessThan(1);
+  });
+});
+
+describe("scanHold uses the membership decision", () => {
+  const rules = { window: { enabled: false }, skipLastWeek: true, cooldownWeeks: 1 } as unknown as RuleSettings;
+  const base = { week, burst: [{ at: NOW }], rules, timeZone: "UTC", comic: { ...comic, lastPerformedWeek: "2026-10-19" } };
+  it("lineup/group mismatches hold with their reasons", () => {
+    expect(scanHold({ ...base, membership: run(show(), [lineup([])]) })).toBe("in_group_not_lineup");
+    expect(scanHold({ ...base, membership: run(show({ groupMembers: mem("z@c.us") }), [lineup(["91@c.us"])]) })).toBe("lineup_not_group");
+    expect(scanHold({ ...base, membership: run(show({ groupMembers: null }), [lineup([])]) })).toBe("membership_unknown");
+  });
+  it("normal falls through to the usual holds", () => {
+    expect(scanHold({ ...base, membership: { kind: "normal", regular: false } })).toBe("last_week");
+    expect(scanHold({ ...base, membership: { kind: "normal", regular: true } })).toBeNull();
+    expect(holdReasonFor(null)).toBeNull();
+  });
+});

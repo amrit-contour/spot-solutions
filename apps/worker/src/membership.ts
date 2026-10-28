@@ -5,6 +5,7 @@ import {
   AUTO_ACK_MAX_AGE_MS,
   INTENT_THRESHOLD,
   checkShows,
+  holdReasonFor,
   membershipDecision,
   targetShows,
   type Comic,
@@ -46,21 +47,26 @@ interface Burst {
 
 const actionId = (p: Burst) => `m_${p.messages[0].id}`.replace(/[^\w-]/g, "_").slice(0, 300);
 
+/** The decision for a spot ask, or null when it doesn't apply (not a clear spot ask, banned/ignored/host, no active show). Shared by live intake and the history scan. */
+export async function decideMembership(uid: string, intent: Intent, known: Comic | undefined, contact: { id: string; chatId: string; name: string; phone: string }, week: string): Promise<MembershipDecision | null> {
+  if (!intent.isSpotRequest || intent.confidence < INTENT_THRESHOLD || known?.list) return null;
+  const targets = targetShows(watchUser(uid).shows, intent);
+  if (!targets.length) return null;
+  const lineups = (await col(uid, "lineups").where("weekOf", "==", week).get()).docs.map((d) => d.data() as Lineup);
+  const comic = known ?? { id: contact.id, chatId: contact.chatId, name: contact.name, phone: contact.phone, tier: "open" as const, regularOf: [] as string[] };
+  return membershipDecision(checkShows({ comic, shows: targets, lineups, week, now: Date.now() }));
+}
+
 /**
  * Decide for a spot ping. Skipped (normal flows) for non-spot messages, business accounts, banned/ignored/host comics,
  * requests the curator already settled or released, and when no show is active.
  */
 export async function checkMembership(opts: { uid: string; client: WAWebJS.Client; p: Burst; intent: Intent; known: Comic | undefined; existing: SpotRequest | undefined; locked: boolean; week: string }): Promise<MembershipOutcome> {
   const { uid, client, p, intent, known, existing, locked, week } = opts;
-  if (!intent.isSpotRequest || intent.confidence < INTENT_THRESHOLD || p.contact.isBusiness || locked || existing?.holdOverridden) return NONE;
-  if (known?.list) return NONE;
-  const { shows, venues, settings } = watchUser(uid);
-  const targets = targetShows(shows, intent);
-  if (!targets.length) return NONE;
-  const lineups = (await col(uid, "lineups").where("weekOf", "==", week).get()).docs.map((d) => d.data() as Lineup);
-  const comic = known ?? { id: p.contact.id, chatId: p.contact.chatId, name: p.contact.name, phone: p.contact.phone, tier: "open" as const, regularOf: [] as string[] };
-  const checks = checkShows({ comic, shows: targets, lineups, week, now: Date.now() });
-  const decision = membershipDecision(checks);
+  if (p.contact.isBusiness || locked || existing?.holdOverridden) return NONE;
+  const { venues, shows, settings } = watchUser(uid);
+  const decision = await decideMembership(uid, intent, known, p.contact, week);
+  if (!decision) return NONE;
   const fresh = Date.now() - Math.max(...p.messages.map((m) => m.at)) < AUTO_ACK_MAX_AGE_MS;
 
   if (decision.kind === "normal") return { ...NONE, regular: decision.regular, decision };
@@ -84,7 +90,7 @@ export async function checkMembership(opts: { uid: string; client: WAWebJS.Clien
     return { ...NONE, done: true, decision };
   }
 
-  const hold: HoldReason = decision.kind === "hold_in_group" ? "in_group_not_lineup" : decision.kind === "hold_on_lineup" ? "lineup_not_group" : "membership_unknown";
+  const hold = holdReasonFor(decision) as HoldReason;
   return { done: false, hold, holdNote: decision.reason, regular: false, decision };
 }
 

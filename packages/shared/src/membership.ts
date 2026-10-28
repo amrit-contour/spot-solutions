@@ -4,7 +4,7 @@
 import { dateInWeek, DAY_NAMES, formatDate } from "./week.ts";
 import { isRegularOf } from "./showRegulars.ts";
 import { comicIdForPhone } from "./people.ts";
-import type { Comic, GroupMembersCache, Lineup, Show, Weekday } from "./types.ts";
+import type { Comic, GroupMembersCache, HoldReason, Lineup, Show, Weekday } from "./types.ts";
 
 /** A cached member list older than this is treated as unknown (nothing here ever refreshes it). */
 export const GROUP_CACHE_STALE_MS = 7 * 24 * 3600_000;
@@ -109,3 +109,46 @@ const unknownReason = (c: ShowCheck, lead: string) => `${lead}; ${c.showName}'s 
 
 /** Regular of any of these shows: exempt from the performed-recently hold and request limits. */
 export const regularOfChecks = (checks: ShowCheck[]) => checks.some((c) => c.regular);
+
+/** The hold a decision puts on a request (null: no membership hold). */
+export function holdReasonFor(d: MembershipDecision | null | undefined): HoldReason | null {
+  if (!d) return null;
+  return d.kind === "hold_in_group" ? "in_group_not_lineup" : d.kind === "hold_on_lineup" ? "lineup_not_group" : d.kind === "hold_unknown" ? "membership_unknown" : null;
+}
+
+/** Re-list a group's members about this often (plus jitter so groups don't all refresh in the same tick). */
+export const GROUP_REFRESH_MS = 12 * 3600_000;
+export const GROUP_REFRESH_JITTER = 0.25;
+/** On show day, refresh this long before the start. */
+export const SHOW_DAY_REFRESH_LEAD_MIN = 180;
+
+/**
+ * Is a show's cached group list due for a refresh?
+ * - no cache, or one for another group: yes.
+ * - older than 12h plus jitter (`jitter` 0..1 picks the extra, up to 25%): yes.
+ * - show day, within 3h of the start (and not long past it), cache older than the start of that window: yes.
+ * `minutesToStart`: minutes from now to today's start, or null when the show isn't today.
+ */
+export function groupRefreshDue(input: { cache: Pick<GroupMembersCache, "groupId" | "at"> | null | undefined; groupId: string; now: number; jitter?: number; minutesToStart?: number | null }): boolean {
+  const { cache, groupId, now } = input;
+  if (!cache || cache.groupId !== groupId) return true;
+  const age = now - cache.at;
+  if (age >= GROUP_REFRESH_MS * (1 + GROUP_REFRESH_JITTER * Math.min(1, Math.max(0, input.jitter ?? 0)))) return true;
+  const m = input.minutesToStart;
+  if (m != null && m <= SHOW_DAY_REFRESH_LEAD_MIN && m > -60) return age >= (SHOW_DAY_REFRESH_LEAD_MIN - m) * 60_000;
+  return false;
+}
+
+/** Stable 0..1 from a group id, for the jitter. */
+export function jitterOf(id: string): number {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return (h % 1000) / 1000;
+}
+
+/** Minutes from `nowHHMM` on `todayWeekday` to a show's start, or null when the show isn't on that weekday. */
+export function minutesToShowStart(show: Pick<Show, "weekday" | "startTime">, todayWeekday: Weekday, nowHHMM: string): number | null {
+  if (show.weekday !== todayWeekday) return null;
+  const mins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  return mins(show.startTime) - mins(nowHHMM);
+}

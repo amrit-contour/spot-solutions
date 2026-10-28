@@ -326,6 +326,8 @@ const handlers: Record<Command["type"], Handler> = {
     }
     const { results, invites } = settleSyncResults({ results: raw, now: Date.now(), prior: lineup.groupInvites, isIn: (id) => inGroup(id, members.map((m) => ({ id: m.ids[0], alt: m.ids.slice(1) })), aliases) });
     await lineupRef.update({ "groupSync.status": "done", "groupSync.results": results, "groupSync.invited": invites, "groupSync.lapsed": [], groupInvites: invites, groupLeaving: null });
+    // The group just changed: re-read its members so the cached list (used by the spot-ping membership check) is current.
+    await (await import("./people.ts")).listGroupMembers(uid, { showId: show.id }).catch((e) => console.error("[members] refresh after sync failed", (e as Error).message));
     // Pressed by the curator: whoever was held back from the group now has been added (or invited).
     const reached = new Set(Object.entries(results).filter(([, r]) => r === "added" || r === "invited").map(([id]) => id));
     if (lineup.slots.some((x) => x.noGroup && reached.has(x.comicId))) await lineupRef.update({ slots: lineup.slots.map((x) => (x.noGroup && reached.has(x.comicId) ? { comicId: x.comicId, minutes: x.minutes, ...(x.adhoc && { adhoc: true }), ...(x.notTold && { notTold: true }) } : x)) });
