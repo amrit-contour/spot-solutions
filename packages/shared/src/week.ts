@@ -56,7 +56,8 @@ export function dateInWeek(week: string, weekday: Weekday): string {
 }
 
 export function formatDate(isoDate: string): string {
-  const dt = new Date(`${isoDate}T00:00:00Z`);
+  const dt = new Date(`${String(isoDate ?? "").slice(0, 10)}T00:00:00Z`);
+  if (isNaN(dt.getTime())) return String(isoDate ?? "");
   return dt.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 

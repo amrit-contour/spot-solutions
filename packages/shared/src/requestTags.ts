@@ -89,7 +89,7 @@ export function senderFacts(i: { comic?: Comic | null; week: string; today: stri
     savedName: c && (c.nameSource === "contact" || c.nameSource === "manual") ? c.name : null,
     pastSpots: done.length,
     lastSpotDate: done[0]?.date ?? null,
-    tags: (experienceOf ? (experienceOf(c ?? {}, new Date(i.today)).tags) : []) ,
+    tags: (experienceOf ? (experienceOf(c ?? {}, (isNaN(new Date(i.today).getTime()) ? new Date() : new Date(i.today))).tags) : []) ,
     performedLastWeek: Boolean(c?.lastPerformedWeek && c.lastPerformedWeek === shiftWeek(i.week, -1)),
     priorRequests: i.priorRequests ?? 0,
   };
