@@ -2,7 +2,7 @@
 // Same tokens as the Requests page: solid = the app knows it, dashed = read from the comic's message.
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { DAY_SHORT, type Comic, type Show, type SpotRequest } from "@spot/shared";
+import { DAY_SHORT, showsLastWeekMarker, type Comic, type Show, type SpotRequest } from "@spot/shared";
 import { cx, type Icon } from "@spot/ui";
 import { IconArrowRight, IconCalendar, IconChatCross, IconCrown, IconHistory, IconPen, IconRepeat, IconUserCheck, IconUserPlus } from "@spot/ui";
 
@@ -141,7 +141,7 @@ export function tellPill(s: TellState, i = 0): PillSpec {
  * The pills for one comic, most useful first: tell state, role at this show, performed last week, day preference.
  * The day pill is dashed (read from their message) and only appears when they actually sent a request.
  */
-export function comicPills({ comic, request, show, lastWeek, states, days = true, adhoc }: { comic?: Comic; request?: SpotRequest; show?: Pick<Show, "regulars" | "protected" | "pocs">; lastWeek?: string; states?: TellState[]; days?: boolean; /** A last-minute spot on this lineup. */ adhoc?: boolean }, id?: string): PillSpec[] {
+export function comicPills({ comic, request, show, lastWeek, states, days = true, adhoc }: { comic?: Comic; request?: SpotRequest; show?: Pick<Show, "id" | "regulars" | "protected" | "pocs">; lastWeek?: string; states?: TellState[]; days?: boolean; /** A last-minute spot on this lineup. */ adhoc?: boolean }, id?: string): PillSpec[] {
   const out: PillSpec[] = [];
   const cid = id ?? comic?.id ?? request?.comicId;
   // POCs, regulars and co-hosts always know: their role pill says enough, so no "Already told" on them.
@@ -155,7 +155,8 @@ export function comicPills({ comic, request, show, lastWeek, states, days = true
   else if (cid && show?.protected?.includes(cid)) out.push({ key: "role", label: "Co-host", tone: "fact", icon: IconCrown });
   else if (cid && show?.regulars?.includes(cid)) out.push({ key: "role", label: "Regular", tone: "fact", icon: IconRepeat });
   if (adhoc) out.push({ key: "adhoc", label: "Ad hoc", tone: "fact", icon: IconUserPlus, title: "Last-minute spot: kept in their history, doesn't hold them back" });
-  if (lastWeek && comic?.lastPerformedWeek === lastWeek) out.push({ key: "last", label: "Last week", tone: "fact", icon: IconHistory, title: "Performed last week" });
+  // Regulars of this show repeat anyway: no "Last week" for them.
+  if (showsLastWeekMarker(comic, show, lastWeek)) out.push({ key: "last", label: "Last week", tone: "fact", icon: IconHistory, title: "Performed last week" });
   if (days && request) {
     const d = request.intent.preferredDays;
     out.push({ key: "days", label: d.length ? d.map((x) => DAY_SHORT[x]).join(" · ") : "Any day", tone: "reading", icon: IconCalendar });

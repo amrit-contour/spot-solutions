@@ -51,6 +51,7 @@ import {
   type SpotRequest,
   type HostPoll,
   type SpotOffer,
+  showsLastWeekMarker,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, useCollection, useDocument } from "../lib/data";
@@ -108,8 +109,8 @@ export function LineupBoard() {
     cols[BENCH] = requests.data
       .filter((r) => !["dismissed", "rejected"].includes(r.status) && !placed.has(r.comicId) && (!r.hold || r.holdOverridden) && (r.intent.confidence >= INTENT_THRESHOLD || r.status !== "new"))
       .sort((a, b) => {
-        const pa = comicsById.get(a.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
-        const pb = comicsById.get(b.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
+        const pa = showsLastWeekMarker(comicsById.get(a.comicId), activeShows, lastWeek) ? 1 : 0;
+        const pb = showsLastWeekMarker(comicsById.get(b.comicId), activeShows, lastWeek) ? 1 : 0;
         return pa - pb || a.createdAt - b.createdAt;
       })
       .map((r) => r.comicId);
@@ -398,7 +399,7 @@ function Column({ id, children, className, disabled }: { id: string; children: R
 
 function TileBody({ comic, id, request, lastWeek, lifted, index, minutes, action, show, states, onMinutes, adhoc, liveChip }: { liveChip?: React.ReactNode; adhoc?: boolean; comic?: Comic; id: string; request?: SpotRequest; lastWeek: string; lifted?: boolean; index?: number; minutes?: number | null; action?: React.ReactNode; show?: Show; states?: TellState[]; onMinutes?: (m: number) => void }) {
   const name = comic?.name ?? request?.comicName ?? `+${id.split("@")[0]}`;
-  const performed = comic?.lastPerformedWeek === lastWeek;
+  const performed = showsLastWeekMarker(comic, show, lastWeek);
   const pills = comicPills({ comic, request, show, lastWeek, states, adhoc }, id);
   return (
     <div className={cx("flex min-h-14 items-center gap-3 rounded-md py-2 pl-3", action ? "pr-1" : "pr-3", lifted ? "bg-surface-highest" : "bg-surface-container")}>

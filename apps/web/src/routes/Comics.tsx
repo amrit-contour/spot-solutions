@@ -3,7 +3,7 @@ import { ComicAvatar } from "../lib/photos";
 import { Link, useSearchParams } from "react-router-dom";
 import { deleteDoc, setDoc, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
-import { attendanceLabel, cancellations, formatDate, localNow, performed, ratingSummary, reliability, shiftWeek, type Comic, type ComicList, type Show, type Tier } from "@spot/shared";
+import { attendanceLabel, cancellations, formatDate, localNow, performed, ratingSummary, reliability, shiftWeek, showsLastWeekMarker, type Comic, type ComicList, type Show, type Tier } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
@@ -193,6 +193,8 @@ export function Comics() {
 
 /** One roster row. Memoised: a snapshot that changes one comic re-renders that row, not all of them. */
 const ComicRow = memo(function ComicRow({ c, first, selecting, picked, shows, lastWeek, onPick }: { c: Comic; first: boolean; selecting: boolean; picked: boolean; shows: Show[]; lastWeek: string; onPick: (c: Comic) => void }) {
+  // A regular repeats anyway: show their last date, not the "Last week" highlight.
+  const onLastWeek = showsLastWeekMarker(c, shows, lastWeek);
   return (
     <li className={cx("flex items-center", !first && "border-t border-outline-variant/50")}>
       <button onClick={() => onPick(c)} aria-pressed={selecting ? picked : undefined} className={cx("state-layer flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left sm:px-5", selecting && picked && "bg-secondary-container/40")}>
@@ -213,8 +215,8 @@ const ComicRow = memo(function ComicRow({ c, first, selecting, picked, shows, la
                       return s ? <Chip key={sid}>{s.name}</Chip> : null;
                     })}
                     {c.lastPerformedWeek && (
-                      <Chip icon={IconHistory} tone={c.lastPerformedWeek === lastWeek ? "primary" : "neutral"}>
-                        {c.lastPerformedWeek === lastWeek ? "Last week" : formatDate(c.lastPerformedWeek)}
+                      <Chip icon={IconHistory} tone={onLastWeek ? "primary" : "neutral"}>
+                        {onLastWeek ? "Last week" : formatDate(c.lastPerformedWeek)}
                       </Chip>
                     )}
                   </span>

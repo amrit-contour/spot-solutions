@@ -21,6 +21,7 @@ import {
   type Show,
   type SpotRequest,
   toPlain,
+  showsLastWeekMarker,
 } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { runCommand, timeAgo, useCollection, useNow, userDoc } from "../lib/data";
@@ -115,12 +116,12 @@ export function Requests() {
         if (sort === "confidence") return b.intent.confidence - a.intent.confidence || a.createdAt - b.createdAt;
         if (sort === "name") return (comicsById.get(a.comicId)?.name ?? a.comicName).localeCompare(comicsById.get(b.comicId)?.name ?? b.comicName);
         // Fair order: people who didn't perform last week float up, then first-come.
-        const pa = comicsById.get(a.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
-        const pb = comicsById.get(b.comicId)?.lastPerformedWeek === lastWeek ? 1 : 0;
+        const pa = showsLastWeekMarker(comicsById.get(a.comicId), shows, lastWeek) ? 1 : 0;
+        const pb = showsLastWeekMarker(comicsById.get(b.comicId), shows, lastWeek) ? 1 : 0;
         return pa - pb || a.createdAt - b.createdAt;
       });
     return g;
-  }, [requests.data, comicsById, lastWeek, q, sort, showCleared]);
+  }, [requests.data, comicsById, shows, lastWeek, q, sort, showCleared]);
 
   const toClear = useMemo(() => requestsToClear(requests.data), [requests.data]);
   const clearedCount = useMemo(() => requests.data.filter(isClearedRequest).length, [requests.data]);
@@ -285,7 +286,7 @@ export function Requests() {
             <motion.ul className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-1" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
               <AnimatePresence initial={false}>
                 {grouped[lane].map((r) => (
-                  <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={comicsById.get(r.comicId)?.lastPerformedWeek === lastWeek} tier={comicsById.get(r.comicId)?.tier} showVenue={manyVenues} />
+                  <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={showsLastWeekMarker(comicsById.get(r.comicId), activeShows, lastWeek)} tier={comicsById.get(r.comicId)?.tier} showVenue={manyVenues} />
                 ))}
               </AnimatePresence>
             </motion.ul>

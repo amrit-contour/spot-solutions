@@ -47,6 +47,7 @@ export * from "./roomView.ts";
 export * from "./asks.ts";
 export * from "./spots.ts";
 export * from "./regulars.ts";
+export * from "./showRegulars.ts";
 export * from "./groupAlerts.ts";
 export * from "./groupOpenings.ts";
 export * from "./connection.ts";

@@ -2,6 +2,7 @@
 // - app facts: worked out from the curator's own data, never guessed (factTags below)
 // - Gemma's reading: a fixed set of labels the model may attach, validated in the worker (INTENT_TAGS)
 import { shiftWeek } from "./week.ts";
+import { showsLastWeekMarker } from "./showRegulars.ts";
 import type { Comic, IntentTag, Show, Tier } from "./types.ts";
 
 export const INTENT_TAGS: readonly IntentTag[] = ["new_material", "flexible_days", "specific_time", "longer_set", "travelling", "bringing_audience", "first_time_here"];
@@ -42,7 +43,7 @@ export function pastSpotCount(history: Comic["history"], today: string) {
 export interface FactInput {
   comic?: Pick<Comic, "id" | "tier" | "history" | "lastPerformedWeek"> | null;
   /** Shows that carry regulars / protected lists. */
-  shows: Pick<Show, "regulars" | "protected">[];
+  shows: (Pick<Show, "regulars" | "protected"> & { id?: string })[];
   week: string;
   today: string;
   /** Worker stamp: this request created the comic (they weren't on the roster before). */
@@ -59,7 +60,8 @@ export function factTags(i: FactInput): FactTag[] {
   const out: FactTag[] = [];
   const c = i.comic;
   if (isNewToYou(i)) out.push({ id: "new_to_you", label: "New to you" });
-  if (c?.lastPerformedWeek && c.lastPerformedWeek === shiftWeek(i.week, -1)) out.push({ id: "performed_last_week", label: "Performed last week" });
+  // Regulars repeat anyway: no marker for them.
+  if (showsLastWeekMarker(c, i.shows, shiftWeek(i.week, -1))) out.push({ id: "performed_last_week", label: "Performed last week" });
   if (c && (c.tier === "regular" || i.shows.some((s) => s.regulars?.includes(c.id)))) out.push({ id: "regular", label: "Regular" });
   if (c && i.shows.some((s) => s.protected?.includes(c.id))) out.push({ id: "co_host", label: "Co-host" });
   const n = pastSpotCount(c?.history, i.today);
