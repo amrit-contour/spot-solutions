@@ -175,6 +175,10 @@
   70%, 100% { box-shadow: 0 0 0 var(--pulse, 6px) color-mix(in srgb, currentColor 0%, transparent); }
 }
 .status-pulse { animation: status-pulse 3.2s var(--ease-out-strong) infinite; }
+/* The avatar's status ring while the app syncs: the arc fills round, then starts again. stroke-dashoffset only (paint). */
+@keyframes ring-fill { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+.ring-fill { stroke-dashoffset: 100; animation: ring-fill 1.4s var(--ease-out-strong) infinite; }
+@media (prefers-reduced-motion: reduce) { .ring-fill { animation: none; stroke-dashoffset: 30; } }
 @media (prefers-reduced-motion: reduce) { .status-pulse { animation: none; } }
 
 /* Scanning line over the QR while we wait for the phone */

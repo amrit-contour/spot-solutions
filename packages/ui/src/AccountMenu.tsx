@@ -9,7 +9,18 @@ import { savedMode, setMode, type ThemeMode } from "./theme";
 export type AccountUser = { displayName?: string | null; email?: string | null; photoURL?: string | null };
 
 /** The WhatsApp link as the account button shows it: a ring around the avatar, and a dot beside your name in the menu. */
-export type AccountStatus = { tone: StatusTone; label: string; detail?: string; /** Where the row links (e.g. Settings, WhatsApp). */ to?: string; linkLabel?: string };
+export type AccountStatus = {
+  tone: StatusTone;
+  label: string;
+  detail?: string;
+  /** Where the row links (e.g. Settings, WhatsApp). */
+  to?: string;
+  linkLabel?: string;
+  /** The app is still fetching the live state (cold open / resume): the ring draws as a progress ring filling up. */
+  syncing?: boolean;
+  /** 0..1 while syncing, when the app knows how far along it is; omitted, the ring fills on a loop. */
+  progress?: number;
+};
 
 /** One row of the account menu, styled to match the built-in ones. */
 export function AccountMenuItem({ icon: I, onClick, danger, children }: { icon: Icon; onClick: () => void; danger?: boolean; children: ReactNode }) {
@@ -56,8 +67,25 @@ export function AccountMenu({
           aria-expanded={open}
           className="relative flex rounded-full p-[3px] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
+          {/* While syncing, the ring is a progress ring that fills up (stroke-dashoffset: paint-only, nothing composited); once
+              the live state is in it becomes the solid ring and starts breathing. pathLength 100 makes the dash maths plain. */}
+          {status?.syncing && (
+            <svg aria-hidden viewBox="0 0 46 46" className={cx("pointer-events-none absolute inset-0 size-full", STATUS_TEXT[status.tone])} fill="none">
+              <path d="M23 1.5a21.5 21.5 0 1 1-.01 0" pathLength={100} stroke="currentColor" strokeOpacity={0.25} strokeWidth={2} />
+              <path
+                d="M23 1.5a21.5 21.5 0 1 1-.01 0"
+                pathLength={100}
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeDasharray="100"
+                className={status.progress == null ? "ring-fill" : "transition-[stroke-dashoffset] duration-500 ease-out"}
+                style={status.progress == null ? undefined : { strokeDashoffset: 100 - Math.max(0, Math.min(1, status.progress)) * 100 }}
+              />
+            </svg>
+          )}
           {/* Halo and ring are separate boxes: the pulse animates box-shadow, which would replace the ring's own shadow. */}
-          {status && statusPulses(status.tone) && (
+          {status && !status.syncing && statusPulses(status.tone) && (
             <span aria-hidden className={cx("status-pulse pointer-events-none absolute inset-0 rounded-full", STATUS_TEXT[status.tone])} style={{ ["--pulse" as string]: "5px" }} />
           )}
           <span
@@ -65,7 +93,7 @@ export function AccountMenu({
             data-status={status?.tone}
             className={cx(
               "pointer-events-none absolute inset-0 rounded-full",
-              status ? cx(STATUS_TEXT[status.tone], "inset-ring-2 inset-ring-current") : open && "inset-ring-2 inset-ring-primary",
+              status ? !status.syncing && cx(STATUS_TEXT[status.tone], "inset-ring-2 inset-ring-current") : open && "inset-ring-2 inset-ring-primary",
             )}
           />
           {user.photoURL ? <img src={sharpPhoto(user.photoURL)} alt="" referrerPolicy="no-referrer" className="size-10 rounded-full object-cover" /> : <Avatar name={name} size={40} />}
