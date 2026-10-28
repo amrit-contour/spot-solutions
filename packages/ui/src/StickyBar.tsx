@@ -4,6 +4,7 @@
 // after the big header has scrolled away.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cx } from "./ui";
+import { appScroller } from "./Shell";
 
 /** Height of the status bar / notch when the app is installed (0 in a normal tab). */
 function safeTop() {
@@ -33,8 +34,11 @@ export function StickyBar({
   useEffect(() => {
     const el = sentinel.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
+    // Inside the app shell the page scrolls in main#app-scroll, which starts below the page header: watch against that box.
+    const root = appScroller();
     const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting && e.boundingClientRect.top < (e.rootBounds?.top ?? 0)), {
-      rootMargin: `-${Math.ceil(safeTop() + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--page-header-h")) || 0))}px 0px 0px 0px`,
+      root,
+      rootMargin: `-${Math.ceil((root ? 0 : safeTop()) + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--page-header-h")) || 0))}px 0px 0px 0px`,
       threshold: 0,
     });
     io.observe(el);
