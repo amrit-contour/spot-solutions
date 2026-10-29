@@ -31,6 +31,7 @@ import { setRequestsCleared } from "../lib/cleanup";
 import { useNeverRead } from "../lib/neverRead";
 import { PageHeader, enumPref, usePref } from "@spot/ui";
 import { WaText } from "@spot/ui";
+import { WeekSwitcher } from "../components/WeekSwitcher";
 import { Menu, MenuItem } from "@spot/ui";
 import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
@@ -69,7 +70,7 @@ const LANE_PREF = enumPref<Lane>("requestsLane", "spot.requests.lane", LANES.map
 
 export function Requests() {
   const { uid, week, session, shows, comicsById } = useApp();
-  const requests = useCollection<SpotRequest>(uid, "requests", [], "all");
+  const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const [lane, setLane] = usePref(LANE_PREF);
   // Messages links here with ?q=name to land on that person's card.
@@ -93,7 +94,7 @@ export function Requests() {
     // Search name, number, what they wrote and the note, across every lane (the counts follow).
     const hit = (r: SpotRequest) =>
       !needle ||
-      [r.comicName, comicsById.get(r.comicId)?.name ?? "", r.comicId.split("@")[0], r.intent.note ?? "", ...r.messages.map((m) => m.body)].some((t) => t.toLowerCase().includes(needle));
+      [r.comicName ?? "", comicsById.get(r.comicId)?.name ?? "", r.comicId.split("@")[0], r.intent?.note ?? "", ...(r.messages ?? []).map((m) => m.body ?? "")].some((t) => t.toLowerCase().includes(needle));
     for (const r of requests.data) if (hit(r) && (showCleared || !isClearedRequest(r))) g[laneOf(r)].push(r);
     // Fairness first: people who didn't perform last week float up, then first-come.
     for (const k of Object.keys(g) as Lane[])
@@ -101,7 +102,7 @@ export function Requests() {
         const latest = (r: SpotRequest) => r.messages?.length ? r.messages[r.messages.length - 1]?.at ?? r.updatedAt ?? r.createdAt : (r.updatedAt ?? r.createdAt);
         if (sort === "newest") return latest(b) - latest(a);
         if (sort === "oldest") return a.createdAt - b.createdAt;
-        if (sort === "confidence") return b.intent.confidence - a.intent.confidence || a.createdAt - b.createdAt;
+        if (sort === "confidence") return (b.intent?.confidence ?? 0) - (a.intent?.confidence ?? 0) || a.createdAt - b.createdAt;
         if (sort === "name") return (comicsById.get(a.comicId)?.name ?? a.comicName).localeCompare(comicsById.get(b.comicId)?.name ?? b.comicName);
         // Fair order: people who didn't perform last week float up, then first-come.
         const pa = showsLastWeekMarker(comicsById.get(a.comicId), shows, lastWeek) ? 1 : 0;
@@ -144,8 +145,9 @@ export function Requests() {
     <div className="w-full">
       <PageHeader
         title="Requests"
-        // Phones: the counts and the week move down under the tabs (one row), so the header is just the title and the menu.
-        subtitle={requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
+        // The week sits right next to the title and the counts on the line under it, all inside the pinned header, so nothing
+        // separates the Requests/Updates tabs from the search bar.
+        beside={<WeekSwitcher />}
         actions={
           <>
             <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="More" onClick={t} className="size-9" />}>
@@ -170,7 +172,10 @@ export function Requests() {
           </>
         }
       >
-        <div className="mt-5 lg:hidden" aria-label="Requests or updates">
+        <p className="mt-0.5 min-w-0 truncate type-body-m text-on-surface-variant tabular" aria-live="polite">
+          {requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
+        </p>
+        <div className="mt-3 lg:hidden" aria-label="Requests or updates">
           <Segmented
             full
             value={view}

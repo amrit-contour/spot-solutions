@@ -188,7 +188,7 @@ export function AppShell({
 /** The header currently publishing --page-header-h (one page at a time). */
 let headerOwner: HTMLElement | null = null;
 
-export function PageHeader({ title, subtitle, actions, trailing, bar, children, width = "full" }: { title: ReactNode; /** "narrow" keeps the header on the same centred column as a max-w-3xl page body. */ width?: "full" | "narrow"; /** A toolbar pinned as part of the header (e.g. date nav). Same sticky box, so it can never drift from the title bar. */ bar?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; children?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, trailing, beside, bar, children, width = "full" }: { title: ReactNode; /** "narrow" keeps the header on the same centred column as a max-w-3xl page body. */ width?: "full" | "narrow"; /** A toolbar pinned as part of the header (e.g. date nav). Same sticky box, so it can never drift from the title bar. */ bar?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; /** Small control kept on the title's line at every width (e.g. a help link). */ trailing?: ReactNode; /** A control right next to the title, centred on its line (e.g. the week selector); actions stay at the far end. */ beside?: ReactNode; children?: ReactNode }) {
   const { accountMenu } = useContext(ShellContext);
   const ref = useRef<HTMLElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -291,11 +291,12 @@ export function PageHeader({ title, subtitle, actions, trailing, bar, children, 
           rather than turning "Requests" into "Re…". */}
       <div className="relative flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 max-sm:pr-[3.25rem]">
         <h1
-          // Title stays its natural width so the week selector sits beside it instead of floating far to the right.
-          className="min-w-0 max-w-full flex-auto truncate type-headline-m sm:type-display-s"
+          // With a `beside` control the title keeps its natural width so the control sits right next to it; otherwise it takes the row.
+          className={cx("min-w-0 max-w-full truncate type-headline-m sm:type-display-s", beside ? "flex-none" : "flex-auto")}
         >
           {title}
         </h1>
+        {beside && <div className="flex min-w-0 flex-1 items-center">{beside}</div>}
         {trailing && <div className="flex flex-none items-center">{trailing}</div>}
         {actions && <div className="flex flex-none items-center gap-1.5 sm:gap-2">{actions}</div>}
       </div>

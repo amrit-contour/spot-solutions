@@ -3,7 +3,7 @@
 // - Gemma's reading: a fixed set of labels the model may attach, validated in the worker (INTENT_TAGS)
 import { shiftWeek } from "./week.ts";
 import { experienceOf } from "./experience.ts";
-import { showsLastWeekMarker } from "./showRegulars.ts";
+import { isRegularOf, showsLastWeekMarker } from "./showRegulars.ts";
 import type { Comic, IntentTag, Show } from "./types.ts";
 
 export const INTENT_TAGS: readonly IntentTag[] = ["new_material", "flexible_days", "specific_time", "longer_set", "travelling", "bringing_audience", "first_time_here"];
@@ -42,7 +42,7 @@ export function pastSpotCount(history: Comic["history"], today: string) {
 }
 
 export interface FactInput {
-  comic?: Pick<Comic, "id" | "history" | "lastPerformedWeek" | "comedySince" | "tagsPinned" | "tagsHidden"> | null;
+  comic?: Pick<Comic, "id" | "history" | "lastPerformedWeek" | "regularOf" | "comedySince" | "tagsPinned" | "tagsHidden"> | null;
   /** Shows that carry regulars / protected lists. */
   shows: (Pick<Show, "regulars" | "protected"> & { id?: string })[];
   week: string;
@@ -61,9 +61,9 @@ export function factTags(i: FactInput): FactTag[] {
   const out: FactTag[] = [];
   const c = i.comic;
   if (isNewToYou(i)) out.push({ id: "new_to_you", label: "New to you" });
-  // Regulars repeat anyway: no marker for them.
-  if (showsLastWeekMarker(c, i.shows, shiftWeek(i.week, -1))) out.push({ id: "performed_last_week", label: "Performed last week" });
-  if (c && i.shows.some((s) => s.regulars?.includes(c.id) || (s.id !== undefined && (c as any).regularOf?.includes?.(s.id)))) out.push({ id: "regular", label: "Regular" });
+  // Regulars repeat anyway: no marker for them. (An old request with no week can't say what "last week" was.)
+  if (i.week && showsLastWeekMarker(c, i.shows, shiftWeek(i.week, -1))) out.push({ id: "performed_last_week", label: "Performed last week" });
+  if (c && i.shows.some((s) => isRegularOf(c, s))) out.push({ id: "regular", label: "Regular" });
   if (c && i.shows.some((s) => s.protected?.includes(c.id))) out.push({ id: "co_host", label: "Co-host" });
   const n = pastSpotCount(c?.history, i.today);
   if (n > 0) out.push({ id: "spots", label: `Spots: ${n}` });
@@ -80,6 +80,12 @@ export interface SenderFacts {
   priorRequests: number;
 }
 
+/** Noon on a YYYY-MM-DD day (so a timezone can't move it to the next or previous day); now when the date is missing or bad. */
+const dayOf = (date: string) => {
+  const d = new Date(`${String(date ?? "").slice(0, 10)}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
+};
+
 /** Facts passed to the model about the sender. Only what the app knows. */
 export function senderFacts(i: { comic?: Comic | null; week: string; today: string; priorRequests?: number }): SenderFacts {
   const c = i.comic;
@@ -89,8 +95,8 @@ export function senderFacts(i: { comic?: Comic | null; week: string; today: stri
     savedName: c && (c.nameSource === "contact" || c.nameSource === "manual") ? c.name : null,
     pastSpots: done.length,
     lastSpotDate: done[0]?.date ?? null,
-    tags: (experienceOf ? (experienceOf(c ?? {}, (isNaN(new Date(i.today).getTime()) ? new Date() : new Date(i.today))).tags) : []) ,
-    performedLastWeek: Boolean(c?.lastPerformedWeek && c.lastPerformedWeek === shiftWeek(i.week, -1)),
+    tags: experienceOf(c ?? {}, dayOf(i.today)).tags,
+    performedLastWeek: Boolean(i.week && c?.lastPerformedWeek && c.lastPerformedWeek === shiftWeek(i.week, -1)),
     priorRequests: i.priorRequests ?? 0,
   };
 }
