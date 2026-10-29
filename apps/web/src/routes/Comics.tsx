@@ -3,7 +3,8 @@ import { ComicAvatar } from "../lib/photos";
 import { Link, useSearchParams } from "react-router-dom";
 import { deleteDoc, setDoc, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
-import { attendanceLabel, addNumber, cancellations, formatDate, localNow, makePrimary, numbersOf, performed, ratingSummary, reliability, removeNumber, shiftWeek, showsLastWeekMarker, type Comic, type ComicList, type Show } from "@spot/shared";
+import { attendanceLabel, addNumber, cancellations, experienceOf, formatDate, isRegularOfAny, localNow, makePrimary, numbersOf, performed, ratingSummary, reliability, removeNumber, shiftWeek, showsLastWeekMarker, type Comic, type ComicList, type ExperienceThresholds, type Show } from "@spot/shared";
+import { ExperienceCard, ExperienceChip, topTag } from "../components/Experience";
 import { useApp } from "../lib/app";
 import { isDemoUser } from "../lib/demo";
 import { userDoc } from "../lib/data";
@@ -20,13 +21,13 @@ import { SpotNoteField } from "../components/SpotNoteField";
 import { DuplicateComics } from "../components/DuplicateComics";
 import { ImportContactsSheet, ImportFileSheet, ImportGoogleSheet } from "../components/ImportSheets";
 import { Button, Chip, CompactButton, Empty, Field, IconButton, Segmented, Sheet, TextArea, TextInput, buttonClass, cx } from "@spot/ui";
-import { IconChat, IconCheck, IconComics, IconCrown, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "@spot/ui";
+import { IconChat, IconCheck, IconComics, IconHistory, IconPen, IconSearch, IconStar, IconTrash, IconUserPlus, IconImport } from "@spot/ui";
 
 const PAGE = 50;
 const LIST_LABEL: Record<ComicList, string> = { host: "Host", ignored: "Ignored", banned: "Banned" };
 
 export function Comics() {
-  const { uid, comics, currentWeek, shows, session } = useApp();
+  const { uid, comics, currentWeek, shows, session, settings } = useApp();
   const [importing, setImporting] = useState<"contacts" | "file" | "google" | null>(null);
   const waHint = isDemoUser() ? "Off in demo" : session?.status !== "ready" ? "Connect WhatsApp" : undefined;
   const [q, setQ] = useState("");
@@ -158,7 +159,7 @@ export function Comics() {
           )}
           <ul className="overflow-hidden rounded-xl bg-surface-low">
             {list.slice(0, shown).map((c, i) => (
-              <ComicRow key={c.id} c={c} first={i === 0} selecting={selecting} picked={sel.has(c.id)} shows={shows} lastWeek={lastWeek} onPick={onPick} />
+              <ComicRow key={c.id} c={c} first={i === 0} selecting={selecting} picked={sel.has(c.id)} shows={shows} lastWeek={lastWeek} thresholds={settings.experienceThresholds} onPick={onPick} />
             ))}
           </ul>
           {shown < list.length && <div ref={more} aria-hidden className="h-8" />}
@@ -184,20 +185,25 @@ export function Comics() {
   );
 }
 
+/** Today at noon UTC: experience is by the day, so a stable value per day keeps memoised rows from re-rendering. */
+const NOW_DAY = () => new Date(`${new Date().toISOString().slice(0, 10)}T12:00:00Z`);
+
 /** One roster row. Memoised: a snapshot that changes one comic re-renders that row, not all of them. */
-const ComicRow = memo(function ComicRow({ c, first, selecting, picked, shows, lastWeek, onPick }: { c: Comic; first: boolean; selecting: boolean; picked: boolean; shows: Show[]; lastWeek: string; onPick: (c: Comic) => void }) {
+const ComicRow = memo(function ComicRow({ c, first, selecting, picked, shows, lastWeek, thresholds, onPick }: { c: Comic; first: boolean; selecting: boolean; picked: boolean; shows: Show[]; lastWeek: string; thresholds?: ExperienceThresholds; onPick: (c: Comic) => void }) {
   // A regular repeats anyway: show their last date, not the "Last week" highlight.
   const onLastWeek = showsLastWeekMarker(c, shows, lastWeek);
+  const tag = topTag(experienceOf(c, NOW_DAY(), thresholds));
+  const regular = isRegularOfAny(c, shows);
   return (
     <li className={cx("flex items-center", !first && "border-t border-outline-variant/50")}>
       <button onClick={() => onPick(c)} aria-pressed={selecting ? picked : undefined} className={cx("state-layer flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left sm:px-5", selecting && picked && "bg-secondary-container/40")}>
                   {selecting && <input type="checkbox" tabIndex={-1} readOnly checked={picked} className="pointer-events-none size-5 flex-none accent-[var(--md-sys-color-primary)]" aria-label={`Select ${c.name}`} />}
-                  <ComicAvatar id={c.id} name={c.name} size={40} tone={c.tier === "featured" ? "tertiary" : c.tier === "regular" ? "secondary" : "primary"} />
+                  <ComicAvatar id={c.id} name={c.name} size={40} tone={tag === "Killer" ? "tertiary" : regular ? "secondary" : "primary"} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="truncate type-title-m">{c.name}</span>
-                      {c.tier === "featured" && <IconCrown className="icon size-4 text-tertiary" />}
-                      {c.tier === "regular" && <IconStar className="icon size-4 text-secondary" />}
+                      {regular && <IconStar aria-label="Regular" className="icon size-4 flex-none text-secondary" />}
+                      <ExperienceChip tag={tag} />
                       {c.list && <Chip tone={c.list === "host" ? "tertiary" : "error"}>{LIST_LABEL[c.list]}</Chip>}
                     </span>
                     <span className="block type-body-s text-on-surface-variant tabular">{c.phone ? `+${c.phone}` : "Number hidden by WhatsApp"}</span>
@@ -305,26 +311,31 @@ function ComicEditor({ value, onClose }: { value: Partial<Comic> | null; onClose
         <Field label="WhatsApp number" hint={isNew ? "With country code, e.g. 9198xxxxxxxx" : "Linked to their WhatsApp; can't be changed"}>
           <TextInput value={isNew ? (d.phone ?? "") : d.phone ? `+${d.phone}` : "Hidden by WhatsApp (privacy)"} disabled={!isNew} inputMode="tel" onChange={(e) => setD({ ...d, phone: e.target.value })} />
         </Field>
-        <Field label="Doing comedy since" hint="YYYY or YYYY-MM. Estimates years; updates as time passes.">
-          <TextInput value={d.comedySince ?? ""} onChange={(e) => setD({ ...d, comedySince: e.target.value })} placeholder="2019 or 2019-06" />
-        </Field>
         {d.id && (
           <Field label="Numbers">
             <ul className="flex flex-col gap-2">
               {numbersOf(d as Comic).map((n) => (
-                <li key={n.phone} className="flex items-center gap-2">
-                  <span className="flex-1 tabular">+{n.phone}{n.label ? ` · ${n.label}` : ""}{n.primary ? " ★" : ""}</span>
-                  {!n.primary && <Button size="sm" variant="tonal" onClick={() => setD(makePrimary(d as Comic, n.phone))}>Make primary</Button>}
-                  <Button size="sm" variant="text" onClick={() => setD(removeNumber(d as Comic, n.phone))}>Remove</Button>
+                <li key={n.phone} className="flex min-h-10 items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate type-body-l tabular">+{n.phone}{n.label ? <span className="text-on-surface-variant"> · {n.label}</span> : null}</span>
+                  {n.primary ? (
+                    <span title="Primary: confirmations and polls go here" className="inline-flex h-7 flex-none items-center gap-1 rounded-full bg-primary-container px-2.5 type-label-m text-on-primary-container">
+                      <IconStar className="icon size-4" aria-hidden />
+                      <span className="sr-only">Primary</span>
+                    </span>
+                  ) : (
+                    <IconButton icon={IconStar} label={`Make +${n.phone} the primary number`} onClick={() => setD(makePrimary(d as Comic, n.phone))} className="size-9 text-on-surface-variant" />
+                  )}
+                  {numbersOf(d as Comic).length > 1 && <IconButton icon={IconTrash} label={`Remove +${n.phone}`} onClick={() => setD(removeNumber(d as Comic, n.phone))} className="size-9 text-on-surface-variant" />}
                 </li>
               ))}
             </ul>
             <div className="mt-2 flex gap-2">
-              <TextInput placeholder="Add number" value={addNum} onChange={(e) => setAddNum(e.target.value)} />
+              <TextInput placeholder="Add another number" inputMode="tel" value={addNum} onChange={(e) => setAddNum(e.target.value)} />
               <Button size="sm" variant="tonal" onClick={() => { const p = addNum.replace(/\D/g, ""); if (p.length >= 7) { setD(addNumber(d as Comic, p)); setAddNum(""); } else toast.error("Not a phone number"); }}>Add</Button>
             </div>
           </Field>
         )}
+        {!isNew && <ExperienceCard comic={{ ...d, history }} onChange={(patch) => setD({ ...d, ...patch })} thresholds={settings.experienceThresholds} now={NOW_DAY()} />}
         <Field label="List" hint="Requests from hosts, ignored or banned comics are held back automatically. You can still allow them one by one.">
           <Segmented
             value={d.list ?? "none"}

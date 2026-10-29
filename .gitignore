@@ -20,3 +20,6 @@ live-stats.json
 
 # agent/runtime state
 /.claude/
+
+# local session notes (contain real numbers from pasted logs; never commit)
+SESSION_*.md

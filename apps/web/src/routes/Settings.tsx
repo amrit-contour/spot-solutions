@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import {
+import { DEFAULT_EXPERIENCE_THRESHOLDS,
   DAY_NAMES,
   DEFAULT_ACK_TEMPLATE,
   DEFAULT_CANCEL_SPOT_TEMPLATE,
@@ -55,7 +55,7 @@ import { isDemoUser } from "../lib/demo";
 import { MessageComposer } from "@spot/ui";
 import { useMessageImage } from "../components/ImageAttach";
 import { AppVersionRow, Bubble, Button, Collapsible, Field, Info, SearchSelect, Segmented, Select, SettingRow, Stepper, Switch, TextArea, TextInput, TimePicker, cx } from "@spot/ui";
-import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose, IconWarn, IconRefresh, IconArrowRight } from "@spot/ui";
+import { IconChat, IconChatCheck, IconChatCross, IconCheck, IconCpu, IconMic, IconPhone, IconShield, IconStar, IconTemplate, IconTrash, IconAdd, IconSparkle, IconClose, IconWarn, IconRefresh, IconArrowRight } from "@spot/ui";
 
 const TABS = [
   { id: "whatsapp", label: "WhatsApp", icon: IconChat },
@@ -301,6 +301,7 @@ export function SettingsPage() {
         {tab === "rules" && (
           <>
         <RulesSection />
+        <ExperienceSection />
 
         <NeverReadCard />
 
@@ -381,6 +382,37 @@ function InstallCard() {
 
 const DAYS = [1, 2, 3, 4, 5, 6, 0] as const;
 
+/** Where the experience tags start. Defaults: New under 5 spots or 6 months, Beginner under a year, Senior 3+ years, Killer 4.3+ over 5 rated shows. */
+function ExperienceSection() {
+  const { settings, saveSettings } = useApp();
+  const t = { ...DEFAULT_EXPERIENCE_THRESHOLDS, ...settings.experienceThresholds };
+  const set = (patch: Partial<typeof t>) => saveSettings({ experienceThresholds: { ...settings.experienceThresholds, ...patch } });
+  return (
+    <Section title="Experience tags" icon={IconStar} description="Tags on each comic, worked out from their spots, ratings and when they started. Tap a tag on a comic to pin or hide it there.">
+      <div className="flex flex-col gap-4">
+        <SettingRow label="New" info={<>Fewer spots than this, or doing comedy for less than the months below.</>}>
+          <Stepper value={t.newSpotsMax} onChange={(v) => set({ newSpotsMax: v })} min={1} max={50} suffix="spots" />
+        </SettingRow>
+        <SettingRow label="New for the first">
+          <Stepper value={t.newbieMonths} onChange={(v) => set({ newbieMonths: v })} min={0} max={24} suffix="months" />
+        </SettingRow>
+        <SettingRow label="Beginner" info={<>Past New, and doing comedy for less than this.</>}>
+          <Stepper value={t.beginnerYears} onChange={(v) => set({ beginnerYears: v })} min={1} max={5} suffix={t.beginnerYears === 1 ? "year" : "years"} />
+        </SettingRow>
+        <SettingRow label="Senior" info={<>Doing comedy for at least this long.</>}>
+          <Stepper value={t.seniorYears} onChange={(v) => set({ seniorYears: v })} min={1} max={20} suffix={t.seniorYears === 1 ? "year" : "years"} />
+        </SettingRow>
+        <SettingRow label="Killer" info={<>Average rating at least this, over at least the number of rated shows below.</>}>
+          <Stepper value={t.killerMinRating} onChange={(v) => set({ killerMinRating: Math.round(v * 10) / 10 })} min={3} max={5} step={0.1} suffix="avg" />
+        </SettingRow>
+        <SettingRow label="Killer needs">
+          <Stepper value={t.killerMinRated} onChange={(v) => set({ killerMinRated: v })} min={1} max={30} suffix="rated shows" />
+        </SettingRow>
+      </div>
+    </Section>
+  );
+}
+
 function RulesSection() {
   const { settings, saveSettings } = useApp();
   const r = settings.rules;
@@ -392,8 +424,8 @@ function RulesSection() {
     <Section title="Request rules" icon={IconShield} description="Requests that break a rule go to the Held tab instead of Asked. Nothing is sent to them, and you can still allow any of them. Hosts, ignored and banned comics are set per person in Comics.">
       <div className="flex flex-col gap-6">
         <div>
-          <SettingRow label="Request window" info={<>Only take requests during this time each week. Anything else is held as a mid-week ask.</>}>
-            <Switch checked={r.window.enabled} onChange={(v) => setWindow({ enabled: v })} label="Request window" />
+          <SettingRow label="Default request window" info={<>Only take requests during this time each week; anything else is held as a mid-week ask. Shows set to Default use this. A show can have its own window (its editor in Shows).</>}>
+            <Switch checked={r.window.enabled} onChange={(v) => setWindow({ enabled: v })} label="Default request window" />
           </SettingRow>
           {r.window.enabled && (
             <div className="mt-2 mb-2 grid gap-4 rounded-lg bg-surface-container p-4 sm:grid-cols-2">

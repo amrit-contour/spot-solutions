@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { deleteDoc, updateDoc } from "firebase/firestore";
-import {
+import { experienceOf,
   DAY_SHORT,
   HOLD_LABEL,
   INTENT_THRESHOLD,
@@ -32,6 +32,7 @@ import { useNeverRead } from "../lib/neverRead";
 import { PageHeader, enumPref, usePref } from "@spot/ui";
 import { WaText } from "@spot/ui";
 import { WeekSwitcher } from "../components/WeekSwitcher";
+import { ExperienceChip, topTag } from "../components/Experience";
 import { Menu, MenuItem } from "@spot/ui";
 import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
 import { ConnectCard } from "../components/ConnectCard";
@@ -43,7 +44,7 @@ import { UpdatesPanel } from "../components/UpdatesPanel";
 import { Count } from "../components/updates/shared";
 import { useUpdates } from "../lib/updates";
 import { RequestPills, requestPills } from "../components/RequestTags";
-import { IconArrowDown, IconSort, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconClose, IconShield, IconSkip, IconSparkle, IconStar } from "@spot/ui";
+import { IconArrowDown, IconSort, IconChat, IconSearch, IconChatCheck, IconCheck, IconInbox, IconMenuDots, IconMic, IconClose, IconShield, IconSkip, IconSparkle } from "@spot/ui";
 
 import { laneOf, type Lane } from "../lib/lanes";
 const LANES: { id: Lane; label: string }[] = [
@@ -279,7 +280,7 @@ export function Requests() {
             <motion.ul className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-1" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.04 } } }}>
               <AnimatePresence initial={false}>
                 {grouped[lane].map((r) => (
-                  <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={showsLastWeekMarker(comicsById.get(r.comicId), activeShows, lastWeek)} tier={comicsById.get(r.comicId)?.tier} showVenue={manyVenues} />
+                  <RequestCard key={r.id} r={r} shows={activeShows} lineups={lineups.data} performedLastWeek={showsLastWeekMarker(comicsById.get(r.comicId), activeShows, lastWeek)} showVenue={manyVenues} />
                 ))}
               </AnimatePresence>
             </motion.ul>
@@ -313,7 +314,7 @@ function LaneEmpty({ lane }: { lane: Lane }) {
   );
 }
 
-function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: { r: SpotRequest; shows: Show[]; lineups: Lineup[]; performedLastWeek: boolean; tier?: string; showVenue: boolean }) {
+function RequestCard({ r, shows, lineups, performedLastWeek, showVenue }: { r: SpotRequest; shows: Show[]; lineups: Lineup[]; performedLastWeek: boolean; showVenue: boolean }) {
   const { uid, week, comicsById, settings, shows: allShows, venues } = useApp();
   const now = useNow(30_000);
   const [open, setOpen] = useState(false);
@@ -398,11 +399,7 @@ function RequestCard({ r, shows, lineups, performedLastWeek, tier, showVenue }: 
             ) : (
               <Chip>Any day</Chip>
             )}
-            {tier === "featured" && (
-              <Chip tone="tertiary" icon={IconStar}>
-                {tier}
-              </Chip>
-            )}
+            <ExperienceChip tag={comic ? topTag(experienceOf(comic, new Date(`${today}T12:00:00Z`), settings.experienceThresholds)) : null} />
             {isClearedRequest(r) && <Chip>Cleared</Chip>}
             <RequestPills pills={pills} />
             {r.ackedAt && (

@@ -273,17 +273,19 @@ export function Segmented<T extends string | number>({ value, onChange, options,
   );
 }
 
-export function Stepper({ value, onChange, min = 0, max = 99, suffix, full }: { value: number; onChange: (v: number) => void; min?: number; max?: number; suffix?: string; /** Stretch to the width of its container (− and + at the ends). */ full?: boolean }) {
+export function Stepper({ value, onChange, min = 0, max = 99, step = 1, suffix, full }: { value: number; onChange: (v: number) => void; min?: number; max?: number; /** Amount per tap (e.g. 0.1); the value is rounded to its decimals. */ step?: number; suffix?: string; /** Stretch to the width of its container (− and + at the ends). */ full?: boolean }) {
+  const decimals = (String(step).split(".")[1] ?? "").length;
+  const bump = (dir: 1 | -1) => onChange(Math.min(max, Math.max(min, Number((value + dir * step).toFixed(decimals)))));
   return (
     <div className={cx("items-center rounded-full border border-outline-variant", full ? "flex h-12 w-full justify-between" : "inline-flex h-10 w-fit self-start")}>
-      <button className="state-layer grid size-10 place-items-center rounded-full text-on-surface-variant disabled:opacity-30" disabled={value <= min} onClick={() => onChange(value - 1)} aria-label="Decrease">
+      <button className="state-layer grid size-10 place-items-center rounded-full text-on-surface-variant disabled:opacity-30" disabled={value <= min} onClick={() => bump(-1)} aria-label="Decrease">
         −
       </button>
       <span className={cx("text-center type-label-l tabular", full ? "min-w-0 flex-1" : "min-w-12")}>
-        {value}
+        {decimals ? value.toFixed(decimals) : value}
         {suffix && <span className="text-on-surface-variant"> {suffix}</span>}
       </span>
-      <button className="state-layer grid size-10 place-items-center rounded-full text-on-surface-variant disabled:opacity-30" disabled={value >= max} onClick={() => onChange(value + 1)} aria-label="Increase">
+      <button className="state-layer grid size-10 place-items-center rounded-full text-on-surface-variant disabled:opacity-30" disabled={value >= max} onClick={() => bump(1)} aria-label="Increase">
         +
       </button>
     </div>
