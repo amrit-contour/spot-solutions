@@ -4,6 +4,7 @@
 // The Gemini key goes in a header, never a URL, and is scrubbed from every message shown or logged.
 
 import "./envcompat.mjs";
+import { NOT_SIGNED_IN, isCloudModelName } from "./ollamacloud.mjs";
 
 export const MODES = {
   local_first: "Local first, Gemini as backup",
@@ -253,7 +254,8 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
         signal: AbortSignal.timeout(180_000), // the first call loads the model into memory
       });
       const b = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(b.error ?? `Ollama said ${r.status}`);
+      // A cloud model pulled into this Ollama (`beam:cloud`) answers 401 until that Ollama is signed in to ollama.com.
+      if (!r.ok) throw new Error(r.status === 401 && isCloudModelName(model) ? NOT_SIGNED_IN : b.error ?? `Ollama said ${r.status}`);
       return { ms: Date.now() - t, reply: String(b.message?.content ?? "").trim().slice(0, 60) };
     } catch (e) {
       throw new Error(e.name === "TimeoutError" ? "The model took too long to answer." : e.message);
@@ -332,12 +334,5 @@ export function createAi({ readEnv, writeEnv, restartWorker, ollamaUrl, ollamaIn
     await restartWorker();
   }
 
-  async function setOllamaKey(raw) {
-    const key = typeof raw === "string" ? raw.trim() : raw;
-    if (key === "" || key === null) { writeEnv({ OLLAMA_API_KEY: "" }); try { await restartWorker(); } catch {} return; }
-    writeEnv({ OLLAMA_API_KEY: String(key) });
-    try { await restartWorker(); } catch {}
-  }
-
-  return { view, reconcileDefault, undoSwitch, localModels, deleteModel, unloadModel, listModels, test, startPull, setKey, setDefaults, setOllamaKey, pullState: () => pull };
+  return { view, reconcileDefault, undoSwitch, localModels, deleteModel, unloadModel, listModels, test, startPull, setKey, setDefaults, pullState: () => pull };
 }

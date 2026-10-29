@@ -284,6 +284,12 @@
   .fieldrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
   .fieldrow > input { flex: 1 1 200px; min-width: 0; width: auto; }
   .err-text { color: var(--error); }
+  /* Ollama Cloud: the same input width as the rest of the console, wrapping on a phone */
+  .cloudf > input { flex: 1 1 240px; max-width: 460px; }
+  .cloudsaved { flex-wrap: wrap; } .cloudsaved .chip { height: auto; min-height: 28px; padding: 4px 10px; flex-wrap: wrap; }
+  .cloudsaved .chip .ico { width: 14px; height: 14px; }
+  #ai-cloud .check-res { margin-top: 10px; overflow-wrap: anywhere; }
+  .lanurls { margin-top: 2px; overflow-wrap: anywhere; }
   /* Setup steps: each step owns its status, its action and its editor */
   .ssteps { list-style: none; margin: 0; padding: 0; }
   .sstep { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 14px 0; align-items: flex-start; }
@@ -623,6 +629,8 @@ try { joinCode = new URLSearchParams(location.search).get("join") || ""; } catch
 // AI models card: drafts, fetched models, test results, the open dropdown.
 let draft = null, gKeyInput = "", pullName = "", ddOpen = null, replacingKey = false;
 let gModels = null, gModelsBusy = false, testRes = {}, testBusy = {}, savingAi = false;
+// Ollama Cloud box: the server's view (no key in it) and the form. null fields mean "not edited, show the saved value".
+let cloudv = null, cloudF = { url: null, key: "", show: false, replacing: false, model: null, use: null, models: null, fetching: false, saving: false, test: null, msg: null };
 // Theme: system (default), light or dark, remembered on this machine.
 let theme = "system";
 try { theme = localStorage.getItem("nbs-console-theme") || "system"; } catch {}
@@ -714,6 +722,7 @@ function serverBar(s, { ws, ms, allUp, wStopped, mOff }) {
 }
 // Stay on: keep the machine awake (GET /api/power, POST /api/power). Lives under the server bar, not in a section.
 let pw = { data: null, busy: null, err: null, note: null, cust: false };
+let netMsg = null; // result of "Make private" (Windows network profile)
 const hourOpts = (v) => Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === v ? "selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("");
 function powerBlock() {
   const d = pw.data;
@@ -848,6 +857,10 @@ function alerts(s) {
   const moving = s.update.running && ["move-data", "move-cleanup"].includes(s.update.progress?.task);
   const st = s.storage;
   if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Nothing BOT Server keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
+  const net = s.network;
+  if (net?.public?.length) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>This Wi-Fi is set to Public, so other devices can't open this console</b><div class="small">${esc(net.public.map((p) => `${p.name || p.alias} (${p.alias})`).join(", "))} is a Public network in Windows, which blocks phones and laptops from reaching ${esc((s.lanUrls || [])[0] || "this console")}. Make it Private if this is your home or office Wi-Fi.</div>${netMsg ? `<div class="small" style="margin-top:4px">${esc(netMsg.text)}</div>` : ""}</div><button type="button" data-make-private>Make private</button></div>`);
+  else if (net && !net.firewall.ok) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>Other devices may not be able to open this console</b><div class="small">The Windows Firewall rule for port 7420 ${net.firewall.found ? `only covers ${esc(net.firewall.profiles || "some networks")}` : "is missing"}. Fixing it allows the console on Private and Domain networks (never Public).</div>${netMsg ? `<div class="small" style="margin-top:4px">${esc(netMsg.text)}</div>` : ""}</div><button type="button" data-make-private>Fix firewall rule</button></div>`);
+  else if (netMsg?.kind === "ok") out.push(`<div class="banner" role="status"><div class="grow"><b>${esc(netMsg.text)}</b></div></div>`);
   if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Nothing BOT Curate below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
   else if (APP_MAC && (ws === "stopped" || ws === "stopping")) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>${ws === "stopping" ? "Stopping the server…" : "Your server is stopped."}</b><div class="small">${ws === "stopping" ? "WhatsApp is being saved and closed. This can take up to a minute." : "WhatsApp messages aren't being read. It stays stopped, even after a restart or an update, until you start it."}</div></div>${ws === "stopped" ? `<button data-worker="start" data-models="1">Start server</button>` : ""}</div>`);
   else if (APP_MAC && ws === "starting") out.push(`<div class="banner busy" role="status">${spin}<div class="grow"><b>Starting the server…</b><div class="small">WhatsApp reconnects within a minute.</div></div></div>`);
@@ -921,6 +934,53 @@ function modelsList(a, s) {
   return `<div class="list">${rows}</div><div class="diskline small muted"><span>Models use <b>${fmt(used)}</b> on disk</span>${L?.free != null ? `<span>${fmt(L.free)} free on this drive</span>` : ""}</div>`;
 }
 
+// Ollama Cloud (GET /api/cloud, POST /api/cloud/save|models|test): key, URL, model and "Use cloud for". The key never comes back from the
+// server; the page shows its last 4 characters and when it was saved.
+function cloudBlock() {
+  const v = cloudv, f = cloudF;
+  if (!v) return `<div class="blk" id="ai-cloud"><h3 class="grp">Ollama Cloud</h3><div class="muted small">Loading…</div></div>`;
+  if (f.url === null) f.url = v.url;
+  if (f.model === null) f.model = v.model || "";
+  if (f.use === null) f.use = v.use;
+  const saved = v.key && !f.replacing;
+  const typed = f.key.trim();
+  const canAsk = Boolean(saved || typed);
+  const models = f.models || (f.model ? [f.model] : []);
+  const dirty = f.url !== v.url || f.model !== (v.model || "") || f.use !== v.use || (!saved && typed);
+  const srcText = v.key ? (v.key.legacy ? "Using the key saved by an older console (in the worker's .env). Saving moves it here." : "Used by every account on this server; it wins over a key an account added in Curate.")
+    : v.accountKeys ? `No key here. ${v.accountKeys} account${v.accountKeys === 1 ? "" : "s"} on this server use${v.accountKeys === 1 ? "s" : ""} their own key from Curate (Settings, AI models).`
+    : "No key yet. Add one here, or in Curate (Settings, AI models) to bring it to every server.";
+  const msg = f.msg ? `<div class="check-res ${f.msg.kind === "ok" ? "ok" : f.msg.kind === "bad" ? "bad" : ""}" role="${f.msg.kind === "bad" ? "alert" : "status"}">${f.msg.busy ? spin + " " : ""}${esc(f.msg.text)}</div>` : "";
+  const t = f.test;
+  const testLine = t ? (t.busy ? `<span class="chip neutral">${spin} Testing…</span>` : t.ok ? `<span class="chip ok">✓ OK · ${t.ms} ms via ${esc(t.via)}</span>` : `<span class="chip bad">Failed</span>`) : "";
+  const useOpt = (u) => `<label class="opt ${f.use === u ? "on" : ""}"><input type="radio" name="clouduse" value="${u}" ${f.use === u ? "checked" : ""}><span><b>${esc(v.uses[u].split(":")[0])}</b>${v.uses[u].includes(":") ? `<span class="muted small">${esc(v.uses[u].split(":").slice(1).join(":").trim())}</span>` : `<span class="muted small">Only accounts that pick a cloud model use it.</span>`}</span></label>`;
+  return `<div class="blk" id="ai-cloud"><h3 class="grp">Ollama Cloud</h3>
+    <div class="muted small">Bigger models (like beam) that run on ollama.com instead of this computer. Get a key at ollama.com/settings/keys.</div>
+    ${v.lastError ? `<div class="check-res bad" role="alert" style="margin-top:10px">${esc(v.lastError)}<div class="small" style="margin-top:4px;opacity:.8">Seen by the worker ${esc(ago(v.lastErrorAt))}.</div></div>` : ""}
+    ${!v.key && v.localCloudModels?.length ? `<div class="check-res" style="margin-top:10px">${v.localCloudModels.map((m) => `<span class="mono">${esc(m)}</span>`).join(", ")} ${v.localCloudModels.length === 1 ? "is" : "are"} in this computer's Ollama, but cloud models only answer there if this Ollama is signed in to ollama.com (<span class="mono">ollama signin</span>). Adding a key below sends them straight to ollama.com instead.</div>` : ""}
+    <div class="sub"><label class="lbl" for="cloudurl">URL</label>
+      <div class="fieldrow cloudf"><input type="text" id="cloudurl" class="mono" spellcheck="false" autocomplete="off" placeholder="https://ollama.com" value="${esc(f.url)}"></div></div>
+    <div class="sub"><b class="lbl">API key</b>
+      <div class="muted small">${esc(srcText)}</div>
+      ${saved
+        ? `<div class="row2 cloudsaved"><span class="chip ok">${ICN.key} Key saved · ends in <span class="mono">${esc(v.key.hint)}</span>${v.key.savedAt ? ` · saved ${esc(ago(v.key.savedAt))}` : ""}</span><div class="grow"></div><button type="button" class="tonal sm" data-cloud-replace>Replace</button><button type="button" class="text sm danger" data-cloud-remove>Remove</button></div>`
+        : `<div class="fieldrow cloudf"><input type="${f.show ? "text" : "password"}" id="cloudkey" class="mono" spellcheck="false" autocomplete="off" placeholder="Paste your Ollama API key" value="${esc(f.key)}"><button type="button" class="text sm" data-cloud-show aria-pressed="${f.show}">${f.show ? "Hide" : "Show"}</button>${f.replacing ? `<button type="button" class="text sm" data-cloud-cancel>Cancel</button>` : ""}</div>`}
+    </div>
+    <div class="sub"><b class="lbl">Model</b>
+      <div class="muted small">The cloud model the server uses for "Use cloud for". Accounts can also pick any cloud model in Curate.</div>
+      <div class="fieldrow">${dd("cmodel", f.model, models, { placeholder: canAsk ? "Fetch models, then choose" : "Add a key first", disabled: !canAsk })}
+        <button type="button" class="tonal" data-cloud-fetch ${!canAsk || f.fetching ? "disabled" : ""}>${f.fetching ? "Fetching…" : f.models ? "Refresh" : "Fetch models"}</button>
+        <button type="button" class="tonal" data-cloud-test ${!f.model || t?.busy ? "disabled" : ""}>Test</button>${testLine}</div>
+      ${t && !t.busy && !t.ok ? `<div class="small err-text" style="margin-top:6px">${esc(t.error)}</div>` : ""}
+    </div>
+    <div class="sub"><b class="lbl">Use cloud for</b>
+      <div class="opts">${useOpt("primary")}${useOpt("fallback")}${useOpt("off")}</div>
+    </div>
+    <div class="actions"><button type="button" data-cloud-save ${!dirty || f.saving ? "disabled" : ""}>${f.saving ? "Saving…" : "Save"}</button>${dirty && !f.saving ? `<button type="button" class="text" data-cloud-discard>Discard</button>` : ""}</div>
+    ${msg}
+  </div>`;
+}
+
 function aiCard(s) {
   const a = aiv;
   if (!a) return sec("ai", "AI models", "Loading…", `<div class="muted">Loading…</div>`, { open: false });
@@ -981,17 +1041,7 @@ function aiCard(s) {
     </div>` : ""}
     </div>
 
-    <div class="blk"><h3 class="grp">Ollama Cloud (e.g. beam:cloud)</h3>
-      <div class="row2" style="gap:10px; flex-wrap:wrap;">
-        <div class="grow" style="min-width:220px"><input id="cloudurl" class="mono" type="text" value="https://ollama.com" placeholder="https://ollama.com"></div>
-        <div class="grow" style="min-width:220px"><input id="cloudkey" class="mono" type="password" placeholder="Ollama API key" ${(s && s.ollamaCloudEnabled) ? 'value="••••saved"' : ""}></div>
-        <button class="tonal" onclick="(async()=>{const u=document.getElementById(&quot;cloudurl&quot;).value,k=(document.getElementById(&quot;cloudkey&quot;).value||'').trim();if(k==='••••saved'){alert('Enter a new key (or clear) first');return;}try{const r=await fetch('/api/admin/env?token='+encodeURIComponent((location.search.match(/[?&]token=([^&]+)/)||[])[1]||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({OLLAMA_URL:u,OLLAMA_API_KEY:k})});const t=await r.json();if(!r.ok)throw new Error(t.error||r.status);document.getElementById('cloudmodels').textContent=t.cloudEnabled ? 'Cloud configured — fetch to list models.' : 'Cloud not configured; add a key first.';try{const rr=await fetch('/api/restart?token='+encodeURIComponent((location.search.match(/[?&]token=([^&]+)/)||[])[1]||''),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:'worker'})});}catch(e){}alert('Saved. Restarted automatically. Cloud is '+(t.cloudEnabled?'on':'off')+'.');}catch(e){alert('Couldn’t save: '+e.message);}})()">Save / use Ollama Cloud</button>
-      </div>
-      <div class="row2" style="gap:10px; margin-top:8px; flex-wrap:wrap;">
-        <button type="button" class="tonal sm" onclick="(async()=>{try{const r=await fetch('/api/admin/models?token='+encodeURIComponent((location.search.match(/[?&]token=([^&]+)/)||[])[1]||''));const t=await r.json();document.getElementById('cloudmodels').textContent=t.models&&t.models.length?t.models.map((m)=>m.name).join(', '):('No cloud models reported ('+(t.error||'unknown')+')');if(t.cloudEnabled)document.getElementById('cloudmodels').textContent += ' (cloud enabled)';}catch(e){document.getElementById('cloudmodels').textContent='Couldn’t load cloud models: '+e.message;}})()">Fetch models</button>
-        <div class="grow muted small" id="cloudmodels">${s && s.ollamaCloudEnabled ? "Cloud configured — fetch to list models." : "Cloud not configured; add a key first."}</div>
-      </div>
-    </div>
+    ${cloudBlock()}
 
     <div class="blk"><h3 class="grp">Which one answers</h3>
       <div class="muted small">Applies to curators who haven't chosen their own models. Anyone who has (Settings, AI models in the app) keeps their choice.</div>
@@ -1327,7 +1377,7 @@ function render() {
   const at = typing() ? document.activeElement : null, keep = at?.id ? { id: at.id, from: at.selectionStart, to: at.selectionEnd } : null;
   $("#app").innerHTML = `
   <header>${logo}
-    <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Nothing BOT Server <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)} · ${s.ips.map((ip) => `<span class="mono">${ip}</span>`).join(", ") || "offline"}</div></div>
+    <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Nothing BOT Server <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)}${s.ips.length ? "" : " · offline"}</div>${(s.lanUrls || []).length ? `<div class="muted small lanurls">On this Wi-Fi: ${s.lanUrls.map((u) => `<a class="mono" href="${esc(u)}">${esc(u.replace(/^http:\/\//, ""))}</a>`).join(", ")}</div>` : ""}</div>
     <span class="chip state ${allUp ? "ok" : "bad"}">${wStopped ? "Server stopped" : allUp ? "All services running" : "Needs attention"}</span>
     <span class="menuwrap"><button type="button" class="menubtn dispbtn" data-menu-display aria-haspopup="menu" aria-expanded="${menuFor === "display"}" aria-label="Display options" title="Display options">${slidersSvg}</button>${menuFor === "display" ? `<div class="menu dispmenu" role="menu" aria-label="Display options">
       <div class="menugroup" role="group" aria-label="Theme"><div class="menulabel">Theme</div><div class="theme">${["system", "light", "dark"].map((t) => `<button type="button" role="menuitemradio" aria-checked="${theme === t}" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div></div>
@@ -1752,7 +1802,7 @@ function wire() {
       joining = false; editing = false; refresh();
     };
   }
-  ["admins", "geminikey", "joincode", "devname", "pullname", "movepath"].forEach((id) => { const el = $("#" + id); if (el) { el.onfocus = () => editing = true; el.onblur = () => editing = false; } });
+  ["admins", "geminikey", "joincode", "devname", "pullname", "movepath", "cloudurl", "cloudkey"].forEach((id) => { const el = $("#" + id); if (el) { el.onfocus = () => editing = true; el.onblur = () => editing = false; } });
   document.querySelectorAll("[data-copy]").forEach((b) => b.onclick = async () => {
     const note = b.parentElement.querySelector(".copied");
     try { await navigator.clipboard.writeText(b.dataset.copy); b.classList.add("ok"); b.innerHTML = ICN.check; if (note) note.textContent = "Copied"; }
@@ -1880,6 +1930,57 @@ function wire() {
     run("local", async () => { await post("/api/local", { enabled: on }); toast(on ? "Setting up the local model…" : "Turning it off…"); });
   });
 
+  // ---- Ollama Cloud ----
+  const cu = $("#cloudurl"); if (cu) cu.oninput = (e) => { cloudF.url = e.target.value; const b = $("[data-cloud-save]"); if (b) b.disabled = false; };
+  const ck = $("#cloudkey"); if (ck) ck.oninput = (e) => {
+    cloudF.key = e.target.value;
+    const ok = Boolean(cloudF.key.trim()) || Boolean(cloudv?.key && !cloudF.replacing);
+    const f = $("[data-cloud-fetch]"); if (f) f.disabled = !ok || cloudF.fetching;
+    const d = document.querySelector('[data-dd="cmodel"] .dd-btn'); if (d) d.disabled = !ok;
+    const b = $("[data-cloud-save]"); if (b) b.disabled = !cloudF.key.trim();
+  };
+  const cshow = $("[data-cloud-show]"); if (cshow) cshow.onclick = () => { cloudF.show = !cloudF.show; render(); focusAfter("#cloudkey"); };
+  const crep = $("[data-cloud-replace]"); if (crep) crep.onclick = () => { cloudF.replacing = true; cloudF.key = ""; render(); focusAfter("#cloudkey"); };
+  const ccan = $("[data-cloud-cancel]"); if (ccan) ccan.onclick = () => { cloudF.replacing = false; cloudF.key = ""; editing = false; render(); };
+  const cbody = () => ({ url: (cloudF.url ?? "").trim() || undefined, key: cloudF.key.trim() || undefined });
+  const cloudSave = async (extra, okText) => {
+    cloudF.saving = true; cloudF.msg = { kind: "", busy: true, text: "Saving and restarting the worker…" }; render();
+    try {
+      const r = await post("/api/cloud/save", extra);
+      cloudv = r.view; cloudF = { ...cloudF, url: null, key: "", replacing: false, model: null, use: null, show: false };
+      cloudF.msg = { kind: "ok", text: `${okText} ${r.restarted ? "The worker restarted to pick it up." : "It applies when the worker next starts."}` };
+    } catch (e) { cloudF.msg = { kind: "bad", text: e.message }; }
+    cloudF.saving = false; editing = false; render();
+  };
+  const csave = $("[data-cloud-save]"); if (csave) csave.onclick = () => cloudSave({ ...cbody(), model: cloudF.model ?? "", use: cloudF.use }, "Saved.");
+  const crm = $("[data-cloud-remove]"); if (crm) crm.onclick = async () => {
+    if (!(await askConfirm("Remove the Ollama Cloud key?\n\nCloud models stop answering on this server, unless an account has its own key in Curate."))) return;
+    cloudSave({ removeKey: true }, "Key removed.");
+  };
+  const cdis = $("[data-cloud-discard]"); if (cdis) cdis.onclick = () => { cloudF = { ...cloudF, url: null, key: "", replacing: false, model: null, use: null, msg: null, test: null }; editing = false; render(); };
+  document.querySelectorAll('input[name="clouduse"]').forEach((r) => r.onchange = () => { cloudF.use = r.value; render(); });
+  const cfe = $("[data-cloud-fetch]"); if (cfe) cfe.onclick = async () => {
+    cloudF.fetching = true; cloudF.msg = null; render();
+    try {
+      cloudF.models = (await post("/api/cloud/models", cbody())).models;
+      if (!cloudF.model && cloudF.models.length) cloudF.model = cloudF.models.includes("beam") ? "beam" : cloudF.models[0];
+      cloudF.msg = { kind: "ok", text: `${cloudF.models.length} cloud model${cloudF.models.length === 1 ? "" : "s"} available.` };
+    } catch (e) { cloudF.msg = { kind: "bad", text: e.message }; }
+    cloudF.fetching = false; render();
+  };
+  const cte = $("[data-cloud-test]"); if (cte) cte.onclick = async () => {
+    cloudF.test = { busy: true }; render();
+    try { cloudF.test = { ok: true, ...(await post("/api/cloud/test", { ...cbody(), model: cloudF.model })) }; }
+    catch (e) { cloudF.test = { ok: false, error: e.message }; }
+    render();
+  };
+  // ---- network profile (Windows) ----
+  const mp = $("[data-make-private]"); if (mp) mp.onclick = async () => {
+    mp.disabled = true; netMsg = { kind: "", text: "Making this network Private…" }; render();
+    try { const r = await post("/api/network/private", {}); netMsg = { kind: "ok", text: r.note }; } catch (e) { netMsg = { kind: "bad", text: e.message }; }
+    refresh(true);
+  };
+
   // ---- dropdowns ----
   document.querySelectorAll(".dd").forEach((d) => {
     const id = d.dataset.dd;
@@ -1888,6 +1989,7 @@ function wire() {
     d.querySelectorAll("[data-dd-val]").forEach((li) => li.onclick = (e) => {
       e.stopPropagation();
       if (id === "gmodel") draft.geminiModel = li.dataset.ddVal;
+      if (id === "cmodel") { cloudF.model = li.dataset.ddVal; cloudF.test = null; }
       ddOpen = null; render();
     });
     if (ddOpen === id) (d.querySelector("li.sel") || d.querySelector("li"))?.scrollIntoView({ block: "nearest" });
@@ -1923,8 +2025,8 @@ async function refresh(force = false) {
   try {
     // The data folder is only counted (it can hold thousands of files) while the Storage section is open or a move is running.
     const wantScan = isOpen("storage", Boolean(state?.storage?.low)) && shown("storage") || moveRunning();
-    const [st, a, c, sg] = await Promise.all([api("/api/status"), api("/api/ai").catch(() => aiv), api("/api/connect").catch(() => conn), api(`/api/storage${wantScan ? "?scan=1" : ""}`).catch(() => stor)]);
-    state = st; aiv = a; conn = c; stor = sg;
+    const [st, a, c, sg, cl] = await Promise.all([api("/api/status"), api("/api/ai").catch(() => aiv), api("/api/connect").catch(() => conn), api(`/api/storage${wantScan ? "?scan=1" : ""}`).catch(() => stor), api("/api/cloud").catch(() => cloudv)]);
+    state = st; aiv = a; conn = c; stor = sg; cloudv = cl;
     if (bootId === null) bootId = st.boot;
     else if (st.boot !== bootId) return location.reload(); // restarted on new code: load the new page
     if (restarting && !st.update.running) restarting = false;

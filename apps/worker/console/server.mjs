@@ -28,6 +28,8 @@ import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 import { contextFor } from "./move.mjs";
 import { createMachinePower } from "./power-run.mjs";
 import { resolveModelsDir, ollamaEnv, winRestartOllamaScript, createOllamaGuard } from "./ollamaenv.mjs";
+import { createCloud } from "./ollamacloud.mjs";
+import { createNetProfile } from "./netprofile.mjs";
 
 const exec = promisify(execFile);
 const WIN = process.platform === "win32";
@@ -49,7 +51,8 @@ const KEY_FILE = path.join(DATA, "service-account.json");
 const live = createLive({ file: process.env.NBS_STATS_FILE ?? path.join(DATA, "live-stats.json") });
 // Cloud Function that trades a join code for this server's own key (functions/src/index.ts redeemJoinCode).
 const JOIN_URL = process.env.NBS_JOIN_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net/redeemJoinCode";
-const OLLAMA = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
+// The local daemon only. An older console wrote OLLAMA_URL=https://ollama.com into .env: a cloud URL is never the local Ollama.
+const OLLAMA = /^https?:\/\/([^/]+\.)?ollama\.com(\/|:|$)/i.test(process.env.OLLAMA_URL ?? "") ? "http://127.0.0.1:11434" : (process.env.OLLAMA_URL || "http://127.0.0.1:11434");
 // Brand icons (Nothing BOT Server): a theme-switching SVG favicon with PNG/ICO fallbacks and the home-screen icon.
 // All public (they load before the sign-in token does).
 const ASSET_TYPES = { svg: "image/svg+xml", png: "image/png", ico: "image/x-icon" };
@@ -136,6 +139,15 @@ async function restart(unit) {
   }
   // The launcher loop starts the worker again within ~10 s.
   return ps(`${WIN_WORKER} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`, 30000);
+}
+/** A PowerShell script (base64, so quoting can't break it) with a success flag and the real error text. Windows only. */
+async function runPs(script, timeout = 20000) {
+  try {
+    const { stdout } = await exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { timeout, maxBuffer: 2 << 20, windowsHide: true });
+    return { ok: true, out: stdout.trim() };
+  } catch (e) {
+    return { ok: false, out: ((e.stdout ?? "").toString() || (e.stderr ?? "").toString() || e.message || "").trim() };
+  }
 }
 /** Like sh(), but with an environment and a success flag, and never throws: what worker control (control.mjs) runs. */
 async function runCmd(cmd, args, { timeout = 15000, env } = {}) {
@@ -291,6 +303,9 @@ async function status() {
     arch: os.arch(),
     uptime: os.uptime(),
     ips: lanIps(),
+    // Links other devices on this Wi-Fi can open (the header shows them), and whether Windows calls this network Public (then they can't).
+    lanUrls: lanIps().map((ip) => `http://${ip}:${PORT}`),
+    network: await netProfile.view().catch(() => null),
     cpu: { model: os.cpus()[0]?.model?.trim(), cores: os.cpus().length, usage: cpu(), load: os.loadavg() },
     memory: await memory(),
     disk: d,
@@ -307,8 +322,6 @@ async function status() {
       key: keyInfo(),
       admins: (env.NBS_ADMIN_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
       geminiServerKey: gk ? `••••${gk.slice(-4)}` : null,
-      ollamaCloudEnabled: Boolean((env.OLLAMA_API_KEY ?? env.OLLAMA_KEY) ),
-      cloud: { enabled: Boolean((env.OLLAMA_API_KEY ?? env.OLLAMA_KEY)) },
       serverId: env.NBS_SERVER_ID || os.hostname(),
     },
     logs: logs ?? (WIN ? "No logs yet. The worker starts once a Firebase key is added." : "No logs yet (or this account can't read the journal)."),
@@ -380,6 +393,17 @@ const ai = createAi({
   missingSeen: () => live.view()?.missingModels ?? [],
   diskFree: () => { try { return freeBytes(DATA).free; } catch { return null; } },
 });
+const cloud = createCloud({
+  file: process.env.NBS_OLLAMA_CLOUD_FILE || path.join(DATA, "ollama-cloud.json"),
+  readEnv,
+  writeEnv,
+  // true when the worker is really restarted (not in a test console, not while the owner has it stopped)
+  restartWorker: async () => { if (DRY || isStopped(readEnv())) return false; await restart("nothing-bot-server-worker"); return true; },
+  ollamaUrl: OLLAMA,
+  live: () => live.view(),
+  localModels: async () => (await ollama()).models.map((m) => m.name),
+});
+const netProfile = createNetProfile({ platform: process.platform, ps: (script, timeout) => runPs(script, timeout), dry: DRY });
 // A server default that names a model that isn't installed is fixed here, once a minute, and when the AI page loads (ai.mjs).
 if (!DRY) setInterval(() => { ai.reconcileDefault().catch(() => {}); }, 60_000).unref();
 
@@ -509,38 +533,22 @@ createServer(async (req, res) => {
         return json(res, 400, { error: e.message });
       }
     }
-    // Server-console admin env: paste cloud/API keys (Ollama Cloud, etc.) instead of editing .env. Reuse console auth token.
-    if (url.pathname === "/api/admin/env" && req.method === "POST") {
+    // Ollama Cloud (ollamacloud.mjs): key, URL, model, "Use cloud for". Same auth as everything else; the key never comes back.
+    if (url.pathname === "/api/cloud" && req.method === "GET") return json(res, 200, await cloud.view());
+    if (url.pathname.startsWith("/api/cloud/") && req.method === "POST") {
       const b = await body(req);
-      const patch = {};
-      if (b && typeof b.patch === "object" && b.patch) Object.assign(patch, b.patch);
-      if (typeof b?.key === "string" && b.key) patch[b.key] = b.value ?? "";
-      // also accept flat { OLLAMA_API_KEY: "..." } etc.
-      if (b && typeof b === "object") for (const [k, v] of Object.entries(b)) if (k !== "patch" && k !== "key" && k !== "value" && /^[A-Za-z0-9_]+$/.test(k)) patch[k] = v;
-      const secrets = (k) => /KEY|TOKEN|SECRET|PASSWORD/i.test(k);
-      const safe = {};
-      for (const [k, v] of Object.entries(patch)) {
-        const val = v == null ? "" : String(v).trim();
-        safe[k] = secrets(k) ? (val ? `••••${val.slice(-4)}` : null) : val;
-      }
-      if (!Object.keys(patch).length) return json(res, 400, { error: "Nothing to save" });
-      try { writeEnv(patch); } catch (e) { return json(res, 500, { error: e.message }); }
-      let restarted = false;
-      if (!DRY && !isStopped(readEnv())) { try { await restart("nothing-bot-server-worker"); restarted = true; } catch { restarted = false; } }
-      return json(res, 200, { ok: true, restarted, cloudEnabled: Boolean(readEnv().OLLAMA_API_KEY ?? readEnv().OLLAMA_KEY), values: safe });
-    }
-    if (url.pathname === "/api/admin/models" && (req.method === "GET" || req.method === "POST")) {
+      const act = url.pathname.slice("/api/cloud/".length);
       try {
-        const env = readEnv();
-        const headers = (env.OLLAMA_API_KEY ?? env.OLLAMA_KEY) ? { authorization: `Bearer ${env.OLLAMA_API_KEY ?? env.OLLAMA_KEY}` } : {};
-        const base = env.OLLAMA_URL ?? env.OLLAMA_BASE_URL ?? OLLAMA;
-        const r = await fetch(`${base}/api/tags`, { headers, signal: AbortSignal.timeout(5000) });
-        const j = await r.json().catch(() => ({}));
-        const models = (j.models ?? []).map((m) => ({ name: m.name, size: m.size }));
-        return json(res, 200, { ok: true, up: r.ok, models, cloudEnabled: Boolean(readEnv().OLLAMA_API_KEY ?? readEnv().OLLAMA_KEY) });
+        if (act === "save") return json(res, 200, await cloud.save({ url: b.url, key: b.key, removeKey: b.removeKey === true, model: b.model, use: b.use }));
+        if (act === "models") return json(res, 200, { models: await cloud.models({ url: b.url, key: b.key }) });
+        if (act === "test") return json(res, 200, await cloud.test({ url: b.url, key: b.key, model: b.model }));
       } catch (e) {
-        return json(res, 200, { ok: false, up: false, models: [], error: e.message, cloudEnabled: Boolean(readEnv().OLLAMA_API_KEY ?? readEnv().OLLAMA_KEY) });
+        return json(res, 400, { error: e.message });
       }
+    }
+    // Windows: this Wi-Fi is Public, so the firewall hides the console from other devices. POST makes it Private (netprofile.mjs).
+    if (url.pathname === "/api/network/private" && req.method === "POST") {
+      try { return json(res, 200, await netProfile.makePrivate()); } catch (e) { return json(res, e.status ?? 500, { error: e.message }); }
     }
 
     // Turn the local model on or off on this computer (installs or stops Ollama; the platform's helper does it).
