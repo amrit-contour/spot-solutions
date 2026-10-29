@@ -82,23 +82,28 @@
   /* ---- server bar: the Mac app's header for every other browser (state, services, Stop/Start server) ---- */
   /* Server control: what's running, and one switch for all of it. A section under the header, not a pinned bar. */
   /* Stay on (power): a compact block right under the server bar. */
-  .pwr { margin: 0 0 16px; padding: 14px 20px; background: var(--s-low); border-radius: 20px; }
-  .pwr .ph { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .pwr { margin: 0 0 16px; padding: 4px 20px 18px; background: var(--s-low); border-radius: 20px; }
+  .pwr:not(:has(#pw-body)) { padding-bottom: 4px; }
+  .pwr .ph { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 56px; }
   .pwr .ph h2 { font-size: 15px; margin: 0; }
   .pwr .ph .grow { flex: 1 1 200px; min-width: 0; }
-  .pwr .pr { display: flex; align-items: center; gap: 10px; padding: 6px 0; min-width: 0; }
+  .pwr .pr { display: flex; align-items: center; gap: 12px; padding: 10px 0; min-width: 0; }
   .pwr .pr + .pr { border-top: 1px solid color-mix(in srgb, var(--outline-v) 40%, transparent); }
   .pwr .pr .st { flex: none; width: 20px; height: 20px; display: inline-flex; }
   .pwr .pr .st svg { width: 20px; height: 20px; }
   .pwr .pr .st.ok { color: var(--ok); } .pwr .pr .st.bad { color: var(--error); }
   .pwr .pr .t { flex: 1 1 auto; min-width: 0; font-size: 13px; }
   .pwr .pr .t b { font-weight: 600; } .pwr .pr .t span { color: var(--on-surface-v); }
-  .pwr .popts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 8px; font-size: 13px; }
+  .pwr .popts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 14px; font-size: 13px; }
   .pwr .popts .chk { margin: 0; font-size: 13px; }
   .pwr .popts select { font: inherit; padding: 2px 6px; }
-  .pwr .pwarn { margin-top: 6px; font-size: 12px; color: var(--on-surface-v); }
-  .pwr .ph .tgl { display: inline-flex; align-items: center; gap: 4px; flex: 1 1 200px; min-width: 0; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
-  .pwr .ph .tgl .sum { color: var(--on-surface-v); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pwr .pwarn { margin-top: 10px; font-size: 12px; color: var(--on-surface-v); }
+  .pwr .pnet { margin: 4px 0 12px; }
+  .pwr .pnet .banner { margin: 0; }
+  .pwr .ph .tgl { display: flex; align-items: center; gap: 12px; flex: 1 1 200px; min-width: 0; min-height: 44px; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+  .pwr .ph .tgl .sum { flex: 1 1 0; color: var(--on-surface-v); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+  .pwr .ph .tgl .chev { order: 9; }
+  .pwr .ph [data-pw-all] { order: 10; }
   .pwr .ph .tgl h2 { flex: none; }
   .pwr .chev.open { transform: none; }
   .pwr .pout { margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--on-surface-v); }
@@ -289,7 +294,6 @@
   .cloudsaved { flex-wrap: wrap; } .cloudsaved .chip { height: auto; min-height: 28px; padding: 4px 10px; flex-wrap: wrap; }
   .cloudsaved .chip .ico { width: 14px; height: 14px; }
   #ai-cloud .check-res { margin-top: 10px; overflow-wrap: anywhere; }
-  .lanurls { margin-top: 2px; overflow-wrap: anywhere; }
   /* Setup steps: each step owns its status, its action and its editor */
   .ssteps { list-style: none; margin: 0; padding: 0; }
   .sstep { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 14px 0; align-items: flex-start; }
@@ -730,17 +734,20 @@ function powerBlock() {
   const shown = d.items.filter((i) => !i.ignored);
   const bad = shown.filter((i) => !i.ok && i.fixable);
   const busy = pw.busy;
-  const open = d.open;
-  const head = `<div class="ph"><button type="button" class="tgl" data-pw-toggle aria-expanded="${open}" aria-controls="pw-body"><span class="chev ${open ? "open" : ""}" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="M6 8l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><h2>Stay on</h2><span class="sum" role="status">${esc(bad.length ? `${bad.length} need${bad.length === 1 ? "s" : ""} fixing` : "All set")}${open || !d.summary.text ? "" : ` · ${esc(d.summary.text)}`}</span></button>${bad.length ? `<button type="button" class="sm" data-pw-all ${busy ? "disabled" : ""}>${busy === "all" ? "Applying…" : "Apply all"}</button>` : ""}</div>`;
+  const net = netBanner(state);
+  const netBad = net && !net.ok ? 1 : 0;
+  // A network problem opens the block, so the fix is in view.
+  const open = d.open || Boolean(netBad);
+  const head = `<div class="ph"><button type="button" class="tgl" data-pw-toggle aria-expanded="${open}" aria-controls="pw-body"><h2>Stay on</h2><span class="sum" role="status">${esc(bad.length || netBad ? `${bad.length + netBad} need${bad.length + netBad === 1 ? "s" : ""} fixing` : "All set")}${open || !d.summary.text ? "" : ` · ${esc(d.summary.text)}`}</span><span class="chev ${open ? "open" : ""}" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="M6 8l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>${bad.length ? `<button type="button" class="sm" data-pw-all ${busy ? "disabled" : ""}>${busy === "all" ? "Applying…" : "Apply all"}</button>` : ""}</div>`;
   const msgs = `${pw.note ? `<div class="pwarn" role="status">${esc(pw.note)}</div>` : ""}${pw.err ? `<div class="small err-text" role="alert">${esc(pw.err)}</div>` : ""}`;
-  if (!open) return `<section class="pwr" aria-label="Stay on">${head}${msgs}</section>`;
+  if (!open) return `<section class="pwr" aria-label="Stay on">${head}${net && net.ok ? `<div class="pnet">${net.html}</div>` : ""}${msgs}</section>`;
   const rows = shown.map((i) => `<div class="pr"><span class="st ${i.ok ? "ok" : "bad"}" role="img" aria-label="${i.ok ? "OK" : "Needs fixing"}">${i.ok ? ICN.check : ICN.warn}</span><div class="t"><b>${esc(i.title)}</b> <span>${esc(i.detail)}</span></div>${!i.ok && i.fixable ? `<button type="button" class="tonal sm" data-pw-fix="${esc(i.id)}" ${busy ? "disabled" : ""}>${busy === i.id ? "Fixing…" : "Fix"}</button>` : ""}</div>`).join("");
   const o = d.options;
   const opts = `<div class="popts">${o.canBattery ? `<label class="chk"><input type="checkbox" data-pw-battery ${o.battery ? "checked" : ""} ${busy ? "disabled" : ""}> Also keep awake on battery</label>` : ""}${o.canDisplay ? `<label class="chk"><input type="checkbox" data-pw-display ${o.displayNever ? "checked" : ""} ${busy ? "disabled" : ""}> Screen never turns off on power (helps Modern Standby keep Wi-Fi)</label>` : ""}${o.canActiveHours ? `<span>No Windows Update restarts <select data-pw-start aria-label="Active hours start">${hourOpts(o.activeHours.start)}</select> to <select data-pw-end aria-label="Active hours end">${hourOpts(o.activeHours.end)}</select></span>` : ""}<button type="button" class="tonal sm" data-pw-restartnet ${busy ? "disabled" : ""}>${busy === "restart-net" ? "Restarting Wi-Fi…" : "Restart Wi-Fi now"}</button><button type="button" class="tonal sm" data-pw-cust aria-expanded="${Boolean(pw.cust)}">${pw.cust ? "Done" : "Choose what to enforce"}</button></div>${o.battery && o.canBattery ? `<div class="pwarn">On battery: the machine won't sleep, so an unplugged laptop runs flat. Keep it plugged in.</div>` : ""}`;
   const cust = pw.cust ? `<div class="pcust" role="group" aria-label="What to enforce">${d.toggles.map((t) => `<label class="chk"><input type="checkbox" data-pw-enf="${esc(t.id)}" ${t.on ? "checked" : ""} ${busy ? "disabled" : ""}> ${esc(t.title)}</label>`).join("")}<div class="pwarn">Unticked items are not checked, not shown as warnings and not re-applied after updates.</div></div>` : "";
   const outs = d.watchdog?.outages?.length ? `<ul class="pout" aria-label="Recent outages">${d.watchdog.outages.map((x) => `<li>${esc(x.text)}</li>`).join("")}</ul>` : "";
   const lr = `${d.sleep ? `<div class="pwarn">${esc(d.sleep.text)}</div>` : ""}${d.lastRestart ? `<div class="pwarn">${esc(d.lastRestart.text)}${d.pendingRestart ? ". A restart is waiting for updates." : ""}</div>` : ""}`;
-  return `<section class="pwr" aria-label="Stay on" id="pw-body">${head}${rows}${outs}${opts}${cust}${lr}${msgs}</section>`;
+  return `<section class="pwr" aria-label="Stay on" id="pw-body">${head}${net ? `<div class="pnet">${net.html}</div>` : ""}${rows}${outs}${opts}${cust}${lr}${msgs}</section>`;
 }
 async function loadPower() {
   try { pw.data = await api("/api/power"); pw.err = null; } catch (e) { if (e.status !== 401 && e.status !== 404) pw.err = `Couldn't read the power settings: ${e.message}`; }
@@ -848,6 +855,15 @@ function wireHealth() {
   document.querySelectorAll("[data-goto-health]").forEach((b) => b.onclick = () => revealSection("server", "#health-title"));
 }
 
+/** Windows network problems that stop other devices opening the console: shown inside Stay on. {ok, html} or null. */
+function netBanner(s) {
+  const net = s?.network;
+  if (net?.public?.length) return { ok: false, html: `<div class="banner bad" role="alert"><div class="grow"><b>This Wi-Fi is set to Public, so other devices can't open this console</b><div class="small">${esc(net.public.map((p) => `${p.name || p.alias} (${p.alias})`).join(", "))} is a Public network in Windows, which blocks phones and laptops from reaching ${esc((s.lanUrls || [])[0] || "this console")}. Make it Private if this is your home or office Wi-Fi.</div>${netMsg ? `<div class="small" style="margin-top:4px">${esc(netMsg.text)}</div>` : ""}</div><button type="button" data-make-private>Make private</button></div>` };
+  if (net && !net.firewall.ok) return { ok: false, html: `<div class="banner bad" role="alert"><div class="grow"><b>Other devices may not be able to open this console</b><div class="small">The Windows Firewall rule for port 7420 ${net.firewall.found ? `only covers ${esc(net.firewall.profiles || "some networks")}` : "is missing"}. Fixing it allows the console on Private and Domain networks (never Public).</div>${netMsg ? `<div class="small" style="margin-top:4px">${esc(netMsg.text)}</div>` : ""}</div><button type="button" data-make-private>Fix firewall rule</button></div>` };
+  if (netMsg?.kind === "ok") return { ok: true, html: `<div class="banner" role="status"><div class="grow"><b>${esc(netMsg.text)}</b></div></div>` };
+  return null;
+}
+
 function alerts(s) {
   const out = [];
   const ws = wstate(s);
@@ -857,10 +873,6 @@ function alerts(s) {
   const moving = s.update.running && ["move-data", "move-cleanup"].includes(s.update.progress?.task);
   const st = s.storage;
   if (st?.low && !moving) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>The data drive is almost full</b><div class="small">Only ${fmt(st.free)} left${st.total ? ` of ${fmt(st.total)}` : ""} where Nothing BOT Server keeps its data. WhatsApp can lose its login when there is no room to save it, and updates are refused. Free up space, or move the data to a bigger drive.</div></div><button data-goto-storage>Move data…</button></div>`);
-  const net = s.network;
-  if (net?.public?.length) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>This Wi-Fi is set to Public, so other devices can't open this console</b><div class="small">${esc(net.public.map((p) => `${p.name || p.alias} (${p.alias})`).join(", "))} is a Public network in Windows, which blocks phones and laptops from reaching ${esc((s.lanUrls || [])[0] || "this console")}. Make it Private if this is your home or office Wi-Fi.</div>${netMsg ? `<div class="small" style="margin-top:4px">${esc(netMsg.text)}</div>` : ""}</div><button type="button" data-make-private>Make private</button></div>`);
-  else if (net && !net.firewall.ok) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>Other devices may not be able to open this console</b><div class="small">The Windows Firewall rule for port 7420 ${net.firewall.found ? `only covers ${esc(net.firewall.profiles || "some networks")}` : "is missing"}. Fixing it allows the console on Private and Domain networks (never Public).</div>${netMsg ? `<div class="small" style="margin-top:4px">${esc(netMsg.text)}</div>` : ""}</div><button type="button" data-make-private>Fix firewall rule</button></div>`);
-  else if (netMsg?.kind === "ok") out.push(`<div class="banner" role="status"><div class="grow"><b>${esc(netMsg.text)}</b></div></div>`);
   if (!s.config.key) out.push(`<div class="banner" role="status"><div class="grow"><b>This server isn't connected yet</b><div class="small">Connect it to Nothing BOT Curate below. The worker starts by itself afterwards.</div></div><button data-goto="setup">Open setup</button></div>`);
   else if (APP_MAC && (ws === "stopped" || ws === "stopping")) out.push(`<div class="banner bad" role="alert"><div class="grow"><b>${ws === "stopping" ? "Stopping the server…" : "Your server is stopped."}</b><div class="small">${ws === "stopping" ? "WhatsApp is being saved and closed. This can take up to a minute." : "WhatsApp messages aren't being read. It stays stopped, even after a restart or an update, until you start it."}</div></div>${ws === "stopped" ? `<button data-worker="start" data-models="1">Start server</button>` : ""}</div>`);
   else if (APP_MAC && ws === "starting") out.push(`<div class="banner busy" role="status">${spin}<div class="grow"><b>Starting the server…</b><div class="small">WhatsApp reconnects within a minute.</div></div></div>`);
@@ -1377,7 +1389,7 @@ function render() {
   const at = typing() ? document.activeElement : null, keep = at?.id ? { id: at.id, from: at.selectionStart, to: at.selectionEnd } : null;
   $("#app").innerHTML = `
   <header>${logo}
-    <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Nothing BOT Server <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)}${s.ips.length ? "" : " · offline"}</div>${(s.lanUrls || []).length ? `<div class="muted small lanurls">On this Wi-Fi: ${s.lanUrls.map((u) => `<a class="mono" href="${esc(u)}">${esc(u.replace(/^http:\/\//, ""))}</a>`).join(", ")}</div>` : ""}</div>
+    <div class="grow"><h1>${esc(s.hostname)}</h1><div class="muted small">${s.version ? `Nothing BOT Server <span class="mono">${esc(shortV(s.version))}</span> · ` : ""}${esc(s.distro || s.os)} · ${esc(s.arch)} · up ${up(s.uptime)}${s.ips.length ? "" : " · offline"}</div></div>
     <span class="chip state ${allUp ? "ok" : "bad"}">${wStopped ? "Server stopped" : allUp ? "All services running" : "Needs attention"}</span>
     <span class="menuwrap"><button type="button" class="menubtn dispbtn" data-menu-display aria-haspopup="menu" aria-expanded="${menuFor === "display"}" aria-label="Display options" title="Display options">${slidersSvg}</button>${menuFor === "display" ? `<div class="menu dispmenu" role="menu" aria-label="Display options">
       <div class="menugroup" role="group" aria-label="Theme"><div class="menulabel">Theme</div><div class="theme">${["system", "light", "dark"].map((t) => `<button type="button" role="menuitemradio" aria-checked="${theme === t}" data-theme-set="${t}" aria-pressed="${theme === t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div></div>
@@ -1385,9 +1397,9 @@ function render() {
       <div class="menusep"></div>
       <button type="button" role="menuitem" data-cust-toggle>${custMode ? "Done customizing" : "Customize page"}</button></div>` : ""}</span>
   </header>
+  ${alerts(s)}
   ${serverBar(s, { ws, ms, allUp, wStopped, mOff })}
   ${powerBlock()}
-  ${alerts(s)}
   ${custBar}
   <div id="secs">${visibleIds().map((id) => blocks[id]).join("")}</div>
   ${!custMode && hiddenNow.length ? `<p class="muted small" style="margin-top:16px">${hiddenNow.length} section${hiddenNow.length === 1 ? " is" : "s are"} hidden. <a href="#" data-cust-toggle>Customize</a> to show ${hiddenNow.length === 1 ? "it" : "them"}.</p>` : ""}`;
