@@ -188,12 +188,23 @@ export function DuplicateComics() {
 
   return (
     <>
-      {sets.length > 0 && (
-        <button type="button" aria-label={`${sets.length} possible duplicate${sets.length === 1 ? "" : "s"}`} className="state-layer fixed right-6 bottom-6 z-20 flex items-center gap-3 rounded-full bg-tertiary-container px-4 py-3 text-on-tertiary-container shadow-lg" onClick={() => setOpen(true)}>
+      {/* An inline row at the top of the roster (a floating badge hid behind the phone's bottom bar). */}
+      {sets.length > 0 ? (
+        <button type="button" onClick={() => setOpen(true)} className="state-layer mt-1 mb-2 flex w-full items-center gap-3 rounded-lg bg-tertiary-container px-4 py-3 text-left text-on-tertiary-container">
           <IconWarn className="icon size-5 flex-none" />
-          <span className="type-body-m tabular">{sets.length}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block type-title-s">
+              {sets.length} possible duplicate{sets.length === 1 ? "" : "s"}
+            </span>
+            <span className="block truncate type-body-s opacity-80">{sets.slice(0, 3).map((x) => x.keep.name).join(", ")}{sets.length > 3 ? "…" : ""}</span>
+          </span>
+          <span className="flex-none type-label-l">Review</span>
         </button>
-      )}
+      ) : restorable.length > 0 ? (
+        <button type="button" onClick={() => setOpen(true)} className="state-layer mb-1 inline-flex min-h-9 items-center rounded-full px-2 type-label-m text-on-surface-variant">
+          Not the same person ({restorable.length})
+        </button>
+      ) : null}
       <Sheet open={open} onClose={() => setOpen(false)} title="Possible duplicates">
         <p className="mb-5 type-body-m text-on-surface-variant">Same WhatsApp account under two ids merges by itself. Different numbers need your OK.</p>
 
