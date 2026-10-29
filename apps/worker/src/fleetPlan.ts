@@ -191,5 +191,25 @@ export function orphanPids(lines: string[], profileDir: string, selfPid: number)
   return out;
 }
 
+/** One process from Linux's /proc/<pid>/cmdline (NUL-separated arguments) as a "pid command" line for orphanPids; null when empty (a kernel thread or gone). */
+export function procCmdlineLine(pid: number | string, raw: string): string | null {
+  const cmd = String(raw ?? "").split("\0").filter(Boolean).join(" ");
+  return cmd && /^\d+$/.test(String(pid)) ? `${pid} ${cmd}` : null;
+}
+
+/**
+ * Chromium's profile lock: SingletonLock is a symlink whose target is "<hostname>-<pid>" (hostnames may contain "-", so the pid is after the last
+ * one). null for anything else. `host` lets the caller ignore a lock left by another machine (a copied profile).
+ */
+export function parseSingletonLock(target: string | null | undefined): { host: string; pid: number } | null {
+  const m = /^(.+)-(\d+)$/.exec(String(target ?? "").trim());
+  if (!m) return null;
+  const pid = Number(m[2]);
+  return pid > 0 ? { host: m[1], pid } : null;
+}
+
+/** Puppeteer's launch failure when another Chromium still holds the profile. */
+export const isProfileInUseError = (e: unknown) => /browser is already running|profile appears to be in use|ProcessSingleton|SingletonLock/i.test(String((e as Error)?.message ?? e));
+
 /** adoptCloudGen retries: 1, 2, 4, 8, 16, 32, 32 s (about 95 s in all, then the upload path adopts instead). */
 export const ADOPT_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 32_000];

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLAIM_STAGGER_MS, LEASE_EXPIRE_MS, LEASE_FENCE_MS, SERVER_ONLINE_MS, rankCandidates, type CandidateServer, type Lease } from "@spot/shared";
 import {
-  HANDOFF_MAX_MS, OWN_RECLAIM_MS, PENDING_COMMAND_EXPIRE_MS, SLEEP_GAP_MS, claimDelayMs, claimReason, claimableHere, handoffStuck, isClonedDisk, isDesignatedNotifier, jumpOutcome, launchDecision, orphanPids, shouldFlagAbort,
+  HANDOFF_MAX_MS, OWN_RECLAIM_MS, PENDING_COMMAND_EXPIRE_MS, SLEEP_GAP_MS, claimDelayMs, claimReason, claimableHere, handoffStuck, isClonedDisk, isDesignatedNotifier, jumpOutcome, isProfileInUseError, launchDecision, orphanPids, parseSingletonLock, procCmdlineLine, shouldFlagAbort,
   leaseEventAction, leaseKey, moveText, observePeer, observedLastSeen, pendingCommandAction, peerLastSeen, pickServerId, pickShed, shouldFence, shouldUploadOnRelease, slept,
 } from "./fleetPlan.ts";
 
@@ -270,5 +270,29 @@ describe("orphanPids", () => {
   it("handles Windows paths and quoted values", () => {
     const win = "C:\\NothingBotServer\\data\\wwebjs\\session-abc";
     expect(orphanPids([`7 "C:\\chrome.exe" --user-data-dir=${win} --x`, `8 chrome.exe --user-data-dir="${win}"`, `9 chrome.exe --user-data-dir=${win}2`], win, 1)).toEqual([7]);
+  });
+});
+
+describe("orphan Chromium without ps", () => {
+  const profile = "/var/lib/nothing-bot-server/wwebjs/session-abc";
+  it("reads /proc/<pid>/cmdline into a line orphanPids understands", () => {
+    const raw = `/usr/lib/chromium/chromium\0--headless\0--user-data-dir=${profile}\0--no-sandbox\0`;
+    const line = procCmdlineLine("4242", raw);
+    expect(line).toBe(`4242 /usr/lib/chromium/chromium --headless --user-data-dir=${profile} --no-sandbox`);
+    expect(orphanPids([line!], profile, 1)).toEqual([4242]);
+    expect(procCmdlineLine("17", "")).toBeNull(); // kernel thread
+    expect(procCmdlineLine("self", raw)).toBeNull();
+  });
+  it("parses SingletonLock's <hostname>-<pid> target, hostnames with dashes included", () => {
+    expect(parseSingletonLock("Dev-HP-12345")).toEqual({ host: "Dev-HP", pid: 12345 });
+    expect(parseSingletonLock("ubuntu-server.local-77")).toEqual({ host: "ubuntu-server.local", pid: 77 });
+    expect(parseSingletonLock("nopid")).toBeNull();
+    expect(parseSingletonLock("host-0")).toBeNull();
+    expect(parseSingletonLock(null)).toBeNull();
+  });
+  it("knows the 'browser is already running' launch failure", () => {
+    expect(isProfileInUseError(new Error(`The browser is already running for ${profile}. Use a different \`userDataDir\` or stop the running browser first.`))).toBe(true);
+    expect(isProfileInUseError(new Error("Failed to launch the browser process! ... The profile appears to be in use by another Chromium process"))).toBe(true);
+    expect(isProfileInUseError(new Error("net::ERR_INTERNET_DISCONNECTED"))).toBe(false);
   });
 });

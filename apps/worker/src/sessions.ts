@@ -1,7 +1,8 @@
 // One whatsapp-web.js client per signed-in curator. Sessions persist on disk (LocalAuth),
 // so a reboot reconnects without a new QR scan.
 import { execFile } from "node:child_process";
-import { cp, rename, rm, stat } from "node:fs/promises";
+import { cp, readdir, readFile, readlink, rename, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import WAWebJS from "whatsapp-web.js";
@@ -17,7 +18,7 @@ import { wipeLogin } from "./vault.ts";
 import { setWedgeHook } from "./sendQueue.ts";
 import { prepareLoginSafe } from "./vaultCalls.ts";
 import { BROWSER_MISSING_MESSAGE, healBrowser, isMissingBrowserError } from "./browserHeal.ts";
-import { launchDecision, orphanPids, shouldFlagAbort } from "./fleetPlan.ts";
+import { isProfileInUseError, launchDecision, orphanPids, parseSingletonLock, procCmdlineLine, shouldFlagAbort } from "./fleetPlan.ts";
 import { PROBE_EVERY_MS, WaWatchdog, dueOnce, isWedgeError } from "./health.ts";
 
 const { Client, LocalAuth } = WAWebJS;
@@ -81,7 +82,14 @@ export async function killOrphanChromium(uid: string) {
         }
       }
     } else {
-      lines = (await run("ps", ["-axo", "pid=,command="], { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 })).stdout.split("\n");
+      lines = await unixProcessLines();
+    }
+    // Chromium's own lock names the pid holding the profile ("<hostname>-<pid>"): kill it too if it is alive and really on this profile
+    // (a pid can be reused; its command line must carry this --user-data-dir).
+    const lock = parseSingletonLock(await readlink(path.join(profile, "SingletonLock")).catch(() => null));
+    if (lock && lock.host === os.hostname() && lock.pid !== process.pid && alive(lock.pid) && !orphanPids(lines, profile, process.pid).includes(lock.pid)) {
+      const own = await commandLineOf(lock.pid);
+      if (own && orphanPids([own], profile, process.pid).length) lines = lines.concat(own);
     }
     const pids = orphanPids(lines, profile, process.pid);
     for (const pid of pids) {
@@ -96,10 +104,65 @@ export async function killOrphanChromium(uid: string) {
         /* already gone */
       }
     }
-    if (pids.length) await new Promise((r) => setTimeout(r, 2_000)); // let the OS release the profile files
+    if (pids.length) await waitGone(pids); // the profile is only free once they have really exited
   } catch (e) {
     console.warn(`[session] ${uid} couldn't look for leftover browser processes:`, (e as Error).message);
   }
+}
+
+/** Is the process there? (signal 0 checks without killing; EPERM means it exists but isn't ours.) */
+function alive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+/** Polls until every pid is gone (Windows: tasklist), at most ~5 s; a process that survives is reported, not waited on forever. */
+async function waitGone(pids: number[], ms = 5_000) {
+  const until = Date.now() + ms;
+  for (;;) {
+    let left = pids;
+    if (process.platform === "win32") {
+      const out = await run("tasklist", ["/FO", "CSV", "/NH"], { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 }).then((r) => r.stdout, () => "");
+      left = out ? pids.filter((p) => out.includes(`"${p}"`)) : [];
+    } else left = pids.filter(alive);
+    if (!left.length) return;
+    if (Date.now() > until) { console.warn(`[session] leftover browser process${left.length === 1 ? "" : "es"} ${left.join(", ")} still running after ${ms / 1000}s`); return; }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+/**
+ * "pid command" lines of every process. `ps` first; minimal Linux images have no ps (or a busybox one without -o), so then
+ * /proc/<pid>/cmdline, and on a Mac `pgrep -f -l` as the fallback.
+ */
+async function unixProcessLines(): Promise<string[]> {
+  try {
+    const out = (await run("ps", ["-axo", "pid=,command="], { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 })).stdout.split("\n");
+    if (out.some((l) => /^\s*\d+\s/.test(l))) return out;
+  } catch {
+    /* ps missing or refused: fall back below */
+  }
+  if (process.platform === "linux") {
+    const dirs = (await readdir("/proc").catch(() => [] as string[])).filter((d) => /^\d+$/.test(d));
+    const lines = await Promise.all(dirs.map(async (d) => procCmdlineLine(d, await readFile(`/proc/${d}/cmdline`, "utf8").catch(() => ""))));
+    return lines.filter((l): l is string => Boolean(l));
+  }
+  try {
+    return (await run("pgrep", ["-f", "-l", "--", "--user-data-dir="], { timeout: 10_000, maxBuffer: 16 * 1024 * 1024 })).stdout.split("\n");
+  } catch {
+    return [];
+  }
+}
+/** One process's command line as a "pid command" line, or null. */
+async function commandLineOf(pid: number): Promise<string | null> {
+  if (process.platform === "linux") {
+    const l = procCmdlineLine(pid, await readFile(`/proc/${pid}/cmdline`, "utf8").catch(() => ""));
+    if (l) return l;
+  }
+  const out = await run("ps", ["-p", String(pid), "-o", "command="], { timeout: 5_000 }).then((r) => r.stdout.trim(), () => "");
+  return out ? `${pid} ${out}` : null;
 }
 
 const notice = (uid: string, level: "info" | "warn", text: string, _kind?: undefined, extra: { quiet?: boolean; link?: string; linkLabel?: string } = {}) =>
@@ -148,6 +211,8 @@ class SessionManager {
   private dogs = new Map<string, WaWatchdog>();
   private probeTimers = new Map<string, NodeJS.Timeout>();
   private startFails = new Map<string, number>();
+  /** Accounts whose last launch failed with "browser is already running" and were retried at once (one immediate retry per failure streak). */
+  private inUseRetried = new Set<string>();
   /** When each session last became ready: other jobs (group cleanup) wait for it to be stable. */
   private readyAt = new Map<string, number>();
   private backupTimers = new Map<string, NodeJS.Timeout>();
@@ -350,6 +415,7 @@ class SessionManager {
       this.readyAt.set(uid, Date.now());
       this.stuck.delete(uid);
       this.startFails.delete(uid);
+      this.inUseRetried.delete(uid);
       const me = client.info;
       await setState(uid, { status: "ready", qr: null, phone: me?.wid?.user ?? null, pushName: me?.pushname ?? null, error: null, health: "ok" });
       await userRef(uid).set({ waEnabled: true, selfId: me?.wid?._serialized ?? null }, { merge: true });
@@ -416,6 +482,17 @@ class SessionManager {
         }
         return;
       }
+      if (isProfileInUseError(e) && !this.inUseRetried.has(uid)) {
+        // A leftover Chromium still holds the profile (the watchdog's restart raced its exit): kill it again and retry now, once, not after the backoff.
+        this.inUseRetried.add(uid);
+        console.warn(`[session] ${uid} the profile is still in use by an old browser; killing it and retrying now`);
+        await this.stop(uid);
+        await killOrphanChromium(uid);
+        await Promise.all(["SingletonLock", "SingletonCookie", "SingletonSocket"].map((f) => rm(path.join(profileDir(uid), f), { force: true })));
+        this.scheduleRestart(uid, 500);
+        return;
+      }
+      this.inUseRetried.delete(uid);
       console.error(`[session] ${uid} failed to start`, e);
       const fails = (this.startFails.get(uid) ?? 0) + 1;
       this.startFails.set(uid, fails);
