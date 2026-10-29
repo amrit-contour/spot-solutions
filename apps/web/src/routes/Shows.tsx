@@ -13,7 +13,7 @@ import { GroupAvatar } from "../lib/photos";
 import { PageHeader } from "@spot/ui";
 import { ShowPeoplePicker } from "../components/ShowPeoplePicker";
 import { Button, Chip, Empty, Field, IconButton, SearchSelect, Segmented, Select, Sheet, Stepper, Switch, TextInput, TimePicker, cx } from "@spot/ui";
-import { IconAdd, IconRoom, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn, IconPlay, IconPause } from "@spot/ui";
+import { IconAdd, IconRoom, IconChat, IconClock, IconGroup, IconMap, IconUserPlus, IconPen, IconRefresh, IconStar, IconTrash, IconUserCheck, IconWarn } from "@spot/ui";
 
 const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
@@ -34,6 +34,24 @@ const newShow = (venueId: string): Omit<Show, "id"> => ({
 
 const GROUP_MODE_LABEL: Record<GroupMode, string> = { manual: "Sync: when I sync", confirm: "Sync: on confirm", show_day: "Sync: show day" };
 
+const DAY_OPTIONS = DAY_NAMES.map((d, i) => ({ value: String(i), label: d }));
+
+/** The request window in plain words, with real days for "before the show" (e.g. "Opens Sat 10:00 AM, closes Mon 5:00 PM"). */
+function requestWindowSummary(show: Partial<Show>): string {
+  const rw = show.requestWindow ?? { mode: "default" as const };
+  if (rw.mode === "default") return "Uses the default request window from Settings.";
+  if (rw.mode === "always") return "Requests are always open for this show.";
+  if (rw.mode === "weekly") return `Opens ${DAY_SHORT[rw.startDay]} ${formatTime(rw.startTime)}, closes ${DAY_SHORT[rw.endDay]} ${formatTime(rw.endTime)}.`;
+  const weekday = show.weekday ?? 1;
+  const [h, m] = (show.startTime ?? "20:00").split(":").map(Number);
+  const openDay = (((weekday - rw.opensDaysBefore) % 7) + 7) % 7;
+  const closeMin = h * 60 + m - rw.closesHoursBefore * 60;
+  const closeDay = (((weekday + Math.floor(closeMin / 1440)) % 7) + 7) % 7;
+  const mm = ((closeMin % 1440) + 1440) % 1440;
+  const closeAt = `${String(Math.floor(mm / 60)).padStart(2, "0")}:${String(mm % 60).padStart(2, "0")}`;
+  return `Opens ${DAY_SHORT[openDay]} ${formatTime(rw.opensAt)}, closes ${DAY_SHORT[closeDay]} ${formatTime(closeAt)} (${rw.closesHoursBefore}h before the show).`;
+}
+
 export function Shows() {
   const { uid, shows, venues } = useApp();
   const [editingShow, setEditingShow] = useState<Partial<Show> | null>(null);
@@ -47,6 +65,17 @@ export function Shows() {
     setEditingShow(s);
     setParams({}, { replace: true });
   }, [editId, shows, setParams]);
+
+  const setShowActive = async (s: Show, active: boolean) => {
+    try {
+      await setDoc(userDoc(uid, "shows", s.id), { active }, { merge: true });
+      toast.success(`${s.name} is ${active ? "on" : "off"}`, {
+        action: { label: "Undo", onClick: () => void setDoc(userDoc(uid, "shows", s.id), { active: !active }, { merge: true }).catch((e) => toast.error((e as Error).message)) },
+      });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
 
   return (
     <div className="w-full">
@@ -92,7 +121,7 @@ export function Shows() {
                           <span className="type-title-m">{DAY_SHORT[s.weekday]}</span>
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className={cx("block truncate type-title-m", s.groupId && "pr-10")}>{s.name}</span>
+                          <span className={cx("block truncate type-title-m", s.groupId ? "pr-28" : "pr-16")}>{s.name}</span>
                           <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 type-body-m text-on-surface-variant">
                             <span className="inline-flex items-center gap-1"><IconClock className="icon size-4" />{formatTime(s.startTime)}</span>
                             <span className="tabular">{s.slotCount} slots{s.includeSlotTime && s.defaultMinutes ? ` · ${s.defaultMinutes} min` : ""}</span>
@@ -102,24 +131,19 @@ export function Shows() {
                             {s.groupId && <Chip icon={IconClock}>{GROUP_MODE_LABEL[groupModeOf(s)]}</Chip>}
                             {s.groupPosts?.some((p) => p.enabled) && <Chip icon={IconClock}>{s.groupPosts.filter((p) => p.enabled).length} scheduled</Chip>}
                             {s.regulars?.length ? <Chip tone="tertiary" icon={IconStar}>{s.regulars.length} regular{s.regulars.length > 1 ? "s" : ""}</Chip> : null}
-                            {!s.active && <Chip>Paused</Chip>}
+                            {!s.active && <Chip>Off</Chip>}
                           </span>
                         </span>
                       </button>
-                      <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
-                        <button type="button" aria-label={s.active ? "Pause show" : "Activate show"} onClick={async (ev) => { ev.stopPropagation(); try {
-                          const next = !s.active;
-                          await import("firebase/firestore").then(({ setDoc }) => setDoc(userDoc(uid, "shows", s.id), { active: next }, { merge: true }));
-                          toast.success(next ? "Show activated" : "Show paused", { action: { label: "Undo", onClick: async () => { await import("firebase/firestore").then(({ setDoc }) => setDoc(userDoc(uid, "shows", s.id), { active: !next }, { merge: true })); } } });
-                        } catch (e) { toast.error((e as Error).message); } }} className={cx("state-layer grid size-9 place-items-center rounded-full", s.active ? "text-primary" : "text-error")}>
-                          {s.active ? <IconPlay className="icon size-5" /> : <IconPause className="icon size-5" />}
-                        </button>
+                      {/* One cluster on the title's line: the group chat and the on/off switch, same height, centred together. */}
+                      <div className="absolute top-3.5 right-3 z-10 flex items-center gap-1.5">
+                        {s.groupId && (
+                          <Link to={`/messages?g=${encodeURIComponent(s.groupId)}`} aria-label={`Open the ${s.name} group chat`} title="Group chat" className="state-layer grid size-9 place-items-center rounded-full text-primary">
+                            <IconChat className="icon size-5" />
+                          </Link>
+                        )}
+                        <Switch checked={s.active} label={s.active ? `${s.name} is on. Turn it off` : `${s.name} is off. Turn it on`} onChange={(next) => void setShowActive(s, next)} />
                       </div>
-                      {s.groupId && (
-                        <Link to={`/messages?g=${encodeURIComponent(s.groupId)}`} aria-label={`Open the ${s.name} group chat`} title="Group chat" className="state-layer absolute top-3 right-14 grid size-10 place-items-center rounded-full text-primary">
-                          <IconChat className="icon size-5" />
-                        </Link>
-                      )}
                     </motion.li>
                   ))}
                   <li>
@@ -282,10 +306,10 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
 
         <div className="flex items-center gap-4">
           <div className="flex-1">
-            <div className="type-title-s">Active</div>
-            <div className="type-body-s text-on-surface-variant">Paused shows are hidden from the lineup board.</div>
+            <div className="type-title-s">On every week</div>
+            <div className="type-body-s text-on-surface-variant">Off: hidden from the lineup board, and the agent stops taking asks for it.</div>
           </div>
-          <Switch checked={draft.active ?? true} onChange={(v) => set("active", v)} label="Active" />
+          <Switch checked={draft.active ?? true} onChange={(v) => set("active", v)} label="On every week" />
         </div>
 
         <div className="rounded-lg bg-surface-container p-4">
@@ -302,24 +326,16 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
               </div>
             );
             if (rw.mode === "weekly") return (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <select className="rounded-lg border border-outline-variant bg-surface px-2 py-1.5 type-label-l" value={rw.startDay ?? 6} onChange={(e) => setRW({ startDay: Number(e.target.value) as Weekday })}>{DAY_NAMES.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
-                <TimePicker value={rw.startTime ?? "10:00"} onChange={(v) => setRW({ startTime: v })} label="Opens" />
-                <select className="rounded-lg border border-outline-variant bg-surface px-2 py-1.5 type-label-l" value={rw.endDay ?? 1} onChange={(e) => setRW({ endDay: Number(e.target.value) as Weekday })}>{DAY_NAMES.map((d, i) => <option key={d} value={i}>{d}</option>)}</select>
-                <TimePicker value={rw.endTime ?? "17:00"} onChange={(v) => setRW({ endTime: v })} label="Closes" />
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Field label="Opens"><Select value={String(rw.startDay ?? 6)} onChange={(v) => setRW({ startDay: Number(v) as Weekday })} options={DAY_OPTIONS} label="Opens on" /></Field>
+                <Field label="at"><TimePicker value={rw.startTime ?? "10:00"} onChange={(v) => setRW({ startTime: v })} label="Opens at" /></Field>
+                <Field label="Closes"><Select value={String(rw.endDay ?? 1)} onChange={(v) => setRW({ endDay: Number(v) as Weekday })} options={DAY_OPTIONS} label="Closes on" /></Field>
+                <Field label="at"><TimePicker value={rw.endTime ?? "17:00"} onChange={(v) => setRW({ endTime: v })} label="Closes at" /></Field>
               </div>
             );
             return null;
           })()}
-          <p className="mt-2 type-body-s text-on-surface-variant">
-            {(() => {
-              const rw = draft.requestWindow ?? { mode: "default" };
-              if (rw.mode === "default") return "Uses the default request window from Settings.";
-              if (rw.mode === "always") return "Requests always open.";
-              if (rw.mode === "before") return `Opens ${rw.opensDaysBefore} day(s) before at ${rw.opensAt}, closes ${rw.closesHoursBefore}h before the show.`;
-              return `Opens ${DAY_NAMES[rw.startDay]} ${formatTime(rw.startTime)}, closes ${DAY_NAMES[rw.endDay]} ${formatTime(rw.endTime)}.`;
-            })()}
-          </p>
+          <p className="mt-2 type-body-s text-on-surface-variant">{requestWindowSummary(draft)}</p>
           <div className="mt-3">
             <Field label="Copy request window from another show">
               <SearchSelect label="Copy from" value="" onChange={(v) => {
