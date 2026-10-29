@@ -456,6 +456,15 @@ try {
   if (-not (Test-NoLocal)) { Invoke-Pull (Get-ModelName $lmodel) }
   [IO.File]::WriteAllText("$AppDir\VERSION", "$newVersion`n", $Utf8)
   Set-Progress "done" "Updated to $latest"
+  # Older installs allowed port 7420 on the Private profile only: also allow Domain (never Public), so other devices can open the console.
+  try {
+    $rule = @(Get-NetFirewallRule -DisplayName "Nothing BOT Server Console" -ErrorAction SilentlyContinue)
+    if ($rule.Count -eq 0 -or -not ($rule | Where-Object { [string]$_.Profile -match 'Private|Any' -and [string]$_.Profile -match 'Domain|Any' })) {
+      Remove-NetFirewallRule -DisplayName "Nothing BOT Server Console" -ErrorAction SilentlyContinue
+      New-NetFirewallRule -DisplayName "Nothing BOT Server Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private,Domain -ErrorAction Stop | Out-Null
+      Log "Firewall rule for the console now covers the Private and Domain networks."
+    }
+  } catch { Log "Couldn't update the console's firewall rule: $($_.Exception.Message)" }
   Restart-Console   # last: the console serves the new page once its loop starts it again
   Start-Sleep 4
   Wait-Console 30 | Out-Null   # and port 7420 must be this server's console, not an old copy

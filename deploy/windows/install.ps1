@@ -511,9 +511,11 @@ $uAction   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoPro
 $uSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 Unregister-ScheduledTask -TaskName $UpdateTask -Confirm:$false -ErrorAction SilentlyContinue
 Register-ScheduledTask -TaskName $UpdateTask -Action $uAction -Principal $principal -Settings $uSettings | Out-Null
-# Reachable from phones/laptops on your home network (private profile only).
+# Reachable from phones/laptops on your home or office network (Private and Domain profiles; never Public Wi-Fi).
+# A network Windows calls Public still blocks it: the console's Status page warns and has a "Make private" button.
 Remove-NetFirewallRule -DisplayName "Nothing BOT Server Console" -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName "Nothing BOT Server Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private | Out-Null
+New-NetFirewallRule -DisplayName "Nothing BOT Server Console" -Direction Inbound -Protocol TCP -LocalPort 7420 -Action Allow -Profile Private,Domain | Out-Null
+if (@(Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object { $_.NetworkCategory -eq 'Public' }).Count -gt 0) { Write-Host "  This network is set to Public, so other devices can't open the console. Make it Private in Windows Settings (or with the button in the console)." -ForegroundColor Yellow }
 if (Wait-Console) { Ok "Console running on port 7420, open on private networks" } else { Write-Host "  The console didn't answer on port 7420 yet. It keeps retrying; if the page doesn't open, run Open Server Console.cmd in a minute." -ForegroundColor Yellow }
 
 Step "Desktop and Start Menu shortcuts"
