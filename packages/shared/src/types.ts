@@ -29,8 +29,12 @@ export interface ExperienceResult {
   averageRating: number | null;
   trend: "up" | "steady" | "down" | null;
   inactiveSince: string | null;
-  /** The derived tags, in display order. */
+  /** The tags to show (pinned first, then computed minus hidden), in display order. */
   tags: string[];
+  /** False when "doing comedy since" isn't set, so years/months are unknown (not zero). */
+  known: boolean;
+  /** The tags the data gives on its own, before pins and hides. */
+  computed: string[];
 }
 
 export type SessionStatus = "idle" | "starting" | "qr" | "authenticated" | "ready" | "disconnected" | "error";
