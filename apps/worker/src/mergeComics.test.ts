@@ -1,26 +1,50 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { inMemberSet, memberKeySet, personGroups } from "@spot/shared";
+import { inMemberSet, memberKeySet, pairKey, personGroups } from "@spot/shared";
 import type { Comic, Lineup, Show, SpotRequest } from "@spot/shared";
 
 // Merging a duplicate comic (the same person under a phone id and an @lid) against an in-memory Firestore that supports what the
-// merge uses: getAll, where(==), batches of set/update/delete. Everything the dropped doc owned must end up on the kept one.
+// merge uses: getAll, where(== / in / >=), add, batches of set/update/delete. Everything the dropped doc owned must end up on the kept one.
+// `io` counts round trips (each get, getAll, add and commit) and documents read, so the tests can hold the merge to targeted queries.
 const store = new Map<string, Record<string, unknown>>();
+const io = { trips: 0, docsRead: 0, latencyMs: 0 };
+const trip = async (docs = 0) => {
+  io.trips++;
+  io.docsRead += docs;
+  if (io.latencyMs) await new Promise((r) => setTimeout(r, io.latencyMs));
+};
 const getPath = (d: Record<string, unknown>, f: string) => f.split(".").reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], d);
 const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
-const ref = (k: string) => ({
+type Filter = [string, string, unknown];
+const test = (d: Record<string, unknown>, [f, op, v]: Filter) => {
+  const x = getPath(d, f);
+  if (op === "in") return (v as unknown[]).includes(x);
+  if (op === ">=") return x !== undefined && (x as string) >= (v as string);
+  return x === v;
+};
+const snapOf = (k: string) => ({ id: k.split("/").pop()!, exists: store.has(k), data: () => clone(store.get(k)), get: (f: string) => getPath(store.get(k) ?? {}, f), ref: ref(k) });
+const ref = (k: string): { id: string; path: string; get: () => Promise<ReturnType<typeof snapOf>> } => ({
   id: k.split("/").pop()!,
   path: k,
-  get: async () => ({ id: k.split("/").pop()!, exists: store.has(k), data: () => clone(store.get(k)), ref: ref(k) }),
+  get: async () => (await trip(1), snapOf(k)),
 });
-const query = (prefix: string, filters: [string, unknown][] = []) => ({
-  where: (f: string, _op: string, v: unknown) => query(prefix, [...filters, [f, v]]),
-  get: async () => ({ docs: [...store].filter(([k, d]) => k.startsWith(prefix) && !k.slice(prefix.length).includes("/") && filters.every(([f, v]) => getPath(d, f) === v)).map(([k, d]) => ({ id: k.split("/").pop()!, data: () => clone(d), ref: ref(k) })) }),
+const query = (prefix: string, filters: Filter[] = []) => ({
+  where: (f: string, op: string, v: unknown) => {
+    if (op === "in" && (!Array.isArray(v) || !v.length || v.length > 30)) throw new Error(`'in' needs 1 to 30 values, got ${Array.isArray(v) ? v.length : v}`);
+    return query(prefix, [...filters, [f, op, v]]);
+  },
+  get: async () => {
+    const docs = [...store].filter(([k, d]) => k.startsWith(prefix) && !k.slice(prefix.length).includes("/") && filters.every((fl) => test(d, fl))).map(([k]) => snapOf(k));
+    await trip(docs.length);
+    return { docs };
+  },
 });
 const batchSizes: number[] = [];
 vi.mock("./firebase.ts", () => ({
-  col: (uid: string, c: string) => ({ doc: (id: string) => ref(`${uid}/${c}/${id}`), ...query(`${uid}/${c}/`) }),
+  col: (uid: string, c: string) => ({ doc: (id: string) => ref(`${uid}/${c}/${id}`), add: async (d: Record<string, unknown>) => (await trip(), store.set(`${uid}/${c}/n${store.size}`, clone(d))), ...query(`${uid}/${c}/`) }),
+  userRef: (uid: string) => ref(`users/${uid}`),
+  expireAt: (days: number) => days,
   db: {
-    getAll: async (...refs: { path: string }[]) => Promise.all(refs.map((r) => ref(r.path).get())),
+    getAll: async (...refs: { path: string }[]) => (await trip(refs.length), refs.map((r) => snapOf(r.path))),
     batch: () => {
       const ops: (() => void)[] = [];
       return {
@@ -31,13 +55,13 @@ vi.mock("./firebase.ts", () => ({
             store.set(r.path, { ...store.get(r.path), ...clone(d) });
           }),
         delete: (r: { path: string }) => void ops.push(() => store.delete(r.path)),
-        commit: async () => (batchSizes.push(ops.length), ops.forEach((o) => o())),
+        commit: async () => (await trip(), batchSizes.push(ops.length), ops.forEach((o) => o())),
       };
     },
   },
 }));
 
-const { mergeComicDocs } = await import("./mergeComics.ts");
+const { mergeComicDocs, autoMergeDuplicates } = await import("./mergeComics.ts");
 
 const U = "u1";
 const PHONE = "919876543210@c.us";
@@ -49,9 +73,7 @@ const req = (weekOf: string, comicId: string, o: Partial<SpotRequest> = {}) => p
 
 const hist = (date: string, showId: string, o: object = {}) => ({ date, showId, showName: showId, status: "confirmed", ...o });
 
-beforeEach(() => {
-  store.clear();
-  batchSizes.length = 0;
+function beforeEachSeed() {
   put("comics", PHONE, {
     name: "Aman",
     nameSource: "whatsapp",
@@ -77,6 +99,14 @@ beforeEach(() => {
     history: [hist("2026-10-19", "fri", { rating: 5, attendance: "late", tags: ["Killed"], note: "ran over" }), hist("2026-10-12", "tue", { rating: 4, tags: ["Hack"], attendance: "showed" })],
   });
   put("comics", "919111111111@c.us", { name: "Other", phone: "919111111111", tier: "open" });
+}
+
+beforeEach(() => {
+  store.clear();
+  batchSizes.length = 0;
+  io.trips = 0;
+  io.docsRead = 0;
+  beforeEachSeed();
 });
 
 const merge = () => mergeComicDocs(U, { keepId: PHONE, dropIds: [LID] });
@@ -240,5 +270,94 @@ describe("mergeComicDocs", () => {
     await merge();
     expect(Math.max(...batchSizes)).toBeLessThanOrEqual(400);
     expect(all<{ comicId: string }>("offers").every((o) => o.comicId === PHONE)).toBe(true);
+  });
+});
+
+// A busy account: 6 shows a week for a year and a half of lineups, 600 requests, and a duplicate who asked 8 times and played 10 shows.
+function busyAccount() {
+  const weeks = Array.from({ length: 78 }, (_, i) => new Date(Date.UTC(2025, 4, 5) + i * 7 * 86_400_000).toISOString().slice(0, 10));
+  const shows = ["mon", "tue", "wed", "thu", "fri", "sat"];
+  shows.forEach((s) => put("shows", s, { name: s, regulars: ["x@c.us"], protected: [], pocs: [] }));
+  for (const w of weeks) for (const s of shows) put("lineups", `${w}_${s}`, { weekOf: w, showId: s, date: w, status: "confirmed", slots: Array.from({ length: 8 }, (_, i) => ({ comicId: `9190000${i}@c.us` })) });
+  for (let i = 0; i < 600; i++) put("requests", `${weeks[i % 78]}_r${i}@c.us`, { comicId: `r${i}@c.us`, weekOf: weeks[i % 78], updatedAt: 1 });
+  const played = weeks.slice(-30, -20);
+  played.forEach((w, i) => put("lineups", `${w}_${shows[i % 6]}`, { weekOf: w, showId: shows[i % 6], date: w, status: "confirmed", slots: [{ comicId: LID }, { comicId: "y@c.us" }] }));
+  put("comics", LID, { ...get<Comic>("comics", LID)!, history: played.map((w, i) => hist(w, shows[i % 6])) });
+  weeks.slice(-8).forEach((w, i) => req(w, LID, { updatedAt: 10 + i }));
+  weeks.slice(-8, -4).forEach((w) => req(w, PHONE, { updatedAt: 5 }));
+  for (let i = 0; i < 3; i++) put("offers", `o${i}`, { comicId: LID, comicName: "Aman", status: "expired" });
+  for (let i = 0; i < 2; i++) put("actions", `a${i}`, { comicId: LID, comicName: "Aman", status: "done" });
+  // this week's draft has them on it too (no history entry yet)
+  put("lineups", `${weeks[77]}_tue`, { weekOf: weeks[77], showId: "tue", date: weeks[77], status: "draft", slots: [{ comicId: LID }], groupInvites: { [LID]: 1 } });
+  return weeks;
+}
+
+describe("mergeComicDocs cost", () => {
+  // Before (every lineup read, each query after the last): 15 round trips, 497 docs, ~630 ms at 40 ms a trip on this account.
+  it("reads only what can mention the dropped id, in parallel, and still moves everything", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-29T10:00:00Z"));
+    busyAccount();
+    io.trips = 0;
+    io.docsRead = 0;
+    io.latencyMs = 40;
+    const t0 = performance.now();
+    const r = await mergeComicDocs(U, { keepId: PHONE, dropIds: [LID] });
+    const ms = performance.now() - t0;
+    io.latencyMs = 0;
+    vi.useRealTimers();
+    expect(r.moved).toEqual({ requests: 8, lineups: 11, shows: 0, offers: 3, actions: 2 });
+    expect(all<Lineup>("lineups").filter((l) => l.slots.some((s) => s.comicId === LID) || (l.groupInvites && LID in l.groupInvites))).toEqual([]);
+    expect(io.docsRead).toBeLessThan(200);
+    expect(io.trips).toBeLessThanOrEqual(12);
+    expect(ms).toBeLessThan(6 * 40 + 150); // four sequential rounds: comics, queries, stored requests + old weeks, one batch
+  });
+
+  it("finds an old lineup through a history date, a request week or the last performed week", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-29T10:00:00Z"));
+    const lineup = (weekOf: string, showId: string, date: string) => put("lineups", `${weekOf}_${showId}`, { weekOf, showId, date, status: "confirmed", slots: [{ comicId: LID }] });
+    lineup("2025-01-06", "tue", "2025-01-07"); // in history
+    lineup("2025-02-03", "fri", "2025-02-07"); // they asked that week
+    lineup("2025-03-03", "sat", "2025-03-08"); // their last performed week
+    lineup("2025-04-07", "sun", "2025-04-13"); // nothing points here: left alone (a stale id on an old record)
+    put("comics", LID, { ...get<Comic>("comics", LID)!, history: [hist("2025-01-07", "tue")], lastPerformedWeek: "2025-03-03" });
+    req("2025-02-03", LID);
+    const r = await merge();
+    vi.useRealTimers();
+    expect(r.moved.lineups).toBe(3);
+    expect(get<Lineup>("lineups", "2025-04-07_sun")!.slots[0].comicId).toBe(LID);
+    for (const id of ["2025-01-06_tue", "2025-02-03_fri", "2025-03-03_sat"]) expect(get<Lineup>("lineups", id)!.slots[0].comicId).toBe(PHONE);
+  });
+
+  it("more than 30 dropped ids are queried in chunks", async () => {
+    const ids = Array.from({ length: 35 }, (_, i) => `${7000 + i}@lid`);
+    ids.forEach((id) => (put("comics", id, { name: "Aman", phone: "" }), put("offers", `of-${id}`, { comicId: id, comicName: "Aman", status: "expired" })));
+    const r = await mergeComicDocs(U, { keepId: PHONE, dropIds: ids });
+    expect(r.merged).toBe(35);
+    expect(r.moved.offers).toBe(35);
+  });
+});
+
+describe("autoMergeDuplicates", () => {
+  const members = [{ id: PHONE, name: "Aman", isAdmin: false, alt: [LID] }];
+  const notices = () => all<{ text: string; level: string }>("notices");
+
+  it("merges a phone id and the @lid of the same account, and says so once in Updates", async () => {
+    put("shows", "tue", { name: "Tue", regulars: [], protected: [], pocs: [], groupMembers: { groupId: "g@g.us", at: 1, members } });
+    expect(await autoMergeDuplicates(U)).toBe(1);
+    expect(get("comics", LID)).toBeUndefined();
+    expect(notices()).toHaveLength(1);
+    expect(notices()[0]).toMatchObject({ level: "info", text: "Merged 1 duplicate contact automatically (same WhatsApp account)" });
+  });
+
+  it("never merges a pair the curator dismissed, nor two numbers that only share a name", async () => {
+    put("shows", "tue", { name: "Tue", regulars: [], protected: [], pocs: [], groupMembers: { groupId: "g@g.us", at: 1, members } });
+    store.set(`users/${U}`, { settings: { dupDismissed: [pairKey(PHONE, LID)] } });
+    put("comics", "919800000001@c.us", { name: "Other", phone: "919800000001" }); // same name as "Other" below, different number
+    expect(await autoMergeDuplicates(U)).toBe(0);
+    expect(get("comics", LID)).toBeDefined();
+    expect(get("comics", "919800000001@c.us")).toBeDefined();
+    expect(notices()).toEqual([]);
   });
 });
