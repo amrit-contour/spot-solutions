@@ -353,9 +353,9 @@ function ShowEditor({ value, onClose }: { value: Partial<Show> | null; onClose: 
               Refresh
             </Button>
           </div>
-          <div className="flex items-center gap-3">
-            {draft.groupId && <GroupAvatar groupId={draft.groupId} name={group?.name ?? "Group"} size={40} />}
-            <div className="min-w-0 flex-1">
+          {/* The picker shows the group's photo inside the field itself, so no second photo beside it. */}
+          <div>
+            <div className="min-w-0">
               <SearchSelect label="Show group" value={draft.groupId ?? ""} onChange={(v) => set("groupId", v || null)} noneLabel="No group" searchPlaceholder="Search your groups" options={groups.data.map((g) => ({ value: g.id, label: g.name, hint: `${g.participants} members` }))} renderOption={(o) => (o.value ? <GroupAvatar groupId={o.value} name={o.label} size={32} /> : null)} />
             </div>
           </div>
