@@ -31,7 +31,6 @@ import { setRequestsCleared } from "../lib/cleanup";
 import { useNeverRead } from "../lib/neverRead";
 import { PageHeader, enumPref, usePref } from "@spot/ui";
 import { WaText } from "@spot/ui";
-import { WeekSwitcher } from "../components/WeekSwitcher";
 import { ExperienceChip, topTag } from "../components/Experience";
 import { Menu, MenuItem } from "@spot/ui";
 import { Bubble, Button, Chip, Empty, IconButton, Segmented, cx } from "@spot/ui";
@@ -70,7 +69,8 @@ const LANE_PREF = enumPref<Lane>("requestsLane", "spot.requests.lane", LANES.map
 
 
 export function Requests() {
-  const { uid, week, session, shows, comicsById } = useApp();
+  // No week picker here: Requests is always the week being curated (this week until its last show, then next week).
+  const { uid, currentWeek: week, session, shows, comicsById } = useApp();
   const requests = useCollection<SpotRequest>(uid, "requests", [where("weekOf", "==", week)], week);
   const lineups = useCollection<Lineup>(uid, "lineups", [where("weekOf", "==", week)], week);
   const [lane, setLane] = usePref(LANE_PREF);
@@ -146,9 +146,12 @@ export function Requests() {
     <div className="w-full">
       <PageHeader
         title="Requests"
-        // The week sits right next to the title and the counts on the line under it, all inside the pinned header, so nothing
-        // separates the Requests/Updates tabs from the search bar.
-        beside={<WeekSwitcher />}
+        // The counts sit right beside the title (no week picker on this page), so nothing separates the tabs from the search bar.
+        beside={
+          <span className="min-w-0 truncate type-body-m text-on-surface-variant tabular" aria-live="polite">
+            {requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "None yet"}
+          </span>
+        }
         actions={
           <>
             <Menu align="right" trigger={(t) => <IconButton icon={IconMenuDots} label="More" onClick={t} className="size-9" />}>
@@ -173,9 +176,6 @@ export function Requests() {
           </>
         }
       >
-        <p className="mt-0.5 min-w-0 truncate type-body-m text-on-surface-variant tabular" aria-live="polite">
-          {requests.data.length ? `${grouped.asked.length} waiting · ${grouped.placed.length} placed` : "Spot requests Gemma found in your DMs"}
-        </p>
         <div className="mt-3 lg:hidden" aria-label="Requests or updates">
           <Segmented
             full
@@ -315,7 +315,8 @@ function LaneEmpty({ lane }: { lane: Lane }) {
 }
 
 function RequestCard({ r, shows, lineups, performedLastWeek, showVenue }: { r: SpotRequest; shows: Show[]; lineups: Lineup[]; performedLastWeek: boolean; showVenue: boolean }) {
-  const { uid, week, comicsById, settings, shows: allShows, venues } = useApp();
+  const { uid, currentWeek, comicsById, settings, shows: allShows, venues } = useApp();
+  const week = r.weekOf || currentWeek;
   const now = useNow(30_000);
   const [open, setOpen] = useState(false);
   const comic = comicsById.get(r.comicId);
