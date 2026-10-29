@@ -64,7 +64,7 @@ import { deliverDraft } from "./deliver.ts";
 import { greetFor } from "./greet.ts";
 import { inVoice, learnVoice, listVoiceSourceChats, previewVoice } from "./voice.ts";
 import { applyFollowUpAction } from "./followUp.ts";
-import { generateJson, generateJsonFromFile, listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
+import { generateJson, generateJsonFromFile, listCloudModels, listGeminiModels, ollamaPull, ollamaState, testRoute } from "./llm.ts";
 import { parseRoster, type ParseRosterInput } from "./rosterImport.ts";
 import { safeFetch } from "./safeFetch.ts";
 import { reclassifyRequests } from "./reclassify.ts";
@@ -84,6 +84,12 @@ type Handler = (uid: string, payload: Record<string, unknown>, commandId?: strin
 /** A past show recorded afterwards (backfill) is history only: nothing is ever sent, synced or offered for it. */
 export function assertNotBackfilled(l: { backfilled?: boolean } | undefined) {
   if (l?.backfilled) throw new Error("That past show is only recorded. Nobody is messaged for it.");
+}
+
+/** What the app's AI models lists: the local Ollama's models, plus Ollama Cloud models (`beam:cloud`) when a key is set for this account. */
+async function modelList(uid: string) {
+  const [local, cloud] = await Promise.all([ollamaState(), listCloudModels(uid)]);
+  return { ...local, cloud: cloud.models, cloudSource: cloud.source, cloudError: cloud.error ?? null };
 }
 
 const handlers: Record<Command["type"], Handler> = {
@@ -531,9 +537,9 @@ const handlers: Record<Command["type"], Handler> = {
     await col(uid, "polls").doc(week).set(doc);
   },
 
-  /** Models available on this server's Ollama. */
-  async list_models() {
-    return ollamaState();
+  /** Models available on this server's Ollama, plus Ollama Cloud models when a key is set for this account (server console or Curate). */
+  async list_models(uid) {
+    return modelList(uid);
   },
 
   /** Refresh the curator's Gemini model list with their stored key. */
@@ -552,7 +558,7 @@ const handlers: Record<Command["type"], Handler> = {
   async pull_model(_uid, { model }) {
     if (!/^[\w.:\/-]{1,80}$/.test(String(model))) throw new Error("Invalid model name");
     await ollamaPull(String(model));
-    return ollamaState();
+    return modelList(_uid);
   },
 
   pull_group_members: pullGroupMembers,

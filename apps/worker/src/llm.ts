@@ -8,34 +8,13 @@ import { counters, live } from "./stats.ts";
 import os from "node:os";
 import { AiPolicyError, IMPLICIT_GEMINI_MODEL, canAutoSwitch, isKept, keepMissingSpent, missingModelNoticeId, missingModelText, ollamaKeepAlive, planRoutes, planRoutesDetailed, switchDecision, type Substitution } from "./aiRouting.ts";
 import { DEFAULT_LOCAL_MODEL } from "./serverAi.ts";
-import { SERVER_ID } from "./serverIdentity.ts";
+import { DATA_DIR, SERVER_ID } from "./serverIdentity.ts";
+import { readFileSync, statSync } from "node:fs";
+import path from "node:path";
+import { cloudRouteName, describeOllamaError, isCloudModelName, localOllamaUrl, localTimeoutMs, ollamaTarget, resolveCloud, withCloudRoutes, type AccountCloudSecret, type CloudConfig, type ServerCloudConfig } from "./ollamaCloud.ts";
 
-export let OLLAMA_URL = process.env.OLLAMA_URL ?? process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
-/** Optional API key for remote/cloud Ollama endpoints (Ollama Cloud, Beam, etc.). Sent as `Authorization: Bearer`. Kept in env; never written to files or logs. Hot-loaded on SIGHUP or env reload. */
-export let OLLAMA_API_KEY: string | null = process.env.OLLAMA_API_KEY ?? process.env.OLLAMA_KEY ?? null;
-
-import { readFileSync } from "node:fs";
-export function reloadOllamaEnv() {
-  try {
-    const envFile = process.env.NBS_ENV_FILE ?? process.env.NBS_ENV_FILE ?? ".env";
-    // Best effort: read .env into process.env so a key saved by the server console takes effect without a restart.
-    try {
-      const raw = readFileSync(envFile, "utf8");
-      for (const line of raw.split("\n")) {
-        const i = line.indexOf("=");
-        if (i <= 0) continue;
-        const k = line.slice(0, i).trim();
-        if (!k || k.startsWith("#")) continue;
-        process.env[k] = line.slice(i + 1).trim();
-      }
-    } catch { /* .env may be absent */ }
-  } catch { /* ignore */ }
-  OLLAMA_URL = process.env.OLLAMA_URL ?? process.env.OLLAMA_BASE_URL ?? OLLAMA_URL;
-  OLLAMA_API_KEY = process.env.OLLAMA_API_KEY ?? process.env.OLLAMA_KEY ?? null;
-  return { ollamaUrl: OLLAMA_URL, cloudEnabled: Boolean(OLLAMA_API_KEY) };
-}
-// Hot-load hook: a change to the .env can take effect without a full restart. Falls back to a restart notice on failure.
-process.on("SIGHUP", () => { try { reloadOllamaEnv(); console.log("[llm] reloaded Ollama env via SIGHUP"); } catch (e) { console.warn("[llm] SIGHUP reload failed:", (e as Error)?.message); } });
+/** The local daemon only, never a cloud URL (an older console wrote OLLAMA_URL=https://ollama.com here; see ollamaCloud.ts). No key is ever sent to it. */
+export const OLLAMA_URL = localOllamaUrl(process.env);
 // Slow laptops (an old i5 with 8 GB) can take a few minutes on a cold model. Waiting longer beats failing: messages are
 // read in the background, and a failed read is retried anyway (intake.ts). NBS_OLLAMA_TIMEOUT_MS overrides.
 const OLLAMA_TIMEOUT_MS = Number(process.env.NBS_OLLAMA_TIMEOUT_MS ?? process.env.OLLAMA_TIMEOUT_MS ?? 300_000);
@@ -50,21 +29,56 @@ type Schema = Record<string, unknown>;
 
 // ---- keys: watched live so a key added in the app works without a restart ----
 const keys = new Map<string, string | null>();
+// Ollama Cloud key from Curate (users/{uid}/secrets/ollamaCloud). The server console's key wins over it (resolveCloud).
+const cloudKeys = new Map<string, AccountCloudSecret | null>();
 const keyWatch = new Map<string, () => void>();
 export function watchKeys(uid: string) {
   if (keyWatch.has(uid)) return;
-  keyWatch.set(
-    uid,
-    col(uid, "secrets")
-      .doc("ai")
-      .onSnapshot((s) => keys.set(uid, (s.data()?.geminiKey as string | undefined) || null)),
-  );
+  const offAi = col(uid, "secrets")
+    .doc("ai")
+    .onSnapshot((s) => keys.set(uid, (s.data()?.geminiKey as string | undefined) || null));
+  const offCloud = col(uid, "secrets")
+    .doc("ollamaCloud")
+    .onSnapshot(
+      (s) => cloudKeys.set(uid, (s.data() as AccountCloudSecret | undefined) ?? null),
+      (e) => console.warn(`[llm] couldn't watch ${uid}'s Ollama Cloud key:`, e.message),
+    );
+  keyWatch.set(uid, () => { offAi(); offCloud(); });
 }
 export function unwatchKeys(uid: string) {
   keyWatch.get(uid)?.();
   keyWatch.delete(uid);
   keys.delete(uid);
+  cloudKeys.delete(uid);
 }
+
+// ---- Ollama Cloud: the server console's settings (data/ollama-cloud.json), re-read when the file changes ----
+// Next to power.json in the data folder (WWEBJS_DATA is <data>/wwebjs on every installer).
+const CLOUD_FILE = process.env.NBS_OLLAMA_CLOUD_FILE || path.join(process.env.NBS_DATA_DIR || path.dirname(DATA_DIR), "ollama-cloud.json");
+let serverCloud: { cfg: ServerCloudConfig | null; mtime: number; checkedAt: number } = { cfg: null, mtime: -1, checkedAt: 0 };
+function serverCloudConfig(): ServerCloudConfig | null {
+  if (Date.now() - serverCloud.checkedAt < 5_000) return serverCloud.cfg;
+  serverCloud.checkedAt = Date.now();
+  try {
+    const m = statSync(CLOUD_FILE).mtimeMs;
+    if (m !== serverCloud.mtime) serverCloud = { cfg: JSON.parse(readFileSync(CLOUD_FILE, "utf8")) as ServerCloudConfig, mtime: m, checkedAt: Date.now() };
+  } catch {
+    serverCloud = { cfg: null, mtime: -1, checkedAt: Date.now() };
+  }
+  return serverCloud.cfg;
+}
+/** The Ollama Cloud settings this account's calls use, or null (no key anywhere). */
+export function cloudFor(uid: string | null): CloudConfig | null {
+  return resolveCloud(serverCloudConfig(), uid ? cloudKeys.get(uid) : null, process.env);
+}
+/** For the console (live stats): which key source is in use here, and how many accounts brought their own. */
+export function cloudSummary() {
+  const server = resolveCloud(serverCloudConfig(), null, process.env);
+  const accounts = [...cloudKeys.values()].filter((v) => v?.key).length;
+  return { source: server ? ("server" as const) : accounts ? ("account" as const) : null, accounts, keyHint: server ? server.key.slice(-4) : null };
+}
+live.setCloudInfo(cloudSummary);
+
 const clients = new Map<string, GoogleGenAI>();
 function geminiFor(uid: string | null) {
   const key = (uid && keys.get(uid)) || SERVER_GEMINI_KEY;
@@ -77,32 +91,50 @@ function geminiFor(uid: string | null) {
 // ---- providers ----
 const noSchema = new Set<string>(); // Ollama models that reject JSON-schema output
 
-async function ollama(model: string, prompt: string, schema: Schema, temperature = 0, timeoutMs = OLLAMA_TIMEOUT_MS) {
-  if (NO_LOCAL_MODEL) throw new Error("This server has no local model (Gemini-only)");
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (OLLAMA_API_KEY) headers.authorization = `Bearer ${OLLAMA_API_KEY}`;
+async function ollama(model: string, prompt: string, schema: Schema, temperature = 0, timeoutMs = OLLAMA_TIMEOUT_MS, cloud: CloudConfig | null = null) {
+  const t = ollamaTarget(model, OLLAMA_URL, cloud);
+  if (NO_LOCAL_MODEL && !t.cloud) throw new Error("This server has no local model (Gemini-only)");
+  const key = `${t.cloud ? "cloud" : "local"}|${t.model}`;
   const call = (structured: boolean) =>
-    fetch(`${OLLAMA_URL}/api/chat`, {
+    fetch(t.url, {
       method: "POST",
-      headers,
+      headers: t.headers,
       signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
-        model,
+        model: t.model,
         stream: false,
         think: false,
         ...(structured ? { format: schema } : {}),
-        keep_alive: KEEP_ALIVE,
+        // keep_alive only means something to a local daemon
+        ...(t.cloud ? {} : { keep_alive: KEEP_ALIVE }),
         options: { temperature },
         messages: [{ role: "user", content: prompt }],
       }),
     });
-  let res = await call(!noSchema.has(model));
-  if (res.status === 501 && !noSchema.has(model)) {
-    noSchema.add(model);
-    res = await call(false);
+  let res: Response;
+  try {
+    res = await call(!noSchema.has(key));
+    if ((res.status === 501 || (t.cloud && res.status === 400)) && !noSchema.has(key)) {
+      noSchema.add(key);
+      res = await call(false);
+    }
+  } catch (err) {
+    throw new Error(describeOllamaError({ cloud: t.cloud, model, err }), { cause: err });
   }
-  if (!res.ok) throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) {
+    const msg = describeOllamaError({ cloud: t.cloud, model, status: res.status, body: await res.text().catch(() => "") });
+    if (res.status === 401 || res.status === 403) noteCloudAuth(msg, model);
+    throw new Error(msg);
+  }
   return ((await res.json()) as { message: { content: string } }).message.content;
+}
+// A 401 from the cloud (bad key) or from a local daemon proxying a cloud model (not signed in): logged once an hour, shown in the console.
+let authLoggedAt = 0;
+function noteCloudAuth(msg: string, model: string) {
+  live.noteCloudError(msg);
+  if (Date.now() - authLoggedAt < 3600_000) return;
+  authLoggedAt = Date.now();
+  console.warn(`[llm] ollama/${model}: ${msg}`);
 }
 
 async function gemini(uid: string | null, model: string, prompt: string, schema: Schema, temperature = 0, timeoutMs = GEMINI_TIMEOUT_MS) {
@@ -122,7 +154,7 @@ async function gemini(uid: string | null, model: string, prompt: string, schema:
 }
 
 function run(uid: string | null, route: AiRoute, prompt: string, schema: Schema, temperature?: number, timeoutMs?: number) {
-  return route.provider === "gemini" ? gemini(uid, route.model, prompt, schema, temperature, timeoutMs) : ollama(route.model, prompt, schema, temperature, timeoutMs);
+  return route.provider === "gemini" ? gemini(uid, route.model, prompt, schema, temperature, timeoutMs) : ollama(route.model, prompt, schema, temperature, timeoutMs, cloudFor(uid));
 }
 
 // ---- which Ollama models exist: cached, refreshed about every minute (the heartbeat and pulls refresh it too) ----
@@ -206,7 +238,11 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
   const task = gate.catch(() => undefined).then(async () => {
     // The account's AI policy decides which routes exist at all (local_only never reaches Gemini).
     const installed = await installedModels();
-    const { routes, substitutions } = planRoutesDetailed(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY), installed, process.env.NBS_LOCAL_MODEL || DEFAULT_LOCAL_MODEL);
+    const planned = planRoutesDetailed(ai, Boolean((uid && keys.get(uid)) || SERVER_GEMINI_KEY), installed, process.env.NBS_LOCAL_MODEL || DEFAULT_LOCAL_MODEL);
+    const { substitutions } = planned;
+    // Ollama Cloud: the server's "Use cloud for" (primary / fallback) slots the cloud model in; local_only drops anything on ollama.com.
+    const hadLocal = [ai.primary, ai.fallback].some((r) => r?.provider === "ollama" && !isCloudModelName(r.model));
+    const routes = withCloudRoutes(planned.routes, cloudFor(uid), ai.policy ?? DEFAULT_AI_POLICY, hadLocal);
     clearSpentKeep(uid, ai, installed);
     for (const s of substitutions) void noteSubstitution(uid, s, routes, (ai.policy ?? DEFAULT_AI_POLICY) === "local_only", installed, ai);
     if (!routes.length) {
@@ -217,19 +253,21 @@ export function generateJson(uid: string | null, ai: AiSettings, prompt: string,
     let last: unknown;
     for (const [i, route] of routes.entries()) {
       const t0 = Date.now();
-      const budget = opts.interactive ? routeBudgetMs(route.provider, deadlineAt, t0) : undefined;
+      const cloudRoute = route.provider === "ollama" && isCloudModelName(route.model);
+      // A cloud call gets the cloud's budget; a local one in front of a cloud fallback gets a shorter leash ("too slow").
+      const budget = opts.interactive ? routeBudgetMs(cloudRoute ? "gemini" : route.provider, deadlineAt, t0) : route.provider === "ollama" ? localTimeoutMs(routes, i, OLLAMA_TIMEOUT_MS, process.env) : undefined;
       if (opts.interactive && !budget) {
         last = last ?? new Error("The model took too long. Try again.");
         break;
       }
-      opts.interactive && opts.onStage?.(route.provider === "ollama" ? "Writing… (local model)" : "Writing… (Gemini)");
+      opts.interactive && opts.onStage?.(cloudRoute ? "Writing… (Ollama Cloud)" : route.provider === "ollama" ? "Writing… (local model)" : "Writing… (Gemini)");
       try {
         const text = await run(uid, route, prompt, schema, opts.temperature, budget);
         counters.classified++;
         live.noteAi(route.provider, Date.now() - t0, i > 0);
         return { text, model: `${route.provider}/${route.model}` };
       } catch (err) {
-        last = new Error(aiFailureMessage(route.provider, err), { cause: err });
+        last = cloudRoute ? err : new Error(aiFailureMessage(route.provider, err), { cause: err });
         live.noteAiFail();
         const next = routes[i + 1];
         if (next) console.warn(`[llm] ${route.provider}/${route.model} failed, trying ${next.provider}/${next.model}:`, (err as Error).message);
@@ -296,9 +334,25 @@ async function readOllamaState() {
 /** Download a model into Ollama (used by the "Pull" button in the app). */
 export async function ollamaPull(model: string) {
   if (NO_LOCAL_MODEL) throw new Error("This server runs without a local model (Gemini-only)");
-  const h: Record<string,string> = OLLAMA_API_KEY ? { authorization: `Bearer ${OLLAMA_API_KEY}` } : {};
-  const res = await fetch(`${OLLAMA_URL}/api/pull`, { method: "POST", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ model, stream: false }), signal: AbortSignal.timeout(60 * 60_000) });
+  const res = await fetch(`${OLLAMA_URL}/api/pull`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model, stream: false }), signal: AbortSignal.timeout(60 * 60_000) });
   if (!res.ok) throw new Error(`pull failed: ${(await res.text()).slice(0, 200)}`);
+}
+
+/**
+ * Cloud models this account can pick (route form: `beam:cloud`), from <cloudUrl>/api/tags. Empty when no key is set for it
+ * (server console or Curate) or the cloud can't be reached; `error` then says why.
+ */
+export async function listCloudModels(uid: string | null): Promise<{ models: string[]; source: CloudConfig["source"] | null; error?: string }> {
+  const cloud = cloudFor(uid);
+  if (!cloud) return { models: [], source: null };
+  try {
+    const res = await fetch(`${cloud.url}/api/tags`, { headers: { authorization: `Bearer ${cloud.key}` }, signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return { models: [], source: cloud.source, error: describeOllamaError({ cloud: true, model: "", status: res.status, body: await res.text().catch(() => "") }) };
+    const body = (await res.json()) as { models?: { name: string }[] };
+    return { models: (body.models ?? []).map((m) => cloudRouteName(m.name)).filter(Boolean), source: cloud.source };
+  } catch (err) {
+    return { models: [], source: cloud.source, error: describeOllamaError({ cloud: true, model: "", err }) };
+  }
 }
 
 /** Quick end-to-end check of a route: does it answer with JSON? */

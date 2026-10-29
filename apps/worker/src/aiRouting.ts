@@ -1,5 +1,6 @@
 // Which models may answer for an account, in order (docs/fleet.md, "AI policy"). Pure, so it is easy to test.
 import { DEFAULT_AI_POLICY, type AiRoute, type AiSettings } from "@spot/shared";
+import { isCloudModelName } from "./ollamaCloud.ts";
 
 /** Used when a Gemini key exists but the curator picked a local model with no fallback. */
 export const IMPLICIT_GEMINI_MODEL = "gemini-2.5-flash";
@@ -59,8 +60,9 @@ export function planRoutesDetailed(
     const have = new Set(installed.map(canon));
     const prefer = [...routes.filter((r) => r.provider === "ollama" && have.has(canon(r.model))).map((r) => r.model), ...(serverDefaultLocal ? [serverDefaultLocal] : [])];
     routes = routes.flatMap((r): AiRoute[] => {
-      if (r.provider !== "ollama" || have.has(canon(r.model))) return [r];
-      const to = pickInstalledModel(r.model, installed, prefer);
+      // A cloud model (`beam:cloud`) runs on ollama.com: it is never "installed" here, and never swapped for a local one.
+      if (r.provider !== "ollama" || isCloudModelName(r.model) || have.has(canon(r.model))) return [r];
+      const to = pickInstalledModel(r.model, installed.filter((n) => !isCloudModelName(n)), prefer.filter((n) => !isCloudModelName(n))); // a local pick stays local
       substitutions.push({ from: r.model, to });
       return to ? [{ provider: "ollama", model: to }] : [];
     });

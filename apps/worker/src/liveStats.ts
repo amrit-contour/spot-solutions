@@ -64,6 +64,8 @@ export interface LiveStats {
   queue: { pending: number; lastSendAt: number | null };
   /** Local models some account here is routed to that aren't installed (seen in the last day), and what answered instead. */
   missingModels?: { model: string; to: string | null; at: number }[];
+  /** Ollama Cloud on this server: which key source is in use (the console's or accounts' own from Curate) and the last auth failure. */
+  ollamaCloud?: { source: "server" | "account" | null; accounts: number; keyHint: string | null; lastError: string | null; lastErrorAt: number | null };
 }
 
 const emptyTotals = (): Totals => ({ in: 0, spot: 0, sent: 0, err: 0, ai: 0, aiLocal: 0, aiGemini: 0, aiMs: 0, aiFail: 0, aiFallback: 0 });
@@ -110,6 +112,8 @@ export function createLiveStats(opts: LiveOptions) {
   const accounts = new Map<string, AccountStat>();
   const directory = new Map<string, { name?: string | null; email?: string | null }>();
   const missing = new Map<string, { model: string; to: string | null; at: number }>();
+  let cloudInfo: () => { source: "server" | "account" | null; accounts: number; keyHint: string | null } = () => ({ source: null, accounts: 0, keyHint: null });
+  let cloudErr: { text: string; at: number } | null = null;
   let directorySeen = false;
   const clients = new WeakMap<object, string>();
   let pending = 0;
@@ -201,6 +205,15 @@ export function createLiveStats(opts: LiveOptions) {
       missing.set(model, { model, to, at: now() });
       dirty = true;
     },
+    /** llm.ts says where the Ollama Cloud key comes from (read each write, so a change shows within seconds). */
+    setCloudInfo(fn: typeof cloudInfo) {
+      cloudInfo = fn;
+    },
+    /** An Ollama 401 (a rejected key, or a local daemon that isn't signed in to ollama.com): the console shows it. */
+    noteCloudError(text: string) {
+      cloudErr = { text, at: now() };
+      dirty = true;
+    },
     /** One failed model attempt (a route that threw). */
     noteAiFail() {
       bump("aiFail");
@@ -225,6 +238,7 @@ export function createLiveStats(opts: LiveOptions) {
           .sort((x, y) => x.key.localeCompare(y.key)),
         queue: { pending, lastSendAt },
         missingModels: [...missing.values()].filter((m) => m.at > now() - 24 * HOUR),
+        ollamaCloud: { ...cloudInfo(), lastError: cloudErr && cloudErr.at > now() - 24 * HOUR ? cloudErr.text : null, lastErrorAt: cloudErr && cloudErr.at > now() - 24 * HOUR ? cloudErr.at : null },
       };
     },
     /** Compact numbers for the Firestore heartbeat (no extra write: it rides on the existing one). */
