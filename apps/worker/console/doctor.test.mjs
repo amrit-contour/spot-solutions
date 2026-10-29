@@ -139,3 +139,13 @@ describe("sameServerDeps", () => {
     expect(sameServerDeps(lock("tsx: 4.0.0", "react: 19.0.0"), lock("tsx: 4.1.0", "react: 19.0.0"))).toBe(false);
   });
 });
+
+describe("localOllamaUrl", async () => {
+  const { localOllamaUrl } = await import("./doctor-run.mjs");
+  it("an empty or cloud OLLAMA_URL means the local Ollama (the health check said 'not running' after a cloud key was saved)", () => {
+    expect(localOllamaUrl("", undefined)).toBe("http://127.0.0.1:11434");
+    expect(localOllamaUrl(undefined, "")).toBe("http://127.0.0.1:11434");
+    expect(localOllamaUrl("https://ollama.com")).toBe("http://127.0.0.1:11434");
+    expect(localOllamaUrl(undefined, "http://10.0.0.5:11434/")).toBe("http://10.0.0.5:11434");
+  });
+});

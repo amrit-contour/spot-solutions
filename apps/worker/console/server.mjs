@@ -23,7 +23,7 @@ import { createStorage } from "./storageview.mjs";
 import { createBrowser } from "./fsbrowse.mjs";
 import { planAdmins } from "./admins.mjs";
 import { createWorkerControl, isStopped, modelStopped } from "./control.mjs";
-import { createMachine, readMemory } from "./doctor-run.mjs";
+import { createMachine, localOllamaUrl, readMemory } from "./doctor-run.mjs";
 import { runDoctor, summarize } from "./doctor.mjs";
 import { LOW_DISK_BYTES, freeBytes } from "./storage.mjs";
 import { contextFor } from "./move.mjs";
@@ -55,7 +55,7 @@ const live = createLive({ file: process.env.NBS_STATS_FILE ?? path.join(DATA, "l
 // Cloud Function that trades a join code for this server's own key (functions/src/index.ts redeemJoinCode).
 const JOIN_URL = process.env.NBS_JOIN_URL ?? "https://asia-south1-spot-solutions.cloudfunctions.net/redeemJoinCode";
 // The local daemon only. An older console wrote OLLAMA_URL=https://ollama.com into .env: a cloud URL is never the local Ollama.
-const OLLAMA = /^https?:\/\/([^/]+\.)?ollama\.com(\/|:|$)/i.test(process.env.OLLAMA_URL ?? "") ? "http://127.0.0.1:11434" : (process.env.OLLAMA_URL || "http://127.0.0.1:11434");
+const OLLAMA = localOllamaUrl(process.env.OLLAMA_URL);
 // Brand icons (Nothing BOT Server): a theme-switching SVG favicon with PNG/ICO fallbacks and the home-screen icon.
 // All public (they load before the sign-in token does).
 const ASSET_TYPES = { svg: "image/svg+xml", png: "image/png", ico: "image/x-icon" };

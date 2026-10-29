@@ -52,12 +52,23 @@ export async function readMemory() {
 }
 
 /** The real machine behind doctor.mjs's `d`. Anything platform-specific that can't be done from Node is optional and reported as such. */
+/** The first set, non-cloud Ollama URL of these, else http://127.0.0.1:11434. */
+export function localOllamaUrl(...candidates) {
+  for (const c of candidates) {
+    const u = String(c ?? "").trim().replace(/\/+$/, "");
+    if (u && !/^https?:\/\/([^/]+\.)?ollama\.com(\/|:|$)/i.test(u)) return u;
+  }
+  return "http://127.0.0.1:11434";
+}
+
 export function createMachine({ env = process.env, paths = machinePaths(env), log = () => {} } = {}) {
   const readText = (f) => { try { return readFileSync(f, "utf8"); } catch { return null; } };
   const ensureScript = path.join(paths.appDir, "deploy", "ensure-browser.mjs");
   const nodeBin = process.execPath;
   const withNodeOnPath = { ...env, PATH: `${path.dirname(nodeBin)}${path.delimiter}${env.PATH ?? ""}` };
-  const ollamaUrl = env.OLLAMA_URL ?? parseEnv(readText(paths.envFile) ?? "").OLLAMA_URL ?? "http://127.0.0.1:11434";
+  // The LOCAL Ollama, the same as the console uses: an empty OLLAMA_URL (saving a cloud key clears the old cloud one) or an
+  // ollama.com URL means the default local address, never "" (which made every health check say Ollama wasn't running).
+  const ollamaUrl = localOllamaUrl(env.OLLAMA_URL, parseEnv(readText(paths.envFile) ?? "").OLLAMA_URL);
   const fsx = { existsSync, readdirSync, mkdirSync, cpSync, accessWritable: (p) => accessSync(p, constants.W_OK) };
   return {
     paths, fs: fsx, nodeVersion: process.version, readText, parseEnv,
