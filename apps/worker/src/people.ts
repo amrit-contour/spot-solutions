@@ -88,6 +88,8 @@ export async function listGroupMembers(uid: string, { showId }: Record<string, u
   // The invite link lets the app open the group in WhatsApp. Only admins can read it; without it the app just skips the link.
   const inviteCode = await group.getInviteCode().catch(() => "");
   await showRef.set({ groupMembers: { groupId: show.groupId, at, members: unique, ...(inviteCode && { inviteCode }) } }, { merge: true });
+  // Fresh member list = fresh phone/@lid links: two docs of one WhatsApp account may now be known to be the same person.
+  if (unique.some((m) => m.alt?.length)) scheduleAutoMerge(uid);
   return { count: unique.length, at };
 }
 
