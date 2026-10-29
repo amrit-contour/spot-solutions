@@ -6,6 +6,7 @@ import { col, db, sessionRef } from "./firebase.ts";
 import { migrateExperience } from "./migrateExperience.ts";
 import { runCommand } from "./commands.ts";
 import { markAdhocTold } from "./replies.ts";
+import { scheduleAutoMerge } from "./mergeComics.ts";
 import { startAccess } from "./access.ts";
 import { sessions } from "./sessions.ts";
 import { checkBrowserAtStart } from "./browserHeal.ts";
@@ -144,6 +145,8 @@ async function main() {
   sessions.hooks.onReady = ((prev) => (uid, source) => {
     prev?.(uid, source);
     setTimeout(() => rescanCommands(uid), 2_000).unref();
+    // Duplicates that came in while the server was down (the same WhatsApp account under two ids) merge once it is up.
+    scheduleAutoMerge(uid, 30_000);
   })(sessions.hooks.onReady);
 
   db.collection("users").onSnapshot((q) => {
