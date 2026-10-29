@@ -34,4 +34,9 @@ describe("aiFromLegacy", () => {
   it("carries keepMissing", () => {
     expect(aiFromLegacy({ ai: { primary: base.primary, keepMissing: { model: "m", at: 1 } } }).keepMissing).toEqual({ model: "m", at: 1 });
   });
+  it("carries the Ollama Cloud key hint (the card showed 'Not set' after saving without it)", () => {
+    const cloud = { url: "https://ollama.com", keyHint: "ab12", savedAt: 1 };
+    expect(aiFromLegacy({ ai: { primary: base.primary, cloud } }).cloud).toEqual(cloud);
+    expect(aiFromLegacy({ ai: { cloud } }).cloud).toEqual(cloud);
+  });
 });

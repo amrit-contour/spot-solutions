@@ -60,12 +60,12 @@ export function pendingRejections<R extends { comicId: string; status: string; i
 
 /** Settings docs written before `ai` existed carry the older `model` field. */
 export function aiFromLegacy(s: { ai?: Partial<import("./types.ts").AiSettings>; model?: { provider: "ollama" | "gemini"; name: string; fallback: boolean } } | undefined): import("./types.ts").AiSettings {
-  if (s?.ai?.primary) return { primary: s.ai.primary, fallback: s.ai.fallback ?? null, ...(s.ai.policy && { policy: s.ai.policy }), ...(s.ai.autoSwitched && { autoSwitched: s.ai.autoSwitched }), ...(s.ai.keepMissing && { keepMissing: s.ai.keepMissing }) };
+  if (s?.ai?.primary) return { primary: s.ai.primary, fallback: s.ai.fallback ?? null, ...(s.ai.policy && { policy: s.ai.policy }), ...(s.ai.autoSwitched && { autoSwitched: s.ai.autoSwitched }), ...(s.ai.keepMissing && { keepMissing: s.ai.keepMissing }), ...(s.ai.cloud && { cloud: s.ai.cloud }) };
   if (s?.model) {
     const primary = { provider: s.model.provider, model: s.model.provider === "gemini" ? "gemma-3-27b-it" : s.model.name };
-    return { primary, fallback: s.model.fallback && s.model.provider === "ollama" ? { provider: "gemini", model: "gemma-3-27b-it" } : null };
+    return { primary, fallback: s.model.fallback && s.model.provider === "ollama" ? { provider: "gemini", model: "gemma-3-27b-it" } : null, ...(s?.ai?.cloud && { cloud: s.ai.cloud }) };
   }
-  return DEFAULT_SETTINGS.ai;
+  return s?.ai?.cloud ? { ...DEFAULT_SETTINGS.ai, cloud: s.ai.cloud } : DEFAULT_SETTINGS.ai;
 }
 
 // ---- AI model switches: what the app writes for Undo, "Switch back" and picking a model (paths are relative to settings.ai) ----

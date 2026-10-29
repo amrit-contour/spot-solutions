@@ -682,6 +682,8 @@ export interface AiSettings {
    * saves another model over it; it only substitutes at run time. Cleared when the model gets installed or another is picked.
    */
   keepMissing?: { model: string; at: number };
+  /** The account's Ollama Cloud key, as a display hint only (the key is in users/{uid}/secrets/ollamaCloud, write-only). */
+  cloud?: { url: string; keyHint: string; savedAt: number; model?: string | null };
 }
 
 /** users/{uid}/secrets/ai. Write-only from the app; only the worker reads it. */
