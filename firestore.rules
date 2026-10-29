@@ -178,7 +178,18 @@ service cloud.firestore {
       match /contactsImport/{doc} { allow read: if isOwner(uid); }
       match /offers/{doc}  { allow read: if isOwner(uid); }
       // API keys: the curator can set or clear them but never read them back; only the worker (Admin SDK) reads.
-      match /secrets/{doc} { allow create, update, delete: if isOwner(uid); }
+      // No rule anywhere grants read on secrets (the catch-all below lists named collections only, and `secrets` is not one), so
+      // reads are denied. ollamaCloud (the Ollama Cloud key) also only takes its own fields: { key, url, model?, savedAt }.
+      match /secrets/{doc} {
+        allow read: if false;
+        allow create, update: if isOwner(uid)
+          && (doc != 'ollamaCloud'
+            || (request.resource.data.keys().hasOnly(['key', 'url', 'model', 'savedAt'])
+              && request.resource.data.key is string && request.resource.data.key.size() >= 16 && request.resource.data.key.size() <= 400
+              && request.resource.data.url is string && request.resource.data.url.matches('https://.+')
+              && request.resource.data.savedAt is number));
+        allow delete: if isOwner(uid);
+      }
       match /polls/{doc}   { allow read: if isOwner(uid); }
 
       // Commands: curator can enqueue pending commands and read results, nothing else.

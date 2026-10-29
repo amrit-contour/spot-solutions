@@ -1,14 +1,14 @@
-// Settings → AI models: Gemini key (write-only), fetched model lists, primary + fallback routes with live tests.
+// Settings → AI models: Gemini and Ollama Cloud keys (write-only), fetched model lists, primary + fallback routes with live tests.
 import { useEffect, useState } from "react";
 import { deleteDoc, deleteField, doc, setDoc, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
-import { pickRoutes, revertAutoSwitch, type AiKeyStatus, type AiPatch, type AiProvider, type AiRoute } from "@spot/shared";
+import { pickRoutes, revertAutoSwitch, type AiKeyStatus, type AiPatch, type AiProvider, type AiRoute, type AiSettings } from "@spot/shared";
 import { useApp } from "../lib/app";
 import { db } from "@spot/ui/firebase";
 import { runCommand, timeAgo, useDocument, userDoc } from "../lib/data";
 import { serverName, useAllServers, useLease } from "../lib/fleet";
 import { Button, Chip, IconButton, Info, SearchSelect, Segmented, Spinner, Switch, TextInput, cx } from "@spot/ui";
-import { IconCheck, IconCpu, IconRefresh, IconShield, IconSparkle, IconTrash, IconWarn } from "@spot/ui";
+import { IconCheck, IconCpu, IconRefresh, IconServer, IconShield, IconSparkle, IconTrash, IconWarn } from "@spot/ui";
 
 interface UserAiDoc {
   aiKeys?: AiKeyStatus;
@@ -19,7 +19,22 @@ interface OllamaList {
   up: boolean;
   models: { name: string; size: number }[];
   loaded: string[];
+  /** Ollama Cloud models (`beam:cloud`) this account can use: there only when a key is set (server console or below). */
+  cloud?: string[];
+  cloudSource?: "server" | "account" | null;
+  cloudError?: string | null;
 }
+
+/** settings.ai.cloud: a display hint only. The key itself is in users/{uid}/secrets/ollamaCloud, which this page can write but never read. */
+interface CloudHint {
+  url: string;
+  keyHint: string;
+  savedAt: number;
+  model?: string | null;
+}
+const DEFAULT_CLOUD_URL = "https://ollama.com";
+/** `beam:cloud`, `gpt-oss:20b-cloud`: runs on ollama.com, not on the server. */
+const isCloudModel = (m: string) => /(:cloud|-cloud)$/i.test(m);
 
 const GB = (b: number) => `${(b / 1e9).toFixed(1)} GB`;
 
@@ -97,14 +112,17 @@ export function AiModels() {
       ...Object.fromEntries(p.remove.map((k) => [`settings.ai.${k}`, deleteField()])),
     }).catch((e: Error) => toast.error(e.message));
   const installedNames = ollama?.up ? ollama.models.map((m) => m.name) : null;
+  const cloudModels = (ollama?.cloud ?? []).filter((m) => !installedNames?.includes(m));
+  const cloudHint = (settings.ai as AiSettings & { cloud?: CloudHint }).cloud;
   const pick = (next: { primary?: AiRoute; fallback?: AiRoute | null }) => writeAi(pickRoutes(settings.ai, next, installedNames, Date.now()));
   const lists: Lists = {
     ollama: {
-      models: (ollama?.models ?? []).map((m) => m.name),
+      // Local models, then Ollama Cloud ones (labelled Cloud in the picker) when a key is set for this account.
+      models: [...(ollama?.models ?? []).map((m) => m.name), ...cloudModels],
       fetch: fetchOllama,
       busy: !!busy.ollama,
       canFetch: workerOnline,
-      ready: workerOnline && !!ollama?.up,
+      ready: workerOnline && (!!ollama?.up || cloudModels.length > 0),
       why: !workerOnline ? (server.reach === "unknown" ? "You're offline" : "Server offline") : ollama && !ollama.up ? "Ollama isn't running on the server" : "Fetching models from your server…",
     },
     gemini: {
@@ -129,6 +147,7 @@ export function AiModels() {
   return (
     <div className="flex flex-col gap-4">
       <GeminiKey status={gemini} count={geminiModels.length} fetchedAt={fetchedAt} onFetch={fetchGemini} fetching={!!busy.gemini} canFetch={workerOnline} />
+      <CloudKey hint={cloudHint} list={ollama} onSaved={() => { if (workerOnline) setTimeout(() => void fetchOllama(), 2_500); }} />
 
       {switched && (
         <p role="status" className="flex items-start gap-2 rounded-lg bg-surface-container p-3 type-body-s text-on-surface-variant">
@@ -266,6 +285,108 @@ function GeminiKey({ status, count, fetchedAt, onFetch, fetching, canFetch }: { 
   );
 }
 
+/**
+ * Ollama Cloud key for this account: written to users/{uid}/secrets/ollamaCloud (write-only, rules forbid reading it back), so every
+ * server this account runs on gets it without typing it there. A key set in a server's console wins over this one on that server.
+ */
+function CloudKey({ hint, list, onSaved }: { hint?: CloudHint; list: OllamaList | null; onSaved: () => void }) {
+  const { uid } = useApp();
+  const [key, setKey] = useState("");
+  const [url, setUrl] = useState(hint?.url ?? DEFAULT_CLOUD_URL);
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const showInput = !hint || editing;
+
+  const save = async () => {
+    const k = key.replace(/\s+/g, "");
+    const u = url.trim().replace(/\/+$/, "") || DEFAULT_CLOUD_URL;
+    if (!k) return;
+    if (!/^https:\/\//i.test(u)) return toast.error("The URL must start with https:// (for example https://ollama.com).");
+    if (k.length < 16) return toast.error("That doesn't look like an Ollama API key. Copy it again from ollama.com/settings/keys.");
+    setBusy(true);
+    try {
+      const savedAt = Date.now();
+      await setDoc(userDoc(uid, "secrets", "ollamaCloud"), { key: k, url: u, savedAt });
+      await updateDoc(doc(db, "users", uid), { "settings.ai.cloud": { url: u, keyHint: k.slice(-4), savedAt, model: hint?.model ?? null } satisfies CloudHint });
+      setKey("");
+      setEditing(false);
+      setShow(false);
+      toast.success("Ollama Cloud key saved. Your server picks it up in a few seconds.");
+      onSaved();
+    } catch (e) {
+      toast.error(`Couldn't save the key: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    if (!confirm("Remove your Ollama Cloud key? Cloud models stop answering for you, unless your server's console has its own key.")) return;
+    await deleteDoc(userDoc(uid, "secrets", "ollamaCloud"));
+    await updateDoc(doc(db, "users", uid), { "settings.ai.cloud": deleteField() });
+    toast("Ollama Cloud key removed");
+    onSaved();
+  };
+
+  const source = list?.cloudSource;
+  return (
+    <div className="rounded-lg bg-surface-container p-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="grid size-9 flex-none place-items-center rounded-md bg-secondary-container text-on-secondary-container">
+          <IconServer className="icon size-5" />
+        </span>
+        <span className="type-title-s">Ollama Cloud key</span>
+        <Info>Bigger models (like beam) that run on ollama.com. Get a key at ollama.com/settings/keys. Stored write-only and sent to every server your account runs on; a key set in a server's own console wins there.</Info>
+        {hint ? (
+          <Chip tone="success" icon={IconCheck}>
+            ••••{hint.keyHint}
+          </Chip>
+        ) : (
+          <Chip>Not set</Chip>
+        )}
+        <div className="flex-1" />
+        {hint && !editing && (
+          <div className="flex items-center gap-1">
+            <span className="mr-2 hidden type-body-s text-on-surface-variant md:inline">saved {timeAgo(hint.savedAt)}</span>
+            <Button size="sm" variant="text" onClick={() => { setUrl(hint.url); setEditing(true); }}>
+              Replace
+            </Button>
+            <IconButton icon={IconTrash} label="Remove Ollama Cloud key" onClick={remove} className="size-8 text-error" />
+          </div>
+        )}
+      </div>
+      {(source || list?.cloudError) && (
+        <p className={cx("mt-2 type-body-s", list?.cloudError ? "text-error" : "text-on-surface-variant")}>
+          {list?.cloudError
+            ? list.cloudError
+            : source === "server"
+              ? `Your server uses the key from its own console (it wins over this one). ${list?.cloud?.length ?? 0} cloud models available.`
+              : `Your server uses this key. ${list?.cloud?.length ?? 0} cloud models available; pick one below (labelled Cloud).`}
+        </p>
+      )}
+      {showInput && (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <TextInput aria-label="Ollama Cloud URL" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} className="font-mono sm:max-w-64" />
+          <div className="flex min-w-0 flex-1 gap-2">
+            <TextInput type={show ? "text" : "password"} aria-label="Ollama API key" autoComplete="off" placeholder="Paste your Ollama API key" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void save()} className="min-w-0 font-mono" />
+            <Button variant="text" className="h-12 flex-none" onClick={() => setShow((v) => !v)} aria-pressed={show}>
+              {show ? "Hide" : "Show"}
+            </Button>
+          </div>
+          <Button onClick={save} loading={busy} disabled={!key.trim()} icon={IconShield} className="h-12 flex-none">
+            Save
+          </Button>
+          {editing && (
+            <Button variant="text" className="h-12 flex-none" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RouteCard({ title, host, info, route, lists, onChange, onKeep, kept, toggle }: { title: string; host: string; info: string; route: AiRoute | null; lists: Lists; onChange: (r: AiRoute) => void; onKeep: (model: string) => void; kept?: string; toggle?: { on: boolean; set: (v: boolean) => void } }) {
   const { uid, workerOnline } = useApp();
   const [test, setTest] = useState<{ state: "idle" | "running" | "ok" | "fail"; msg?: string }>({ state: "idle" });
@@ -274,8 +395,8 @@ function RouteCard({ title, host, info, route, lists, onChange, onKeep, kept, to
   const provider = route?.provider ?? "ollama";
   const list = lists[provider];
   const valid = Boolean(route && list.models.includes(route.model));
-  const missingLocal = Boolean(route && provider === "ollama" && route.model && list.ready && list.models.length && !valid);
-  const problem = !route ? "" : !list.ready ? list.why : !list.models.length ? "No models fetched yet. Tap ↻ to fetch them." : !valid ? (provider === "ollama" && route.model ? `${route.model} isn't installed on ${host}. Install it from the server console's AI models, or pick another.` : "Pick a model from the list") : "";
+  const missingLocal = Boolean(route && provider === "ollama" && route.model && !isCloudModel(route.model) && list.ready && list.models.length && !valid);
+  const problem = !route ? "" : !list.ready ? list.why : !list.models.length ? "No models fetched yet. Tap ↻ to fetch them." : !valid ? (provider === "ollama" && route.model && isCloudModel(route.model) ? `${route.model} is an Ollama Cloud model. Add an Ollama Cloud key above (or on the server console) to use it.` : provider === "ollama" && route.model ? `${route.model} isn't installed on ${host}. Install it from the server console's AI models, or pick another.` : "Pick a model from the list") : "";
 
   const runTest = async () => {
     if (!route) return;
@@ -313,7 +434,7 @@ function RouteCard({ title, host, info, route, lists, onChange, onKeep, kept, to
           value={provider}
           onChange={(p) => onChange({ provider: p, model: lists[p].models[0] ?? "" })}
           options={[
-            { value: "ollama", label: "Local · Ollama", icon: IconCpu },
+            { value: "ollama", label: lists.ollama.models.some(isCloudModel) ? "Ollama · local & Cloud" : "Local · Ollama", icon: IconCpu },
             { value: "gemini", label: "Gemini", icon: IconSparkle },
           ]}
         />
@@ -325,7 +446,7 @@ function RouteCard({ title, host, info, route, lists, onChange, onKeep, kept, to
               value={valid ? route!.model : ""}
               onChange={(m) => route && onChange({ ...route, model: m })}
               placeholder={list.models.length ? "Choose a model" : "No models fetched"}
-              options={list.models.map((m) => ({ value: m, label: m }))}
+              options={list.models.map((m) => ({ value: m, label: provider === "ollama" && isCloudModel(m) ? `${m} · Cloud` : m }))}
               className="font-mono text-sm"
             />
           </div>
