@@ -9,7 +9,7 @@
 // SIGTERM, or on seeing the flag on Windows), wait up to GRACE_MS, then force. The Windows force is move.mjs's WIN_STOP_SCRIPT.
 // Everything outside this file is injected (run, active, env access, sleep), so tests drive it with fakes.
 import { WIN_STOP_SCRIPT, winStopped, browserPidsOn } from "./move.mjs";
-import { keepAlive } from "./ollamaenv.mjs";
+import { keepAlive, winFindOllamaScript, winStartOllamaScript } from "./ollamaenv.mjs";
 
 export const GRACE_MS = 30_000;
 const POLL_MS = 1000;
@@ -71,7 +71,8 @@ export function commands(platform, { uid = 0, home = "" } = {}) {
       stopModel: () => ps(WIN_MODEL_STOP_SCRIPT),
       // The launcher loop only starts Ollama when the worker (re)starts, so a model-only Start launches it here.
       // OLLAMA_MODELS is set here from the pointer (dir), never inherited from the console's own environment.
-      startModel: (exe, dir, keep) => ps(`$ErrorActionPreference='SilentlyContinue'; if (-not (Get-Process -Name ollama)) { ${dir ? `$env:OLLAMA_MODELS='${String(dir).replace(/'/g, "''")}'; $env:OLLAMA_KEEP_ALIVE='${keepAlive(keep)}'; ` : ""}Start-Process -FilePath '${String(exe || "ollama").replace(/'/g, "''")}' -ArgumentList serve -WindowStyle Hidden }; Write-Output 'DONE'`),
+      // ollama.exe is found first (SYSTEM has no user PATH), and a start that doesn't answer on its port is an error, not "DONE".
+      startModel: (exe, dir, keep, root) => ps(`if (Get-Process -Name ollama -ErrorAction SilentlyContinue) { Write-Output 'DONE'; return }; ${dir ? winStartOllamaScript({ exe, dir, env: { NBS_OLLAMA_KEEP_ALIVE: keepAlive(keep) }, root }) : `$ErrorActionPreference='Stop'; ${winFindOllamaScript({ exe, root })}; Start-Process -FilePath $exe -ArgumentList serve -WindowStyle Hidden`}; Write-Output 'DONE'`),
       enableAndStart: () => ps(`$ErrorActionPreference='SilentlyContinue'; Enable-ScheduledTask -TaskName ${WIN_TASK} | Out-Null; if ((Get-ScheduledTask -TaskName ${WIN_TASK}).State -ne 'Running') { Start-ScheduledTask -TaskName ${WIN_TASK} }; Write-Output 'DONE'`),
     };
   }
@@ -88,7 +89,7 @@ export function commands(platform, { uid = 0, home = "" } = {}) {
  * run(cmd, args, { timeout, env }) -> { ok, out } (never throws); active("worker") -> is it running right now;
  * readEnv() / writeEnv(patch) work on the worker's .env; killPid(pid) removes macOS browser leftovers.
  */
-export function createWorkerControl({ platform, uid = 0, home = "", dataDir = "", chromeDir = "", ollamaExe = "", modelsDir = () => null, modelManaged = () => true, run, active, readEnv, writeEnv, killPid = (pid) => process.kill(pid, "SIGKILL"), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, graceMs = GRACE_MS, dry = false }) {
+export function createWorkerControl({ platform, uid = 0, home = "", dataDir = "", chromeDir = "", ollamaExe = "", root = "", modelsDir = () => null, modelManaged = () => true, run, active, readEnv, writeEnv, killPid = (pid) => process.kill(pid, "SIGKILL"), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, graceMs = GRACE_MS, dry = false }) {
   const win = platform === "win32", mac = platform === "darwin";
   const cmd = commands(platform, { uid, home });
   const go = (c, o) => run(c[0], c[1], o);
@@ -209,7 +210,7 @@ export function createWorkerControl({ platform, uid = 0, home = "", dataDir = ""
     writeEnv({ NBS_MODEL_STOPPED: "0" });
     modelStartedAt = now();
     if (dry) return;
-    if (win) { await go(cmd.startModel(ollamaExe, modelsDir(), readEnv().NBS_OLLAMA_KEEP_ALIVE), { timeout: 30_000 }); return; }
+    if (win) { await go(cmd.startModel(ollamaExe, modelsDir(), readEnv().NBS_OLLAMA_KEEP_ALIVE, root), { timeout: 45_000 }); return; }
     if (mac) {
       await go(cmd.enable("ollama"));
       if (!(await go(cmd.loaded("ollama"))).ok && !(await go(cmd.bootstrap("ollama"))).ok) throw new Error("Couldn't start Ollama. Open Nothing BOT Server, choose More, Update Nothing BOT Server, then try again.");

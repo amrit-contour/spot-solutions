@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 // Server heartbeat: machine health, Ollama, and who is connected, written to servers/{id}
 // for the app's Server page. Only admins listed in NBS_ADMIN_EMAILS can read it.
 import { execFile } from "node:child_process";
@@ -265,8 +266,20 @@ export function watchServerCommands(onRestartWorker: () => Promise<void>) {
 
 async function restartOllama() {
   if (process.platform === "win32") {
-    const exe = process.env.NBS_OLLAMA_EXE ?? "ollama";
-    await exec("powershell", ["-NoProfile", "-Command", `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Start-Process -FilePath '${exe}' -ArgumentList serve -WindowStyle Hidden`]);
+    // The console knows where ollama.exe and the models folder are; ask it first (it trusts this machine).
+    const port = Number(process.env.NBS_CONSOLE_PORT ?? 7420);
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/restart`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ service: "ollama" }), signal: AbortSignal.timeout(60_000) });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.ok) return;
+      if (res.status !== 404) throw new Error(body.error ?? `Console said ${res.status}`);
+    } catch (e) {
+      if ((e as Error).name !== "TypeError" && (e as Error).name !== "TimeoutError") throw e;
+    }
+    // No console: the same safe script (finds ollama.exe first, stops nothing if it's missing, checks it answers).
+    const { winRestartOllamaScript } = await import("../console/ollamaenv.mjs");
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+    await exec("powershell", ["-NoProfile", "-Command", winRestartOllamaScript({ exe: process.env.NBS_OLLAMA_EXE ?? "ollama", dir: process.env.OLLAMA_MODELS ?? "", env: process.env, root })], { timeout: 60_000 });
   } else if (process.platform === "darwin") {
     await exec("launchctl", ["kickstart", "-k", `gui/${process.getuid!()}/app.nothingbot.server.ollama`], { timeout: 60_000 });
   } else {

@@ -251,7 +251,8 @@ describe("Ollama on its own (model-stop / model-start)", () => {
     expect(r.env.NBS_MODEL_STOPPED).toBe("1");
     r.calls.length = 0;
     await r.ctl.act("model-start");
-    expect(r.lines()[0]).toContain("Start-Process -FilePath 'C:\\ollama.exe' -ArgumentList serve");
+    expect(r.lines()[0]).toContain("'C:\\ollama.exe'");
+    expect(r.lines()[0]).toContain("Start-Process -FilePath $exe -ArgumentList serve");
     expect(r.env.NBS_MODEL_STOPPED).toBe("0");
     expect(commands("win32").startModel("C:\\it's\\o.exe")[1].at(-1)).toContain("'C:\\it''s\\o.exe'");
   });

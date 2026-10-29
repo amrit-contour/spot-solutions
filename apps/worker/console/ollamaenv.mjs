@@ -96,13 +96,38 @@ export function wrongFolder({ up, modelCount, scan }) {
 
 const q = (s) => String(s).replace(/'/g, "''");
 
-/** PowerShell: stop every Ollama (server and tray app), then start ours with the models folder set explicitly. */
-export function winRestartOllamaScript({ exe, dir, env }) {
-  return `$ErrorActionPreference='SilentlyContinue'; Get-Process -Name 'ollama','ollama app' | Stop-Process -Force; Start-Sleep 2; ${winStartOllamaScript({ exe, dir, env })}`;
+/**
+ * PowerShell that sets `$exe` to a real ollama.exe, or stops with a plain error. The server runs as SYSTEM, which doesn't have the
+ * user's PATH or their AppData, so a bare "ollama" isn't found: look in the server's own copy, the usual install folders, every
+ * user's per-user install (Ollama's installer puts it under the user who ran it), then PATH.
+ */
+export function winFindOllamaScript({ exe, root }) {
+  const tries = [exe && exe !== "ollama" ? exe : null, root ? `${root}\\ollama-app\\ollama.exe` : null].filter(Boolean).map((x) => `'${q(x)}'`);
+  return [
+    `$exe = $null`,
+    `foreach ($c in @(${[...tries, `"$env:LOCALAPPDATA\\Programs\\Ollama\\ollama.exe"`, `"$env:ProgramFiles\\Ollama\\ollama.exe"`, `"$env:windir\\System32\\config\\systemprofile\\AppData\\Local\\Programs\\Ollama\\ollama.exe"`].join(", ")})) { if ($c -and (Test-Path -LiteralPath $c)) { $exe = $c; break } }`,
+    `if (-not $exe) { $exe = Get-ChildItem "$env:SystemDrive\\Users\\*\\AppData\\Local\\Programs\\Ollama\\ollama.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName }`,
+    `if (-not $exe) { $g = Get-Command ollama -ErrorAction SilentlyContinue | Select-Object -First 1; if ($g) { $exe = $g.Source } }`,
+    `if (-not $exe) { throw "Ollama isn't installed on this server (ollama.exe wasn't found). Reinstall it from ollama.com, or run the Nothing BOT installer again." }`,
+  ].join("; ");
 }
-export function winStartOllamaScript({ exe, dir, env }) {
+
+/** PowerShell: find ollama.exe FIRST (nothing is stopped if it's missing), stop every Ollama (server and tray app), start ours with
+ * the models folder set explicitly, and fail loudly if it didn't come back. */
+export function winRestartOllamaScript({ exe, dir, env, root }) {
+  return `$ErrorActionPreference='Stop'; ${winFindOllamaScript({ exe, root })}; Get-Process -Name 'ollama','ollama app' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep 2; ${winStartOllamaScript({ exe, dir, env, root, found: true })}`;
+}
+export function winStartOllamaScript({ exe, dir, env, root, found = false }) {
   const e = ollamaEnv(dir, env);
-  return `$env:OLLAMA_MODELS='${q(e.OLLAMA_MODELS)}'; $env:OLLAMA_KEEP_ALIVE='${e.OLLAMA_KEEP_ALIVE}'; Start-Process -FilePath '${q(exe || "ollama")}' -ArgumentList serve -WindowStyle Hidden`;
+  return [
+    found ? null : `$ErrorActionPreference='Stop'; ${winFindOllamaScript({ exe, root })}`,
+    `$env:OLLAMA_MODELS='${q(e.OLLAMA_MODELS)}'; $env:OLLAMA_KEEP_ALIVE='${e.OLLAMA_KEEP_ALIVE}'`,
+    `Start-Process -FilePath $exe -ArgumentList serve -WindowStyle Hidden`,
+    // Up means it answers on its port, not just that a process exists.
+    `$ok = $false; foreach ($i in 1..15) { Start-Sleep 1; try { Invoke-RestMethod 'http://127.0.0.1:11434/api/version' -TimeoutSec 2 | Out-Null; $ok = $true; break } catch {} }`,
+    `if (-not $ok) { throw "Ollama was started from $exe but isn't answering on port 11434 yet." }`,
+    `Write-Output "Ollama running ($exe)"`,
+  ].filter(Boolean).join("; ");
 }
 
 /**

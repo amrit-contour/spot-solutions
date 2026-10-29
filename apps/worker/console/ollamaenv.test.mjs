@@ -221,3 +221,18 @@ describe("createOllamaGuard", () => {
     expect((await g.check()).problem).toBe("wrong-folder");
   });
 });
+
+describe("finding ollama.exe on Windows", () => {
+  it("looks before it stops anything, and refuses plainly when it's missing", () => {
+    const s = winRestartOllamaScript({ exe: "ollama", dir: "D:\\m", root: "X:\\NBS" });
+    expect(s.indexOf("Test-Path")).toBeLessThan(s.indexOf("Stop-Process"));
+    expect(s.indexOf("isn't installed")).toBeLessThan(s.indexOf("Stop-Process"));
+    expect(s).toContain("'X:\\NBS\\ollama-app\\ollama.exe'");
+    expect(s).toContain("$env:SystemDrive\\Users\\*\\AppData\\Local\\Programs\\Ollama\\ollama.exe");
+    expect(s).toContain("Start-Process -FilePath $exe");
+    expect(s).not.toContain("-FilePath 'ollama'");
+  });
+  it("checks Ollama actually answers after starting", () => {
+    expect(winStartOllamaScript({ exe: "C:\\o.exe", dir: "d" })).toContain("11434/api/version");
+  });
+});

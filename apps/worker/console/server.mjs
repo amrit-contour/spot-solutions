@@ -7,6 +7,7 @@
 // NBS_WEB_URL and NBS_GEMINI_URL point the console at stand-ins for the cloud servers.
 import "./envcompat.mjs";
 import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFileSync, readdirSync, writeFileSync, existsSync, chmodSync, statSync, openSync, readSync, closeSync } from "node:fs";
@@ -40,6 +41,8 @@ const ENV_FILE = process.env.NBS_ENV_FILE ?? (WIN ? "C:\\NothingBotServer\\app\\
 // Windows logs next to the data; macOS launch agents write to NothingBotServer/logs.
 const WORKER_LOG = MAC ? path.join(DATA, "..", "logs", "worker.log") : path.join(DATA, "worker.log");
 const OLLAMA_EXE = process.env.NBS_OLLAMA_EXE ?? "ollama";
+// The install folder (C:\\NothingBotServer): this file is <root>/app/apps/worker/console/server.mjs. Its ollama-app copy is tried first.
+const NBS_ROOT = process.env.NBS_ROOT ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const PORT = Number(process.env.NBS_CONSOLE_PORT ?? 7420);
 // Release this console belongs to (written by the installer's tarball), shown in the header.
 const VERSION = process.env.NBS_VERSION ?? (() => { try { return readFileSync(new URL("../../../VERSION", import.meta.url), "utf8").trim(); } catch { return "dev"; } })();
@@ -135,7 +138,7 @@ async function restart(unit) {
   if (!WIN) return sh("sudo", ["-n", "/usr/bin/systemctl", "restart", unit], 30000);
   if (unit === "ollama") {
     // Stops the tray app too (it would hold the port with its own models folder) and sets OLLAMA_MODELS from the pointer, read now.
-    return ps(winRestartOllamaScript({ exe: OLLAMA_EXE, dir: modelsDir(), env: { ...process.env, ...readEnv() } }), 30000);
+    return ps(winRestartOllamaScript({ exe: OLLAMA_EXE, dir: modelsDir(), env: { ...process.env, ...readEnv() }, root: NBS_ROOT }), 45000);
   }
   // The launcher loop starts the worker again within ~10 s.
   return ps(`${WIN_WORKER} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`, 30000);
@@ -162,6 +165,7 @@ async function runCmd(cmd, args, { timeout = 15000, env } = {}) {
 const workerCtl = createWorkerControl({
   platform: process.platform, uid: process.getuid?.() ?? 0, home: os.homedir(), dataDir: DATA, chromeDir: process.env.PUPPETEER_CACHE_DIR ?? "",
   ollamaExe: OLLAMA_EXE,
+  root: NBS_ROOT,
   // On a Mac the user may run their own Ollama (Ollama.app): then there is no agent of ours to stop or start.
   modelManaged: () => !MAC || (existsSync(path.join(os.homedir(), "Library", "LaunchAgents", "app.nothingbot.server.ollama.plist")) && !existsSync(path.join(MAC_ROOT, ".external-ollama"))),
   modelsDir,
